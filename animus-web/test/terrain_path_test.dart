@@ -1,6 +1,8 @@
 @TestOn('vm')
 library;
 
+import 'dart:math' as math;
+
 import 'package:animus_editor/logic/npc/route_model.dart';
 import 'package:animus_editor/logic/terrain/terrain_data.dart';
 import 'package:animus_editor/logic/terrain/terrain_path.dart';
@@ -60,6 +62,30 @@ void main() {
       expect(plan.truncated, isTrue);
       expect(_chunks(plan), containsAll(<(int, int)>[(0, 0), (312, 0), (5, 0)]));
       expect(_chunks(plan), isNot(contains((200, 0))), reason: 'the leg is cut off past the cap');
+    });
+
+    test('a slice starts on the slice grid and holds the 32 layers drawn, for every height', () {
+      for (int y = -70; y < 330; y++) {
+        final TerrainPathChunk chunk = terrainPathPlan(TerrainPath.point(0.5, y + 0.5, 0.5), radius: 16).chunks.first;
+        final ({int y, int height}) slice = terrainSliceFor(chunk);
+        expect(slice.y % terrainSliceStep, 0, reason: 'path at $y');
+        expect(slice.y, lessThanOrEqualTo(chunk.y), reason: 'path at $y');
+        expect(slice.y + slice.height, greaterThanOrEqualTo(chunk.y + terrainPathBelow + terrainPathAbove), reason: 'path at $y');
+        expect(slice.height, lessThanOrEqualTo(terrainSliceMaxHeight));
+      }
+    });
+
+    test('an NPC walking over low hills asks for few new slices', () {
+      final Set<String> asked = <String>{};
+      for (int step = 0; step < 40; step++) {
+        final double x = 0.5 + 10 * math.cos(step * 0.35), z = 0.5 + 10 * math.sin(step * 0.35), y = 65.0 + step % 4;
+        final TerrainPathPlan plan = terrainPathPlan(terrainRoutePath(null, home: (0.5, 64, 0.5), live: (x, y, z)), radius: 16);
+        for (final TerrainPathChunk chunk in plan.chunks) {
+          final ({int y, int height}) slice = terrainSliceFor(chunk);
+          asked.add('${chunk.cx},${chunk.cz},${slice.y},${slice.height}');
+        }
+      }
+      expect(asked.length, lessThanOrEqualTo(16), reason: 'the chunks around home and the walk, each asked once');
     });
 
     test('equal paths plan to the same signature, a moved point to another', () {

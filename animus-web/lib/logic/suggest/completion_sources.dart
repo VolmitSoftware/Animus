@@ -144,11 +144,10 @@ const Set<String> _questCapabilities = <String>{'animus:quest-state', 'animus:se
 final RegExp _flagCall = RegExp(r'''\b(?:flag|has_flag|player_flag|player_has_flag)\(\s*(?:['"][a-z]+['"]\s*,\s*)?['"]([a-z0-9][a-z0-9_-]*)['"]''');
 final RegExp _questCall = RegExp(r'''\bquest\(\s*['"][a-z]+['"]\s*,\s*['"]([a-z0-9][a-z0-9_-]*)['"]''');
 
-/// Document ids by kind, and the flag and quest names [documents] use:
-/// `name` arguments of the flag and quest capabilities, and names read by
-/// `flag(...)`, `has_flag(...)` and `quest(...)` in expressions.
-CompletionSources workspaceSources(List<AnimusDocument> documents, {CompletionSources base = CompletionSources.empty}) {
-  final Map<DocumentKind, Set<String>> ids = <DocumentKind, Set<String>>{};
+/// The flag and quest names one document uses: `name` arguments of the flag
+/// and quest capabilities, and names read by `flag(...)`, `has_flag(...)`
+/// and `quest(...)` in expressions.
+({Set<String> flags, Set<String> quests}) _namesIn(AnimusDocument document) {
   final Set<String> flags = <String>{};
   final Set<String> quests = <String>{};
   void visit(Object? value) {
@@ -172,13 +171,60 @@ CompletionSources workspaceSources(List<AnimusDocument> documents, {CompletionSo
     }
   }
 
-  for (final AnimusDocument document in documents) {
-    ids.putIfAbsent(document.kind, () => <String>{}).add(document.id);
-    if (document.kind == DocumentKind.behavior || document.kind == DocumentKind.npc) visit(document.json);
+  if (document.kind == DocumentKind.behavior || document.kind == DocumentKind.npc) visit(document.json);
+  return (flags: flags, quests: quests);
+}
+
+/// Document ids by kind, and the flag and quest names [documents] use.
+CompletionSources workspaceSources(List<AnimusDocument> documents, {CompletionSources base = CompletionSources.empty}) =>
+    WorkspaceSourcesCache().sources(documents, base: base);
+
+/// [workspaceSources] for a form built again on every keystroke: a document
+/// is read for names only when it changed (documents are immutable, so an
+/// unchanged one is the same object), and while the ids and names stay the
+/// same the same [CompletionSources] comes back, so fields that read it are
+/// not built again.
+class WorkspaceSourcesCache {
+  Map<AnimusDocument, ({Set<String> flags, Set<String> quests})> _names = Map<AnimusDocument, ({Set<String> flags, Set<String> quests})>.identity();
+  CompletionSources? _last;
+  CompletionSources? _lastBase;
+
+  CompletionSources sources(List<AnimusDocument> documents, {CompletionSources base = CompletionSources.empty}) {
+    final Map<AnimusDocument, ({Set<String> flags, Set<String> quests})> names = Map<AnimusDocument, ({Set<String> flags, Set<String> quests})>.identity();
+    final Map<DocumentKind, Set<String>> ids = <DocumentKind, Set<String>>{};
+    final Set<String> flags = <String>{};
+    final Set<String> quests = <String>{};
+    for (final AnimusDocument document in documents) {
+      ids.putIfAbsent(document.kind, () => <String>{}).add(document.id);
+      final ({Set<String> flags, Set<String> quests}) found = _names[document] ?? _namesIn(document);
+      names[document] = found;
+      flags.addAll(found.flags);
+      quests.addAll(found.quests);
+    }
+    _names = names;
+    final Map<DocumentKind, List<String>> sortedIds = <DocumentKind, List<String>>{
+      for (final MapEntry<DocumentKind, Set<String>> entry in ids.entries) entry.key: entry.value.toList()..sort(),
+    };
+    final List<String> sortedFlags = flags.toList()..sort();
+    final List<String> sortedQuests = quests.toList()..sort();
+    final CompletionSources? last = _last;
+    if (last != null &&
+        identical(_lastBase, base) &&
+        _sameLists(last.flags, sortedFlags) &&
+        _sameLists(last.quests, sortedQuests) &&
+        last.documents.length == sortedIds.length &&
+        sortedIds.entries.every((MapEntry<DocumentKind, List<String>> entry) => _sameLists(last.documents[entry.key] ?? const <String>[], entry.value))) {
+      return last;
+    }
+    _lastBase = base;
+    return _last = base.copyWith(documents: sortedIds, flags: sortedFlags, quests: sortedQuests);
   }
-  return base.copyWith(
-    documents: <DocumentKind, List<String>>{for (final MapEntry<DocumentKind, Set<String>> entry in ids.entries) entry.key: entry.value.toList()..sort()},
-    flags: flags.toList()..sort(),
-    quests: quests.toList()..sort(),
-  );
+}
+
+bool _sameLists(List<String> a, List<String> b) {
+  if (a.length != b.length) return false;
+  for (int index = 0; index < a.length; index++) {
+    if (a[index] != b[index]) return false;
+  }
+  return true;
 }

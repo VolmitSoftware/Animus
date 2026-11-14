@@ -65,6 +65,15 @@ class EditorRelaySettingsTest {
     }
 
     @Test
+    void shouldClampTheFrameLimitToTheRelays() throws IOException {
+        assertEquals(EditorRelaySettings.RELAY_FRAME_BYTES, new EditorRelaySettings(true, "wss://relay.example.com", 1, 60, 4 * 1024 * 1024, 64).frameBytes());
+        Files.writeString(root.resolve("config.toml"), "[editor]\nrelayFrameBytes = 16777216\n");
+        try (DocumentStore store = new DocumentStore(root)) {
+            assertEquals(1024 * 1024, PluginSettings.load(store).relay().frameBytes(), "a larger frame would make the relay drop the whole connection");
+        }
+    }
+
+    @Test
     void shouldAppendTheAgentPath() {
         assertEquals(URI.create("wss://relay.example.com/base/agent"), new EditorRelaySettings(true, "wss://relay.example.com/base", 1, 60, 65536, 1).agentUri());
     }

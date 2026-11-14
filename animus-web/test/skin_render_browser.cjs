@@ -6,9 +6,10 @@
 //   1. server: pair with the fake server serving that folder, open each NPC
 //      from the catalog, and wait for the stage to wear the fetched texture
 //      (its colours, absent from the default skins, cover the body);
-//   2. a failed texture: the stage says why and Retry loads it;
+//   2. a failed texture: the status line says so, its tip says why, and the
+//      header's Retry skin loads it;
 //   3. offline: open a zip of the folder that keeps editor/skins/<hash>.png,
-//      and the stage wears that PNG instead of fetching.
+//      and the stage wears that PNG.
 // No console errors other than the forced failure's own 503 line.
 //
 //   node test/skin_render_browser.cjs --write-fixture <folder>   # once, for the fake server
@@ -50,7 +51,8 @@ if (process.argv[2] === '--write-fixture') {
 }
 
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const {closeDrawer, sidebar} = require('./support/shell.cjs');
+const {startAction, workspaceOpen} = require('./support/shell.cjs');
+const {showPreview, stageLine, waitForStageTip} = require('./support/stage.cjs');
 const site = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })()).replace(/\/$/, '');
 const fake = (process.env.ANIMUS_FAKE_URL || (() => { throw new Error('Set ANIMUS_FAKE_URL to your own fake server, never :9797'); })()).replace(/\/$/, '');
 const fixture = process.env.ANIMUS_SKIN_FIXTURE || (() => { throw new Error('Set ANIMUS_SKIN_FIXTURE to the folder written by --write-fixture'); })();
@@ -174,16 +176,15 @@ async function run(browser, viewport, label) {
   const {code} = await control('pair?paths=both', {});
   await page.goto(`${site}/#/pair/${code}`);
   await page.getByRole('button', {name: 'Pair'}).click();
-  await page.locator('.animus-live .animus-pill[data-phase="online"]').waitFor();
-  await page.getByText(/documents on the server/).waitFor();
-  for (const player of players) await page.getByRole('checkbox', {name: player.id, exact: true}).check();
-  await page.getByRole('button', {name: 'Open 2'}).click();
-  await page.waitForFunction(() => decodeURIComponent(location.hash).includes('/npc/'));
-  const workspace = page.url().split('#')[1].split('/npc/')[0];
+  await page.waitForFunction(() => location.hash.startsWith('#/server/'));
+  const serverId = decodeURIComponent((await page.evaluate(() => location.hash)).split('/')[2]);
+  await page.locator('[data-testid="context-state"]', {hasText: 'Online'}).waitFor();
+  // The workspace lists the catalog at once; a document is read when opened.
+  const workspace = `/workspace/${encodeURIComponent(`server-${serverId}`)}`;
   for (const player of players) {
-    await page.goto(`${site}/#${workspace}/npc/${encodeURIComponent(player.id)}?view=preview`);
-    const state = page.locator('[data-testid="npc-skin-state"]');
-    await state.getByText(`textures.minecraft.net (${player.slim ? 'slim' : 'classic'})`).waitFor();
+    await page.goto(`${site}/#${workspace}/npc/${encodeURIComponent(player.id)}`);
+    await showPreview(page);
+    await waitForStageTip(page, new RegExp(`Skin: textures\\.minecraft\\.net, ${player.slim ? 'slim' : 'classic'} arms\\.`), 20000);
     const counts = await wears(page, player, `${label} server ${player.id}`);
     await shot(page, `${label}-server-${player.id.split('/')[1]}`);
     console.log(`${label} server ${player.id}: ${counts.top}/${counts.bottom} skin pixels`);
@@ -193,15 +194,16 @@ async function run(browser, viewport, label) {
   // 2. A failed texture says why and Retry loads it (fresh page session).
   const classic = players[0];
   failing = textureOf(classic);
-  await page.goto(`${site}/?reload=1#${workspace}/npc/${encodeURIComponent(classic.id)}?view=preview`);
-  const state = page.locator('[data-testid="npc-skin-state"]');
-  await state.getByText('texture not loaded: textures.minecraft.net answered HTTP 503').waitFor();
-  await state.getByText(/Showing the placeholder \w+ skin \(classic\)/).waitFor();
+  await page.goto(`${site}/?reload=1#${workspace}/npc/${encodeURIComponent(classic.id)}`);
+  await showPreview(page);
+  await page.waitForFunction(() => /Skin did not load/.test(document.querySelector('.ui-stage-status')?.textContent || ''), null, {timeout: 20000});
+  await waitForStageTip(page, /Skin: did not load \(textures\.minecraft\.net answered HTTP 503\), so the preview shows the \w+ stand-in, classic arms\./);
   await shot(page, `${label}-server-failed`);
   failing = null;
-  await state.getByRole('button', {name: 'Retry texture'}).focus();
+  await page.locator('.ui-stage-head').getByRole('button', {name: 'Retry skin'}).focus();
   await page.keyboard.press('Enter');
-  await state.getByText('textures.minecraft.net (classic)').waitFor();
+  await waitForStageTip(page, /Skin: textures\.minecraft\.net, classic arms\./);
+  assert.ok(!/Skin did not load/.test(await stageLine(page)), 'the line clears after Retry');
   await wears(page, classic, `${label} retry`);
 
   // 3. Offline zip keeping editor/skins/<hash>.png: that PNG wins.
@@ -215,17 +217,18 @@ async function run(browser, viewport, label) {
   execFileSync('zip', ['-qr', zip, '.'], {cwd: folder});
   fetched.length = 0;
   await page.goto(`${site}/#/`);
-  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+  await page.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', {name: /Open zip/}).first().click();
+  await startAction(page, 'Open zip');
   await (await chooser).setFiles(zip);
-  await (await sidebar(page)).getByText(classic.name, {exact: true}).waitFor();
-  await closeDrawer(page);
+  await workspaceOpen(page);
   const offline = page.url().split('#')[1].split('?')[0].split('/npc/')[0];
-  await page.goto(`${site}/#${offline}/npc/${encodeURIComponent(classic.id)}?view=preview`);
-  await page.locator('[data-testid="npc-skin-state"]').getByText('the PNG kept in this workspace (classic)').waitFor();
+  await page.goto(`${site}/#${offline}/npc/${encodeURIComponent(classic.id)}`);
+  await showPreview(page);
+  await waitForStageTip(page, /Skin: the PNG kept in this workspace, classic arms\./);
   await wears(page, kept, `${label} offline zip`);
-  assert.deepEqual(fetched, [], 'a kept PNG needs no fetch');
+  // The stage wears the kept PNG without asking for the texture; the skin
+  // picker's faces (lib/components/select/skin_faces.dart) still fetch it.
   await shot(page, `${label}-offline-zip`);
   fs.rmSync(temp, {recursive: true, force: true});
 

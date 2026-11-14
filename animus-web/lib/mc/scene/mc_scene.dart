@@ -159,6 +159,16 @@ McSceneNode mcMovedNode(McSceneNode node, McMat4 by) => switch (node) {
       McMeshNode() => node,
     };
 
+/// [node] under a new [key], placed [by] further (another NPC's body on the
+/// same stage).
+McSceneNode mcPlacedNode(McSceneNode node, String key, McMat4 by) => switch (node) {
+      McRigNode() => McRigNode(key: key, rig: node.rig, textureId: node.textureId, transform: by.multiply(node.transform), pose: node.pose, tint: node.tint, opacity: node.opacity, glint: node.glint),
+      McItemNode() => McItemNode(key: key, itemId: node.itemId, pose: node.pose, transform: by.multiply(node.transform), leftHand: node.leftHand, glint: node.glint),
+      McBlockNode() => McBlockNode(key: key, blockKey: node.blockKey, transform: by.multiply(node.transform), state: node.state, modelId: node.modelId, glint: node.glint),
+      McModelNode() => McModelNode(key: key, model: node.model, textureId: node.textureId, modelSignature: node.modelSignature, transform: by.multiply(node.transform), glint: node.glint),
+      McMeshNode() => McMeshNode(key: key, mesh: node.mesh, meshSignature: node.meshSignature, translucent: node.translucent),
+    };
+
 final class McScene {
   McScene(this.nodes, {this.frame = const <McVec3>[], this.glow, this.ground = true}) : byKey = <String, McSceneNode>{} {
     for (final McSceneNode node in nodes) {

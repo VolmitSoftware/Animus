@@ -28,6 +28,19 @@ List<FieldSpec> combatAdvancedRuleFields(SchemaView npc, String section) {
   ];
 }
 
+/// [module] with [value] at [steps]; null, or an empty map or list under a
+/// key, removes the key, and so does every map it leaves empty above it.
+JsonMap withModuleField(JsonMap module, List<JsonStep> steps, Object? value) {
+  bool empty(Object? item) => (item is Map<String, Object?> && item.isEmpty) || (item is List<Object?> && item.isEmpty);
+  Object? next = writeIn(module, steps, steps.last is String && empty(value) ? null : value);
+  for (int depth = steps.length - 1; depth >= 1; depth--) {
+    final List<JsonStep> prefix = steps.sublist(0, depth);
+    if (prefix.last is! String || !empty(readIn(next, prefix))) break;
+    next = writeIn(next, prefix, null);
+  }
+  return asMap(next);
+}
+
 bool _empty(Object? value) => value == null || (value is Map<String, Object?> && value.isEmpty) || (value is List<Object?> && value.isEmpty);
 
 /// [rules] with [key] set to [value]; null or an empty map or list removes it.

@@ -1,22 +1,24 @@
-/// The 3D stage for holograms and holographic menus, redrawn whenever the
-/// scene's [signature] changes, with the notes on what it cannot show. A
-/// scene with text animations is rebuilt from [sceneAt] every [tickMs], so
-/// `|animation.<id>|` tokens play their frames, until the viewer pauses
-/// them; under reduced motion they start paused. Scene targets are drawn as
-/// pick rings over the stage, through the stage's overlay hook.
+/// The 3D preview of holograms and holographic menus in the page's
+/// StageFrame, redrawn whenever the scene's [GuiStagePreview.signature]
+/// changes. A scene with text animations is rebuilt from `sceneAt` every
+/// `tickMs`, so `|animation.<id>|` tokens play their frames, until the
+/// viewer pauses them; under reduced motion they start paused. Scene
+/// targets are drawn as pick rings over the stage. What the browser cannot
+/// show is counted in the status line, with the list in its tip.
 library;
 
 import 'dart:async';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
 import '../../mc/gui/gui_scene.dart';
 import '../../mc/npc/npc_scene.dart';
 import '../../mc/scene/mc_camera.dart';
 import '../../mc/scene/mc_math.dart';
+import '../../ui/action_row.dart';
+import '../../ui/stage_frame.dart';
 import '../mc/mc_stage.dart';
 import 'gui_fields.dart';
 
@@ -25,7 +27,7 @@ class GuiStagePreview extends StatefulWidget {
     required this.scene,
     required this.signature,
     required this.label,
-    this.toolbar = const <Widget>[],
+    this.band = false,
     this.sceneAt,
     this.tickMs,
     this.selected,
@@ -42,7 +44,9 @@ class GuiStagePreview extends StatefulWidget {
   /// Equal signatures keep the current camera and scene.
   final String signature;
   final String label;
-  final List<Widget> toolbar;
+
+  /// The preview sits in the band above the form.
+  final bool band;
 
   /// The scene target drawn with the selection ring.
   final String? selected;
@@ -174,24 +178,26 @@ class _GuiStagePreviewState extends State<GuiStagePreview> {
 
   @override
   Widget build(BuildContext context) {
-    final bool hasTargets = component.scene.targets.isNotEmpty;
-    return dom.div(classes: 'animus-gui-stage-3d', <Widget>[
-      dom.div(classes: 'animus-npc-preview-bar', <Widget>[
-        Button.ghost(label: 'Reset view', onPressed: _stage.resetCamera),
+    final List<String> notes = component.scene.notes;
+    final bool paused = _animated && !_playing && prefersReducedMotion();
+    return StageFrame(
+      title: 'Preview',
+      collapsible: component.band,
+      onReset: _stage.resetCamera,
+      actions: <RowAction>[
         if (_animated)
-          Button.ghost(
-            label: _playing ? 'Pause animations' : 'Play animations',
-            attributes: <String, String>{'aria-pressed': '${!_playing}', 'data-anim': 'stage-toggle'},
-            onPressed: _togglePlay,
+          RowAction(
+            _playing ? 'Pause animations' : 'Play animations',
+            _togglePlay,
+            icon: _playing ? ArcaneIcon.pause() : ArcaneIcon.play(),
+            iconOnly: true,
+            pressed: !_playing,
+            attributes: const <String, String>{'data-anim': 'stage-toggle'},
           ),
-        ...component.toolbar,
-      ]),
-      McStage(controller: _stage, label: component.label, overlay: hasTargets ? _overlay : null),
-      if (_animated && !_playing && prefersReducedMotion())
-        const dom.p(classes: 'animus-muted', <Widget>[Component.text('Animations paused for reduced motion.')]),
-      dom.ul(classes: 'animus-npc-notes', attributes: const <String, String>{'aria-live': 'polite'}, <Widget>[
-        for (final String note in component.scene.notes) dom.li(<Widget>[Component.text(note)]),
-      ]),
-    ]);
+      ],
+      status: notes.isEmpty ? (paused ? 'Animations paused for reduced motion.' : null) : (notes.length == 1 ? notes.single : '${notes.length} notes on this preview'),
+      statusTip: notes.length > 1 ? notes.join(' ') : null,
+      child: McStage(controller: _stage, label: component.label, overlay: component.scene.targets.isNotEmpty ? _overlay : null),
+    );
   }
 }

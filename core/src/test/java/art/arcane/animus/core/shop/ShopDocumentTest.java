@@ -77,6 +77,28 @@ class ShopDocumentTest {
                "needs": [{"item": {"id": "minecraft:emerald"}, "amount": 3}], "gives": [{"item": {"id": "minecraft:diamond"}, "amount": 1}]}}}]}
             """;
 
+    private static final String SPELLED = """
+            {"schemaVersion": 1, "revision": 1, "id": "town:baker", "modes": ["MODE"], "defaultMode": "MODE",
+             "pages": [{"name": "One", "sell": {"0": {"id": "w", "type": "TYPE", "item": {"id": "minecraft:wheat"}, "price": 2}}}]}
+            """;
+
+    @Test void typesAndModesFoldOnlyAsciiLetters() {
+        for (String spelling : List.of("sell", "Sell", "SELL")) {
+            ShopDocument.Result result = ShopDocument.parse("town:baker", SPELLED.replace("TYPE", spelling).replace("MODE", spelling));
+            assertEquals(List.of(), result.problems(), spelling);
+            assertEquals(ShopDocument.Type.SELL, result.shop().orElseThrow().entry("w").orElseThrow().type(), spelling);
+            assertEquals(List.of(ShopDocument.Mode.SELL), result.shop().orElseThrow().modes(), spelling);
+        }
+        for (String spelling : List.of("ſell", "statıc", "STATİC", "ｓｅｌｌ")) {
+            assertTrue(problems(SPELLED.replace("TYPE", spelling).replace("MODE", "sell")).contains("$.pages[0].sell.0.type: expected static, buy, sell, trade or command"), spelling);
+            assertTrue(problems(SPELLED.replace("TYPE", "sell").replace("MODE", spelling)).contains("$.modes: expected buy, sell or trade"), spelling);
+            assertTrue(problems(SPELLED.replace("TYPE", "sell").replace("\"defaultMode\": \"MODE\"", "\"defaultMode\": \"" + spelling + "\"").replace("MODE", "sell"))
+                    .contains("$.defaultMode: expected buy, sell or trade"), spelling);
+            assertEquals(Optional.empty(), ShopDocument.Type.of(spelling), spelling);
+            assertEquals(Optional.empty(), ShopDocument.Mode.of(spelling), spelling);
+        }
+    }
+
     @Test void ownedShopsReadTheirOwnerAndContainers() {
         assertEquals(List.of(), problems(OWNED));
         ShopDocument shop = ShopDocument.parse("town:baker", OWNED).shop().orElseThrow();

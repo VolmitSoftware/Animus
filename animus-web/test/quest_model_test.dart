@@ -202,4 +202,48 @@ void main() {
     expect(flagValue('"x"'), 'x');
     expect(flagValue('helped'), 'helped');
   });
+
+  group('advanced settings in use', () {
+    test('should count none for the two stage example', () {
+      expect(questSettingsInUse(twoStages()), 0);
+      expect(questStagesInUse(twoStages()), 0);
+    });
+
+    test('should count each set Advanced field of the Quest tab once', () {
+      final JsonMap quest = <String, Object?>{
+        ...twoStages(),
+        'turnIn': 'baker',
+        'requirements': <String, Object?>{'permission': 'town.bread', 'quests': <Object?>['town:first'], 'condition': 'true'},
+        'repeat': <String, Object?>{'mode': 'daily'},
+        'messages': <String, Object?>{'offer': 'Hi', 'complete': 'Thanks'},
+      };
+      expect(questSettingsInUse(quest), 7);
+      expect(questSettingsInUse(<String, Object?>{...twoStages(), 'requirements': <String, Object?>{'quests': <Object?>[]}}), 0);
+    });
+
+    test('should count stage order and ids of objectives that are not custom', () {
+      final Object? ordered = writeIn(twoStages(), <JsonStep>['stages', 0, 'order'], 'ordered');
+      final Object? named = writeIn(ordered, <JsonStep>['stages', 1, 'objectives', 0, 'id'], 'hand_in');
+      final Object? custom = writeIn(named, <JsonStep>['stages', 0, 'objectives', 1], <String, Object?>{'type': 'custom', 'id': 'ring_bell'});
+      expect(questStagesInUse(asMap(named)), 2);
+      expect(questStagesInUse(asMap(custom)), 2, reason: 'a custom objective shows its id in Simple');
+    });
+
+    test('should list the paths only Advanced shows on the Stages tab', () {
+      final Object? custom = writeIn(twoStages(), <JsonStep>['stages', 0, 'objectives', 1], <String, Object?>{'type': 'custom', 'id': 'ring_bell'});
+      expect(questStagesAdvancedPaths(asMap(custom)), <String>[
+        r'$.stages[0].order',
+        r'$.stages[0].objectives[0].id',
+        r'$.stages[1].order',
+        r'$.stages[1].objectives[0].id',
+      ]);
+    });
+
+    test('should tell a field from a path inside it and a sibling', () {
+      expect(pathUnder(r'$.requirements', r'$.requirements'), isTrue);
+      expect(pathUnder(r'$.requirements.quests[0]', r'$.requirements'), isTrue);
+      expect(pathUnder(r'$.givers[1]', r'$.givers'), isTrue);
+      expect(pathUnder(r'$.repeatable', r'$.repeat'), isFalse);
+    });
+  });
 }

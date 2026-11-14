@@ -230,3 +230,14 @@ const double mcTextMinFontPx = 13;
 /// floored at [mcTextMinFontPx]. Every text block uses this one rule.
 double mcTextFontPx(double heightPx, double depthBlocks) =>
     math.max(mcTextMinFontPx, mcPixelsPerBlock(heightPx, depthBlocks) * 0.025 * 8);
+
+/// [px] as the text layer draws it, so the pixel font stays crisp: whole
+/// multiples of its 8 px grid up to 40 px (16 at least), whole pixels above.
+double mcCrispFontPx(double px) => px <= 40 ? math.max(16, (px / 8).round() * 8).toDouble() : px.roundToDouble();
+
+/// The gap the text layer keeps between a text block and the stage's edge.
+const double mcTextInsetPx = 4;
+
+/// Labels drawn only near the camera (route point numbers) show while their
+/// depth is at most this many times the camera's distance to its pivot.
+const double mcNearTextReach = 1.5;

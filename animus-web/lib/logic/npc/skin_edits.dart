@@ -17,6 +17,7 @@ import '../../state/editor_store.dart';
 import '../gui/gui_json.dart';
 import '../offline/new_documents.dart';
 import 'group_model.dart';
+import '../gui/gui_text.dart' show guiPlainText;
 
 /// What a skin edit writes, as one undo step.
 class SkinChange {
@@ -58,11 +59,68 @@ String? skinDocumentLabel(Object? skin) {
   return label is String && label.trim().isNotEmpty ? label.trim() : null;
 }
 
+/// [skin]'s model and texture URL, decoded once per document: skins are
+/// content-addressed and documents immutable, and decoding every skin's
+/// base64 texture on each build cost over a second at 400 skins.
+NpcSkinInfo? skinInfoOf(AnimusDocument skin) => (_infos[skin] ??= _Info(NpcSkinInfo.fromDocument(skin.json))).info;
+
+final Expando<_Info> _infos = Expando<_Info>('skin info');
+
+class _Info {
+  const _Info(this.info);
+
+  final NpcSkinInfo? info;
+}
+
+/// The names of the NPCs and groups wearing each skin, by hash, in the
+/// order [documents] lists them: worked out once for a whole skin list.
+Map<String, List<String>> skinWearerNames(Iterable<AnimusDocument> documents) {
+  final Map<String, List<String>> names = <String, List<String>>{};
+  for (final AnimusDocument document in documents) {
+    final Set<String> worn = switch (document.kind) {
+      DocumentKind.npc => <String>{?asString(asMap(document.json)['skin'])},
+      DocumentKind.group => <String>{?asString(_values(document)['skin']), for (final Object? hash in asList(_values(document)['skins'])) ?asString(hash)},
+      _ => const <String>{},
+    };
+    for (final String hash in worn) {
+      (names[hash] ??= <String>[]).add(guiPlainText(document.title));
+    }
+  }
+  return names;
+}
+
+final Expando<Map<String, List<String>>> _wearersByList = Expando<Map<String, List<String>>>('skin wearers');
+
+/// [skinWearerNames] of one workspace document list, worked out once per list.
+Map<String, List<String>> skinWearersOf(List<AnimusDocument> documents) => _wearersByList[documents] ??= skinWearerNames(documents);
+
+/// Whether the names wearing skin [hash] differ between two document lists:
+/// a wearer renamed, by an edit, an undo, Take server or a console edit,
+/// changes the "Worn by" label.
+bool wearersMoved(List<AnimusDocument> before, List<AnimusDocument> after, String? hash) {
+  if (hash == null || identical(before, after)) return false;
+  final List<String> was = skinWearersOf(before)[hash] ?? const <String>[];
+  final List<String> now = skinWearersOf(after)[hash] ?? const <String>[];
+  if (was.length != now.length) return true;
+  for (int index = 0; index < was.length; index++) {
+    if (was[index] != now[index]) return true;
+  }
+  return false;
+}
+
+/// "Worn by Baker, Smith and 3 more", or null when nobody wears it.
+String? wornByLine(List<String> names) => switch (names.length) {
+      0 => null,
+      1 => 'Worn by ${names.single}',
+      2 => 'Worn by ${names[0]} and ${names[1]}',
+      _ => 'Worn by ${names[0]}, ${names[1]} and ${names.length - 2} more',
+    };
+
 /// How every skin list names [skin]: its label, or its first 12 hex
 /// characters without one; the hash (when labelled) and model are the
 /// secondary detail.
 ({String label, String detail}) skinListing(AnimusDocument skin) {
-  final NpcSkinInfo? info = NpcSkinInfo.fromDocument(skin.json);
+  final NpcSkinInfo? info = skinInfoOf(skin);
   final String model = info == null ? 'unreadable' : '${info.slim ? 'slim' : 'classic'}${info.signed ? ', signed' : ''}';
   final String short = skin.id.substring(0, skin.id.length.clamp(0, 12));
   final String? label = skinDocumentLabel(skin.json);

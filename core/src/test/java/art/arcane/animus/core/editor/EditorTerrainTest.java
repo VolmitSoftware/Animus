@@ -256,6 +256,17 @@ class EditorTerrainTest {
     }
 
     @Test
+    void worldUnloaded_chunkUnloaded_andLoaded_areThreeDistinctAnswers() throws Exception {
+        String token = harness.token();
+        refused("world-unloaded", 404, get("/v1/terrain/surface?world=nether&tx=0&tz=0", token));
+        refused("world-unloaded", 404, get("/v1/terrain/blocks?world=nether&cx=0&cz=0&y=60&height=8", token));
+        assertTrue(terrain.reads.isEmpty(), "an unloaded world is never read");
+        assertEquals("unloaded", valid("terrain-blocks-response", get("/v1/terrain/blocks?world=world&cx=2&cz=2&y=60&height=8", token)).get("status").getAsString(),
+                "a loaded world whose chunk nobody is near");
+        assertEquals("ok", valid("terrain-blocks-response", get("/v1/terrain/blocks?world=world&cx=0&cz=0&y=60&height=8", token)).get("status").getAsString());
+    }
+
+    @Test
     void tokenWithoutTerrainScope_isRefused() throws Exception {
         String token = harness.token(EditorHarness.grant(List.of(EditorScope.READ)));
         refused("scope-missing", 403, get("/v1/terrain/surface?world=world&tx=0&tz=0", token));
@@ -270,7 +281,6 @@ class EditorTerrainTest {
         refused("invalid-request", 400, get("/v1/terrain/surface?world=world&tz=0", token));
         refused("invalid-request", 400, get("/v1/terrain/surface?world=world&tx=a&tz=0", token));
         refused("invalid-request", 400, get("/v1/terrain/surface?world=world&tx=0&tz=0&extra=1", token));
-        refused("not-found", 404, get("/v1/terrain/surface?world=nether&tx=0&tz=0", token));
         refused("invalid-request", 400, get("/v1/terrain/blocks?world=world&cx=0&cz=0&y=60&height=0", token));
         refused("invalid-request", 400, get("/v1/terrain/blocks?world=world&cx=0&cz=0&y=60&height=65", token));
         refused("invalid-request", 400, get("/v1/terrain/blocks?world=world&cx=1875001&cz=0&y=60&height=8", token));

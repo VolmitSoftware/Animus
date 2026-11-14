@@ -66,7 +66,8 @@ public final class EditorListener implements AutoCloseable {
      * {@link #BODY_MILLIS} plus a millisecond for each {@link #BODY_BYTES_PER_MILLI} bytes, however slowly it trickles.
      */
     private static final int OPEN_BODY_MILLIS = 5_000, BODY_MILLIS = 30_000, BODY_BYTES_PER_MILLI = 16;
-    private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
+    /** Keeps null members: documents carry them on purpose, such as an emptied slot's {@code "item": null}. */
+    private static final Gson GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().create();
     private static final String WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
     private volatile EditorSettings settings;
     private final Path dataDirectory;

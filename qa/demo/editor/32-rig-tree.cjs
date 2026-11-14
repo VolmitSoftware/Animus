@@ -5,22 +5,24 @@ const R = require('./rig.cjs');
 
 module.exports = async (L) => {
   const {film: f, page, h} = await R.knightSession(L, '32-rig-tree');
-  const tree = page.getByRole('tree', {name: /^Bones/});
-  const bone = (name) => tree.getByRole('treeitem').filter({has: page.getByText(name, {exact: true})});
   f.mark();
   await h.pause(400);
-  await h.click(bone('arm_l'), {after: 900});
-  await h.click(page.getByRole('button', {name: 'Add child'}), {after: 600});
-  await h.result(1800);
-  await h.type(page.getByLabel('Bone name'), 'shield', {clear: true, after: 400});
-  // The document header has its own Rename; the tree's sits in the tree pane, which has no name.
-  await h.click(page.locator('.animus-rig-tree').getByRole('button', {name: 'Rename', exact: true}), {after: 600});
-  await h.result(1800);
-  await h.click(bone('tag_name'), {after: 900});
-  const parent = page.getByRole('combobox', {name: 'Parent'});
-  await h.click(parent, {after: 800});
-  await h.click(L.option(page, 'head'), {after: 700});
-  await h.hover(bone('tag_name'), 400);
+  await h.click(R.bone(page, 'arm_l'), {after: 900});
+  await h.click(page.getByRole('toolbar', {name: 'Bones'}).getByRole('button', {name: 'Add child'}), {after: 900});
+  await h.result(1600);
+  await h.type(page.getByRole('textbox', {name: 'Name', exact: true}), 'shield', {clear: true, after: 300});
+  await h.key('Enter', 900);
+  await h.hover(R.bone(page, 'shield'), 600);
+  await h.result(1600);
+  await h.click(R.bone(page, 'tag_name'), {after: 900});
+  // The parent list is long, so its search narrows it first.
+  await h.click(page.getByRole('combobox', {name: 'Parent'}), {after: 700});
+  await page.keyboard.type('head', {delay: L.slow(110)});
+  await h.pause(600);
+  await h.click(L.option(page, 'head'), {after: 900, noReveal: true});
+  // Rest on the row between the bone's name and its kind.
+  await h.moveTo(R.bone(page, 'tag_name'), {ox: 0.6});
+  await h.pause(400);
   await h.result(2300);
   return L.finish(f, {closing: 'Added shield under arm_l and moved tag_name under head'});
 };

@@ -54,3 +54,41 @@ OfferRef? offerAtCell(ChestCell cell) {
   if (page is! int || slot == null) return null;
   return OfferRef(page, steps[2] as String, slot);
 }
+
+/// [layout] as a player sees it who is sold out ([soldOut]: offers with
+/// stock or a limit) or lacks the offers' permissions ([noPermission]):
+/// those offers dimmed, their lore as the server writes it (stock 0, the
+/// limit used up, "Needs permission"). [layout] itself when neither.
+ChestLayout shopShownAs(ChestLayout layout, JsonMap shop, {required bool soldOut, required bool noPermission}) {
+  if (!soldOut && !noPermission) return layout;
+  final JsonList pages = asList(shop['pages']);
+  return ChestLayout(
+    width: layout.width,
+    rows: layout.rows,
+    title: layout.title,
+    cells: <ChestCell>[for (final ChestCell cell in layout.cells) _shownAs(cell, pages, soldOut: soldOut, noPermission: noPermission)],
+  );
+}
+
+ChestCell _shownAs(ChestCell cell, JsonList pages, {required bool soldOut, required bool noPermission}) {
+  final OfferRef? ref = offerAtCell(cell);
+  if (ref == null) return cell;
+  final JsonMap entry = asMap(asMap(asMap(pages.elementAtOrNull(ref.page))[ref.grid])['${ref.slot}']);
+  final Object? perPlayer = asMap(entry['limit'])['perPlayer'];
+  final String? permission = asString(entry['permission']);
+  final bool out = soldOut && (asMap(entry['stock']).isNotEmpty || asMap(entry['limit']).isNotEmpty);
+  final bool locked = noPermission && permission != null;
+  if (!out && !locked) return cell;
+  final List<String> lore = <String>[
+    for (final Object? line in asList(cell.icon['lore']))
+      if (line is String && !(locked && line == '&8Needs $permission'))
+        if (out && line.startsWith('&7Stock: '))
+          '&7Stock: &f0'
+        else if (out && perPlayer != null && line.startsWith('&7Limit: '))
+          '&7Limit: &f$perPlayer/$perPlayer'
+        else
+          line,
+    if (locked) '&cNeeds permission',
+  ];
+  return cell.copyWith(icon: <String, Object?>{...cell.icon, 'lore': lore}, hidden: true);
+}

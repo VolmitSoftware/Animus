@@ -1,7 +1,8 @@
 /// Syncing a local workspace with a paired server once one is connected:
 /// comparing documents with the server's catalog, validating a push on the
 /// server, sending it as one change set, and pulling server documents in.
-/// The workspace stays local; nothing is bound to the server.
+/// The workspace stays local; nothing is bound to the server. Documents are
+/// read with batch reads, retried after the server's rate-limit hint.
 library;
 
 import 'dart:convert';
@@ -12,12 +13,15 @@ import '../logic/offline/sync_plan.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../model/server_binding.dart';
+import '../services/server/connection_status.dart';
+import '../services/server/error_copy.dart';
 import '../services/server/server_connection.dart';
 import '../services/server/server_profiles.dart';
 import '../services/server/transport.dart';
-import 'editor_store.dart';
 import 'catalog_entry.dart';
-import 'live_session.dart';
+import 'document_loader.dart';
+import 'editor_store.dart';
+import 'server_catalog.dart';
 import 'workspace_repository.dart';
 
 /// A request that did not get an answer it could use.
@@ -113,9 +117,9 @@ class WorkspaceSync {
 
   static String recordKey(String workspaceId) => 'animus.push.$workspaceId';
 
-  Future<ApiResponse> _call(ApiRequest request, String what) async {
+  Future<ApiResponse> _call(ApiRequest request, String what, {bool retry = false}) async {
     try {
-      return await connection.request(request);
+      return await (retry ? connection.requestRetrying(request) : connection.request(request));
     } on NotConnected catch (offline) {
       throw SyncFailure('Could not $what. ${offline.status.message ?? 'The server is not connected. Connect and try again.'}');
     } on TransportFailure catch (failure) {
@@ -142,40 +146,30 @@ class WorkspaceSync {
     if (workspace != null) records.remove(recordKey(workspace.id));
   }
 
-  /// Every document the server lists.
+  /// Every document the server lists, every page.
   Future<List<CatalogEntry>> catalog() async {
-    final List<CatalogEntry> entries = <CatalogEntry>[];
-    String? after;
-    for (int page = 0; page < 64; page++) {
-      final ApiResponse response = await _call(
-        ApiRequest('GET', after == null ? '/v1/catalog' : '/v1/catalog?after=${Uri.encodeQueryComponent(after)}'),
-        'load the server catalog',
-      );
-      final Object? body = response.body;
-      if (!response.ok || body is! Map<String, Object?>) throw SyncFailure('Could not load the server catalog. ${response.problem.text}');
-      for (final Object? raw in asList(body['documents'])) {
-        final CatalogEntry? entry = CatalogEntry.fromJson(raw);
-        if (entry != null) entries.add(entry);
-      }
-      after = body['next'] as String?;
-      if (after == null) break;
-    }
+    final (List<CatalogEntry>? entries, ErrorCopy? problem) =
+        await ServerCatalog.fetchAll((ApiRequest request) => _call(request, 'load the server catalog', retry: true));
+    if (entries == null) throw SyncFailure('Could not load the server catalog. ${problem?.text ?? ''}'.trim());
     return entries;
   }
 
-  /// The server's copies of [keys] (missing ones are left out).
+  /// The server's copies of [keys] (missing ones are left out), read in
+  /// batches a few at a time.
   Future<Map<String, ServerBase>> fetch(Iterable<String> keys) async {
     final Map<String, ServerBase> copies = <String, ServerBase>{};
-    for (final String key in keys) {
-      final (DocumentKind, String)? parsed = parseDocumentKey(key);
-      if (parsed == null) continue;
-      final ApiResponse response = await _call(ApiRequest('GET', LiveSession.documentPathOf(parsed.$1, parsed.$2)), 'read ${parsed.$2}');
-      if (response.status == 404) continue;
-      final Object? body = response.body;
-      if (!response.ok || body is! Map<String, Object?> || body['revision'] is! num) {
-        throw SyncFailure('Could not read ${parsed.$2} from the server. ${response.problem.text}');
-      }
-      copies[key] = ServerBase(revision: (body['revision']! as num).toInt(), hash: '${body['hash']}', path: '${body['path']}', source: body['source']);
+    final DocumentLoader loader = DocumentLoader(
+      send: connection.requestRetrying,
+      deliver: (List<FetchedDocument> documents) async {
+        for (final FetchedDocument document in documents) {
+          copies[document.key] = document.base;
+        }
+      },
+      quiet: () => false,
+    );
+    final LoadResult result = await loader.load(<String>[for (final String key in keys) if (parseDocumentKey(key) != null) key]);
+    if (!result.complete) {
+      throw SyncFailure('Could not read ${result.failed.length} of the documents from the server. ${result.reason?.text ?? ''}'.trim());
     }
     return copies;
   }

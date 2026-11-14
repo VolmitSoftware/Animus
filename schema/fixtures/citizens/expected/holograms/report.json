@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "converterVersion": 21,
+  "fieldPathFormat": "json-pointer",
+  "importId": "6c56bf9b7f8cceff22477d00a413cf1effe76eda3822b82261bc0049f54e6ec6",
+  "sourceSha256": "8789d8fc60461ef991044b7d4e6ad360344690f27ab940984165cb2679d063f1",
+  "worldMap": {},
+  "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs spawn as Citizens had them, and converted patrols, schedules, combat, riding, shops and builds are on.",
+  "records": 5,
+  "valid": 5,
+  "skins": 0,
+  "behaviors": 0,
+  "shops": 0,
+  "conversions": {
+    "routes": 0,
+    "routePoints": 0,
+    "routeGuides": 0,
+    "lookClose": 0,
+    "textBehaviors": 0,
+    "commandBehaviors": 0,
+    "skinsKept": 0
+  },
+  "citizensDefaults": {
+    "lookclose": {
+      "enabled": false,
+      "realisticlooking": false,
+      "disablewhilenavigating": true
+    },
+    "inferred": []
+  },
+  "traits": {
+    "type": 5,
+    "location": 5,
+    "hologramtrait": 5
+  },
+  "types": {
+    "villager": 5
+  },
+  "sentinelFields": {},
+  "sentinelMapping": {},
+  "issues": [],
+  "migrationWarnings": [],
+  "remappedLocations": 0,
+  "resolvedReferences": 0,
+  "unresolvedReferences": 0,
+  "sourceFields": {},
+  "idMap": {
+    "0": "0a1b2c3d-0000-4000-8000-000000000700",
+    "1": "0a1b2c3d-0000-4000-8000-000000000701",
+    "2": "0a1b2c3d-0000-4000-8000-000000000702",
+    "3": "0a1b2c3d-0000-4000-8000-000000000703",
+    "4": "0a1b2c3d-0000-4000-8000-000000000704"
+  },
+  "documents": {
+    "npcs/world/citizens-0.json": "89f7c460de2ce3583f09cc4c93404f114b2a9cab3ac239f651689db83c908fbb",
+    "npcs/world/citizens-1.json": "221720e128bc5779cfbb16f169bb922f6ba2173442ad8aa5e51f2df11c2267fe",
+    "npcs/world/citizens-2.json": "706748bab019d753eed92bae68790ae2a405cd201321c93d3335be5f1c0cebee",
+    "npcs/world/citizens-3.json": "136ef891dc88486c0062bb35db306635475ed3c4e2fc8627cfc7d735e1d8b92d",
+    "npcs/world/citizens-4.json": "3f6fcb6310462ccc12244e284a15f6df07295e4581d102d04a24c69de97b03c1"
+  }
+}

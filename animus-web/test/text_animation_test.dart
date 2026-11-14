@@ -1,9 +1,14 @@
 import 'package:animus_editor/logic/gui/gui_expression.dart';
+import 'package:animus_editor/logic/gui/gui_validation.dart';
+import 'package:animus_editor/logic/gui/gui_text.dart';
 import 'package:animus_editor/logic/gui/text_animation.dart';
 import 'package:animus_editor/logic/suggest/completion_item.dart';
 import 'package:animus_editor/logic/suggest/field_profile.dart';
 import 'package:animus_editor/logic/suggest/text_completion.dart';
 import 'package:animus_editor/mc/gui/gui_scene.dart';
+import 'package:animus_editor/mc/npc/mc_text.dart';
+import 'package:animus_editor/model/animus_document.dart';
+import 'package:animus_editor/model/document_kind.dart';
 import 'package:test/test.dart';
 
 import 'fixtures.dart';
@@ -71,5 +76,56 @@ void main() {
     expect(scene.notes, contains('Text animation shop:gone is not in this workspace; token shown as written.'));
     expect(animationTickMs('|animation.sparkle|', 'shop:sign', animations), 500);
     expect(animationTickMs('plain', 'shop:sign', animations), isNull);
+  });
+
+  test('should show sample text in the colour of a frame that is only a colour code', () {
+    final List<McTextRun> runs = guiTextRuns(textAnimationPreviewText('[FF0000]'));
+    expect(runs, hasLength(1));
+    expect(runs.single.text, 'Sample text');
+    expect(runs.single.color, 0xFF0000);
+    expect(textAnimationPreviewText('&aHi'), '&aHi');
+    expect(textAnimationPreviewText(''), '');
+  });
+
+  test('should give a frame of codes alone the colour it sets, and none to a frame that shows text', () {
+    expect(textAnimationFrameColour('[FF3300]'), 0xFF3300);
+    expect(textAnimationFrameColour('&6'), 0xFFAA00);
+    expect(textAnimationFrameColour('&#5FD3FF'), 0x5FD3FF);
+    expect(textAnimationFrameColour('&e* '), isNull);
+    expect(textAnimationFrameColour(''), isNull);
+    expect(colourFramesOnly(<String>['[FF0000]', '&a']), isTrue);
+    expect(colourFramesOnly(<String>['[FF0000]', '&aGo']), isFalse);
+    expect(colourFramesOnly(const <String>[]), isFalse);
+  });
+
+  test('should page long frame lists by thirty, clamping the page', () {
+    expect(framePage(60, 0), (start: 0, end: 30, page: 0, pages: 2));
+    expect(framePage(60, 1), (start: 30, end: 60, page: 1, pages: 2));
+    expect(framePage(61, 5), (start: 60, end: 61, page: 2, pages: 3));
+    expect(framePage(12, 3), (start: 0, end: 12, page: 0, pages: 1));
+    expect(framePage(0, 0), (start: 0, end: 0, page: 0, pages: 1));
+  });
+
+  test('should read the clock names the server reads, so a marquee frame is valid and drawn', () {
+    final Map<String, Object?> marquee = readJson('gloss/fixtures/animation-marquee.json')! as Map<String, Object?>;
+    final List<Diagnostic> problems = validateGui(DocumentKind.textAnimation, marquee);
+    expect(problems.where((Diagnostic d) => d.severity == DiagnosticSeverity.error), isEmpty, reason: '$problems');
+    for (final String name in <String>['time.seconds', 'time.ticks', 'time.millis', 'time.ms', 'time.epochMs']) {
+      expect(checkExpression('floor($name)'), isNull, reason: name);
+    }
+    expect(renderTemplate((marquee['frames']! as List<Object?>).single! as String), isNot(contains('?')));
+  });
+
+  test('should count a broken frame expression as a document problem at that frame', () {
+    final List<Diagnostic> problems = validateGui(DocumentKind.textAnimation, <String, Object?>{
+      'schemaVersion': 1,
+      'mode': 'ascend',
+      'frameIntervalMs': 100,
+      'frames': <Object?>['&aok', '{{ nope.thing }}'],
+    });
+    final List<Diagnostic> errors = <Diagnostic>[for (final Diagnostic d in problems) if (d.severity == DiagnosticSeverity.error) d];
+    expect(errors, hasLength(1));
+    expect(errors.single.path, r'$.frames[1]');
+    expect(errors.single.message, contains("unknown name 'nope.thing'"));
   });
 }

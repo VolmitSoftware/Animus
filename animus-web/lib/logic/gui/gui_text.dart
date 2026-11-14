@@ -6,7 +6,8 @@
 /// resets, then reopens the tags still open, as in game. GUI holes are filled
 /// with sample values first. Unknown tags and codes stay as text. GUIs, NPC
 /// nameplates, holograms, speech and text displays on the stage all read text
-/// here, and lists show [guiPlainText].
+/// here, and lists show [guiPlainText]. Text displays draw their rows from
+/// [guiDisplayRows].
 library;
 
 import '../../mc/npc/mc_text.dart';
@@ -25,8 +26,8 @@ const Map<String, String> _tags = <String, String>{
 };
 
 /// Runs for GUI text, holes rendered with sample values.
-List<McTextRun> guiTextRuns(String text, {int defaultColor = mcDefaultTextColor, bool sample = true}) =>
-    guiSectionRuns(guiColorize(sample ? renderTemplate(text) : text), defaultColor: defaultColor);
+List<McTextRun> guiTextRuns(String text, {int defaultColor = mcDefaultTextColor, bool sample = true, bool item = false}) =>
+    guiSectionRuns(guiColorize(sample ? renderTemplate(text) : text), defaultColor: defaultColor, item: item);
 
 /// The text without codes or tags, for labels and tooltips' accessible names.
 String guiPlainText(String text) => guiTextRuns(text).map((McTextRun run) => run.text).join();
@@ -41,8 +42,31 @@ bool guiFormatted(String text) {
   return false;
 }
 
-/// [runs] split into lines at each newline, styles carried over.
-List<List<McTextRun>> guiTextLines(List<McTextRun> runs) {
+/// Each of [lines] as the rows the client draws for it, one more for every
+/// newline it holds, read as vanilla reads legacy codes: a colour code
+/// clears the formats, a format adds to the style, `&r` resets it. In one
+/// text display the lines are joined with newlines, so a style carries on
+/// into the rows below; with [separate] each line is its own display and
+/// starts unstyled. Each line is colorized alone, then the joined text again,
+/// as the server builds a display's text and the platform reads it.
+List<List<List<McTextRun>>> guiDisplayRows(List<String> lines, {bool separate = false, bool sample = true, int defaultColor = mcDefaultTextColor}) {
+  final List<String> coloured = <String>[for (final String line in lines) guiColorize(sample ? renderTemplate(line) : line)];
+  if (separate) {
+    return <List<List<McTextRun>>>[for (final String line in coloured) _rows(guiSectionRuns(guiColorize(line), defaultColor: defaultColor))];
+  }
+  final List<List<McTextRun>> rows = _rows(guiSectionRuns(guiColorize(coloured.join('\n')), defaultColor: defaultColor));
+  final List<List<List<McTextRun>>> out = <List<List<McTextRun>>>[];
+  int at = 0;
+  for (final String line in coloured) {
+    final int count = '\n'.allMatches(line).length + 1;
+    out.add(rows.sublist(at, at + count));
+    at += count;
+  }
+  return out;
+}
+
+/// [runs] split into rows at each newline, styles carried over.
+List<List<McTextRun>> _rows(List<McTextRun> runs) {
   final List<List<McTextRun>> lines = <List<McTextRun>>[<McTextRun>[]];
   for (final McTextRun run in runs) {
     final List<String> parts = run.text.split('\n');
@@ -119,12 +143,14 @@ String guiColorize(String text) {
 }
 
 /// Section-coded text as styled runs, as the server's `RichText.sectionRuns`:
-/// a colour code clears the styles before it, as in vanilla.
-List<McTextRun> guiSectionRuns(String coloured, {int defaultColor = mcDefaultTextColor}) {
+/// a colour code clears the styles before it, as in vanilla. An [item] name
+/// or lore line is italic until its first colour or reset code, as the
+/// client draws a custom name set from legacy text.
+List<McTextRun> guiSectionRuns(String coloured, {int defaultColor = mcDefaultTextColor, bool item = false}) {
   final List<McTextRun> runs = <McTextRun>[];
   final StringBuffer current = StringBuffer();
   int? rgb;
-  bool bold = false, italic = false, underlined = false, strikethrough = false, obfuscated = false;
+  bool bold = false, italic = item, underlined = false, strikethrough = false, obfuscated = false;
   int index = 0;
   while (index < coloured.length) {
     final String glyph = coloured[index];

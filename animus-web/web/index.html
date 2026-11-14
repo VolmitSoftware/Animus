@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
   <title>Animus Editor</title>
   <meta name="description" content="Browser editor for Animus NPCs, behaviors, shops, GUIs, rigs and animations.">
-  <meta id="animus-theme-color" name="theme-color" content="#0d0d0f">
+  <meta id="animus-theme-color" name="theme-color" content="#0a0a0a">
   <meta name="color-scheme" content="dark light">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="32x32">
@@ -23,17 +23,14 @@
   <link rel="stylesheet" href="/styles/07-server.css">
   <link rel="stylesheet" href="/styles/08-inspect.css">
   <link rel="stylesheet" href="/styles/09-npcs.css">
-  <link rel="stylesheet" href="/styles/10-combat.css">
-  <link rel="stylesheet" href="/styles/11-offline.css">
   <link rel="stylesheet" href="/styles/12-groups-recordings.css">
-  <link rel="stylesheet" href="/styles/13-info.css">
   <link rel="stylesheet" href="/styles/14-select.css">
   <link rel="stylesheet" href="/styles/15-suggest.css">
   <link rel="stylesheet" href="/styles/20-conversations.css">
   <link rel="stylesheet" href="/styles/21-shops.css">
   <link rel="stylesheet" href="/styles/22-quests.css">
 </head>
-<body>
+<body data-arcane-anchor-top="#animus-main">
   <div class="animus-boot" id="loading" role="status" aria-label="Loading the Animus editor">
     <img class="animus-boot-mark" src="/assets/brand/animus-mark.svg" width="72" height="72" alt="" fetchpriority="high">
     <div class="animus-boot-line" aria-hidden="true"><span></span></div>
@@ -41,6 +38,7 @@
   </div>
   <div id="app"></div>
   <noscript>Animus Editor requires JavaScript.</noscript>
+  <script defer data-arcane-runtime src="/arcane-runtime.js"></script>
   <script defer src="/main.client.dart.js"></script>
 </body>
 </html>

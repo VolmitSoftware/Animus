@@ -241,7 +241,9 @@ List<Diagnostic> diagnosticsOf(Object? raw) => <Diagnostic>[
 /// The binding after the server applied [applied]: new bases for the
 /// documents it wrote ([sources] holds what the editor sent, with the
 /// server's new revision), none for deleted ones, the pending entry gone and
-/// the change in the history.
+/// the change in the history. A change set still held for any of the same
+/// documents (its answer was lost or failed) goes too: this one applied
+/// against the bases that one was sent with, so that one never wrote.
 ServerBinding recordApplied(
   ServerBinding binding,
   ChangeApplied applied,
@@ -276,9 +278,15 @@ ServerBinding recordApplied(
         undoOf: undoOf,
       ),
   ];
+  final Set<String> written = <String>{
+    for (final AppliedDocument document in applied.documents) ...<String>[document.key, ?document.fromKey],
+  };
   return binding.copyWith(
     bases: bases,
-    pending: <PendingChange>[for (final PendingChange change in binding.pending) if (change.idempotencyKey != applied.idempotencyKey) change],
+    pending: <PendingChange>[
+      for (final PendingChange change in binding.pending)
+        if (change.idempotencyKey != applied.idempotencyKey && !change.documents.any(written.contains)) change,
+    ],
     history: history,
   );
 }

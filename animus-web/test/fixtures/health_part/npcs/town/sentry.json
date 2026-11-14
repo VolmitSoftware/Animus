@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "5b7e2c14-9d3a-4f6b-8e21-3a4c5d6e7f80",
+  "id": "sentry",
+  "group": "town",
+  "name": "Gate Sentry",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": -6.5,
+    "y": 64,
+    "z": 3.5,
+    "yaw": 180,
+    "pitch": 0
+  },
+  "attributes": {
+    "max_health": 30,
+    "attack_damage": 3
+  },
+  "modules": {
+    "animus:combat": {
+      "enabled": true,
+      "targets": {
+        "categories": ["monsters"],
+        "entityTypes": ["minecraft:pillager"],
+        "patterns": {"names": ["^Bandit"]}
+      },
+      "ignores": {"players": ["Steve"]},
+      "targeting": {"scanRange": 24, "lineOfSight": "field_of_view"},
+      "avoidance": {"range": 8, "returnPoint": {"world": "world", "x": -10, "y": 64, "z": 6}},
+      "squad": {"name": "north-gate", "alertRange": 20},
+      "pursuit": {"speed": 5, "returnToPost": true},
+      "melee": {"damage": 4, "reach": 3.5, "weaponDamage": {"minecraft:iron_sword": 6}},
+      "ranged": {"enabled": true, "weapon": "small_fireball", "cooldownTicks": 60},
+      "greetings": {"hostile": "Stop right there.", "cooldownTicks": 200},
+      "victimDrops": false
+    },
+    "animus:health": {
+      "killable": true,
+      "armor": 0.2,
+      "regenerate": true,
+      "regenerateTicks": 60,
+      "sources": ["players", "mobs", "projectiles", "fire"],
+      "death": {
+        "drops": [{"item": {"id": "minecraft:bread", "count": 2}, "maxCount": 4, "chance": 0.5}],
+        "experience": 10
+      },
+      "respawn": {
+        "delayTicks": 400,
+        "order": "random",
+        "points": [
+          {"world": "world", "x": -6, "y": 64, "z": 3},
+          {"world": "world", "x": 2, "y": 64, "z": 8}
+        ]
+      }
+    }
+  }
+}

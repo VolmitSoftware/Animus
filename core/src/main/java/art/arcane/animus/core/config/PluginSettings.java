@@ -91,7 +91,7 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
             Map.entry("editor.relayEnabled", "The relay connects at the first /animus editor pair, then at each start while a token exists"),
             Map.entry("editor.relayUrl", "The Volmit relay; the server dials out to it, so no port needs to be open"),
             Map.entry("editor.relayReconnectMinSeconds", "Relay reconnect waits in seconds, shortest then longest"),
-            Map.entry("editor.relayFrameBytes", "Largest relay frame in bytes"),
+            Map.entry("editor.relayFrameBytes", "Largest relay frame in bytes, at most the relay's 1048576"),
             Map.entry("editor.relayConcurrentRequests", "Editor requests the relay runs at once"),
             Map.entry("shops.messages", "Shop texts with & colour codes; {name} is a placeholder. Delete a line to use the built-in text"),
             Map.entry("behaviors.triggers.playerCooldownTicks", "Spacing of one player's runs of an interaction trigger that sets no cooldownTicks; 0 turns it off"),

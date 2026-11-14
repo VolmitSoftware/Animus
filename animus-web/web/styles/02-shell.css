@@ -1,927 +1,171 @@
-/* The shell: top bar, banners, the workspace grid, the sidebar (a drawer on
-   phones), menus and the command palette. The pink accent marks the primary
-   action, selection and focus only; everything else is grey on near-black. */
-
-.animus-shell {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
-}
-
-/* Skip link: off screen until it has focus. */
-.animus-skip {
-  position: absolute;
-  inset-inline-start: 0.5rem;
-  top: -4rem;
-  z-index: 60;
-  padding: 0 var(--animus-control-pad);
-  font: inherit;
-  font-weight: 600;
+/* The app frame: a fixed-height grid where the top bar, the nav and the save
+   bar stay on screen and only the page body scrolls. Full nav from 1101 px,
+   an icon rail at 761-1100 px, a drawer below. Layout and tokens only; the
+   controls inside are arcane_jaspr's. */
+.ui-app {
+  position: relative;
+  display: grid;
+  height: 100dvh;
+  grid-template-columns: var(--ui-nav-w) minmax(0, 1fr);
+  grid-template-rows: var(--ui-topbar-h) minmax(0, 1fr) auto;
+  grid-template-areas: 'top top' 'nav page' 'save save';
+  overflow: hidden;
+  background: var(--background);
   color: var(--foreground);
-  background: var(--card);
-  cursor: pointer;
 }
 
-.animus-skip:focus-visible {
+.ui-app.is-rail {
+  grid-template-columns: var(--ui-rail-w) minmax(0, 1fr);
+}
+
+.ui-app:is(.is-compact, .is-bare) {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'top' 'page' 'save';
+}
+
+/* Off screen until it takes focus. */
+.ui-skip {
+  position: fixed;
   top: 0.5rem;
+  left: 0.5rem;
+  z-index: 60;
+  transform: translateY(-200%);
 }
 
-/* Top bar */
+.ui-skip:focus-within {
+  transform: none;
+}
 
-.animus-topbar {
+.ui-topbar {
+  grid-area: top;
   display: flex;
   align-items: center;
-  gap: var(--animus-gap);
-  min-height: 3.25rem;
-  padding: 0.375rem 1rem;
-  border-bottom: 1px solid var(--animus-border);
-  position: sticky;
-  top: 0;
-  z-index: 35;
-  background: var(--background);
-  box-sizing: border-box;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0 0.75rem;
+  border-bottom: 1px solid var(--border);
 }
 
-.animus-brand {
+.ui-brand,
+.ui-topbar-history,
+.ui-context {
   display: inline-flex;
   align-items: center;
-  flex: none;
   gap: 0.5rem;
-  min-height: 2.75rem;
-  font-weight: 600;
+  min-width: 0;
+}
+
+.ui-brand {
   color: inherit;
+  font-weight: 600;
   text-decoration: none;
-  white-space: nowrap;
 }
 
-.animus-mark {
-  display: block;
-  flex: none;
-}
-
-.animus-topbar-workspace {
-  min-width: 0;
-  color: var(--animus-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.animus-topbar-workspace::before {
-  content: "/";
-  margin-inline-end: var(--animus-gap);
-  color: var(--animus-border);
-}
-
-.animus-topbar-actions {
-  margin-inline-start: auto;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-/* Between the phone bar and a full desktop the tools need the room, so the
-   brand keeps its mark and its name stays for screen readers only; the
-   workspace name gives way first. */
-@media (min-width: 761px) and (max-width: 960px) {
-  .animus-brand-name {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-}
-
-.animus-toolgroup {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-/* App-level controls sit apart from the workspace's own. */
-.animus-topbar-app {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding-inline-start: 0.75rem;
-  border-inline-start: 1px solid var(--animus-border);
-}
-
-.animus-topbar:not(:has(.animus-toolgroup)) .animus-topbar-app {
-  margin-inline-start: auto;
-}
-
-.animus-topbar.is-compact {
-  gap: 0.5rem;
-  padding-inline: 0.75rem;
-}
-
-/* Menus */
-
-.animus-menu-wrap {
+.ui-nav {
   position: relative;
-}
-
-.animus-menu {
-  position: absolute;
-  inset-inline-end: 0;
-  top: calc(100% + 0.375rem);
-  z-index: 40;
-  display: grid;
-  min-width: 15rem;
-  max-width: min(22rem, calc(100vw - 1.5rem));
-  padding: 0.25rem;
-  background: var(--popover);
-  color: var(--popover-foreground);
-  border: 1px solid var(--input);
-  animation: animus-pop 120ms ease-out;
-}
-
-.animus-menu-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.375rem 0.75rem;
-  font: inherit;
-  font-size: var(--animus-text-md);
-  text-align: start;
-  color: inherit;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-}
-
-.animus-menu-item:hover,
-.animus-menu-item:focus-visible {
-  background: var(--card-hover);
-}
-
-.animus-menu-item:active {
-  background: var(--accent);
-}
-
-.animus-menu-item:disabled {
-  color: var(--animus-muted);
-  cursor: not-allowed;
-}
-
-.animus-menu-hint {
-  max-width: 10rem;
+  grid-area: nav;
+  min-height: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--animus-text-sm);
-  color: var(--animus-muted);
 }
 
-/* Popups slide in opaque: a fade let the text beneath show through for a
-   frame, overlapping the popup's own rows. */
-@keyframes animus-pop {
-  from {
-    transform: translateY(-0.25rem);
-  }
-}
-
-/* Banners: storage, save problems, other tabs. Text first, colour second. */
-
-.animus-banner {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem 1rem;
-  margin: var(--animus-gap) 1rem 0;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--animus-border);
-  background: var(--animus-panel);
-}
-
-.animus-banner.is-error {
-  border-color: var(--animus-error);
-}
-
-.animus-banner.is-warning {
-  border-color: var(--animus-warning);
-}
-
-/* Panels */
-
-.animus-panel {
-  background: var(--animus-panel);
-  border: 1px solid var(--animus-border);
-  padding: 1rem;
+/* Positioned, so visually hidden labels inside scroll with it. */
+.ui-page {
+  position: relative;
+  grid-area: page;
+  min-height: 0;
   min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
-.animus-panel.is-error {
-  border-color: var(--animus-error);
+main.ui-page {
+  padding: 1rem 1.5rem 2rem;
 }
 
-.animus-panel h1,
-.animus-panel h2 {
-  margin: 0 0 0.75rem;
-  font-size: var(--animus-text-xl);
-  font-weight: 600;
-}
-
-.animus-panel > :last-child {
-  margin-bottom: 0;
-}
-
-[id="animus-main-heading"]:focus {
+/* Focus moves here on navigation; the heading is announced, not ringed. */
+main.ui-page:focus,
+.ui-page > main:focus,
+[id='animus-main-heading']:focus {
   outline: none;
 }
 
-[id="animus-main-heading"]:focus-visible {
-  outline: var(--animus-focus-ring);
-  outline-offset: var(--animus-focus-offset);
-}
-
-.animus-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-/* Helper, error and empty-state text: the one definition. Colour only;
-   the text keeps its context's size. */
-.animus-muted {
-  color: var(--animus-muted);
-}
-
-.animus-error {
-  color: var(--animus-error);
-}
-
-/* An empty-state, loading or "nothing here" line, everywhere. */
-.animus-empty-line {
-  margin: 0;
-  font-size: var(--animus-text-md);
-  color: var(--animus-muted);
-}
-
-.animus-empty {
-  display: flex;
-  gap: 1rem;
-  align-items: flex-start;
-}
-
-.animus-empty p {
-  margin: 0 0 0.75rem;
-  max-width: 40rem;
-}
-
-/* A blank workspace's three ways to start, each a button and a line. */
-.animus-first-steps {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 0.5rem;
-}
-
-.animus-first-steps li {
-  display: grid;
-  grid-template-columns: 9.5rem minmax(0, 1fr);
-  gap: 0.75rem;
-  align-items: center;
-}
-
-@media (max-width: 520px) {
-  .animus-first-steps li {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.25rem;
-  }
-}
-
-.animus-workspace-list,
-.animus-problem-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.5rem;
-}
-
-.animus-workspace-list li,
-.animus-problem-list li {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-  min-width: 0;
-}
-
-.animus-workspace-list a,
-.animus-problem-list a {
-  color: inherit;
-  font-weight: 600;
-}
-
-.animus-problem-list .animus-muted {
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
-
-/* Workspace: sidebar beside the document */
-
-.animus-workspace {
-  flex: 1;
-  display: grid;
-  grid-template-columns: minmax(14rem, 20rem) minmax(0, 1fr);
-  min-height: 0;
-}
-
-.animus-sidebar-frame {
-  display: contents;
-}
-
-.animus-sidebar {
-  border-inline-end: 1px solid var(--animus-border);
-  padding: 0.75rem;
-  overflow-y: auto;
-  max-height: calc(100vh - 3.25rem);
-  position: sticky;
-  top: 3.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  box-sizing: border-box;
-}
-
-.animus-new {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-}
-
-/* A server workspace with nothing opened from the catalog yet. */
-.animus-sidebar-empty {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.animus-sidebar-empty p {
-  flex-basis: 100%;
-}
-
-.animus-tree {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.animus-tree-head {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  margin: 0 0 0.25rem;
-}
-
-.animus-tree-head h3 {
-  display: flex;
-  align-items: baseline;
-  gap: 0.375rem;
-  margin: 0;
-  font-size: var(--animus-text-sm);
-  font-weight: 600;
-  color: var(--animus-muted);
-}
-
-.animus-tree-head h3 {
-  flex: 1;
-  min-width: 0;
-}
-
-/* A section or folder header: the whole row folds its list. */
-.animus-tree-toggle {
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  width: 100%;
-  min-height: var(--animus-control-h-sm);
-  padding: 0 0.25rem;
-  font: inherit;
-  font-size: var(--animus-text-sm);
-  font-weight: 600;
-  text-align: start;
-  color: var(--animus-muted);
-  background: transparent;
-  border: 1px solid transparent;
-}
-
-.animus-tree-toggle:hover {
-  color: var(--foreground);
-  background: var(--card-hover);
-}
-
-.animus-tree-toggle.is-folder {
-  font-weight: 400;
-  color: var(--foreground);
-}
-
-.animus-tree-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.animus-tree-chevron {
-  display: inline-grid;
-  place-items: center;
-  flex: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .animus-tree-chevron {
-    transition: transform 120ms ease-out;
-  }
-}
-
-.animus-tree-chevron.is-open {
-  transform: rotate(90deg);
-}
-
-.animus-tree-tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.animus-tree-tools-label {
-  margin-inline-end: auto;
-  font-size: var(--animus-text-sm);
-  color: var(--animus-muted);
-}
-
-/* Cmd or Ctrl+B hides the sidebar on wide screens. */
-.animus-workspace.is-sidebar-hidden {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.animus-workspace.is-sidebar-hidden > .animus-sidebar-frame {
-  display: none;
-}
-
-.animus-tree-browse {
-  margin-inline-start: auto;
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--animus-control-h-sm);
-  padding: 0 0.375rem;
-  font-size: var(--animus-text-sm);
-  color: var(--animus-muted);
-}
-
-.animus-tree-browse:hover,
-.animus-tree-browse.is-selected {
-  color: inherit;
-}
-
-.animus-tree-group ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.animus-tree-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0 0.5rem;
-  padding: 0.375rem 0.5rem;
-  border: 1px solid transparent;
-  color: inherit;
-  text-decoration: none;
-}
-
-.animus-tree-item:hover {
-  background: var(--card-hover);
-}
-
-.animus-tree-item.is-selected {
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
-  border-color: color-mix(in srgb, var(--primary) 45%, var(--animus-border));
-}
-
-.animus-tree-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.animus-tree-id {
-  grid-column: 1;
-  font-size: var(--animus-text-xs);
-  color: var(--animus-muted);
-  font-family: var(--font-mono);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.animus-badge {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  align-self: center;
-  min-width: 1.25rem;
-  padding: 0 0.375rem;
-  font-size: var(--animus-text-xs);
-  text-align: center;
-}
-
-.animus-badge.is-error {
-  background: var(--animus-error);
-  color: var(--animus-error-foreground);
-}
-
-.animus-count {
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-
-.animus-main {
-  padding: 1rem;
-  min-width: 0;
-}
-
-/* The skip link and the shortcut sheet's focus return land on these
-   regions; they are not controls, and the theme's ring on [tabindex] would
-   run down the sidebar's edge. */
-.animus-main:focus,
-.animus-home:focus,
-#arcane-root main.animus-main[tabindex]:focus-visible,
-#arcane-root main.animus-home[tabindex]:focus-visible {
-  outline: none !important;
-}
-
-.animus-overview {
-  display: grid;
-  gap: 1rem;
-}
-
-.animus-stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem 1.5rem;
-}
-
-.animus-stat {
-  display: grid;
-  min-width: 5rem;
-}
-
-.animus-stat strong {
-  font-size: 1.5rem;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Command palette and the shortcut sheet */
-
-.animus-palette-layer {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: grid;
-  justify-items: center;
-  align-items: start;
-  padding: min(12vh, 6rem) 0.75rem 0.75rem;
-}
-
-.animus-palette-scrim {
-  position: absolute;
-  inset: 0;
-  background: rgba(8, 8, 10, 0.6);
-}
-
-.animus-palette {
-  position: relative;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  width: min(40rem, 100%);
-  max-height: min(32rem, 80dvh);
-  background: var(--popover);
-  color: var(--popover-foreground);
-  border: 1px solid var(--input);
-  overflow: hidden;
-  animation: animus-pop 140ms ease-out;
-}
-
-.animus-palette-input {
-  width: 100%;
-  min-height: 3rem;
-  padding: 0.75rem 1rem;
-  font: inherit;
-  font-size: var(--animus-text-lg);
-  color: inherit;
-  background: transparent;
-  border: 0;
-  box-sizing: border-box;
-  caret-color: var(--primary);
-}
-
-.animus-palette-list {
-  list-style: none;
-  margin: 0;
-  padding: 0.25rem;
-  overflow-y: auto;
-  border-top: 1px solid var(--animus-border);
-}
-
-.animus-palette-group {
-  padding: 0.5rem 0.75rem 0.25rem;
-  font-size: var(--animus-text-xs);
-  font-weight: 600;
-  color: var(--animus-muted);
-}
-
-.animus-palette-option {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  min-height: var(--animus-control-h);
-  padding: 0.375rem 0.75rem;
-  font-size: var(--animus-text-md);
-  border: 1px solid transparent;
-  cursor: pointer;
-}
-
-.animus-palette-option > :first-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.animus-palette-option.is-active {
-  background: var(--card-hover);
-  border-color: var(--primary);
-}
-
-.animus-palette-hint {
-  flex: none;
-  max-width: 45%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--animus-text-sm);
-  color: var(--animus-muted);
-}
-
-.animus-palette-empty {
-  margin: 0;
-  padding: 1rem;
-  font-size: var(--animus-text-md);
-  color: var(--animus-muted);
-}
-
-.animus-shortcuts {
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  width: min(44rem, 100%);
-  max-height: min(40rem, 86dvh);
-}
-
-.animus-shortcuts-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.5rem 0.5rem 0.5rem 1rem;
-  border-bottom: 1px solid var(--animus-border);
-}
-
-.animus-shortcuts-head h2 {
-  margin: 0;
-  font-size: var(--animus-text-lg);
-}
-
-.animus-shortcuts-body {
-  overflow-y: auto;
-  padding: 0.5rem 1rem 1rem;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
-  gap: 0.25rem 1.5rem;
-  align-content: start;
-}
-
-.animus-shortcuts-group h3 {
-  margin: 0.75rem 0 0;
-  font-size: var(--animus-text-md);
-}
-
-.animus-shortcuts-group > p {
-  margin: 0 0 0.375rem;
-  font-size: var(--animus-text-sm);
-}
-
-.animus-shortcuts-group dl {
-  margin: 0;
-  display: grid;
-  gap: 0.25rem;
-}
-
-.animus-shortcuts-row {
-  display: grid;
-  grid-template-columns: minmax(7rem, auto) minmax(0, 1fr);
-  gap: 0.75rem;
-  align-items: baseline;
-  font-size: var(--animus-text-md);
-}
-
-.animus-shortcuts-row dt,
-.animus-shortcuts-row dd {
-  margin: 0;
-}
-
-.animus-shortcuts kbd {
-  display: inline-block;
-  padding: 0 0.375rem;
-  font: inherit;
-  font-size: var(--animus-text-sm);
-  font-variant-numeric: tabular-nums;
-  border: 1px solid var(--animus-border);
-  background: var(--card-hover);
-  white-space: nowrap;
-}
-
-.animus-shortcuts-foot {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 0.25rem 1rem;
-  margin: 0;
-  padding: 0.5rem 1rem;
-  border-top: 1px solid var(--animus-border);
-  font-size: var(--animus-text-sm);
-}
-
-.animus-shortcuts-more {
-  color: var(--animus-muted);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animus-menu,
-  .animus-palette,
-  .animus-sidebar.is-drawer {
-    animation: none;
-    transition: none;
-  }
-}
-
-/* Phones and narrow windows: the sidebar is a drawer, the top bar keeps
-   the brand, the connection pill, Documents and More. */
-@media (max-width: 760px) {
-  .animus-workspace {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .animus-sidebar.is-drawer {
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    inset-inline-start: 0;
-    z-index: 45;
-    width: min(21rem, 88vw);
-    max-height: none;
-    background: var(--background);
-    border-inline-end: 1px solid var(--animus-border);
-    transform: translateX(-100%);
-    visibility: hidden;
-    transition: transform 160ms ease-out, visibility 0s linear 160ms;
-  }
-
-  .animus-sidebar.is-drawer.is-open {
-    transform: none;
-    visibility: visible;
-    transition: transform 160ms ease-out;
-  }
-
-  .animus-drawer-scrim {
-    position: fixed;
-    inset: 0;
-    z-index: 44;
-    background: rgba(8, 8, 10, 0.6);
-  }
-
-  .animus-drawer-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .animus-drawer-title {
-    margin: 0;
-    font-size: var(--animus-text-lg);
-  }
-
-  .animus-main {
-    padding: 0.75rem;
-  }
-
-  .animus-banner {
-    margin-inline: 0.75rem;
-  }
-
-  .animus-empty {
-    flex-direction: column;
-  }
-
-  /* Buttons, menu items, palette options and tree headers follow the control
-     height token, which is already 44 px here. */
-  #arcane-root .arcane-button {
-    max-width: 100%;
-  }
-
-  .animus-tree-item {
-    min-height: 2.75rem;
-    align-content: center;
-  }
-
-  .animus-palette-layer {
-    padding-top: 0.75rem;
-  }
-}
-
-/* A toast never takes a click meant for the control under it: only its own
-   buttons and links catch the pointer. The toast sets pointer-events
-   inline, which only !important overrides. */
-.arcane-toast {
-  pointer-events: none !important;
-}
-
-.arcane-toast :is(button, a) {
-  pointer-events: auto !important;
-}
-
-/* Layers, low to high: the page, toasts (30), the top bar (35), then menus,
-   suggestion lists and tips (40), the drawer (44, 45), the command palette
-   (50) and dropdowns (69, 70). An open menu or dropdown always covers a
-   toast. The toaster sets its z-index inline, which only !important
-   overrides. */
-.arcane-toaster {
-  z-index: 30 !important;
-}
-
-/* Toasts: on phones they dock full width at the bottom edge. The toaster
-   positions itself with inline styles, which only !important overrides. */
-@media (max-width: 760px) {
-  .arcane-toaster {
-    left: 0.75rem !important;
-    right: 0.75rem !important;
-    bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
-    align-items: stretch !important;
-  }
-}
-
-/* Convert Citizens save */
-.animus-citizens {
+.ui-page > .ui-alert {
+  margin: 0.75rem auto 0;
   width: min(64rem, calc(100% - 2rem));
 }
 
-.animus-citizens-file,
-.animus-citizens-id code,
-.animus-citizens-lines,
-.animus-server-import p {
-  overflow-wrap: anywhere;
+main.ui-page > .ui-alert {
+  width: auto;
+  margin: 0 0 0.75rem;
 }
 
-.animus-citizens-error {
-  border-color: var(--animus-error);
+.ui-save-bar {
+  grid-area: save;
+  display: flex;
+  align-items: center;
+  min-height: var(--ui-savebar-h);
+  padding: 0.375rem 0.75rem 0.375rem 1rem;
+  padding-bottom: max(0.375rem, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--card);
+  box-sizing: border-box;
 }
 
-.animus-citizens-table {
-  overflow-x: auto;
+.ui-save-bar > .ui-actions {
+  flex: 1 1 auto;
 }
 
-.animus-citizens-table table {
-  border-collapse: collapse;
-  min-width: min(24rem, 100%);
+/* The line shortens before the buttons give way. */
+.ui-save-state {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  margin: 0;
 }
 
-.animus-citizens-table th,
-.animus-citizens-table td {
-  text-align: start;
-  padding: 0.25rem 0.75rem 0.25rem 0;
-  border-bottom: 1px solid var(--animus-border);
+.ui-save-message {
+  min-width: 7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.animus-citizens-table th:last-child,
-.animus-citizens-table td:last-child {
-  text-align: end;
+/* The state's colour beside its words. */
+.ui-save-dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--muted-foreground);
 }
 
-.animus-citizens-lines {
-  margin: 0.5rem 0 0;
-  padding-inline-start: 1.25rem;
-  display: grid;
-  gap: 0.25rem;
+/* Changes waiting or a conflict: the status colour, so pink stays the
+   primary action's. */
+.ui-save-bar.is-attention .ui-save-dot {
+  background: var(--warning);
+}
+
+.ui-save-bar.is-done .ui-save-dot {
+  background: var(--success);
+}
+
+.ui-save-bar.is-failed .ui-save-dot {
+  background: var(--destructive);
+}
+
+.ui-save-bar.is-failed .ui-save-message {
+  color: var(--destructive);
+}
+
+@media (max-width: 760px) {
+  main.ui-page {
+    padding: 0.75rem 1rem 1.5rem;
+  }
+
+  .ui-topbar {
+    gap: 0.25rem;
+    padding: 0 0.5rem;
+  }
 }

@@ -1,60 +1,30 @@
-/* GUI editors: the painted chest window, inspectors, fields and completion. */
+/* GUI pages: the game's chest and trading windows in game pixels, its
+   formatted text, the menu stage's pick zones, the reorderable rows and the
+   preview split. Inside the game windows the colours are the client's own
+   greys; everything else uses shadcn tokens. */
 
-.animus-gui-editor {
+/* The game's windows in game pixels (--mc-px): 3 px (GUI scale 3) in
+   WindowFit, which zooms each as a whole to the width there is; elsewhere
+   (the NPC's item slots) the slots share the container's width. */
+.animus-window-fit {
+  --mc-fit: 3px;
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  gap: 0.75rem;
-  align-items: start;
-}
-
-.animus-views.is-split .animus-gui-editor {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.animus-gui-stage,
-.animus-gui-inspector,
-.animus-gui-preview {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.75rem;
+  justify-items: center;
   min-width: 0;
 }
 
-/* The preview column is the focal point: the chest window grows to fill
-   it, up to a slot size where the pixel art still reads crisply. */
-.animus-gui-stage,
-.animus-gui-preview {
-  container-type: inline-size;
-  align-content: start;
-}
-
-.animus-gui-inspector {
-  max-height: calc(100vh - 9rem);
-  overflow: auto;
-}
-
-.animus-gui-toolbar,
-.animus-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
-  min-width: 0;
-}
-
-/* The chest window, as the client paints it. */
-
-.animus-chest-screen {
-  --animus-slot: clamp(2rem, calc((100cqi - 2.5rem) / 9), 3.5rem);
+.animus-chest-screen,
+.animus-merchant-screen {
+  --mc-px: var(--mc-fit, calc(clamp(1.5rem, calc((100cqi - 2.5rem) / 9), 3.5rem) / 18));
+  --animus-slot: calc(18 * var(--mc-px));
   display: grid;
-  gap: 0.5rem;
+  justify-self: center;
+  gap: calc(3 * var(--mc-px));
   width: max-content;
-  max-width: 100%;
-  padding: 0.75rem 0.875rem 0.875rem;
-  border: 3px solid #373737;
+  padding: calc(5 * var(--mc-px)) calc(6 * var(--mc-px)) calc(6 * var(--mc-px));
+  border: var(--mc-px) solid #373737;
   background: #c6c6c6;
   color: #404040;
-  overflow-x: auto;
 }
 
 /* Laid out but not painted until its icons are ready. */
@@ -62,18 +32,27 @@
   visibility: hidden;
 }
 
-.animus-chest-title {
+/* The game's font at its 8 pixel size. */
+.animus-chest-title,
+.animus-chest-count,
+.animus-chest-tooltip,
+.animus-merchant-arrow,
+.animus-merchant-price,
+.animus-merchant-empty {
+  margin: 0;
   font-family: "Minecraft", var(--font-mono);
-  font-size: 1rem;
-  line-height: 1.2;
+  font-size: calc(8 * var(--mc-px));
+  line-height: 1;
+}
+
+.animus-chest-title {
+  min-height: calc(8 * var(--mc-px));
+  padding-inline-start: var(--mc-px);
   white-space: pre;
-  min-height: 1.2em;
 }
 
 .animus-chest {
   display: grid;
-  gap: 0;
-  width: max-content;
 }
 
 /* While a brush is chosen a drag paints instead of scrolling. */
@@ -81,45 +60,41 @@
   touch-action: none;
 }
 
-.animus-gui-component-list [aria-pressed="true"] {
-  background: var(--secondary);
-  color: var(--foreground);
-  border-color: var(--primary);
-}
-
-.animus-chest-slot {
+/* A slot as the client draws it: a one pixel bevel round a 16 pixel well;
+   also the item tile of an item field and of a shop's offer row. */
+.animus-chest-slot,
+.animus-item-picker-icon,
+.animus-shop-icon {
   position: relative;
   display: block;
+  box-sizing: border-box;
   width: var(--animus-slot);
   height: var(--animus-slot);
-  padding: 0;
   margin: 0;
-  box-sizing: border-box;
-  border: 2px solid #373737;
+  padding: 0;
+  border: var(--mc-px) solid;
+  border-color: #373737 #ffffff #ffffff #373737;
   background: #8b8b8b;
-  font: inherit;
   color: inherit;
-  cursor: default;
+  font: inherit;
 }
 
-button.animus-chest-slot {
+button.animus-chest-slot,
+button.animus-merchant-offer {
   cursor: pointer;
 }
 
-button.animus-chest-slot:hover,
-button.animus-chest-slot:focus-visible {
+button.animus-chest-slot:is(:hover, :focus-visible) {
+  z-index: 2;
   background: #a5a5a5;
 }
 
-button.animus-chest-slot:focus-visible {
-  z-index: 2;
-}
-
-/* The one pink in the window: the slot being edited. */
-.animus-chest-slot.is-selected {
-  border-color: #0d0d0f;
-  outline: 2px solid var(--primary);
-  outline-offset: -4px;
+/* The one pink in a window: the slot or trade being edited. */
+.animus-chest-slot.is-selected,
+.animus-merchant-offer.is-selected {
+  z-index: 1;
+  outline: var(--mc-px) solid var(--primary);
+  outline-offset: calc(-1 * var(--mc-px));
 }
 
 .animus-chest-slot.is-hidden .animus-chest-face {
@@ -134,16 +109,15 @@ button.animus-chest-slot:focus-visible {
 }
 
 .animus-chest-face img {
-  width: 82%;
-  height: 82%;
-  object-fit: contain;
+  width: 100%;
+  height: 100%;
   image-rendering: pixelated;
   pointer-events: none;
 }
 
 .animus-chest-missing {
   padding: 1px;
-  font-size: 0.5rem;
+  font-size: calc(4 * var(--mc-px));
   line-height: 1;
   text-align: center;
   overflow-wrap: anywhere;
@@ -152,25 +126,24 @@ button.animus-chest-slot:focus-visible {
 
 .animus-chest-count {
   position: absolute;
-  right: 2px;
+  right: 0;
   bottom: 0;
-  font-family: "Minecraft", var(--font-mono);
-  font-size: 0.875rem;
   color: #fff;
-  text-shadow: 1px 1px #3f3f3f;
+  text-shadow: var(--mc-px) var(--mc-px) #3f3f3f;
   pointer-events: none;
 }
 
+/* The mask letter over a slot in the editor; yellow on a list slot. */
 .animus-chest-key {
   position: absolute;
-  left: 2px;
-  top: 1px;
+  top: 0;
+  left: 0;
+  padding: 0 var(--mc-px);
+  background: rgba(255, 255, 255, 0.65);
   font-family: var(--font-mono);
-  font-size: 0.5625rem;
+  font-size: calc(4 * var(--mc-px));
   line-height: 1;
   color: #1d1d1d;
-  background: rgba(255, 255, 255, 0.65);
-  padding: 0 2px;
   pointer-events: none;
 }
 
@@ -178,28 +151,27 @@ button.animus-chest-slot:focus-visible {
   background: rgba(255, 236, 130, 0.85);
 }
 
+/* The client's item tooltip, on hover and pinned on the edited slot; under
+   the slot on phones. */
 .animus-chest-tooltip {
   position: absolute;
-  left: calc(100% + 4px);
-  top: -0.25rem;
+  top: calc(-4 * var(--mc-px));
+  left: calc(100% + 4 * var(--mc-px));
   z-index: 40;
   display: none;
   min-width: max-content;
-  max-width: 22rem;
-  padding: 0.3rem 0.45rem;
-  border: 2px solid #25025a;
+  max-width: calc(120 * var(--mc-px));
+  padding: calc(3 * var(--mc-px)) calc(4 * var(--mc-px));
+  border: var(--mc-px) solid #25025a;
   background: rgba(16, 0, 16, 0.94);
-  font-family: "Minecraft", var(--font-mono);
-  font-size: 0.8125rem;
-  line-height: 1.3;
+  line-height: 1.25;
   text-align: start;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   pointer-events: none;
 }
 
-.animus-chest-slot:hover .animus-chest-tooltip,
-.animus-chest-slot:focus-visible .animus-chest-tooltip,
+.animus-chest-slot:is(:hover, :focus-visible) .animus-chest-tooltip,
 .animus-chest-slot.is-selected .animus-chest-tooltip.is-pinned {
   display: grid;
 }
@@ -208,385 +180,98 @@ button.animus-chest-slot:focus-visible {
   font-style: italic;
 }
 
-/* A native shop: the villager trading screen's offer column. */
-
-.animus-merchant-screen {
-  --animus-slot: 2.25rem;
-  display: grid;
-  gap: 0.5rem;
-  width: max-content;
-  max-width: 100%;
-  padding: 0.75rem 0.875rem 0.875rem;
-  border: 3px solid #373737;
-  background: #c6c6c6;
-  color: #404040;
-  overflow-x: auto;
+@media (max-width: 520px) {
+  .animus-chest-tooltip {
+    top: calc(100% + 2px);
+    left: 0;
+  }
 }
 
+/* The villager trading screen's offer column. */
 .animus-merchant-offers {
   display: grid;
-  grid-template-columns: max-content max-content 1.5rem max-content;
-  gap: 2px 0.375rem;
+  grid-template-columns: max-content max-content calc(10 * var(--mc-px)) max-content;
+  gap: var(--mc-px) calc(2 * var(--mc-px));
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+.animus-merchant-item,
 .animus-merchant-offer {
   display: grid;
   grid-column: 1 / -1;
   grid-template-columns: subgrid;
   align-items: center;
-  padding: 0.25rem 0.375rem;
-  border: 2px solid #373737;
+}
+
+.animus-merchant-offer {
+  margin: 0;
+  padding: var(--mc-px) calc(2 * var(--mc-px));
+  border: var(--mc-px) solid #373737;
   background: #a5a5a5;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+
+button.animus-merchant-offer:hover {
+  background: #b5b5b5;
 }
 
 .animus-merchant-goods {
   display: flex;
-  gap: 0.25rem;
+  gap: var(--mc-px);
   align-items: center;
   min-width: var(--animus-slot);
 }
 
-.animus-merchant-arrow {
-  font-family: "Minecraft", var(--font-mono);
-  font-size: 1.125rem;
-  text-align: center;
-  color: #1d1d1d;
-}
-
+.animus-merchant-arrow,
 .animus-merchant-price,
 .animus-merchant-empty {
-  margin: 0;
-  font-family: "Minecraft", var(--font-mono);
-  font-size: 0.8125rem;
+  text-align: center;
   color: #1d1d1d;
   white-space: nowrap;
 }
 
+/* Formatted game text (colour codes, MiniMessage). */
 .animus-mc-styled {
   font-family: "Minecraft", var(--font-mono);
   white-space: pre-wrap;
 }
 
-/* Inspector fields. */
-
-.animus-gui-fields,
-.animus-gui-component,
-.animus-gui-icon,
-.animus-gui-actions,
-.animus-gui-lines {
+/* Text animation frames on the game's dark text backdrop. */
+.animus-anim-stage {
   display: grid;
-  /* One column that never widens past the panel for a long line inside. */
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.5rem;
-  min-width: 0;
-}
-
-/* One field layout everywhere: the label, then the control with its short
-   hint under it. The control moves under the label whenever its column
-   would drop below 12rem, so a narrow panel or a deep nesting level never
-   squeezes it. The label is the first child, alone or wrapped with its tip. */
-.animus-gui-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.5rem;
-  align-items: flex-start;
-  /* Rows stretched by a taller grid neighbour keep their lines at the top. */
-  align-content: flex-start;
-}
-
-.animus-gui-row > :first-child {
-  flex: 0 0 8.5rem;
-  min-width: 0;
-}
-
-.animus-gui-row > .animus-gui-control {
-  flex: 1 1 12rem;
-}
-
-.animus-gui-label {
-  padding-top: 0.375rem;
-  font-size: var(--animus-text-sm);
-  color: var(--animus-muted);
+  place-items: center;
+  padding: 1.5rem 1rem;
+  background: #0d0d0f;
+  color: #ffffff;
+  font-size: 1.25rem;
+  text-align: center;
   overflow-wrap: anywhere;
 }
 
-.animus-gui-control {
-  display: grid;
-  /* A select's longest option or a long value never widens the column. */
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-.animus-gui-help {
-  font-size: var(--animus-text-xs);
-  color: var(--animus-muted);
-}
-
-.animus-gui-problem {
-  font-size: var(--animus-text-xs);
-  overflow-wrap: anywhere;
-}
-
-.animus-gui-problem.is-error {
-  color: var(--animus-error);
-}
-
-.animus-gui-problem.is-warning,
-.animus-gui-problem.is-info {
-  color: var(--animus-warning);
-}
-
-.animus-gui-text {
-  position: relative;
-  display: grid;
-  gap: 0.25rem;
-  min-width: 0;
-  flex: 1 1 16rem;
-}
-
-/* The native field: TextInput's height, border, text inset and font.
-   Textareas keep their own height above the minimum. */
-.animus-gui-input {
-  width: 100%;
-  box-sizing: border-box;
-  min-height: var(--animus-control-h);
-  padding: 0.375rem var(--animus-field-pad);
-  border: var(--animus-control-border) solid var(--input);
-  background: var(--background);
-  color: var(--foreground);
-  font: inherit;
-  font-size: var(--animus-control-font);
-  line-height: 1.25rem;
-}
-
-.animus-gui-input:not(textarea) {
-  height: var(--animus-control-h);
-  padding-block: 0;
-}
-
-.animus-gui-input::placeholder {
-  color: var(--animus-muted);
-  opacity: 1;
-}
-
-.animus-gui-input:hover:not(:disabled) {
-  border-color: var(--animus-muted);
-}
-
-.animus-gui-input:disabled {
-  color: var(--muted-foreground);
-  background: var(--muted);
-  border-color: var(--border);
-  cursor: not-allowed;
-}
-
-.animus-gui-input.is-code {
-  font-family: var(--font-mono);
-  font-size: var(--animus-text-sm);
-}
-
-.animus-gui-input.is-number {
-  /* As wide as the widest value the field allows, plus padding and the
-     step arrows; --animus-digits comes from the field's range. The 100%
-     cap lets a narrow cell shrink it instead of being pushed open. A
-     context sets --animus-digits or a grid track, never its own width. */
-  width: min(100%, calc(var(--animus-digits, 8) * 1ch + 2.25rem + 2 * var(--animus-field-pad)));
-  flex: 0 0 auto;
-}
-
-.animus-gui-input.is-invalid {
-  border-color: var(--animus-error);
-}
-
-.animus-gui-sample {
-  padding: 0.25rem 0.375rem;
-  background: #1f1f1f;
-  font-size: var(--animus-text-sm);
-  overflow-wrap: anywhere;
-}
-
-.animus-gui-line,
-.animus-gui-goods {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  align-items: center;
-  min-width: 0;
-}
-
-/* A field with a sample or problem under it: the controls beside it line up
-   with the field itself, not with the field plus its notes. */
-.animus-gui-line {
-  align-items: flex-start;
-}
-
-/* x, y and z share the row as equal tracks of 6 to 7rem, room for a value
-   such as -12.5; under three tracks' width the last one wraps. */
-.animus-gui-xyz {
-  gap: 0.25rem;
-}
-
-.animus-gui-xyz > .animus-gui-input.is-number {
-  flex: 1 1 0;
-  min-width: 6rem;
-  max-width: 7rem;
-}
-
-.animus-gui-section {
-  border: 1px solid var(--animus-border);
-  padding: 0.375rem 0.5rem;
-  min-width: 0;
-}
-
-.animus-gui-section > summary {
+/* A colour frame as a square to pick it by; its colour is inline and a
+   button centres the picked one's check. */
+.animus-anim-swatch {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 4px);
   cursor: pointer;
-  font-weight: 600;
-  font-size: var(--animus-text-md);
-  padding: 0.25rem 0;
-}
-
-.animus-gui-section > summary .animus-count {
-  margin-inline-start: 0.5rem;
-  font-weight: 400;
-  color: var(--animus-muted);
-}
-
-.animus-gui-section-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.5rem;
-  padding: 0.375rem 0 0.25rem;
-  min-width: 0;
-}
-
-.animus-gui-action {
-  display: grid;
-  gap: 0.5rem;
-  padding: 0.5rem;
-  border: 1px solid var(--animus-border);
-  min-width: 0;
-}
-
-.animus-gui-action.is-refused {
-  border-color: var(--animus-error);
-}
-
-.animus-gui-action-head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  align-items: center;
-}
-
-.animus-gui-action-index {
-  font-family: var(--font-mono);
-  color: var(--animus-muted);
-  min-width: 1.25rem;
-}
-
-.animus-gui-refused {
-  margin: 0;
-  font-size: var(--animus-text-sm);
-  color: var(--animus-error);
-  overflow-wrap: anywhere;
-}
-
-.animus-gui-note {
-  margin: 0;
-  font-size: var(--animus-text-xs);
-  color: var(--animus-warning);
-}
-
-.animus-gui-component-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-}
-
-.animus-gui-stage-3d {
-  display: grid;
-  gap: 0.5rem;
-  min-width: 0;
-}
-
-.animus-new {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-}
-
-.animus-rename {
-  max-width: 32rem;
-}
-
-@media (max-width: 1100px) {
-  .animus-gui-editor {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .animus-gui-inspector {
-    max-height: none;
-  }
-}
-
-@media (max-width: 520px) {
-  .animus-gui-row > :first-child {
-    flex-basis: 100%;
-  }
-
-  /* Thumb-sized targets: a 9-wide window scrolls inside its frame rather
-     than shrinking slots below 44 px. */
-  .animus-chest-screen {
-    --animus-slot: 2.75rem;
-  }
-
-  .animus-gui-label {
-    padding-top: 0;
-  }
-
-  .animus-chest-tooltip {
-    left: 0;
-    top: calc(100% + 2px);
-  }
-}
-
-/* Read by assistive technology, not shown. */
-.animus-sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* Section tabs share the view tabs' frame, tab and selected rule
-   (`.animus-tabs`, `.animus-tab`). */
-.animus-gui-tabs .animus-tab:disabled {
-  opacity: 0.5;
 }
 
 /* Menu component pick zones over the stage: invisible until hovered, and
    a pink ring on the selected one. */
 .animus-gui-pick {
   position: absolute;
+  box-sizing: content-box;
   min-width: 16px;
   min-height: 16px;
   margin: -4px;
   padding: 4px;
   border: 1px dashed transparent;
-  box-sizing: content-box;
-  transition: border-color 120ms ease-out;
 }
 
 .animus-gui-pick[data-gizmo] {
@@ -602,98 +287,45 @@ button.animus-chest-slot:focus-visible {
   border: 2px solid var(--primary);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .animus-gui-pick {
-    transition: none;
-  }
-}
-
-/* Hologram rows and the text animation preview. */
-.animus-gui-holo-row {
-  display: grid;
-  gap: 0.375rem;
-  padding: 0.5rem;
-  border: 1px solid var(--animus-border);
-  min-width: 0;
-}
-
-.animus-gui-holo-extras {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  gap: 0.375rem 0.75rem;
-}
-
-.animus-gui-fix {
-  display: grid;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--animus-error);
-}
-
-.animus-gui-anim-preview {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.animus-gui-anim-stage {
-  display: grid;
-  place-items: center;
-  min-height: 8rem;
-  padding: 1rem;
-  background: #0d0d0f;
-  color: #ffffff;
-  font-size: 1.25rem;
-  text-align: center;
-  overflow-wrap: anywhere;
-}
-
-.animus-gui-editor.is-single {
-  grid-template-columns: minmax(0, 1fr);
-  max-width: 56rem;
-}
-
-/* Item picker: the item's inventory icon beside its id field. */
+/* The item field: its item tile as tall as the field; the field grows in
+   a row of fields and keeps its own height in a column. */
 .animus-item-picker {
-  display: grid;
-  grid-template-columns: 2.75rem minmax(0, 1fr);
-  align-items: center;
-  gap: 0.375rem;
+  --mc-px: calc(var(--animus-control-h) / 18);
+  --animus-slot: var(--animus-control-h);
+  flex: 1 1 auto;
   min-width: 0;
-  flex: 1 1 12rem;
 }
 
-.animus-item-picker-icon {
+/* Reorderable rows (drag reorder; no library list does it): a grip, the
+   row's line and its menu, the row's form under it. */
+.animus-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.animus-rows-item.is-dragging {
+  opacity: 0.5;
+}
+
+.animus-rows-item.is-drop {
+  box-shadow: inset 0 2px 0 var(--primary);
+}
+
+.animus-rows-grip {
   display: grid;
   place-items: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  border: 1px solid var(--animus-border);
-  background: color-mix(in srgb, var(--animus-border) 60%, transparent);
-  color: var(--animus-muted);
+  height: var(--animus-control-h);
+  color: var(--muted-foreground);
+  cursor: grab;
 }
 
-.animus-item-picker-img {
-  width: 2.25rem;
-  height: 2.25rem;
-  image-rendering: pixelated;
-}
-
-.animus-item-picker-note {
-  grid-column: 2;
-}
-
-.animus-item-picker.is-bare {
+/* In the Split view the form column is narrow: the preview goes under the
+   form, or above it where the preview is the editor. */
+.ui-doc-body.is-split .animus-gui-split.has-preview {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.animus-item-picker.is-bare > .animus-item-picker-note {
-  grid-column: 1;
-}
-
-/* Typed forms inside a GUI row: preset values and inventory args. */
-.animus-gui-preset-values,
-.animus-gui-args {
-  display: grid;
-  gap: 0.375rem;
-  min-width: 0;
+.ui-doc-body.is-split .animus-gui-split.is-preview-first > .ui-doc-side {
+  order: -1;
 }

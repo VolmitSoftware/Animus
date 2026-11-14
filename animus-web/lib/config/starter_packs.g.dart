@@ -357,7 +357,7 @@ const Map<String, String> starterPackFiles = <String, String>{
             "type": "action",
             "capability": "animus:choices",
             "arguments": {
-              "id": "topic",
+              "id": "return-topic",
               "prompt": "Back again? &7What will it be?",
               "options": [
                 {
@@ -484,6 +484,20 @@ const Map<String, String> starterPackFiles = <String, String>{
       "id": "click",
       "event": "interaction",
       "cooldownTicks": 40
+    },
+    {
+      "id": "back-room",
+      "event": "dialogue_choice",
+      "dialogue": "return-topic",
+      "choice": "room",
+      "routine": "room"
+    },
+    {
+      "id": "back-goodbye",
+      "event": "dialogue_choice",
+      "dialogue": "return-topic",
+      "choice": "leave",
+      "routine": "leave"
     },
     {
       "id": "ask-rumours",

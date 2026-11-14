@@ -231,6 +231,7 @@ final class NpcLook {
     this.pose = NpcPose.standing,
     this.equipment = const <NpcSlot, NpcItem>{},
     this.hologram = const <String>[],
+    this.separateRows = false,
     this.nameplateVisible = true,
     this.armorStand,
     this.skin,
@@ -266,7 +267,8 @@ final class NpcLook {
     final Object? hologram = json['hologram'];
     if (hologram is Map<String, Object?> && hologram['lines'] is List<Object?>) {
       for (final Object? line in (hologram['lines']! as List<Object?>).take(maxLines)) {
-        if (line is String && displayText(line)) lines.add(line);
+        final Object? text = line is Map<String, Object?> ? line['text'] : line;
+        if (text is String && displayText(text)) lines.add(text);
       }
     }
     final Object? nameplate = json['nameplate'];
@@ -281,6 +283,7 @@ final class NpcLook {
       pose: parsedPose == NpcPose.standing || type == player ? parsedPose : NpcPose.standing,
       equipment: equipment,
       hologram: lines,
+      separateRows: separateRowsOf(hologram),
       nameplateVisible: visible,
       armorStand: type == 'minecraft:armor_stand' ? NpcArmorStand.parse(json['armorStand']) : null,
       skin: skin is String && _skin.hasMatch(skin) ? skin : null,
@@ -322,6 +325,10 @@ final class NpcLook {
   final NpcPose pose;
   final Map<NpcSlot, NpcItem> equipment;
   final List<String> hologram;
+
+  /// Each hologram line has a text display of its own, so none carries its
+  /// style into the next (see [separateRowsOf]).
+  final bool separateRows;
   final bool nameplateVisible;
   final NpcArmorStand? armorStand;
 
@@ -380,11 +387,32 @@ final class NpcLook {
   /// client's own nameplate (`BodyLook.nativeName`).
   bool get nativeName => isPlayer && nameplateVisible && fitsProfile(name) && !guiFormatted(name);
 
+  /// `HologramStyle.separateRows`: a `hologram` with a line height or a
+  /// line with a margin gives every line its own text display.
+  static bool separateRowsOf(Object? hologram) {
+    if (hologram is! Map<String, Object?>) return false;
+    if (hologram['lineHeight'] is num) return true;
+    final Object? lines = hologram['lines'];
+    return lines is List<Object?> &&
+        lines.any((Object? line) => line is Map<String, Object?> && <Object?>[line['marginTop'], line['marginBottom']].any((Object? margin) => margin is num && margin != 0));
+  }
+
   /// The text display's lines, section-coded as `BodyLook` sends them: the
   /// hologram, then the name (after its team colour) when the client does
-  /// not draw it itself.
-  List<String> get textLines => <String>[
-    for (final String line in hologram) guiColorize(line),
-    if (nameplateVisible && !nativeName) guiColorize(teamCode == null ? name : '&$teamCode$name'),
-  ];
+  /// not draw it itself. The name is its own field, so in one display it
+  /// starts with a reset when a line above it is styled.
+  List<String> get textLines {
+    final List<String> lines = <String>[for (final String line in hologram) guiColorize(line)];
+    if (nameplateVisible && !nativeName) {
+      final String coloured = guiColorize(teamCode == null ? name : '&$teamCode$name');
+      final bool styledAbove = lines.any((String line) => line.contains('§'));
+      lines.add(styledAbove && !separateRows ? '§r$coloured' : coloured);
+    }
+    return lines;
+  }
+
+  /// [textLines] as the client draws them: one display carries a style on
+  /// down its rows, a display per line starts each fresh.
+  List<List<McTextRun>> get textRows =>
+      <List<McTextRun>>[for (final List<List<McTextRun>> line in guiDisplayRows(textLines, separate: separateRows, sample: false)) ...line];
 }

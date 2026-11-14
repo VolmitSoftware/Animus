@@ -217,6 +217,40 @@ class EditorApiTest {
     }
 
     @Test
+    void apply_kindWithoutServerRevisions_answersTheRevisionGetAndTheCatalogReport() throws Exception {
+        String token = harness.token();
+        Path menu = harness.root.resolve("gui/menus/shop/board.json");
+        Files.createDirectories(menu.getParent());
+        Files.writeString(menu, "{\n  \"revision\": 5,\n  \"title\": \"Board\"\n}\n");
+        Map<String, String> edits = new LinkedHashMap<>();
+        edits.put("text-animation/shop:sparkle", "mode");
+        edits.put("menu/shop:board", "title");
+        int key = 50;
+        for (Map.Entry<String, String> edit : edits.entrySet()) {
+            String kind = edit.getKey().substring(0, edit.getKey().indexOf('/')), id = edit.getKey().substring(kind.length() + 1);
+            JsonObject opened = valid("document-response", harness.send("GET", "/v1/documents/" + edit.getKey(), token, null));
+            assertTrue(opened.get("revision").getAsLong() > 0, () -> edit.getKey() + " carries its own revision field");
+            JsonObject version = opened;
+            for (String value : List.of("first", "second")) {
+                JsonObject source = opened.getAsJsonObject("source").deepCopy();
+                source.addProperty(edit.getValue(), value);
+                EditorResponse response = harness.send("POST", "/v1/changes", token, set("key-00000000000000" + key++, change(kind, id, version, source)));
+                assertEquals(200, response.status(), () -> edit.getKey() + " " + value + ": " + response.body());
+                version = valid("change-applied", response).getAsJsonArray("documents").get(0).getAsJsonObject();
+                assertEquals(opened.get("revision").getAsLong(), version.get("revision").getAsLong(), edit.getKey() + " keeps the revision its file says");
+                JsonObject read = valid("document-response", harness.send("GET", "/v1/documents/" + edit.getKey(), token, null));
+                assertEquals(version.get("revision"), read.get("revision"), edit.getKey() + " GET");
+                assertEquals(version.get("hash"), read.get("hash"));
+                JsonObject listed = null;
+                for (JsonElement element : valid("catalog-response", harness.send("GET", "/v1/catalog?kind=" + kind, token, null)).getAsJsonArray("documents"))
+                    if (element.getAsJsonObject().get("id").getAsString().equals(id)) listed = element.getAsJsonObject();
+                assertNotNull(listed, edit.getKey());
+                assertEquals(version.get("revision"), listed.get("revision"), edit.getKey() + " catalog");
+            }
+        }
+    }
+
+    @Test
     void apply_afterAnInGameCommandEdit_isConflict_andAStaleCommandIsRefusedToo() throws Exception {
         String token = harness.token();
         JsonObject opened = greeter();
@@ -255,9 +289,13 @@ class EditorApiTest {
     @Test
     void request_missingScope_isRefused() throws Exception {
         String token = harness.token(EditorHarness.grant(List.of(EditorScope.READ)));
-        error("scope-missing", 403, harness.send("POST", "/v1/validate", token, set("6f1c2d3e4f5a6b7c", change("npc", "examples/greeter", null, new JsonObject()))));
+        EditorResponse validate = harness.send("POST", "/v1/validate", token, set("6f1c2d3e4f5a6b7c", change("npc", "examples/greeter", null, new JsonObject())));
+        error("scope-missing", 403, validate);
+        assertEquals("validate", EditorHarness.json(validate).getAsJsonObject("error").get("scope").getAsString(), "the error names the scope it lacks");
         JsonObject current = greeter();
-        error("scope-missing", 403, harness.send("POST", "/v1/changes", token, set("6f1c2d3e4f5a6b7c", change("npc", "examples/greeter", current, renamed(current, "x")))));
+        EditorResponse apply = harness.send("POST", "/v1/changes", token, set("6f1c2d3e4f5a6b7c", change("npc", "examples/greeter", current, renamed(current, "x"))));
+        error("scope-missing", 403, apply);
+        assertEquals("apply:npcs", EditorHarness.json(apply).getAsJsonObject("error").get("scope").getAsString());
     }
 
     @Test
@@ -273,13 +311,35 @@ class EditorApiTest {
 
     @Test
     void request_overRate_isLimited() throws Exception {
-        EditorSettings slow = new EditorSettings(true, EditorSettings.DEFAULT.editorUrl(), false, "127.0.0.1", 9797, "", "", "", EditorSettings.DEFAULT.allowedOrigins(),
+        EditorSettings slow = new EditorSettings(true, "", EditorSettings.DEFAULT.editorUrl(), false, "127.0.0.1", 9797, "", "", "", EditorSettings.DEFAULT.allowedOrigins(),
                 7, 30, 4096, 16384, 512, 8, 1, 10, 64, 20, 4, 64, 15, 24, 160, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT);
         try (EditorHarness limited = new EditorHarness(directory.resolve("slow"), slow)) {
             String token = limited.token();
             assertEquals(200, limited.send("GET", "/v1/capabilities", token, null).status());
             assertEquals(200, limited.send("GET", "/v1/capabilities", token, null).status());
             error("rate-limited", 429, limited.send("GET", "/v1/capabilities", token, null));
+        }
+    }
+
+    @Test
+    void forget_revokesTheBearerWithoutScopeCounterOrRateLimit() throws Exception {
+        EditorSettings slow = new EditorSettings(true, "", EditorSettings.DEFAULT.editorUrl(), false, "127.0.0.1", 9797, "", "", "", EditorSettings.DEFAULT.allowedOrigins(),
+                7, 30, 4096, 16384, 512, 8, 1, 10, 64, 20, 4, 64, 15, 24, 160, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT);
+        try (EditorHarness limited = new EditorHarness(directory.resolve("slow"), slow)) {
+            String token = limited.token(EditorHarness.grant(List.of(EditorScope.PREVIEW)));
+            error("not-found", 404, limited.send("DELETE", "/v1/previews/prev_00000001", token, null));
+            error("not-found", 404, limited.send("DELETE", "/v1/previews/prev_00000001", token, null));
+            error("rate-limited", 429, limited.send("DELETE", "/v1/previews/prev_00000001", token, null));
+            limited.flushNotices();
+            EditorResponse forgot = limited.send("DELETE", "/v1/token", token, null, false);
+            assertEquals(204, forgot.status(), () -> forgot.body().toString());
+            assertTrue(forgot.body().isEmpty());
+            assertEquals(List.of("[Animus]: Brian's editor was revoked by its browser"), limited.flushNotices());
+            error("token-revoked", 401, limited.send("DELETE", "/v1/previews/prev_00000001", token, null));
+            assertEquals(204, limited.send("DELETE", "/v1/token", token, null, false).status(), "forgetting again answers the same");
+            List<String> audit = Files.readAllLines(limited.root.resolve(EditorAudit.DIRECTORY).resolve("2026-11-04.jsonl"));
+            assertEquals(1, audit.stream().filter((String line) -> line.contains("\"event\":\"revoke\"") && line.contains("DELETE /v1/token")).count());
+            error("unauthorized", 401, limited.send("DELETE", "/v1/token", null, null, false));
         }
     }
 
@@ -441,11 +501,57 @@ class EditorApiTest {
         valid("change-applied", undone);
         assertNull(harness.read("npcs/examples/host.json"));
         assertNotNull(harness.read("shops/shop/bakery.json"));
+        assertEquals(shop.get("revision").getAsLong() + 1, JsonDocuments.object(harness.read("shops/shop/bakery.json")).get("revision").getAsLong(),
+                "a document an undo brings back takes the next revision");
         assertTrue(harness.host.rollbacks.getLast());
         undo.addProperty("idempotencyKey", "key-0000000000000006");
         EditorResponse again = harness.send("POST", "/v1/changes/" + applied.get("changeId").getAsString() + "/undo", token, undo);
         assertEquals(409, again.status(), "a second undo would overwrite the first one's result");
         valid("change-conflict", again);
+    }
+
+    /** The stored document without its revision, to compare contents across writes. */
+    private static JsonObject withoutRevision(String stored) throws Exception {
+        JsonObject document = JsonDocuments.object(stored);
+        document.remove("revision");
+        return document;
+    }
+
+    @Test
+    void undo_writesTheNextRevision_withItsOwnEvent() throws Exception {
+        String token = harness.token();
+        Frames sink = new Frames();
+        Map<String, String> headers = Map.of("Authorization", "Bearer " + token, "Origin", EditorHarness.ORIGIN);
+        harness.api.openEvents(new EditorRequest(EditorRequest.Transport.DIRECT, "GET", "/v1/events", headers, Optional.empty()), sink).toCompletableFuture().get(5, TimeUnit.SECONDS);
+        String original = harness.read(GREETER);
+        JsonObject current = greeter();
+        long before = current.get("revision").getAsLong();
+        JsonObject applied = valid("change-applied", harness.send("POST", "/v1/changes", token, set("key-0000000000000041", change("npc", "examples/greeter", current, renamed(current, "First")))));
+        assertEquals(before + 1, applied.getAsJsonArray("documents").get(0).getAsJsonObject().get("revision").getAsLong());
+        for (int tick = 0; tick < 4; tick++) harness.api.parts().events().tick();
+        JsonObject undo = new JsonObject();
+        undo.addProperty("idempotencyKey", "key-0000000000000042");
+        EditorResponse undone = harness.send("POST", "/v1/changes/" + applied.get("changeId").getAsString() + "/undo", token, undo);
+        assertEquals(200, undone.status(), () -> undone.body().toString());
+        JsonObject version = valid("change-applied", undone).getAsJsonArray("documents").get(0).getAsJsonObject();
+        String stored = harness.read(GREETER);
+        assertEquals(before + 2, version.get("revision").getAsLong(), "an undo is a new write: the revision goes up");
+        assertEquals(before + 2, JsonDocuments.object(stored).get("revision").getAsLong());
+        assertEquals(withoutRevision(original), withoutRevision(stored), "the document is back as it was");
+        assertEquals("sha256:" + JsonDocuments.hash(stored), version.get("hash").getAsString());
+        JsonObject read = greeter();
+        assertEquals(before + 2, read.get("revision").getAsLong());
+        assertEquals(version.get("hash"), read.get("hash"));
+        for (int tick = 0; tick < 4; tick++) harness.api.parts().events().tick();
+        List<JsonObject> heard = new ArrayList<>();
+        for (JsonObject frame : sink.frames) {
+            if (!frame.get("type").getAsString().equals("catalog")) continue;
+            for (JsonElement document : frame.getAsJsonArray("documents")) heard.add(document.getAsJsonObject());
+        }
+        assertEquals(List.of(before + 1, before + 2), heard.stream().map((JsonObject document) -> document.get("revision").getAsLong()).toList(), heard::toString);
+        assertEquals(version.get("hash"), heard.getLast().get("hash"), "the undo's own event carries what it wrote");
+        EditorResponse next = harness.send("POST", "/v1/changes", token, set("key-0000000000000043", change("npc", "examples/greeter", read, renamed(read, "Second"))));
+        assertEquals(before + 3, valid("change-applied", next).getAsJsonArray("documents").get(0).getAsJsonObject().get("revision").getAsLong());
     }
 
     @Test
@@ -559,9 +665,40 @@ class EditorApiTest {
         JsonObject back = documents.get(0).getAsJsonObject();
         assertEquals("examples/greeter", back.get("id").getAsString());
         assertEquals("town/market/greeter", back.getAsJsonObject("from").get("id").getAsString());
-        assertEquals(original, harness.read(GREETER));
+        assertEquals(withoutRevision(original), withoutRevision(harness.read(GREETER)));
+        long revision = JsonDocuments.object(original).get("revision").getAsLong();
+        assertEquals(revision + 2, back.get("revision").getAsLong(), "moving back is a write after the move's");
+        assertEquals(revision + 2, JsonDocuments.object(harness.read(GREETER)).get("revision").getAsLong());
         assertNull(harness.read("npcs/town/market/greeter.json"));
         assertTrue(harness.host.rollbacks.getLast());
+    }
+
+    private static JsonObject bank(String id) throws Exception {
+        return art.arcane.animus.core.storage.JsonDocuments.object("""
+                {"schemaVersion": 1, "revision": 1, "id": "%s", "pages": [{"name": "Vault", "buy": {"0": {"id": "gold", "type": "buy", "item": {"id": "minecraft:gold_ingot"}, "price": 9}}}]}
+                """.formatted(id));
+    }
+
+    @Test
+    void undoAndDelete_ofALastDocument_removeTheFoldersLeftEmpty() throws Exception {
+        String token = harness.token();
+        JsonObject created = valid("change-applied", harness.send("POST", "/v1/changes", token, set("key-0000000000000030", change("shop", "probe:vaults/bank", null, bank("probe:vaults/bank")))));
+        assertTrue(java.nio.file.Files.isRegularFile(harness.root.resolve("shops/probe/vaults/bank.json")));
+        JsonObject undo = new JsonObject();
+        undo.addProperty("idempotencyKey", "key-0000000000000031");
+        EditorResponse undone = harness.send("POST", "/v1/changes/" + created.get("changeId").getAsString() + "/undo", token, undo);
+        assertEquals(200, undone.status(), () -> undone.body().toString());
+        assertFalse(java.nio.file.Files.exists(harness.root.resolve("shops/probe")), "undoing the create leaves no empty folders behind");
+        assertTrue(java.nio.file.Files.isDirectory(harness.root.resolve("shops")), "the kind's own folder stays");
+
+        valid("change-applied", harness.send("POST", "/v1/changes", token, set("key-0000000000000032", change("shop", "probe:bank", null, bank("probe:bank")),
+                change("shop", "probe:till", null, bank("probe:till")))));
+        JsonObject bank = EditorHarness.json(harness.send("GET", "/v1/documents/shop/probe:bank", token, null));
+        valid("change-applied", harness.send("POST", "/v1/changes", token, set("key-0000000000000033", change("shop", "probe:bank", bank, null))));
+        assertTrue(java.nio.file.Files.isDirectory(harness.root.resolve("shops/probe")), "a folder that still holds a document stays");
+        JsonObject till = EditorHarness.json(harness.send("GET", "/v1/documents/shop/probe:till", token, null));
+        valid("change-applied", harness.send("POST", "/v1/changes", token, set("key-0000000000000034", change("shop", "probe:till", till, null))));
+        assertFalse(java.nio.file.Files.exists(harness.root.resolve("shops/probe")), "deleting the last document removes its folder");
     }
 
     @Test
@@ -665,6 +802,49 @@ class EditorApiTest {
                 new Frames()).toCompletableFuture().get(5, TimeUnit.SECONDS);
         assertFalse(stream.open());
         error("unauthorized", 401, stream.response());
+    }
+
+    /** An event stream from 127.0.0.1, the harness's pairing address, on either path. */
+    private EditorEventStream stream(EditorRequest.Transport transport, String bearer) throws Exception {
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Authorization", "Bearer " + bearer);
+        if (transport == EditorRequest.Transport.DIRECT) {
+            headers.put("Origin", EditorHarness.ORIGIN);
+            headers.put(EditorReplies.PEER_HEADER, "127.0.0.1");
+        } else headers.put("X-Forwarded-For", "127.0.0.1");
+        return harness.api.openEvents(new EditorRequest(transport, "GET", "/v1/events", headers, Optional.empty()), new Frames()).toCompletableFuture().get(5, TimeUnit.SECONDS);
+    }
+
+    @Test
+    void events_reopenedWithAValidToken_doNotSpendThePairingWindow() throws Exception {
+        String token = harness.token();
+        for (int reload = 0; reload < harness.settings.pairAttemptsPerMinute() * 2; reload++) {
+            for (EditorRequest.Transport transport : EditorRequest.Transport.values()) {
+                EditorEventStream stream = stream(transport, token);
+                int attempt = reload;
+                assertTrue(stream.open(), () -> transport + " reload " + attempt + ": " + stream.response().body());
+                stream.onClose().run();
+            }
+        }
+        JsonObject body = new JsonObject();
+        body.addProperty("tokenId", "tok_unknown1");
+        body.addProperty("secret", "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM");
+        error("pairing-invalid", 401, harness.send("POST", "/v1/pair", null, body, false));
+    }
+
+    @Test
+    void events_badTokens_spendThePairingWindow_andThenEvenAGoodTokenWaits() throws Exception {
+        String token = harness.token();
+        String guess = "anm_tok_missing00.ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM";
+        for (int attempt = 1; attempt < harness.settings.pairAttemptsPerMinute(); attempt++)
+            error("unauthorized", 401, stream(attempt % 2 == 0 ? EditorRequest.Transport.DIRECT : EditorRequest.Transport.RELAY, guess).response());
+        EditorResponse limited = stream(EditorRequest.Transport.RELAY, guess).response();
+        error("rate-limited", 429, limited);
+        assertTrue(EditorHarness.json(limited).getAsJsonObject("error").get("retryAfterMillis").getAsLong() > 0);
+        assertTrue(limited.headers().containsKey("Retry-After"));
+        error("rate-limited", 429, stream(EditorRequest.Transport.DIRECT, token).response());
+        harness.clock.advance(Duration.ofMinutes(1));
+        assertTrue(stream(EditorRequest.Transport.DIRECT, token).open(), "a new minute opens the window again");
     }
 
     @Test

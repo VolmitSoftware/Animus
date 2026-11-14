@@ -1,33 +1,34 @@
-// New document in an offline workspace: pick a kind (a hologram), fill its
-// first step, then look at the Visual, Preview, Code and Split views.
+// New document in a blank browser workspace: N, the Behavior kind and its
+// greeter template, read in Simple's plain sentences, then Edit in Advanced
+// and the behavior's Steps, Code and Split views.
 // Offline: no fake server needed. The blank workspace is made before filming.
 module.exports = async (L) => {
   const f = await L.session({id: '14-new-document'});
-  await f.setup.goto(`${L.SITE}/#/`);
-  await f.setup.getByRole('textbox', {name: 'Workspace name'}).fill('Harbor town');
-  await f.setup.getByRole('button', {name: 'Create blank workspace'}).click();
-  await f.setup.waitForFunction(() => location.hash.startsWith('#/workspace/'));
-  const ws = f.setup.url().split('#')[1].split('/').slice(0, 3).join('/');
-  const page = await f.start(`${L.SITE}/#${ws}`);
+  const ws = await L.blankWorkspace(f.setup, 'Harbor town');
+  const page = await f.start(`${L.SITE}/${ws}`);
   const h = L.human(f);
-  await page.getByRole('link', {name: 'New document'}).waitFor();
+  await page.getByRole('heading', {name: 'Harbor town', level: 1}).waitFor();
   await page.waitForTimeout(1500);
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
   f.mark();
-  await h.click(page.getByRole('link', {name: 'New document'}), {after: 900});
-  const kinds = page.getByRole('navigation', {name: 'Document kinds'});
-  await h.hover(kinds.getByRole('link', {name: /^Behavior/}), 600);
-  await h.click(kinds.getByRole('link', {name: /^Hologram/}), {after: 900});
-  await h.type(page.getByRole('textbox', {name: 'First line'}), '&6Welcome to the harbor');
-  await h.type(page.getByRole('textbox', {name: 'Id'}), 'harbor:welcome', {clear: true});
-  await h.click(page.getByRole('button', {name: 'Create hologram'}), {after: 1200});
-  await page.getByRole('heading', {name: 'harbor:welcome', level: 1}).waitFor();
-  await h.result(2000);
-  const views = page.getByRole('tablist', {name: 'View'});
-  await h.click(views.getByRole('tab', {name: 'Preview'}), {noReveal: true, after: 600});
+  await h.hover(page.getByText('No documents yet.'), 900);
+  await h.key('n', 1000);
+  await page.getByRole('heading', {name: 'New document', level: 1}).waitFor();
+  await h.pick(page.getByRole('combobox', {name: 'Kind'}), 'behavior', {after: 1000});
+  await page.getByRole('heading', {name: 'New behavior', level: 1}).waitFor();
+  await h.hover(page.getByRole('combobox', {name: 'Start from'}), 1000);
+  await h.click(page.getByRole('main').getByRole('button', {name: 'Create', exact: true}), {after: 1500});
+  await page.waitForFunction(() => /\/behavior\//.test(location.hash));
+  await L.clearToasts(page);
+  await h.hover(page.getByRole('region', {name: 'What this behavior does'}).getByRole('listitem').nth(3), 1200);
+  await h.result(1600);
+  await h.click(page.getByRole('button', {name: 'Edit in Advanced'}), {after: 1000});
+  const views = page.getByRole('toolbar', {name: 'Page actions'}).getByRole('group', {name: 'View'});
+  await h.click(views.getByRole('button', {name: 'Code'}), {noReveal: true, after: 700});
   await h.result(1800);
-  await h.click(views.getByRole('tab', {name: 'Code'}), {noReveal: true, after: 600});
+  await h.click(views.getByRole('button', {name: 'Split'}), {noReveal: true, after: 700});
   await h.result(1800);
-  await h.click(views.getByRole('tab', {name: 'Split'}), {noReveal: true, after: 600});
-  await h.result(2200);
-  return L.finish(f, {closing: 'harbor:welcome is new, with Visual, Preview, Code and Split views'});
+  await h.click(views.getByRole('button', {name: 'Steps'}), {noReveal: true, after: 700});
+  await h.result(1800);
+  return L.finish(f, {closing: 'A new greeter behavior, in plain words, then its Steps, Code and Split views'});
 };

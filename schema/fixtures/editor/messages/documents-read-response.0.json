@@ -1,0 +1,36 @@
+{
+  "documents": [
+    {
+      "kind": "npc",
+      "id": "town/guard",
+      "path": "npcs/town/guard.json",
+      "revision": 4,
+      "hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "source": {
+        "schemaVersion": 2,
+        "revision": 4,
+        "id": "guard",
+        "name": "Guard"
+      },
+      "summary": {
+        "name": "Guard",
+        "folder": "town",
+        "features": []
+      }
+    }
+  ],
+  "errors": [
+    {
+      "kind": "npc",
+      "id": "town/gone",
+      "code": "not-found",
+      "message": "No npc town/gone."
+    }
+  ],
+  "remaining": [
+    {
+      "kind": "shop",
+      "id": "town:bakery"
+    }
+  ]
+}

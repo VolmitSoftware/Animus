@@ -1,5 +1,5 @@
-/// A chest or shop window painted like the in-game screen: the title in the
-/// Minecraft font, slots with item icons from the stage's item meshers,
+/// A chest or shop window painted like the in-game screen at GUI scale 3
+/// and fitted to its frame's width and height ([WindowFit]): the title in the Minecraft font, slots with item icons from the stage's item meshers,
 /// stack counts, and the name and lore tooltip on hover or focus, and on
 /// tap for the selected slot when [ChestWindow.pinSelected] is set. A paint
 /// handler turns a press and drag across slots into brush strokes. It never
@@ -16,18 +16,15 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
-import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_layout.dart';
 import '../../logic/gui/gui_text.dart';
-import '../info_tip.dart';
+import '../../logic/item_ids.dart';
 import '../mc/mc_item_icons.dart';
 import 'gui_fields.dart';
+import 'window_fit.dart';
 
-/// The default inventory title colour (`0x404040`).
-const int mcInventoryTitleColor = 0x404040;
-
-/// Lore's default colour, dark purple italic in the client; shown plain here.
+/// Lore's default colour; the client draws it italic, as [GuiStyledText.item] does.
 const int mcLoreColor = 0xAA00AA;
 
 class ChestWindow extends StatefulWidget {
@@ -40,8 +37,12 @@ class ChestWindow extends StatefulWidget {
     this.onPaint,
     this.onPaintEnd,
     this.pinSelected = false,
+    this.band = false,
     super.key,
   });
+
+  /// The frame sits in the short band above a form.
+  final bool band;
 
   /// Called for each slot a press and drag crosses; set while a brush is
   /// chosen. Clicks and Enter still go to [onSlot].
@@ -173,46 +174,47 @@ class _ChestWindowState extends State<ChestWindow> {
     final ChestLayout? shown = _shown;
     // First show with icons still coming: laid out but hidden.
     final ChestLayout layout = shown ?? component.layout;
-    return dom.div(classes: 'animus-chest-screen${shown == null ? ' is-pending' : ''}', attributes: <String, String>{'role': 'group', 'aria-label': component.label}, <Widget>[
-      dom.div(classes: 'animus-chest-title', <Widget>[
-        withTip(
+    return WindowFit(
+      band: component.band,
+      child: dom.div(classes: 'animus-chest-screen${shown == null ? ' is-pending' : ''}', attributes: <String, String>{'role': 'group', 'aria-label': component.label}, <Widget>[
+        dom.div(classes: 'animus-chest-title', <Widget>[
           GuiStyledText(layout.title, defaultColor: mcInventoryTitleColor),
-          component.showMask ? 'The window as players see it. Letters mark each slot\'s mask key; click a slot to edit it.' : 'The window as players see it.',
-          docs: component.showMask ? Docs.chestGuis : null,
+        ]),
+        dom.div(
+          classes: 'animus-chest${component.onPaint != null ? ' is-painting' : ''}',
+          styles: dom.Styles(raw: <String, String>{'grid-template-columns': 'repeat(${layout.width}, var(--animus-slot))'}),
+          // Always bound: an events map that only gains a key on a later build
+          // never gets that listener.
+          events: <String, void Function(web.Event)>{
+            'pointermove': (web.Event event) {
+              // The pressed button, not a flag: a repaint after each stroke may
+              // rebuild this window mid-drag.
+              if (component.onPaint == null || (_number(event, 'buttons').toInt() & 1) == 0) return;
+              final int? slot = _slotAt(event);
+              if (slot != null) _paint(slot);
+            },
+          },
+          <Widget>[for (final ChestCell cell in layout.cells) _slot(cell)],
         ),
       ]),
-      dom.div(
-        classes: 'animus-chest animus-inset-focus${component.onPaint != null ? ' is-painting' : ''}',
-        styles: dom.Styles(raw: <String, String>{'grid-template-columns': 'repeat(${layout.width}, var(--animus-slot))'}),
-        // Always bound: an events map that only gains a key on a later build
-        // never gets that listener.
-        events: <String, void Function(web.Event)>{
-          'pointermove': (web.Event event) {
-            // The pressed button, not a flag: a repaint after each stroke may
-            // rebuild this window mid-drag.
-            if (component.onPaint == null || (_number(event, 'buttons').toInt() & 1) == 0) return;
-            final int? slot = _slotAt(event);
-            if (slot != null) _paint(slot);
-          },
-        },
-        <Widget>[for (final ChestCell cell in layout.cells) _slot(cell)],
-      ),
-    ]);
+    );
   }
 
   Widget _slot(ChestCell cell) {
     final String? item = cell.itemId;
     final String? key = McItemIcons.keyOf(item);
     final String? url = key == null ? null : McItemIcons.url(key);
-    final String name = asString(cell.icon['name']) ?? (item ?? '');
+    final String? custom = asString(cell.icon['name']);
+    // Without a custom name the game shows the item's own name.
+    final String name = custom ?? (item == null ? '' : itemFieldText(item, advanced: false));
     final List<String> lore = stringList(cell.icon['lore']);
     final int count = asInt(cell.icon['count']) ?? 1;
     final bool selected = component.selected == cell.slot;
     final String plain = guiPlainText(name).trim();
     final List<String> plainLore = <String>[for (final String line in lore) guiPlainText(line).trim()]..removeWhere((String line) => line.isEmpty);
     final String described = cell.source == ChestCellSource.empty
-        ? 'Slot ${cell.slot}, empty'
-        : 'Slot ${cell.slot}, ${plain.isEmpty ? (item ?? 'item') : plain}${count > 1 ? ', $count' : ''}${plainLore.isEmpty ? '' : '. ${plainLore.join('. ')}'}';
+        ? '${slotLabel(cell.slot)}, empty'
+        : '${slotLabel(cell.slot)}, ${plain.isEmpty ? (item ?? 'item') : plain}${count > 1 ? ', $count' : ''}${plainLore.isEmpty ? '' : '. ${plainLore.join('. ')}'}';
     final List<String> classes = <String>[
       'animus-chest-slot',
       'is-${cell.source.name}',
@@ -229,8 +231,9 @@ class _ChestWindowState extends State<ChestWindow> {
       if (cell.label != null && cell.source == ChestCellSource.list) dom.span(classes: 'animus-chest-key is-list', <Widget>[Component.text(cell.label!)]),
       if (cell.source != ChestCellSource.empty && (plain.isNotEmpty || lore.isNotEmpty))
         dom.span(classes: 'animus-chest-tooltip${selected && component.pinSelected ? ' is-pinned' : ''}', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[
-          dom.span(classes: 'animus-chest-tooltip-name', <Widget>[GuiStyledText(name)]),
-          for (final String line in lore) dom.span(classes: 'animus-chest-tooltip-lore', <Widget>[GuiStyledText(line, defaultColor: mcLoreColor)]),
+          // The item's own name is upright; a custom one follows the client's rule.
+          dom.span(<Widget>[GuiStyledText(name, item: custom != null)]),
+          for (final String line in lore) dom.span(classes: 'animus-chest-tooltip-lore', <Widget>[GuiStyledText(line, defaultColor: mcLoreColor, item: true)]),
         ]),
     ]);
     if (component.onSlot == null) {

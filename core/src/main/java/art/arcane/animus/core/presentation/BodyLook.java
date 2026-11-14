@@ -104,12 +104,15 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
         boolean player = typeKey.equals(BodyRules.PLAYER);
         boolean nativeName = player && appearance.nameplateVisible() && fitsProfile(name) && !RichText.formatted(name);
         HologramStyle hologram = appearance.hologramStyle();
+        // Lines in one display carry their style on to the rows below, as the client draws legacy codes; rows of their
+        // own displays start unstyled. The name is its own field, so it starts unstyled either way.
         List<String> lines = new ArrayList<>();
-        for (String line : appearance.hologram()) lines.add(line(lines, line));
+        for (String line : appearance.hologram()) lines.add(RichText.colorize(line));
         boolean nameRow = appearance.nameplateVisible() && !nativeName;
         if (nameRow) {
-            String coloured = appearance.traits().colorCode().map((Character code) -> "&" + code + name).orElse(name);
-            lines.add(line(lines, coloured));
+            String coloured = RichText.colorize(appearance.traits().colorCode().map((Character code) -> "&" + code + name).orElse(name));
+            boolean styledAbove = lines.stream().anyMatch((String line) -> line.indexOf(RichText.SECTION) >= 0);
+            lines.add(styledAbove && !hologram.separateRows() ? "§r" + coloured : coloured);
         }
         List<TextRow> rows = new ArrayList<>();
         if (lines.isEmpty()) { /* nothing to show */ }
@@ -156,13 +159,6 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
     private static boolean fitsProfile(String name) {
         try { BodyRules.validateProfileName(name); return true; }
         catch (IllegalArgumentException tooLong) { return false; }
-    }
-
-    /** A colorized line that starts unstyled when an earlier line set a style, so one line never tints the next. */
-    private static String line(List<String> earlier, String text) {
-        String coloured = RichText.colorize(text);
-        for (String before : earlier) if (before.indexOf(RichText.SECTION) >= 0) return "§r" + coloured;
-        return coloured;
     }
 
     /** The background colour of a text row showing {@code text}. */

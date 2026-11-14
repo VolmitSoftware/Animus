@@ -11,6 +11,7 @@ import 'package:animus_editor/logic/terrain/terrain_data.dart';
 import 'package:animus_editor/logic/terrain/terrain_snap.dart';
 import 'package:animus_editor/logic/terrain/terrain_volume.dart';
 import 'package:animus_editor/mc/terrain/terrain_tile_image.dart';
+import 'package:animus_editor/services/server/request_pacer.dart';
 import 'package:animus_editor/services/server/transport.dart';
 import 'package:animus_editor/services/terrain/terrain_client.dart';
 import 'package:test/test.dart';
@@ -258,14 +259,16 @@ void main() {
       }
 
       final MemoryTerrainCache cache = MemoryTerrainCache();
-      final TerrainClient first = TerrainClient(server: 's1', send: send, cache: cache);
+      DateTime now = DateTime.utc(2026, 11, 13, 12);
+      final TerrainClient first = TerrainClient(server: 's1', send: send, cache: cache, now: () => now);
       final TerrainSurfaceTile? tile = await first.surface('world', 0, 0);
       expect(tile, isNotNull);
       expect(requests.single.headers.containsKey('If-None-Match'), isFalse);
       expect(await first.surface('world', 0, 0), isNotNull);
       expect(requests, hasLength(1));
 
-      final TerrainClient next = TerrainClient(server: 's1', send: send, cache: cache);
+      now = now.add(terrainFreshFor);
+      final TerrainClient next = TerrainClient(server: 's1', send: send, cache: cache, now: () => now);
       final TerrainSurfaceTile? again = await next.surface('world', 0, 0);
       expect(requests.last.headers['If-None-Match'], '"${tile!.hash}"');
       expect(next.unchanged, 1);
@@ -283,10 +286,84 @@ void main() {
         return ApiResponse(response.status, response.body);
       }
 
-      final TerrainClient client = TerrainClient(server: 's', send: send, cache: MemoryTerrainCache(), parallel: 3);
+      final TerrainClient client = TerrainClient(server: 's', send: send, cache: MemoryTerrainCache(), parallel: 3, perSecond: 100000);
       final List<TerrainSurfaceTile?> tiles = await Future.wait(<Future<TerrainSurfaceTile?>>[for (int i = 0; i < 9; i++) client.surface('world', i % 3, i ~/ 3)]);
       expect(tiles.whereType<TerrainSurfaceTile>(), hasLength(9));
       expect(peak, 3);
+    });
+
+    test('a long load is spread out and leaves the connection to other requests', () async {
+      // The connection's own pacer, which every request of the tab passes.
+      final RequestPacer connection = RequestPacer();
+      final List<ApiRequest> requests = <ApiRequest>[];
+      final List<int> starts = <int>[];
+      final Stopwatch clock = Stopwatch()..start();
+      Future<ApiResponse> send(ApiRequest request) async {
+        requests.add(request);
+        starts.add(clock.elapsedMilliseconds);
+        await connection.take(background: request.background);
+        final FakeResponse response = fakeTerrainBlocks(_get(request.path), _anchors);
+        return ApiResponse(response.status, response.body);
+      }
+
+      final TerrainClient client = TerrainClient(server: 's', send: send, cache: MemoryTerrainCache(), perSecond: 100);
+      final Future<List<TerrainSlice?>> load = Future.wait(<Future<TerrainSlice?>>[for (int i = 0; i < 20; i++) client.slice('world', i % 8 - 4, i ~/ 8 - 2, 48, 48)]);
+      final Stopwatch watch = Stopwatch()..start();
+      for (int i = 0; i < 12; i++) {
+        await connection.take();
+      }
+      expect(watch.elapsedMilliseconds, lessThan(60), reason: 'reads and Apply find room while terrain loads');
+      expect((await load).whereType<TerrainSlice>(), hasLength(20));
+      expect(starts.last - starts.first, greaterThanOrEqualTo(170), reason: '20 requests at 100 a second take about 190 ms');
+      for (final int start in starts) {
+        expect(starts.where((int other) => other >= start && other < start + 50).length, lessThanOrEqualTo(6), reason: 'no burst: at most 5 or 6 in any 50 ms');
+      }
+      expect(requests.every((ApiRequest request) => request.background), isTrue, reason: 'slices yield to every other request');
+      expect(terrainRequestsPerSecond, lessThanOrEqualTo(16), reason: 'under the server\'s 20 a second');
+    });
+
+    test('a copy saved minutes ago is used without asking; an older one is checked by its hash', () async {
+      final List<ApiRequest> requests = <ApiRequest>[];
+      Future<ApiResponse> send(ApiRequest request) async {
+        requests.add(request);
+        final FakeResponse response = fakeTerrainBlocks(_get(request.path, request.headers), _anchors);
+        return ApiResponse(response.status, response.body);
+      }
+
+      DateTime now = DateTime.utc(2026, 11, 13, 12);
+      final MemoryTerrainCache cache = MemoryTerrainCache();
+      await TerrainClient(server: 's', send: send, cache: cache, now: () => now).slice('world', 0, 0, 48, 48);
+      expect(requests, hasLength(1));
+
+      // A reload, another tab or another preview a few minutes later.
+      now = now.add(const Duration(minutes: 4));
+      final TerrainSlice? again = await TerrainClient(server: 's', send: send, cache: cache, now: () => now).slice('world', 0, 0, 48, 48);
+      expect(again, isNotNull);
+      expect(requests, hasLength(1), reason: 'a fresh copy needs no request');
+
+      now = now.add(terrainFreshFor);
+      final TerrainClient later = TerrainClient(server: 's', send: send, cache: cache, now: () => now);
+      expect(await later.slice('world', 0, 0, 48, 48), isNotNull);
+      expect(requests, hasLength(2));
+      expect(requests.last.headers['If-None-Match'], isNotNull);
+      expect(later.unchanged, 1, reason: 'the 304 reuses the copy and makes it fresh again');
+      now = now.add(const Duration(minutes: 1));
+      await TerrainClient(server: 's', send: send, cache: cache, now: () => now).slice('world', 0, 0, 48, 48);
+      expect(requests, hasLength(2));
+    });
+
+    test('a chunk that was not loaded is asked again, however fresh', () async {
+      int asked = 0;
+      final MemoryTerrainCache cache = MemoryTerrainCache();
+      final DateTime now = DateTime.utc(2026, 11, 13, 12);
+      Future<ApiResponse> send(ApiRequest request) async {
+        asked++;
+        return const ApiResponse(200, <String, Object?>{'world': 'world', 'cx': 40, 'cz': 40, 'status': 'unloaded', 'hash': 'none'});
+      }
+
+      await TerrainClient(server: 's', send: send, cache: cache, now: () => now).slice('world', 40, 40, 48, 48);
+      await TerrainClient(server: 's', send: send, cache: cache, now: () => now).slice('world', 40, 40, 48, 48);
+      expect(asked, 2, reason: 'a player may be near it now');
     });
 
     test('worlds the server does not list, or answered 404 for, are never requested', () async {

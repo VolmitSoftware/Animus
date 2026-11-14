@@ -115,7 +115,8 @@ JsonList moveItem(JsonList list, int from, int to) {
   return out;
 }
 
-const Map<String, String> _acronyms = <String, String>{'id': 'ID', 'uuid': 'UUID', 'url': 'URL', 'gui': 'GUI', 'npc': 'NPC', 'npcs': 'NPCs'};
+/// Key words shown otherwise: acronyms, and `argb` (a colour as a number).
+const Map<String, String> _acronyms = <String, String>{'id': 'ID', 'uuid': 'UUID', 'url': 'URL', 'gui': 'GUI', 'npc': 'NPC', 'npcs': 'NPCs', 'argb': 'colour'};
 
 /// A field key as a label: `waitTicks` and `wait_ticks` read "Wait ticks".
 /// Namespaced keys (`animus:combat`) and one-letter axes stay as written.
@@ -128,7 +129,7 @@ String humanizeKey(String key) {
   if (words.isEmpty) return key;
   final List<String> shown = <String>[for (final String word in words) _acronyms[word] ?? word];
   final String first = shown.first;
-  shown[0] = first == words.first ? '${first[0].toUpperCase()}${first.substring(1)}' : first;
+  shown[0] = '${first[0].toUpperCase()}${first.substring(1)}';
   return shown.join(' ');
 }
 

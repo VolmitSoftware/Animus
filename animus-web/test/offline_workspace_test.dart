@@ -7,6 +7,7 @@ import 'package:animus_editor/logic/shared_schemas.dart';
 import 'package:animus_editor/model/animus_document.dart';
 import 'package:animus_editor/model/document_kind.dart';
 import 'package:animus_editor/state/editor_store.dart';
+import 'package:animus_editor/state/workspace_records.dart';
 import 'package:animus_editor/state/workspace_repository.dart';
 import 'package:animus_editor/state/workspace_route.dart';
 import 'package:test/test.dart';

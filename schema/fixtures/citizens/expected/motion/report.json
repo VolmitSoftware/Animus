@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 20,
+  "converterVersion": 21,
   "fieldPathFormat": "json-pointer",
-  "importId": "b7c080df8b4b36b71d40cec89c79e9594b0aa3133614a48d707039dc4d654ef8",
+  "importId": "4128746aee05bbc022c0d463c7b4e3320b013d7b98616904038dffd6d5341bf3",
   "sourceSha256": "be8e1bd00e47e2baa3ec410558b8586b9ee32166eb1c6629e90b6ee9ef3c9f4c",
   "worldMap": {
     "old_harbor": "harbor"
@@ -69,9 +69,9 @@
   },
   "documents": {
     "behaviors/citizens/waypoints-0.json": "cd99c114bfa5fb0d0a3d8acfb74ecbf9b2cd1556047441d6a741616d51832aad",
-    "npcs/harbor/citizens-0.json": "add9ce5784aefcc8aafc3b9402b6ab8fee92b94b97945aa4d52d661304402106",
-    "npcs/harbor/citizens-1.json": "c1ff8a0b11105f57a2c3f0035a9de2d9d9b0e9dfeb7644d7569e62cb5943ad48",
-    "npcs/harbor/citizens-2.json": "040b374ad6334a7d4510c407951f39fc7f6aa1cca13232948a0db8dd303fe9e0",
-    "npcs/harbor/citizens-3.json": "62b479de96cd8b01b8d695e4c9fe1e864ab9f48ac23c589ac85fbbf3c46e3151"
+    "npcs/harbor/citizens-0.json": "f7f5678d8371525010ad9dc0f27eec24e257eb09ccb9d524b91ca0ec8b19488f",
+    "npcs/harbor/citizens-1.json": "025c9dc34f37f02f6b57333a100add38e99375f593f66ec3ce2786300e8fa238",
+    "npcs/harbor/citizens-2.json": "5830e6ad4f7db39d8ae2a48eb902327556bba9b8e34237841f2c50b287847781",
+    "npcs/harbor/citizens-3.json": "e409743f34e5917c654e2fcd45a8a563a7a61b86839b7e2e615e8b24b39ffb7f"
   }
 }

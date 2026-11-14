@@ -36,8 +36,11 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class EditorChanges {
     public static final String DIRECTORY = "state/editor/changes";
 
-    /** What a change did. {@code status} is the HTTP status; {@code committed} is true when documents were written. */
-    public record Outcome(int status, JsonObject body, Set<DocumentKind> kinds, boolean committed, boolean rollback, JsonArray catalog, JsonArray deleted) {}
+    /**
+     * What a change did. {@code status} is the HTTP status; {@code committed} is true when documents were written;
+     * {@code deleted} names the documents it removed. The catalog event comes from {@link EditorCatalog}, which hears the writes.
+     */
+    public record Outcome(int status, JsonObject body, Set<DocumentKind> kinds, boolean committed, boolean rollback, JsonArray deleted) {}
 
     private final EditorDocuments documents;
     private final DocumentStore store;
@@ -63,11 +66,14 @@ public final class EditorChanges {
 
     public boolean pending(String key) { return pending.contains(key); }
 
-    public synchronized Outcome apply(EditorMessages.ChangeSet set, String requestHash, String tokenId) throws IOException, EditorError {
+    /** Applies a change set; {@code check} sees every document it writes, as stored, before anything is written. */
+    public synchronized Outcome apply(EditorMessages.ChangeSet set, String requestHash, String tokenId, WriteCheck check) throws IOException, EditorError {
         Optional<Outcome> replay = replay(set.idempotencyKey(), requestHash);
         if (replay.isPresent()) return replay.get();
-        JsonArray conflicts = new JsonArray(), invalid = new JsonArray(), applied = new JsonArray(), catalog = new JsonArray(), deleted = new JsonArray();
+        JsonArray conflicts = new JsonArray(), invalid = new JsonArray(), applied = new JsonArray(), deleted = new JsonArray();
         List<DocumentStore.Change> writes = new ArrayList<>();
+        Map<EditorDocuments.Location, String> written = new LinkedHashMap<>();
+        List<EditorDocuments.Location> removed = new ArrayList<>();
         JsonArray touched = new JsonArray();
         Set<DocumentKind> kinds = EnumSet.noneOf(DocumentKind.class);
         for (EditorMessages.Change change : set.documents()) {
@@ -85,16 +91,19 @@ public final class EditorChanges {
             if (origin != null) {
                 touched.add(reference(origin));
                 writes.add(new DocumentStore.Change(origin.path(), plain(base.content()), null));
+                removed.add(origin);
                 deleted.add(ref(change.kind(), origin.id()));
             }
             if (change.delete()) {
                 writes.add(new DocumentStore.Change(location.path(), plain(current.content()), null));
+                removed.add(location);
                 applied.add(version(change.kind(), change.id(), current.revision(), null));
                 deleted.add(ref(change.kind(), change.id()));
                 continue;
             }
             JsonObject source = change.source().orElseThrow().deepCopy();
-            long revision = EditorDocuments.REVISIONED.contains(change.kind()) ? base.revision() + 1 : 0;
+            // Kinds the server does not revision answer their own revision field (or 0), as GET and the catalog read it back.
+            long revision = EditorDocuments.REVISIONED.contains(change.kind()) ? base.revision() + 1 : EditorDocuments.revision(source);
             if (EditorDocuments.REVISIONED.contains(change.kind())) source.addProperty("revision", revision);
             JsonArray diagnostics = documents.validate(change.kind(), change.id(), source);
             if (change.kind() == DocumentKind.NPC && base.exists()) identity(base.content(), source, diagnostics);
@@ -104,10 +113,10 @@ public final class EditorChanges {
             String content = change.kind() == DocumentKind.RECORDING && !EditorDocuments.hasErrors(diagnostics) ? recording(source) : JsonDocuments.write(source);
             String hash = "sha256:" + JsonDocuments.hash(content);
             writes.add(new DocumentStore.Change(location.path(), plain(current.content()), content));
-            JsonObject written = version(change.kind(), change.id(), revision, hash);
-            if (origin != null) written.add("from", moved(origin.id()));
-            applied.add(written);
-            catalog.add(catalogEntry(change.kind(), change.id(), location.path(), revision, hash));
+            written.put(location, content);
+            JsonObject version = version(change.kind(), change.id(), revision, hash);
+            if (origin != null) version.add("from", moved(origin.id()));
+            applied.add(version);
         }
         if (!conflicts.isEmpty()) {
             JsonObject body = new JsonObject();
@@ -115,7 +124,7 @@ public final class EditorChanges {
             body.addProperty("idempotencyKey", set.idempotencyKey());
             body.add("conflicts", conflicts);
             remember(set.idempotencyKey(), requestHash, tokenId, "conflict", null, new JsonArray(), body);
-            return new Outcome(409, body, Set.of(), false, false, new JsonArray(), new JsonArray());
+            return new Outcome(409, body, Set.of(), false, false, new JsonArray());
         }
         if (!invalid.isEmpty()) {
             JsonObject body = new JsonObject();
@@ -123,18 +132,23 @@ public final class EditorChanges {
             body.addProperty("idempotencyKey", set.idempotencyKey());
             body.add("documents", invalid);
             remember(set.idempotencyKey(), requestHash, tokenId, "invalid", null, new JsonArray(), body);
-            return new Outcome(422, body, Set.of(), false, false, new JsonArray(), new JsonArray());
+            return new Outcome(422, body, Set.of(), false, false, new JsonArray());
         }
+        for (Map.Entry<EditorDocuments.Location, String> document : written.entrySet()) check.writes(document.getKey().kind(), document.getKey().id(), document.getValue());
         String transaction = UUID.randomUUID().toString();
         JsonObject body = appliedBody(transaction, set.idempotencyKey(), applied);
         writes.add(record(set.idempotencyKey(), requestHash, tokenId, "applied", transaction, touched, body));
         store.commit(transaction, writes);
         index().put(transaction, set.idempotencyKey());
-        return new Outcome(200, body, kinds, true, false, catalog, deleted);
+        prune(removed);
+        return new Outcome(200, body, kinds, true, false, deleted);
     }
 
-    /** Undoes an applied change through its rollback receipt. Later edits to the same documents come back as a conflict. */
-    public synchronized Outcome undo(String changeId, String key, String tokenId, ScopeCheck scopes) throws IOException, EditorError {
+    /**
+     * Undoes an applied change through its rollback receipt, as a new write: each document comes back with the next
+     * revision. Later edits to the same documents come back as a conflict.
+     */
+    public synchronized Outcome undo(String changeId, String key, String tokenId, ScopeCheck scopes, WriteCheck check) throws IOException, EditorError {
         String original = index().get(changeId);
         JsonObject record = original == null ? null : load(original).orElse(null);
         if (record == null || !record.get("status").getAsString().equals("applied"))
@@ -160,7 +174,7 @@ public final class EditorChanges {
             if (entry.has("from")) movedBack.put(entry.get("kind").getAsString() + "\n" + entry.getAsJsonObject("from").get("id").getAsString(), entry.get("id").getAsString());
         }
         List<DocumentStore.Change> writes = new ArrayList<>();
-        JsonArray conflicts = new JsonArray(), catalog = new JsonArray(), deleted = new JsonArray(), touched = new JsonArray();
+        JsonArray conflicts = new JsonArray(), deleted = new JsonArray(), touched = new JsonArray();
         Map<String, JsonObject> result = new LinkedHashMap<>();
         if (!Files.exists(store.resolve("backups/" + changeId + ".json"), LinkOption.NOFOLLOW_LINKS))
             throw new EditorError(EditorError.Code.NOT_FOUND, "Change " + changeId + " can no longer be undone: backup rotation removed its rollback receipt.");
@@ -176,13 +190,22 @@ public final class EditorChanges {
                 conflicts.add(conflict(location.kind(), location.id(), revision, hash, current));
                 continue;
             }
-            writes.add(inverse);
+            DocumentStore.Change write = inverse;
+            long revision;
+            if (inverse.content() == null) revision = after.get("revision").getAsLong();
+            else if (EditorDocuments.REVISIONED.contains(location.kind())) {
+                // An undo is a new write: revisions only go up, so an open editor never sees one go back.
+                String partner = movedBack.get(location.kind().wireName() + "\n" + location.id());
+                JsonObject latest = current.exists() ? null : after != null ? after : partner == null ? null : applied.get(location.kind().wireName() + "\n" + partner);
+                long last = current.exists() ? current.revision() : latest == null ? 0 : latest.get("revision").getAsLong();
+                revision = Math.max(last, EditorDocuments.revision(inverse.content())) + 1;
+                write = new DocumentStore.Change(inverse.path(), inverse.expectedHash(), revised(location.kind(), inverse.content(), revision));
+            } else revision = EditorDocuments.revision(inverse.content());
+            writes.add(write);
             touched.add(reference(location));
-            long revision = inverse.content() == null ? after.get("revision").getAsLong() : EditorDocuments.revision(inverse.content());
-            String hash = inverse.content() == null ? null : "sha256:" + JsonDocuments.hash(inverse.content());
+            String hash = write.content() == null ? null : "sha256:" + JsonDocuments.hash(write.content());
             result.put(location.kind().wireName() + "\n" + location.id(), version(location.kind(), location.id(), revision, hash));
             if (hash == null) deleted.add(ref(location.kind(), location.id()));
-            else catalog.add(catalogEntry(location.kind(), location.id(), location.path(), revision, hash));
         }
         for (Map.Entry<String, String> move : movedBack.entrySet()) {
             String kind = move.getKey().substring(0, move.getKey().indexOf('\n'));
@@ -198,12 +221,14 @@ public final class EditorChanges {
             body.addProperty("idempotencyKey", key);
             body.add("conflicts", conflicts);
             remember(key, requestHash, tokenId, "conflict", null, new JsonArray(), body);
-            return new Outcome(409, body, Set.of(), false, false, new JsonArray(), new JsonArray());
+            return new Outcome(409, body, Set.of(), false, false, new JsonArray());
         }
         if (writes.isEmpty()) throw new EditorError(EditorError.Code.NOT_FOUND, "Change " + changeId + " wrote no editor documents to undo.");
+        List<EditorDocuments.Location> removed = new ArrayList<>();
         for (DocumentStore.Change write : writes) {
             EditorDocuments.Location location = byPath.get(write.path());
-            if (write.content() != null) scopes.restores(location.kind(), location.id(), write.content());
+            if (write.content() != null) check.writes(location.kind(), location.id(), write.content());
+            else removed.add(location);
         }
         String transaction = UUID.randomUUID().toString();
         JsonArray versions = new JsonArray();
@@ -212,16 +237,33 @@ public final class EditorChanges {
         writes.add(record(key, requestHash, tokenId, "applied", transaction, touched, body));
         store.commit(transaction, writes);
         index().put(transaction, key);
-        return new Outcome(200, body, kinds, true, true, catalog, deleted);
+        prune(removed);
+        return new Outcome(200, body, kinds, true, true, deleted);
     }
 
-    /** Checks that the token may apply every kind and NPC id of a change before an undo runs, and each document it restores. */
-    @FunctionalInterface public interface ScopeCheck {
-        void check(Set<DocumentKind> kinds, List<String> ids) throws EditorError;
-
-        /** Called for every document the undo writes back, before anything is written. */
-        default void restores(DocumentKind kind, String id, String content) throws EditorError {}
+    /**
+     * Removes the folders deletions left empty, up to but not including each kind's own folder. The change is committed by
+     * then, so a folder that cannot be removed simply stays.
+     */
+    private void prune(List<EditorDocuments.Location> removed) {
+        for (EditorDocuments.Location location : removed) {
+            if (location.kind().folder().isEmpty()) continue;
+            try {
+                Path root = store.resolve(location.kind().folder());
+                Path folder = store.resolve(location.path()).getParent();
+                while (folder != null && folder.startsWith(root) && !folder.equals(root)) {
+                    Files.delete(folder);
+                    folder = folder.getParent();
+                }
+            } catch (IOException kept) { /* Not empty or not removable: it stays. */ }
+        }
     }
+
+    /** Checks that the token may apply every kind and NPC id of a change before an undo runs. */
+    @FunctionalInterface public interface ScopeCheck { void check(Set<DocumentKind> kinds, List<String> ids) throws EditorError; }
+
+    /** Checks a document an apply or undo is about to write, as the exact text it stores, before anything is written. */
+    @FunctionalInterface public interface WriteCheck { void writes(DocumentKind kind, String id, String content) throws EditorError, IOException; }
 
     /** {@code GET /v1/changes/{key}}. */
     public synchronized JsonObject status(String key) throws IOException {
@@ -259,7 +301,7 @@ public final class EditorChanges {
             throw new EditorError(EditorError.Code.INVALID_REQUEST, "idempotencyKey " + key + " was already used for a different request; use a new key.");
         JsonObject body = record.get().getAsJsonObject("result");
         int status = switch (record.get().get("status").getAsString()) { case "applied" -> 200; case "conflict" -> 409; default -> 422; };
-        return Optional.of(new Outcome(status, body, Set.of(), false, false, new JsonArray(), new JsonArray()));
+        return Optional.of(new Outcome(status, body, Set.of(), false, false, new JsonArray()));
     }
 
     private Optional<JsonObject> load(String key) throws IOException {
@@ -353,6 +395,15 @@ public final class EditorChanges {
     }
 
     static String plain(String content) { return JsonDocuments.hash(content); }
+
+    /** {@code content} with {@code revision} in place of its own, written as an apply writes it; text that is not one JSON object stays as it is. */
+    private String revised(DocumentKind kind, String content, long revision) {
+        JsonObject source;
+        try { source = JsonDocuments.object(content); }
+        catch (IOException unreadable) { return content; }
+        source.addProperty("revision", revision);
+        return kind == DocumentKind.RECORDING ? recording(source) : JsonDocuments.write(source);
+    }
 
     /** A valid recording is stored in its one serialized form, which hotload and the runtime read back byte for byte. */
     private String recording(JsonObject source) {

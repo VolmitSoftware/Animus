@@ -96,8 +96,9 @@ class EditorImportsTest {
         assertEquals("conflict", error(harness.send("POST", "/v1/imports/" + stale + "/apply", token, null)));
 
         assertEquals("citizens", staged.getAsJsonArray("commandNamespaces").get(0).getAsString(), "the runtime fixture has a command NPC");
-        assertEquals("scope-missing", error(harness.send("POST", "/v1/imports/" + importId + "/apply", token, null)),
-                "applying adds citizens to the command allow-list, which needs apply:commands");
+        JsonObject granting = EditorHarness.json(harness.send("POST", "/v1/imports/" + importId + "/apply", token, null)).getAsJsonObject("error");
+        assertEquals("scope-missing", granting.get("code").getAsString(), "applying adds citizens to the command allow-list, which needs apply:commands");
+        assertEquals("apply:commands", granting.has("scope") ? granting.get("scope").getAsString() : null, granting.toString());
         List<EditorScope> withCommands = new ArrayList<>(IMPORTER);
         withCommands.add(EditorScope.APPLY_COMMANDS);
         token = harness.token(EditorHarness.grant(withCommands));
@@ -148,6 +149,63 @@ class EditorImportsTest {
         assertEquals("scope-missing", error(harness.send("GET", "/v1/imports", reader, null)));
         String grouped = harness.token(new EditorTokens.Grant("", Optional.of(EditorHarness.ADMIN), IMPORTER, List.of("town"), Duration.ofDays(1)));
         assertEquals("group-denied", error(harness.send("POST", "/v1/imports/stage", grouped, new JsonObject())));
+    }
+
+    /** One plain Citizens NPC: nothing in it runs commands. */
+    static final String CITIZEN = """
+            npc:
+              '0':
+                name: Banker
+                uuid: 0a1b2c3d-0000-4000-8000-00000000f001
+                traits:
+                  type: PLAYER
+                  location: {world: world, x: 0, y: 64, z: 0}
+            """;
+    /** A dtlTraders shop whose diamond has no price, so it converts to a buy entry at price 0. */
+    static final String FREE_SHOP = """
+            Bank:
+              title: '&6Bank'
+              pages:
+                page-0:
+                  size: 9
+                  buy-items:
+                    item-0:
+                      id: 1
+                      type: tradable
+                      item:
+                        type: DIAMOND
+                        amount: 1
+            """;
+
+    @Test
+    void import_thatWritesAFreeShop_needsApplyCommandsAndWritesNothing() throws Exception {
+        token = harness.token();
+        ok(upload("?file=citizens", CITIZEN.getBytes(java.nio.charset.StandardCharsets.UTF_8), EditorRequest.Transport.DIRECT));
+        ok(upload("?file=dtltraders&name=guis.yml", FREE_SHOP.getBytes(java.nio.charset.StandardCharsets.UTF_8), EditorRequest.Transport.DIRECT));
+        JsonObject staged = ok(harness.send("POST", "/v1/imports/stage", token, new JsonObject()));
+        assertEquals(0, staged.getAsJsonArray("commandNamespaces").size(), "nothing in this import asks for the command allow-list");
+        String importId = staged.getAsJsonObject("citizens").get("importId").getAsString();
+        EditorResponse refused = harness.send("POST", "/v1/imports/" + importId + "/apply", token, null);
+        assertEquals(403, refused.status(), () -> refused.body().toString());
+        JsonObject error = EditorHarness.json(refused).getAsJsonObject("error");
+        assertEquals("scope-missing", error.get("code").getAsString());
+        assertEquals("apply:commands", error.get("scope").getAsString());
+        assertTrue(error.get("message").getAsString().contains("hands out goods for nothing"), error.toString());
+        assertFalse(Files.exists(harness.root.resolve("shops/dtltraders")), "a refused import installs no shop");
+        assertFalse(Files.exists(harness.root.resolve("npcs/citizens")), "a refused import installs no NPC");
+        List<EditorScope> withCommands = new ArrayList<>(EditorScope.DEFAULT_PAIRING);
+        withCommands.add(EditorScope.APPLY_COMMANDS);
+        ok(harness.send("POST", "/v1/imports/" + importId + "/apply", harness.token(EditorHarness.grant(withCommands)), null));
+        assertTrue(Files.isDirectory(harness.root.resolve("shops/dtltraders")));
+    }
+
+    @Test
+    void import_ofShopsThatTradeAtAPrice_appliesWithTheDefaultScopes() throws Exception {
+        token = harness.token();
+        ok(upload("?file=shopkeepers", Files.readAllBytes(SharedFixtures.fixture("shopkeepers/minimal.yml")), EditorRequest.Transport.DIRECT));
+        String importId = ok(harness.send("POST", "/v1/imports/stage", token, new JsonObject())).getAsJsonObject("shopkeepers").get("importId").getAsString();
+        assertEquals("applied", ok(harness.send("POST", "/v1/imports/" + importId + "/apply", token, null)).get("state").getAsString());
+        assertTrue(Files.isDirectory(harness.root.resolve("shops/shopkeepers")));
     }
 
     @Test

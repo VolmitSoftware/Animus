@@ -115,4 +115,17 @@ class EditorMessageContractTest {
             assertTrue(validator.check("error-response", response.body().orElseThrow()).isEmpty(), code.wireName());
         }
     }
+
+    @Test
+    void scopeMissing_namesEveryScopeTheSchemaKnows() throws IOException {
+        SchemaValidator validator = validator();
+        for (EditorScope scope : EditorScope.values()) {
+            JsonObject body = EditorReplies.error(EditorError.scopeMissing(scope, "This token lacks " + scope.wireName() + ".")).body().orElseThrow().getAsJsonObject();
+            assertEquals(scope.wireName(), body.getAsJsonObject("error").get("scope").getAsString());
+            assertTrue(validator.check("error-response", body).isEmpty(), scope.wireName());
+        }
+        JsonObject unknown = EditorReplies.error(EditorError.scopeMissing(EditorScope.READ, "x")).body().orElseThrow().getAsJsonObject().deepCopy();
+        unknown.getAsJsonObject("error").addProperty("scope", "apply:everything");
+        assertFalse(validator.check("error-response", unknown).isEmpty(), "the scope is one of the schema's scopes");
+    }
 }

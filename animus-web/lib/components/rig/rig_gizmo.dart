@@ -1,61 +1,92 @@
 /// The stage overlay for the rig editor: the skeleton (a dot per bone, a line
 /// to its parent) and, on the selected bone, three axis handles for the
 /// current gizmo mode. Handles are dragged along their axis as it appears on
-/// screen; the editor turns the drag into a value.
+/// screen; the editor turns the drag into a value. [placeHandles] keeps them
+/// inside the stage and apart from each other.
 library;
 
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'dart:math' as math;
 
-import 'package:arcane_jaspr/arcane_jaspr.dart' hide Easing;
+import 'package:arcane_jaspr/arcane_jaspr.dart' show BuildContext, StatelessWidget, Widget;
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
-import '../../config/docs_links.dart';
 import '../../logic/rig_gizmo_edit.dart';
 import '../../logic/rig_sampler.dart';
+import '../../logic/rig_view.dart';
+import '../../logic/stage/stage_status.dart';
 import '../../mc/rig/rig_scene.dart';
 import '../../mc/scene/mc_camera.dart';
 import '../../mc/scene/mc_math.dart';
-import '../info_tip.dart';
+import '../../ui/toggle_choice.dart';
+import '../mc/mc_stage.dart';
+import '../mc/mc_stage_frame.dart';
 
-/// The gizmo's mode buttons over the stage, with Reset view.
-class GizmoToolbar extends StatelessWidget {
-  const GizmoToolbar({required this.mode, required this.restPose, required this.tick, required this.onMode, required this.onResetView, super.key});
+/// The rig's 3D stage in its frame: Move, Rotate and Scale in the header,
+/// the skeleton and the handles over the canvas, and one status line under
+/// it whose tip says what a drag does.
+class RigStage extends StatelessWidget {
+  const RigStage({
+    required this.controller,
+    required this.label,
+    required this.overlay,
+    required this.mode,
+    required this.onMode,
+    required this.restPose,
+    required this.idle,
+    required this.time,
+    required this.notes,
+    super.key,
+  });
 
+  final McStageController controller;
+  final String label;
+  final GizmoOverlay overlay;
   final GizmoMode mode;
+  final void Function(GizmoMode mode) onMode;
 
-  /// Whether the rest pose is open, where handles edit the rig itself.
+  /// No animation is open: handles edit the rig itself.
   final bool restPose;
 
-  /// The playhead tick a drag keys at.
-  final num tick;
-  final void Function(GizmoMode mode) onMode;
-  final void Function() onResetView;
+  /// A once animation ended and the rig plays its idle.
+  final bool idle;
+
+  /// The playhead, ticks.
+  final double time;
+
+  /// What the scene could not draw.
+  final List<String> notes;
 
   @override
-  Widget build(BuildContext context) => dom.div(classes: 'animus-segmented', attributes: const <String, String>{'role': 'group', 'aria-label': 'Gizmo'}, <Widget>[
-        dom.span(classes: 'animus-rig-gizmo-caption', <Widget>[
-          InfoTip(
-            tip: restPose
-                ? 'Drag a handle on the selected bone. Edits pivots, rest rotations and visual scales.'
-                : 'Drag a handle on the selected bone. Keys it at tick $tick.',
-            docs: Docs.editorRigs,
-            child: const Component.text('Gizmo'),
-          ),
-        ]),
-        for (final GizmoMode one in GizmoMode.values)
-          Button(
-            label: one.label,
-            size: ButtonSize.small,
-            variant: one == mode ? ButtonVariant.secondary : ButtonVariant.ghost,
-            attributes: <String, String>{'aria-pressed': '${one == mode}'},
-            onPressed: () => onMode(one),
-          ),
-        Button.ghost(label: 'Reset view', size: ButtonSize.small, onPressed: onResetView),
-      ]);
+  Widget build(BuildContext context) {
+    final String tick = trimmedNumber(time);
+    return McStageFrame(
+      title: 'Rig',
+      controller: controller,
+      label: label,
+      toggles: <Widget>[
+        ToggleChoice<GizmoMode>(
+          label: 'Gizmo',
+          value: mode,
+          options: <ChoiceOption<GizmoMode>>[for (final GizmoMode each in GizmoMode.values) ChoiceOption<GizmoMode>(each, each.label)],
+          onChanged: onMode,
+        ),
+      ],
+      status: <StageNote>[
+        if (idle)
+          const StageNote('Playing idle', 'The animation ended and the rig plays its idle, as the server does. Press Play to restart.')
+        else if (restPose)
+          const StageNote('Rest pose', 'Drag a handle on the selected bone to change its pivot, rest rotation or visual scale.')
+        else
+          StageNote('Tick $tick · ${secondsLabel(time)}', 'Drag a handle on the selected bone to key it at tick $tick.'),
+      ],
+      notes: notes,
+      overlay: (McCamera camera, double width, double height) => overlay.build(camera, width, height),
+    );
+  }
 }
 
 /// Gizmo arms are this long in blocks.
@@ -173,24 +204,38 @@ class GizmoOverlay {
       final String? parent = parents[selected];
       final List<McVec3> axes = frameAxes(mode == GizmoMode.move ? (parent == null ? null : poses[parent]?.model) : pose.model);
       final McVec3 world = originOf(pose.model);
-      for (int axis = 0; axis < 3; axis++) {
-        final McVec3? end = screen(world + axes[axis] * gizmoArmBlocks);
-        if (end == null) continue;
-        final double dx = end.x - origin.x, dy = end.y - origin.y;
-        final double length = math.sqrt(dx * dx + dy * dy);
+      final List<McVec3?> ends = <McVec3?>[for (int axis = 0; axis < 3; axis++) screen(world + axes[axis] * gizmoArmBlocks)];
+      // Touch screens draw 44 px handles (05-rig.css); they need more room.
+      final bool touch = web.window.matchMedia('(max-width: 760px), (pointer: coarse)').matches;
+      final List<HandleSpot> spots = placeHandles(
+        origin.x,
+        origin.y,
+        <(double, double)?>[for (final McVec3? end in ends) end == null ? null : (end.x, end.y)],
+        width,
+        height,
+        gap: touch ? gizmoTouchGap : gizmoHandleGap,
+        minArm: touch ? gizmoTouchArm : gizmoMinArm,
+      );
+      for (final HandleSpot spot in spots) {
+        final McVec3 end = ends[spot.axis]!;
+        final int axis = spot.axis;
+        // Dragged along the arm as drawn, at the rate of its true length.
+        final double trueLength = math.sqrt(math.pow(end.x - origin.x, 2) + math.pow(end.y - origin.y, 2));
+        final double dx = spot.x - origin.x, dy = spot.y - origin.y;
+        final double shown = math.sqrt(dx * dx + dy * dy);
         final String name = _axisNames[axis];
         handles.add(dom.line(
           const <Component>[],
           x1: _px(origin.x),
           y1: _px(origin.y),
-          x2: _px(end.x),
-          y2: _px(end.y),
+          x2: _px(spot.x),
+          y2: _px(spot.y),
           classes: 'animus-rig-axis is-$name',
         ));
         handles.add(dom.circle(
           const <Component>[],
-          cx: _px(end.x),
-          cy: _px(end.y),
+          cx: _px(spot.x),
+          cy: _px(spot.y),
           r: '9',
           classes: 'animus-rig-handle is-$name is-${mode.name}',
           attributes: <String, String>{
@@ -222,9 +267,9 @@ class GizmoOverlay {
                   axis,
                   origin.x,
                   origin.y,
-                  length < 1e-6 ? 1 : dx / length,
-                  length < 1e-6 ? 0 : dy / length,
-                  length,
+                  shown < 1e-6 ? 1 : dx / shown,
+                  shown < 1e-6 ? 0 : dy / shown,
+                  math.max(trueLength, gizmoMinArm),
                   eventNumber(pointer, 'clientX'),
                   eventNumber(pointer, 'clientY'),
                 ),

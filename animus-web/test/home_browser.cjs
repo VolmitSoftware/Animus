@@ -1,17 +1,20 @@
-// The home page and the shell around it, at desktop and phone widths: the
-// start rows, the workspace list with rename (Enter and Escape, focus back
-// on the button), delete with Escape and restore, the skip link, routes to a
-// missing workspace or document, then ../schema/fixtures/export opened as a
-// data folder with its listing, diagnostics and view tabs (arrow keys), and
-// ../schema/fixtures/upgrades/before (NPCs and a group at schemaVersion 1)
-// opened as one that says which files it upgraded to version 2.
+// The start page and a workspace's Home, at desktop and phone widths: a
+// first visit's three ways in (pairing first, the only primary), the skip
+// link, Blank workspace and Open examples, then the returning visit's
+// Continue list (each workspace once, Open, Rename with Enter and Escape,
+// Duplicate, Delete with Escape and confirm, Restore) with the ways in folded
+// into one row. Routes to a missing workspace or document name the cause and
+// a way back. ../schema/fixtures/export opened as a data folder shows Home
+// with the job cards and the document that needs attention, and
+// ../schema/fixtures/upgrades/before (schemaVersion 1) lists the upgraded
+// files in Advanced. The first steps hide for good.
 //
 //   python3 tool/serve_site.py --port <port>
 //   ANIMUS_WEB_URL=http://127.0.0.1:<port> PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node test/home_browser.cjs
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const {openFromSidebar, sidebar} = require('./support/shell.cjs');
+const {setMode, startAction} = require('./support/shell.cjs');
 
 const exportFolder = path.resolve(__dirname, '../../schema/fixtures/export');
 const upgradesFolder = path.resolve(__dirname, '../../schema/fixtures/upgrades/before');
@@ -23,6 +26,23 @@ async function noSideways(page, where) {
 }
 
 const focusedId = page => page.evaluate(() => document.activeElement && document.activeElement.id);
+const row = (page, name) => page.locator('.ui-continue-row', {has: page.locator('.ui-continue-name', {hasText: new RegExp(`^${name}$`)})});
+
+/** Opens the "..." menu of a Continue row and picks [entry]. */
+async function rowMenu(page, name, entry) {
+  await row(page, name).getByRole('button', {name: 'More actions'}).click();
+  await page.getByRole('menuitem', {name: entry, exact: true}).click();
+}
+
+async function openFolder(page, folder) {
+  await page.goto(url);
+  await page.locator('h1').waitFor();
+  const chooser = page.waitForEvent('filechooser');
+  const button = page.getByRole('button', {name: 'Open folder', exact: true});
+  await button.click();
+  await (await chooser).setFiles(folder);
+  await page.waitForFunction(() => /#\/workspace\/[^/]+$/.test(location.hash));
+}
 
 async function run(browser, viewport, label) {
   const context = await browser.newContext({viewport});
@@ -33,135 +53,135 @@ async function run(browser, viewport, label) {
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto(url);
 
-  // One focal point and three ways to start.
-  await page.getByRole('heading', {level: 1, name: 'Start a workspace'}).waitFor();
-  assert.deepEqual(await page.locator('.animus-start-way h2').allInnerTexts(), ['Blank', 'From the example packs', 'From a data folder']);
-  assert.equal(await page.locator(".animus-start .arcane-button[data-variant='primary']").count(), 1, 'one primary action on the home page');
-  const docsOf = text => page.locator('.animus-tip').filter({has: page.getByRole('link', {name: text, exact: true})}).locator('.animus-tip-docs');
-  assert.equal(await docsOf('From a data folder').getAttribute('href'), 'https://docs.volmitsoftware.com/animus/14-web-editor#working-without-a-server');
-  assert.equal(await docsOf('Start a workspace').getAttribute('href'), 'https://docs.volmitsoftware.com/animus/14-web-editor#working-without-a-server');
-  await page.getByRole('button', {name: 'Import Citizens and others'}).waitFor();
-  await page.getByText('No workspaces yet. Start one above.', {exact: true}).waitFor();
-  await noSideways(page, `${label} home`);
-
-  // The skip link is the first stop and moves focus to the main content.
+  // A first visit: three ways in, pairing first and the only primary.
+  await page.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
+  // The skip link is the first stop and moves focus to the page heading.
   await page.keyboard.press('Tab');
   assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Skip to content');
   await page.keyboard.press('Enter');
-  assert.equal(await focusedId(page), 'animus-main');
+  assert.equal(await focusedId(page), 'animus-main-heading');
+  assert.deepEqual((await page.locator('.ui-start-card h2').allInnerTexts()).map(text => text.replace(/[\ue000-\uf8ff]/g, '').trim()), ['Pair a server', 'Try the examples', 'Open my files']);
+  assert.equal(await page.locator('.ui-start-card').first().getAttribute('data-testid'), 'start-pair');
+  assert.equal(await page.locator(".ui-start .arcane-button[data-variant='primary']:visible").count(), 1, 'one primary action on the start page');
+  await page.getByText('Run /animus editor pair in game, then open the link or paste it here.', {exact: true}).waitFor();
+  // Simple starts from a server, the examples or files; Import and a blank workspace are Advanced.
+  assert.equal(await page.getByRole('button', {name: 'Import', exact: true}).count(), 0, 'no Import in Simple');
+  assert.equal(await page.getByRole('button', {name: 'Blank workspace', exact: true}).count(), 0, 'no blank workspace in Simple');
+  assert.equal(await page.getByRole('heading', {name: 'Continue'}).count(), 0, 'nothing to continue yet');
+  // A link that is not a pairing link says so beside the field.
+  await page.getByLabel('Pairing link').fill('hello');
+  await page.getByTestId('start-pair-link-submit').click();
+  await page.getByText('This is not a pairing link.', {exact: true}).waitFor();
+  await noSideways(page, `${label} first visit`);
+  await page.evaluate(() => window.localStorage.setItem('animus.mode', 'advanced'));
+  await page.reload();
+  await page.getByRole('button', {name: 'Import', exact: true}).waitFor();
+  await page.getByRole('button', {name: 'Blank workspace', exact: true}).waitFor();
 
-  // Two workspaces; rename one from the keyboard.
-  await page.getByLabel('Workspace name').fill('First');
+  // A blank workspace from its dialog, then the examples.
+  await page.getByRole('button', {name: 'Blank workspace', exact: true}).click();
+  const blank = page.getByRole('dialog', {name: 'Blank workspace'});
+  await blank.locator('#start-workspace-name').fill('First');
   await page.keyboard.press('Enter');
-  await page.waitForFunction(() => location.hash.includes('/new'));
+  await page.waitForFunction(() => /#\/workspace\/[^/]+$/.test(location.hash));
+  await page.getByText('No documents yet.', {exact: true}).waitFor();
+  // Back to Simple, where an owner starts.
+  await page.evaluate(() => window.localStorage.setItem('animus.mode', 'simple'));
   await page.goto(url);
-  await page.getByRole('button', {name: 'Create with example packs'}).click();
-  await page.getByRole('heading', {name: 'Try it in the browser'}).waitFor();
+  await page.getByRole('heading', {name: 'Continue'}).waitFor();
+  // Returning, the start row keeps Open examples beside its heading (in its
+  await startAction(page, 'Open examples');
+  await page.waitForFunction(() => /#\/workspace\/[^/]+$/.test(location.hash));
+  await page.getByRole('heading', {level: 1, name: 'Example packs'}).waitFor();
+  await page.locator('[data-testid="home-count"]').first().waitFor();
+  const firstSteps = page.getByTestId('first-steps');
+  await firstSteps.waitFor();
+  assert.deepEqual(await firstSteps.locator('[data-done]').evaluateAll(items => items.map(item => item.getAttribute('data-done'))), ['false', 'false']);
+  await noSideways(page, `${label} workspace home`);
+
+  // Returning: Continue first, each workspace once, the ways in as one row.
   await page.goto(url);
-  const rename = page.getByRole('button', {name: 'Rename First'});
-  await rename.click();
-  await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'animus-workspace-rename');
+  await page.getByRole('heading', {name: 'Continue'}).waitFor();
+  assert.deepEqual(await page.locator('.ui-continue-name').allInnerTexts(), ['Example packs', 'First'], 'the last opened first');
+  assert.equal(await page.locator('.ui-start-card').count(), 0, 'the cards fold away');
+  await page.getByRole('button', {name: 'Open First'}).click();
+  await page.waitForFunction(() => /#\/workspace\/[^/]+$/.test(location.hash));
+  await page.getByRole('heading', {level: 1, name: 'First'}).waitFor();
+  await page.goto(url);
+
+  // Rename from the row's menu: Escape keeps the name, Enter saves it.
+  await rowMenu(page, 'First', 'Rename');
+  const rename = page.getByRole('dialog', {name: 'Rename workspace'});
+  await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'continue-rename-name');
   await page.keyboard.press('Escape');
-  await page.waitForFunction(() => document.activeElement && document.activeElement.getAttribute('aria-label') === 'Rename First');
-  await rename.click();
-  await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'animus-workspace-rename');
-  await page.locator('#animus-workspace-rename').fill('Renamed');
+  await rename.waitFor({state: 'hidden'});
+  await rowMenu(page, 'First', 'Rename');
+  await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'continue-rename-name');
+  await page.locator('#continue-rename-name').fill('Renamed');
   await page.keyboard.press('Enter');
-  await page.getByRole('link', {name: 'Renamed'}).waitFor();
-  await page.waitForFunction(() => document.activeElement && document.activeElement.getAttribute('aria-label') === 'Rename Renamed');
+  await row(page, 'Renamed').waitFor();
 
-  // Delete asks first; Escape keeps it; Restore lasts until the tab closes.
-  await page.getByRole('button', {name: 'Delete Renamed'}).click();
-  await page.getByRole('alertdialog').waitFor();
+  // Duplicate; Delete asks first, Escape keeps it, Restore lasts until the tab closes.
+  await rowMenu(page, 'Renamed', 'Duplicate');
+  await row(page, 'Renamed copy').waitFor();
+  await rowMenu(page, 'Renamed copy', 'Delete workspace');
+  const confirm = page.getByRole('alertdialog');
+  await confirm.waitFor();
   await page.waitForFunction(() => document.activeElement && document.activeElement.closest('[role="alertdialog"]'));
   await page.keyboard.press('Escape');
-  await page.getByRole('alertdialog').waitFor({state: 'detached'});
-  await page.waitForFunction(() => document.activeElement && document.activeElement.getAttribute('aria-label') === 'Delete Renamed');
-  await page.getByRole('button', {name: 'Delete Renamed'}).click();
-  await page.getByRole('button', {name: 'Delete workspace'}).click();
-  await page.getByText('Deleted Renamed. Restore until you close the tab.', {exact: false}).waitFor();
-  await page.getByRole('button', {name: 'Restore Renamed'}).click();
-  await page.getByRole('link', {name: 'Renamed'}).waitFor();
-  await noSideways(page, `${label} workspace list`);
+  await confirm.waitFor({state: 'hidden'});
+  await row(page, 'Renamed copy').waitFor();
+  await rowMenu(page, 'Renamed copy', 'Delete workspace');
+  await confirm.getByRole('button', {name: 'Delete workspace'}).click();
+  await page.getByText('Deleted Renamed copy. You can restore it until you close this tab.', {exact: true}).waitFor();
+  assert.equal(await row(page, 'Renamed copy').count(), 0);
+  await page.getByRole('button', {name: 'Restore', exact: true}).click();
+  await row(page, 'Renamed copy').waitFor();
+  await noSideways(page, `${label} continue list`);
 
   // Routes to things that are not here name the cause and a way back.
   await page.goto(`${url}/#/workspace/nope`);
-  await page.locator('.animus-banner').getByText('There is no workspace "nope" in this browser.', {exact: false}).waitFor();
-  await page.locator('.animus-banner').getByRole('button', {name: 'Dismiss'}).click();
-  await page.locator('.animus-banner').waitFor({state: 'detached'});
-  await page.getByRole('link', {name: 'Example packs', exact: true}).click();
-  await page.getByRole('heading', {name: 'Try it in the browser'}).waitFor();
+  await page.getByText('There is no workspace "nope" in this browser.', {exact: false}).waitFor();
+  await page.goto(url);
+  await page.getByRole('button', {name: 'Open Example packs'}).click();
+  await page.waitForFunction(() => /#\/workspace\/[^/]+$/.test(location.hash));
   const workspace = /#\/workspace\/([^/?]+)/.exec(page.url())[1];
   await page.goto(`${url}/#/workspace/${workspace}/npc/${encodeURIComponent('no/such')}`);
-  await page.getByRole('heading', {name: 'NPCs: no/such is not in this workspace'}).waitFor();
-  await page.getByRole('link', {name: 'Open the workspace overview'}).click();
-  await page.getByRole('heading', {name: 'Try it in the browser'}).waitFor();
+  await page.getByText('NPC not in this workspace', {exact: true}).waitFor();
+  await page.getByRole('button', {name: 'Home', exact: true}).click();
+  await page.getByRole('heading', {level: 1, name: 'Example packs'}).waitFor();
 
-  // The export fixture as a data folder.
-  await page.goto(url);
-  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
-  const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', {name: 'Open folder'}).first().click();
-  await (await chooser).setFiles(exportFolder);
-  await page.getByRole('heading', {name: '1 document needs repair'}).waitFor();
-  const side = await sidebar(page);
-  for (const text of ['Greeter', 'Baker', 'shop:bakery', 'shop:counter', 'greeter:greeter', 'shop:keeper']) {
-    await side.getByText(text, {exact: true}).first().waitFor();
-  }
-  assert.equal(await side.locator('.animus-badge.is-error').count(), 1);
-  // Arrow keys move between the documents in the list.
-  await side.locator('.animus-tree-item').first().focus();
-  await page.keyboard.press('ArrowDown');
-  assert.match(await page.evaluate(() => document.activeElement.textContent), /Greeter/);
-  await page.keyboard.press('Escape');
-  await page.getByRole('link', {name: 'NPCs: examples/broken'}).click();
-  await page.locator('.animus-diagnostics').getByText('UUID is required').first().waitFor();
-  // The document title is the page's h1, and its path wraps.
-  await page.getByRole('heading', {level: 1, name: 'Broken'}).waitFor();
-  // View tabs: one tab stop, arrows move and select.
-  const tabs = page.getByRole('tablist', {name: 'View'});
-  assert.equal(await tabs.locator('[tabindex="0"]').count(), 1);
-  await page.getByRole('tab', {name: 'Visual'}).focus();
-  await page.keyboard.press('ArrowRight');
-  await page.waitForFunction(() => location.hash.endsWith('view=preview'));
-  await page.keyboard.press('ArrowRight');
-  await page.waitForFunction(() => location.hash.endsWith('view=code'));
-  await page.locator('[role="tab"][aria-selected="true"]', {hasText: 'Code'}).waitFor();
-  assert.equal(await page.getByRole('tabpanel').getAttribute('aria-labelledby'), await page.getByRole('tab', {name: 'Code'}).getAttribute('id'));
-  await page.locator('.animus-code textarea').waitFor();
-  // A broken draft says so in the header instead of claiming the document is valid.
-  await page.locator('.animus-code textarea').fill('{"broken": ');
-  await page.getByText('The Code draft has a JSON error and is not applied.', {exact: true}).waitFor();
-  await page.getByRole('button', {name: 'Discard'}).click();
-  await page.getByRole('tab', {name: 'Split'}).click();
-  // An NPC's Split view puts the 3D preview beside the code.
-  await page.locator('.animus-views.is-split .animus-npc-preview').waitFor();
-  await page.locator('.animus-views.is-split .animus-code').waitFor();
-  await openFromSidebar(page, 'shop:counter');
-  await page.getByRole('tab', {name: 'Preview'}).click();
-  await page.locator('.animus-chest-slot').first().waitFor();
-  assert.equal(await page.locator('.animus-chest-slot').count(), 27);
-  await noSideways(page, `${label} document`);
+  // The first steps hide for good.
+  await page.getByRole('button', {name: 'Hide first steps'}).click();
+  await page.getByTestId('first-steps').waitFor({state: 'detached'});
   await page.reload();
-  await page.getByRole('heading', {name: 'Bakery counter'}).or(page.locator('.animus-chest')).first().waitFor();
+  await page.locator('[data-testid="home-count"]').first().waitFor();
+  assert.equal(await page.getByTestId('first-steps').count(), 0, 'the first steps stay hidden');
 
-  // Files from an older Animus are upgraded as they open, and the overview says which.
-  await page.goto(url);
-  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
-  const oldChooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', {name: 'Open folder'}).first().click();
-  await (await oldChooser).setFiles(upgradesFolder);
-  await page.getByText('Upgraded 3 files to schemaVersion 2.').first().waitFor();
+  // The export fixture as a data folder: Home counts, and the broken NPC needs attention.
+  await openFolder(page, exportFolder);
+  await page.getByRole('heading', {name: 'Needs attention (1)'}).waitFor();
+  const attention = page.locator('.ui-attention-row');
+  assert.equal(await attention.count(), 1);
+  assert.match(await attention.innerText(), /Broken/);
+  const cards = await page.locator('.ui-home-card').evaluateAll(found => found.map(card => [card.getAttribute('data-job'), card.querySelector('[data-testid="home-count"]').textContent]));
+  assert.deepEqual(Object.fromEntries(cards).npcs, '3', `${label}: NPC count on Home`);
+  await attention.click();
+  await page.waitForFunction(() => decodeURIComponent(location.hash).includes('/npc/examples/broken'));
+  await page.getByRole('heading', {level: 1, name: 'Broken'}).waitFor();
+  await noSideways(page, `${label} document`);
+
+  // Files from an older Animus are upgraded as they open; Advanced lists them.
+  await openFolder(page, upgradesFolder);
+  await page.locator('[data-testid="home-count"]').first().waitFor();
+  assert.equal(await page.locator('[data-testid="upgraded-files"]').count(), 0, 'Simple leaves the file list out');
+  await setMode(page, 'advanced');
   const upgraded = page.locator('[data-testid="upgraded-files"]');
-  await upgraded.getByText('3 files were upgraded to schemaVersion 2').waitFor();
+  await upgraded.getByText('3 files upgraded to schemaVersion 2').waitFor();
   await upgraded.locator('summary').click();
   for (const file of ['groups/guards.json', 'npcs/town/citizens-10.json', 'npcs/town/citizens-9.json']) await upgraded.getByText(file, {exact: true}).waitFor();
   await noSideways(page, `${label} upgraded folder`);
-  await openFromSidebar(page, 'Guard');
-  await page.getByRole('tab', {name: 'Code'}).click();
-  const code = await page.locator('.animus-code textarea').inputValue();
-  assert.match(code, /"schemaVersion": 2,/);
-  assert.ok(!code.includes('reviewAccepted'), 'the review flag is gone');
+  await setMode(page, 'simple');
   assert.deepEqual(errors, []);
   await context.close();
 }

@@ -1,0 +1,20 @@
+{
+  "name": "Bellringer",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000703",
+  "traits": {
+    "type": "VILLAGER",
+    "location": {
+      "world": "world",
+      "x": 6.5,
+      "y": 64,
+      "z": 0.5
+    },
+    "hologramtrait": {
+      "lineHeight": 0.3,
+      "lines": {
+        "0": "Rings at noon",
+        "1": "&d&nBells"
+      }
+    }
+  }
+}

@@ -171,6 +171,24 @@ void main() {
       expect(undone.history.last.undoOf, 'chg_00000001');
     });
 
+    test('should retire a change set held after a failed answer once the same documents applied', () {
+      final PendingChange held = PendingChange(idempotencyKey: 'key-held000000000000', documents: const <String>['npc:town/guard', 'npc:town/baker'], sentAt: DateTime.utc(2026));
+      final PendingChange other = PendingChange(idempotencyKey: 'key-other00000000000', documents: const <String>['npc:town/smith'], sentAt: DateTime.utc(2026));
+      final PendingChange sent = PendingChange(idempotencyKey: 'key-sent000000000000', documents: const <String>['npc:town/guard'], sentAt: DateTime.utc(2026));
+      final ServerBinding binding = ServerBinding(serverId: 'abc', fingerprint: 'sha256:x', pending: <PendingChange>[held, other, sent]);
+      final ChangeApplied applied = ChangeOutcome.parse(<String, Object?>{
+        'status': 'applied',
+        'changeId': 'chg_00000004',
+        'idempotencyKey': 'key-sent000000000000',
+        'documents': <Object?>[
+          <String, Object?>{'kind': 'npc', 'id': 'town/guard', 'revision': 2, 'hash': 'sha256:ee'},
+        ],
+      })! as ChangeApplied;
+      final ServerBinding next = recordApplied(binding, applied, const <String, ({String path, Object? source})>{});
+      expect(next.pending.map((PendingChange change) => change.idempotencyKey), <String>['key-other00000000000'],
+          reason: 'a set that shares a document with one that applied never wrote; one on other documents waits on');
+    });
+
     test('should drop the old base of a moved document', () {
       const ServerBinding binding = ServerBinding(
         serverId: 'abc',

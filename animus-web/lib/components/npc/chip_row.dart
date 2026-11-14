@@ -8,7 +8,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
-import '../gui/gui_fields.dart';
+import '../../ui/icon_button.dart';
 
 class ChipItem {
   const ChipItem(this.id, {this.label, this.onOpen, this.problem});
@@ -76,7 +76,7 @@ class _ChipRowState extends State<ChipRow> {
     final Map<String, void Function(web.Event)> keyEvents = <String, void Function(web.Event)>{if (movable) 'keydown': (web.Event event) => _key(event, index)};
     return dom.li(
       key: ValueKey<String>('chip:${item.id}'),
-      classes: 'animus-npc-tag animus-chip${item.problem != null ? ' is-warning' : ''}${_dragging == index ? ' is-dragging' : ''}',
+      classes: 'animus-chip${item.problem != null ? ' is-warning' : ''}${_dragging == index ? ' is-dragging' : ''}',
       attributes: <String, String>{
         'data-${component.attribute}': item.id,
         if (movable) 'draggable': 'true',
@@ -114,10 +114,9 @@ class _ChipRowState extends State<ChipRow> {
             <Widget>[Component.text(text)],
           ),
         if (component.onRemove != null)
-          GuiIconButton(
+          AppIconButton(
             icon: ArcaneIcon.x(size: IconSize.sm),
             label: 'Remove ${component.noun} $text',
-            size: ButtonSize.icon,
             onPressed: () => component.onRemove!(index),
           ),
       ],

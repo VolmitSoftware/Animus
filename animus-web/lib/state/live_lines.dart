@@ -2,12 +2,13 @@ import '../logic/change_sets.dart';
 import '../logic/plural.dart';
 import '../services/server/error_copy.dart';
 
-/// The live log line after an apply or undo, naming the moves in it.
+/// The live log line after an apply or undo, naming the moves in it. The
+/// change id stays in Review's history.
 String appliedLine(ChangeApplied applied, {required bool undo}) {
   final int count = applied.documents.length;
   final int moved = applied.documents.where((AppliedDocument document) => document.from != null).length;
   final String what = '${countOf(count, 'document')}${moved == 0 ? '' : ', $moved moved'}';
-  return '${undo ? 'Undid' : 'Applied'} $what (change ${applied.changeId}).';
+  return '${undo ? 'Undid' : 'Applied'} $what.';
 }
 
 /// The live log line after a server validation.
@@ -35,7 +36,22 @@ String resyncLine({required int refreshed, required int stale}) {
   if (refreshed == 0 && stale == 0) return 'Resynced with the server; nothing changed while disconnected.';
   final List<String> parts = <String>[
     if (refreshed > 0) 'Resynced with the server: ${countOf(refreshed, 'document')} refreshed.' else 'Resynced with the server.',
-    if (stale > 0) '${countOf(stale, 'draft')} also changed on the server; merge ${stale == 1 ? 'it' : 'them'} before applying.',
+    if (stale > 0) '${countOf(stale, 'change')} ${stale == 1 ? 'conflicts' : 'conflict'} with the server; review before applying.',
   ];
   return parts.join(' ');
+}
+
+/// The live log line after Reload read the catalog again: documents new on
+/// the server, gone from it, and clean copies read again; drafts the server
+/// changed too need a merge.
+String reloadLine({required int added, required int removed, required int refreshed, required int stale}) {
+  final List<String> found = <String>[
+    if (added > 0) '$added new',
+    if (removed > 0) '$removed removed',
+    if (refreshed > 0) '$refreshed refreshed',
+  ];
+  return <String>[
+    if (found.isEmpty) 'Reloaded the catalog; nothing changed.' else 'Reloaded the catalog: ${found.join(', ')}.',
+    if (stale > 0) '${countOf(stale, 'change')} ${stale == 1 ? 'conflicts' : 'conflict'} with the server; review before applying.',
+  ].join(' ');
 }

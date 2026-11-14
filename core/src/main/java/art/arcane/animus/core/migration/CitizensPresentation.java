@@ -5,9 +5,11 @@ import art.arcane.animus.core.npc.NpcAppearance;
 import art.arcane.animus.core.npc.NpcInventory;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.text.RichText;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
@@ -186,7 +188,9 @@ final class CitizensPresentation {
 
     /**
      * Citizens keeps hologram lines bottom-up: line 0 sits just above the name. Animus lists them top-down, so the
-     * order is reversed. Margins and the first line's renderer settings become the hologram's own.
+     * order is reversed. Margins and the first line's renderer settings become the hologram's own. Citizens draws
+     * every line as its own entity, so each starts unstyled; lines sharing one Animus display carry a style down, so a
+     * line that would take one on from the lines above starts with {@code &r}.
      */
     private void hologram() {
         JsonObject hologram = object(traits.get("hologramtrait"));
@@ -198,6 +202,7 @@ final class CitizensPresentation {
         JsonObject style = new JsonObject();
         JsonObject first = null;
         List<JsonElement> shown = new ArrayList<>();
+        List<String> shownPaths = new ArrayList<>();
         for (Map.Entry<String, JsonElement> entry : entries) {
             String path = base + "/lines/" + CitizensBehaviors.pointer(entry.getKey());
             String line = text(entry.getValue());
@@ -236,11 +241,7 @@ final class CitizensPresentation {
             if (lines.size() == NpcAppearance.MAX_LINES) { warnings.add(base + "/lines: only the bottom " + NpcAppearance.MAX_LINES + " lines are shown; move the others into fewer lines"); break; }
             String cleaned = line.codePoints().map((int point) -> Character.isISOControl(point) ? ' ' : point)
                     .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append).toString();
-            if (cleaned.length() > NpcAppearance.MAX_TEXT) {
-                int end = Character.isHighSurrogate(cleaned.charAt(NpcAppearance.MAX_TEXT - 1)) ? NpcAppearance.MAX_TEXT - 1 : NpcAppearance.MAX_TEXT;
-                cleaned = cleaned.substring(0, end);
-                warnings.add(path + ": shortened to " + NpcAppearance.MAX_TEXT + " characters; shorten the line in the editor");
-            }
+            cleaned = fit(cleaned, path);
             JsonElement shownLine;
             if (top != 0 || bottom != 0) {
                 JsonObject object = new JsonObject();
@@ -250,6 +251,7 @@ final class CitizensPresentation {
                 shownLine = object;
             } else shownLine = new com.google.gson.JsonPrimitive(cleaned);
             shown.add(shownLine);
+            shownPaths.add(path);
             lines.add(cleaned);
             converted.add(linePath);
         }
@@ -298,12 +300,53 @@ final class CitizensPresentation {
         if (hologram.has("default_renderer")) notes.put(base + "/default_renderer", new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW,
                 "Animus draws every hologram line as text"));
         if (lines.isEmpty()) return;
+        boolean ownDisplays = style.has("lineHeight") || shown.stream().anyMatch(JsonElement::isJsonObject);
         JsonArray ordered = new JsonArray();
-        for (int index = shown.size() - 1; index >= 0; index--) ordered.add(shown.get(index));
+        List<String> above = new ArrayList<>();
+        for (int index = shown.size() - 1; index >= 0; index--) {
+            JsonElement line = shown.get(index);
+            if (!ownDisplays) {
+                String text = line.getAsString();
+                if (inherits(above, text)) line = new JsonPrimitive(text = fit("&r" + text, shownPaths.get(index)));
+                above.add(text);
+            }
+            ordered.add(line);
+        }
         JsonObject result = new JsonObject();
         result.add("lines", ordered);
         for (Map.Entry<String, JsonElement> entry : style.entrySet()) result.add(entry.getKey(), entry.getValue());
         fields.add("hologram", result);
+    }
+
+    /** Whether {@code line} under {@code above} in one text display draws differently from the same line on its own. */
+    private static boolean inherits(List<String> above, String line) {
+        if (above.isEmpty()) return false;
+        StringBuilder joined = new StringBuilder();
+        for (String text : above) joined.append(RichText.colorize(text)).append('\n');
+        return !glyphs(joined + RichText.colorize(line)).equals(glyphs(joined + RichText.colorize("&r" + line)));
+    }
+
+    /**
+     * Every drawn character of {@code coloured} with its style, so two texts compare by what they show: a text
+     * display's default colour is white, so {@code &f} and no colour draw alike.
+     */
+    private static List<RichText.Run> glyphs(String coloured) {
+        List<RichText.Run> glyphs = new ArrayList<>();
+        for (RichText.Run run : RichText.runs(coloured)) {
+            OptionalInt rgb = OptionalInt.of(run.rgb().orElse(0xFFFFFF));
+            run.text().codePoints().forEach((int point) -> glyphs.add(new RichText.Run(Character.toString(point), rgb, run.bold(), run.italic(),
+                    run.underlined(), run.strikethrough(), run.obfuscated())));
+        }
+        return glyphs;
+    }
+
+    /** {@code text} cut to the longest hologram line, warning once for {@code path}. */
+    private String fit(String text, String path) {
+        if (text.length() <= NpcAppearance.MAX_TEXT) return text;
+        int end = Character.isHighSurrogate(text.charAt(NpcAppearance.MAX_TEXT - 1)) ? NpcAppearance.MAX_TEXT - 1 : NpcAppearance.MAX_TEXT;
+        String warning = path + ": shortened to " + NpcAppearance.MAX_TEXT + " characters; shorten the line in the editor";
+        if (!warnings.contains(warning)) warnings.add(warning);
+        return text.substring(0, end);
     }
 
     private static int firstIndex(List<Map.Entry<String, JsonElement>> entries) {

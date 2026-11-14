@@ -48,6 +48,12 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
     public enum Mode {
         BUY, SELL, TRADE;
         public String key() { return name().toLowerCase(Locale.ROOT); }
+        /** The mode a shop file names, read as {@link #folded} reads it. */
+        public static Optional<Mode> of(String text) {
+            String key = folded(text);
+            for (Mode mode : values()) if (mode.key().equals(key)) return Optional.of(mode);
+            return Optional.empty();
+        }
     }
     /** Which window a shop opens: the villager trading screen or the chest window. */
     public enum Style {
@@ -58,7 +64,29 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
             return Optional.empty();
         }
     }
-    public enum Type { STATIC, BUY, SELL, TRADE, COMMAND }
+    public enum Type {
+        STATIC, BUY, SELL, TRADE, COMMAND;
+        public String key() { return name().toLowerCase(Locale.ROOT); }
+        /** The entry type a shop file names, read as {@link #folded} reads it. */
+        public static Optional<Type> of(String text) {
+            String key = folded(text);
+            for (Type type : values()) if (type.key().equals(key)) return Optional.of(type);
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Shop words in any ASCII case: only A-Z become a-z, so {@code Sell} names sell while {@code ſell}, {@code statıc} and
+     * full-width letters name nothing. Every reader of a shop's types and modes goes through this one rule.
+     */
+    static String folded(String text) {
+        StringBuilder key = new StringBuilder(text.length());
+        for (int index = 0; index < text.length(); index++) {
+            char letter = text.charAt(index);
+            key.append(letter >= 'A' && letter <= 'Z' ? (char) (letter + ('a' - 'A')) : letter);
+        }
+        return key.toString();
+    }
     public enum CommandSource { CONSOLE, PLAYER }
     public record Goods(NpcItem item, int amount) {}
     public record ShopCommand(String command, CommandSource source) {}
@@ -269,12 +297,13 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
             Type type = Type.STATIC;
             Optional<String> typed = string(object, "type", path, true);
             if (typed.isPresent()) {
-                try { type = Type.valueOf(typed.get().toUpperCase(Locale.ROOT)); }
-                catch (IllegalArgumentException unknown) { problem(path + ".type", "expected static, buy, sell, trade or command"); }
+                Optional<Type> named = Type.of(typed.get());
+                if (named.isPresent()) type = named.get();
+                else problem(path + ".type", "expected static, buy, sell, trade or command");
             }
             if (type == Type.SELL && mode != Mode.SELL) problem(path + ".type", "sell entries belong in a sell grid");
             if (type == Type.TRADE && mode != Mode.TRADE) problem(path + ".type", "trade entries belong in a trade grid");
-            if ((type == Type.BUY || type == Type.COMMAND) && mode != Mode.BUY) problem(path + ".type", type.name().toLowerCase(Locale.ROOT) + " entries belong in a buy grid");
+            if ((type == Type.BUY || type == Type.COMMAND) && mode != Mode.BUY) problem(path + ".type", type.key() + " entries belong in a buy grid");
             NpcItem item = NpcItem.parse(object.get("item"), path + ".item", problems).orElse(null);
             Display display = display(object.get("display"), path + ".display");
             BigDecimal price = object.has("price") ? price(object.get("price"), path + ".price") : BigDecimal.ZERO;
@@ -435,9 +464,9 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
         }
 
         Optional<Mode> mode(JsonElement value, String path) {
-            if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) { problem(path, "expected buy, sell or trade"); return Optional.empty(); }
-            try { return Optional.of(Mode.valueOf(value.getAsString().toUpperCase(Locale.ROOT))); }
-            catch (IllegalArgumentException unknown) { problem(path, "expected buy, sell or trade"); return Optional.empty(); }
+            Optional<Mode> mode = value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString() ? Mode.of(value.getAsString()) : Optional.empty();
+            if (mode.isEmpty()) problem(path, "expected buy, sell or trade");
+            return mode;
         }
 
         Optional<MatchRule> match(JsonObject object, String path) {

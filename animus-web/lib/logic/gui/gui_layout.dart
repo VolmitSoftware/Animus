@@ -43,7 +43,15 @@ final class ChestCell {
     if (asString(icon['type']) == 'playerHead') return 'minecraft:player_head';
     return asString(icon['item']);
   }
+
+  /// This cell drawing [icon] instead, dimmed when [hidden].
+  ChestCell copyWith({JsonMap? icon, bool? hidden}) =>
+      ChestCell(slot: slot, source: source, icon: icon ?? this.icon, definition: definition, maskChar: maskChar, hidden: hidden ?? this.hidden, label: label);
 }
+
+/// A slot as people count them, from 1 at the top left; documents store it
+/// from 0.
+String slotLabel(int slot) => 'Slot ${slot + 1}';
 
 final class ChestLayout {
   const ChestLayout({required this.width, required this.rows, required this.title, required this.cells});

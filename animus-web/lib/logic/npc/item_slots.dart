@@ -7,6 +7,7 @@ import 'dart:math' as math;
 
 import '../../mc/npc/npc_look.dart';
 import '../gui/gui_json.dart';
+import 'npc_appearance.dart' show bodyLabel;
 
 /// The largest stack the schema allows.
 const int maxStack = 99;
@@ -90,17 +91,17 @@ final class SlotPlace {
   final int row;
 }
 
-/// The player inventory's arrangement: armor down the left, mount slots
-/// beside it, the off hand and main hand along the bottom.
+/// Two columns of named slots: armor down the left, the hands and the mount
+/// slots beside it, so no part of the grid stands empty on a player.
 const Map<NpcSlot, (int, int)> _places = <NpcSlot, (int, int)>{
   NpcSlot.head: (0, 0),
   NpcSlot.chest: (0, 1),
   NpcSlot.legs: (0, 2),
   NpcSlot.feet: (0, 3),
-  NpcSlot.saddle: (1, 0),
-  NpcSlot.body: (1, 1),
-  NpcSlot.offHand: (1, 3),
-  NpcSlot.mainHand: (2, 3),
+  NpcSlot.mainHand: (1, 0),
+  NpcSlot.offHand: (1, 1),
+  NpcSlot.saddle: (1, 2),
+  NpcSlot.body: (1, 3),
 };
 
 /// Slots the body draws, plus any set slot it does not, in slot order.
@@ -121,6 +122,16 @@ List<NpcSlot> unsupportedEquipmentSlots(String bodyType, JsonMap equipment) {
   ];
 }
 
+/// The line for a body that shows no equipment.
+String noEquipmentLine(String bodyType) => '${bodyLabel(bodyType)} bodies show no equipment.';
+
+/// The warning for set [slots] a body of [bodyType] does not show.
+String unshownSlotsLine(String bodyType, List<NpcSlot> slots) =>
+    '${bodyLabel(bodyType)} bodies do not show ${slots.map((NpcSlot slot) => slotLabel(slot).toLowerCase()).join(', ')}. Clear ${slots.length == 1 ? 'it' : 'them'} or change the body type.';
+
+/// The warning on one set slot a body of [bodyType] does not show.
+String unshownSlotLine(String bodyType) => '${bodyLabel(bodyType)} bodies do not show this slot. Clear it or change the body type.';
+
 /// Grid places for [shown], with columns and rows nothing uses closed up.
 List<SlotPlace> equipmentPlaces(List<NpcSlot> shown) {
   final List<int> columns = <int>{for (final NpcSlot slot in shown) _places[slot]!.$1}.toList()..sort();
@@ -128,7 +139,8 @@ List<SlotPlace> equipmentPlaces(List<NpcSlot> shown) {
   final List<SlotPlace> places = <SlotPlace>[
     for (final NpcSlot slot in shown) SlotPlace(slot, columns.indexOf(_places[slot]!.$1), rows.indexOf(_places[slot]!.$2)),
   ];
-  return places..sort((SlotPlace a, SlotPlace b) => a.row != b.row ? a.row - b.row : a.column - b.column);
+  // Column by column: the armor, then the hands, as the captions read.
+  return places..sort((SlotPlace a, SlotPlace b) => a.column != b.column ? a.column - b.column : a.row - b.row);
 }
 
 /// [equipment] with [item] in [slot]; null once nothing is left.
@@ -155,7 +167,7 @@ JsonMap swapEquipment(JsonMap equipment, NpcSlot from, NpcSlot to) {
 
 /// What each slot holds, for the editor's help line.
 const Map<NpcSlot, String> slotHelp = <NpcSlot, String>{
-  NpcSlot.mainHand: 'Right hand. Used by melee.fromEquipment.',
+  NpcSlot.mainHand: 'Held in the right hand. Combat can deal its damage.',
   NpcSlot.offHand: 'Held in the left hand.',
   NpcSlot.head: 'Helmet, head or block.',
   NpcSlot.chest: 'Chestplate or elytra.',

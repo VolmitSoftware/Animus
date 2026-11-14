@@ -1,32 +1,38 @@
-// Offline editing at desktop and phone widths: a new blank workspace, one
-// document of every kind made from its guided step, duplicate and delete
-// with undo, a fix for a broken field, the NPC playground (skin, rig and a
-// playing animation), behavior dry runs (an answered prompt, a server-only
-// step), export, the starter workspace, persistence across a reload, and a
-// push to the fake server after pairing (a pulled document changed here
-// shows as a conflict and replaces the server copy only when chosen). No
-// console errors and no sideways scrolling. The shell parts: the documents
-// drawer on phones, the command palette, Undo and Redo with their shortcuts
-// and notices, another tab following an edit, and the banner when the browser
-// keeps no IndexedDB.
+// Offline editing at desktop and phone widths: a blank workspace from the
+// start page, one document of every kind made on the New page (the Kind
+// picker, then each kind's form), the plain names in the lists, duplicate
+// and delete with undo, another tab following an edit, Search opening a
+// document, the Test pane (a dialogue answer, a server-only step), export,
+// persistence across a reload, the example workspace, and
+// Send to server against the fake server: the empty state with no server,
+// then after pairing a pull (Advanced), an edit here, the automatic compare,
+// "Use mine" for the changed document, a replace confirmation that Escape
+// cancels, and Apply. Without IndexedDB the editor says so. No console
+// errors and no sideways scrolling.
 //
-//   python3 tool/serve_site.py --port 8098
-//   dart run tool/fake_server.dart --data=test/fixtures/npc_browser
+//   python3 tool/serve_site.py --port <site port>
+//   dart run tool/fake_server.dart --port=<fake port> --origin=http://127.0.0.1:<site port> --data=test/fixtures/npc_browser
 //   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
+//     ANIMUS_WEB_URL=http://127.0.0.1:<site port> ANIMUS_FAKE_URL=http://127.0.0.1:<fake port> \
 //     ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/offline_editor_browser.cjs
-//
-// ANIMUS_WEB_URL and ANIMUS_FAKE_URL point it elsewhere.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const {closeDrawer, isCompact, sidebar, topbarAction} = require('./support/shell.cjs');
-const {chooseAndWait} = require('./support/select.cjs');
+const {closeDrawer, documentHrefs, isCompact, openFromSidebar, pickOption, saveState, setMode, showView, topbarAction, blankWorkspace, startAction} = require('./support/shell.cjs');
 
 const site = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })()).replace(/\/$/, '');
 const fake = (process.env.ANIMUS_FAKE_URL || (() => { throw new Error('Set ANIMUS_FAKE_URL to your own fake server, never :9797'); })()).replace(/\/$/, '');
 const shots = process.env.ANIMUS_SCREENSHOTS;
+
+/// Runs the Test from start [label]: picked in the Starts dropdown when the
+/// behavior has more than one, then Run.
+async function pickStart(page, pane, label) {
+  const starts = pane.getByRole('combobox', {name: 'Starts'});
+  if (await starts.count()) await pickOption(page, starts, label);
+  await pane.getByRole('button', {name: 'Run', exact: true}).click();
+}
 
 async function control(route, body) {
   const response = await fetch(`${fake}/__fake/${route}`, {
@@ -63,35 +69,51 @@ function workspaceId(page) {
   return decodeURIComponent(match[1]);
 }
 
-/// The dropdown inside the field labelled [text] (a label wrapping a
-/// dropdown also holds its shown text, so getByLabel cannot match it exactly).
-function select(page, text) {
-  return page.locator('label.animus-field-control', {has: page.locator('.animus-field-label', {hasText: new RegExp(`^${text}$`)})}).locator('button[role="combobox"]');
-}
-
 async function go(page, hash) {
   await page.goto(`${site}/${hash}`);
 }
 
-/// Opens a kind's guided step, runs [fill], creates it and waits for its page.
-async function create(page, workspace, kind, title, fill) {
+/** Opens a kind's form, runs [fill], creates it and waits for its page. */
+async function create(page, workspace, kind, noun, fill) {
   await go(page, `#/workspace/${encodeURIComponent(workspace)}/new/${kind}`);
-  await page.getByRole('heading', {name: `New ${title}`}).waitFor();
+  await page.getByRole('heading', {name: `New ${noun}`}).waitFor();
   if (fill) await fill();
-  await page.getByRole('button', {name: `Create ${title}`}).click();
+  // Every New ends in the same Create, as the lists' New dialogs do.
+  await page.getByRole('button', {name: 'Create', exact: true}).click();
   await page.waitForFunction((wire) => location.hash.includes(`/${wire}/`) && !location.hash.includes('/new'), kind);
-  await page.locator('.animus-document-header').waitFor();
-  assert.equal(await page.locator('.animus-diagnostics li.is-error').count(), 0, `${kind} has errors`);
+  await page.locator('.ui-page-header').waitFor();
+  assert.equal(await page.locator('.ui-problems li.is-error').count(), 0, `${kind} has errors`);
+}
+
+/** Picks the option whose name starts with [label]: options with a line under them are named by both. */
+async function pickLead(page, trigger, label) {
+  await trigger.click();
+  const list = page.locator(`[id="${await trigger.getAttribute('aria-controls')}"]`);
+  const lead = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  await list.getByRole('option', {name: new RegExp(`^${lead}(?![a-z])`)}).first().click();
+}
+
+/** Opens a More section of the form when it is closed. */
+async function more(page, title = 'More') {
+  const section = page.locator('details', {has: page.locator(':scope > summary', {hasText: title})}).first();
+  if (!(await section.evaluate((details) => details.open))) await section.locator(':scope > summary').click();
 }
 
 async function code(page, transform) {
-  await page.getByRole('tab', {name: 'Code'}).click();
+  await showView(page, 'code');
   const area = page.locator('.animus-code textarea');
   await area.waitFor();
   const json = JSON.parse(await area.inputValue());
   await area.fill(JSON.stringify(transform(json), null, 2));
-  await page.getByRole('button', {name: 'Apply to draft'}).click();
-  await page.getByRole('button', {name: 'Apply to draft'}).and(page.locator('[disabled]')).waitFor();
+  await page.getByRole('button', {name: 'Use this code'}).click();
+  await page.getByRole('button', {name: 'Use this code'}).and(page.locator('[disabled]')).waitFor();
+}
+
+async function loadSkin(page, skinFile) {
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', {name: 'Choose PNG'}).click();
+  await (await chooser).setFiles(skinFile);
+  await page.getByRole('img', {name: 'Loaded skin face'}).waitFor();
 }
 
 async function run(browser, viewport, label, skinFile) {
@@ -101,193 +123,130 @@ async function run(browser, viewport, label, skinFile) {
   page.setDefaultTimeout(15000);
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  // The brand lane ships the mark asset; until then its 404 is expected.
   page.on('console', (message) => { if (message.type() === 'error') errors.push(`${message.text()} (${message.location().url})`); });
 
-  // A blank, named workspace lands on the New page.
   await go(page, '');
-  await page.getByRole('heading', {name: 'Start a workspace'}).waitFor();
-  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
-  await shot(page, label, '01-home');
-  await page.getByLabel('Workspace name').fill('Sketchbook');
-  await page.getByRole('button', {name: 'Create blank workspace'}).click();
-  await page.getByRole('heading', {name: 'New document'}).waitFor();
+  await blankWorkspace(page, 'Sketchbook');
   const workspace = workspaceId(page);
-  await shot(page, label, '02-new-page');
+  const base = `#/workspace/${encodeURIComponent(workspace)}`;
 
-  // NPC: name, body, skin PNG, position and a behavior from a template.
+  // With no kind in the address the page asks for one.
+  await go(page, `${base}/new`);
+  await page.getByRole('heading', {name: 'New document', exact: true}).waitFor();
+  await shot(page, label, '01-new-kind');
+  await pickLead(page, page.getByRole('combobox', {name: 'Kind'}), 'NPC');
+  await page.getByRole('heading', {name: 'New NPC'}).waitFor();
+
+  // NPC: name, folder, a skin PNG, position and a behavior from a template.
   await create(page, workspace, 'npc', 'NPC', async () => {
     await page.getByLabel('Name', {exact: true}).fill('&6Old Tom');
+    await page.getByRole('group', {name: 'Skin'}).getByRole('button', {name: 'PNG file'}).click();
+    await loadSkin(page, skinFile);
+    await pickLead(page, page.getByRole('combobox', {name: 'Behavior'}), 'New: Dialogue');
+    await more(page);
     await page.getByLabel('Folder', {exact: true}).fill('town');
-    await page.getByRole('radio', {name: /PNG file/}).click();
-    const chooser = page.waitForEvent('filechooser');
-    await page.getByRole('button', {name: 'Choose skin PNG'}).click();
-    await (await chooser).setFiles(skinFile);
-    await page.getByRole('img', {name: 'Loaded skin face'}).waitFor();
     await page.getByLabel('X', {exact: true}).fill('12');
-    await chooseAndWait(select(page, 'Behavior'), 'new:dialogue');
-    await shot(page, label, '03-new-npc');
+    await shot(page, label, '02-new-npc');
   });
   assert.match(decodeURIComponent(page.url()), /\/npc\/town\/old-tom/);
-  await (await sidebar(page)).getByText('sketchbook:old-tom-dialogue', {exact: false}).first().waitFor();
 
-  // Every other kind from its guided step.
+  // Every other kind from its form.
   await create(page, workspace, 'behavior', 'behavior', async () => {
-    await page.getByRole('radio', {name: /^Shop/}).click();
-    await chooseAndWait(select(page, 'Give to NPC'), 'town/old-tom');
+    await pickLead(page, page.getByRole('combobox', {name: 'Start from'}), 'Shop');
+    await pickLead(page, page.getByRole('combobox', {name: 'Give to NPC'}), 'Old Tom');
   });
+  // The Advanced kinds are made in Advanced; Simple neither lists nor opens them.
+  await setMode(page, 'advanced');
   await create(page, workspace, 'pack', 'pack', async () => page.getByLabel('Name', {exact: true}).fill('Town pack'));
-  await create(page, workspace, 'route', 'route', async () => page.getByLabel('Name', {exact: true}).fill('Market loop'));
-  await create(page, workspace, 'shop', 'shop', async () => page.getByLabel('Title', {exact: true}).fill('&6Market'));
+  await create(page, workspace, 'route', 'route', async () => {
+    await page.getByLabel('Name', {exact: true}).fill('Market loop');
+    await page.getByRole('group', {name: 'Moves by'}).getByRole('button', {name: 'Swimming'}).click();
+  });
+  await create(page, workspace, 'shop', 'shop', async () => {
+    await page.getByLabel('Title', {exact: true}).fill('&6Market');
+    await pickLead(page, page.getByRole('combobox', {name: 'Start from'}), 'Villager trades');
+  });
+  await create(page, workspace, 'quest', 'quest', async () => page.getByLabel('Title', {exact: true}).fill('Bread run'));
   await create(page, workspace, 'inventory', 'chest GUI', async () => page.getByLabel('Title', {exact: true}).fill('Board'));
   await create(page, workspace, 'menu', 'menu', async () => page.getByLabel('Title', {exact: true}).fill('Hub'));
   await create(page, workspace, 'hologram', 'hologram', async () => page.getByLabel('First line', {exact: true}).fill('&aWelcome'));
   await create(page, workspace, 'rig', 'rig', async () => page.getByLabel('Name', {exact: true}).fill('Golem'));
   await create(page, workspace, 'animation', 'animation', async () => {
     await page.getByLabel('Name', {exact: true}).fill('wave');
-    await page.getByRole('radio', {name: /^Wave/}).click();
+    await page.getByRole('group', {name: 'Motion'}).getByRole('button', {name: 'Wave'}).click();
   });
-  await create(page, workspace, 'skin', 'skin', async () => {
-    const chooser = page.waitForEvent('filechooser');
-    await page.getByRole('button', {name: 'Choose skin PNG'}).click();
-    await (await chooser).setFiles(skinFile);
-    await page.getByRole('img', {name: 'Loaded skin face'}).waitFor();
-  });
+  await create(page, workspace, 'skin', 'skin', async () => loadSkin(page, skinFile));
   await create(page, workspace, 'text-animation', 'text animation', async () => page.getByLabel('Name', {exact: true}).fill('blink'));
-  await create(page, workspace, 'presets', 'presets');
-  const side = await sidebar(page);
-  // Legacy colour codes are stripped in the list: "&6Old Tom" reads "Old Tom".
-  for (const text of ['Old Tom', 'sketchbook:old-tom-dialogue', 'sketchbook:shop', 'town-pack', 'market-loop', 'sketchbook:market', 'sketchbook:golem', 'sketchbook:golem/wave', 'sketchbook:blink', 'presets']) {
-    await side.getByText(text, {exact: true}).first().waitFor();
-  }
-  assert.equal(await side.getByText('&6Old Tom', {exact: true}).count(), 0);
+  await create(page, workspace, 'presets', 'preset');
+  await create(page, workspace, 'group', 'trait group', async () => page.getByLabel('Id', {exact: true}).fill('guards'));
 
-  // Duplicate, delete with a confirmation, and undo.
-  await go(page, `#/workspace/${encodeURIComponent(workspace)}/pack/town-pack`);
-  await page.getByRole('button', {name: 'Duplicate'}).click();
-  await page.getByRole('button', {name: 'Copy', exact: true}).click();
+  const hrefs = (await documentHrefs(page)).map((href) => decodeURIComponent(href));
+  for (const expected of ['/npc/town/old-tom', '/behavior/sketchbook:old-tom-dialogue', '/behavior/sketchbook:shop', '/pack/town-pack', '/route/market-loop', '/shop/sketchbook:market',
+    '/quest/sketchbook:bread-run', '/inventory/sketchbook:board', '/menu/sketchbook:hub', '/hologram/sketchbook:welcome', '/rig/sketchbook:golem', '/animation/sketchbook:golem/wave',
+    '/text-animation/sketchbook:blink', '/presets/presets', '/group/guards']) {
+    assert.ok(hrefs.some((href) => href.endsWith(expected)), `${label}: ${expected} is listed`);
+  }
+  // Colour codes are stripped in the list: "&6Old Tom" reads "Old Tom".
+  await go(page, `${base}/list/npc`);
+  await page.locator('.ui-library-row .ui-library-title', {hasText: /^Old Tom$/}).waitFor();
+  assert.equal(await page.locator('.ui-library-row .ui-library-title', {hasText: '&6'}).count(), 0);
+
+  // Duplicate, delete with a confirmation that Escape cancels, and undo.
+  await go(page, `${base}/pack/town-pack`);
+  await page.locator('#ui-page-actions-button').click();
+  await page.getByRole('menuitem', {name: 'Duplicate'}).click();
+  await page.getByRole('dialog').getByRole('button', {name: 'Duplicate', exact: true}).click();
   await page.waitForFunction(() => decodeURIComponent(location.hash).includes('/pack/town-pack-copy'));
-  await page.getByRole('button', {name: 'Delete', exact: true}).click();
-  await page.getByRole('alertdialog').getByText('Delete town-pack-copy?').waitFor();
-  await shot(page, label, '04-confirm-delete');
-  // Escape belongs to the confirmation that has focus.
-  await page.waitForFunction(() => document.activeElement && document.activeElement.closest('[role="alertdialog"]'));
+  await page.locator('#ui-page-actions-button').click();
+  await page.getByRole('menuitem', {name: 'Delete'}).click();
+  await page.getByRole('alertdialog').waitFor();
+  await shot(page, label, '03-confirm-delete');
   await page.keyboard.press('Escape');
   await page.getByRole('alertdialog').waitFor({state: 'detached'});
-  await page.getByRole('button', {name: 'Delete', exact: true}).click();
-  await page.getByRole('button', {name: 'Delete document'}).click();
+  assert.ok(decodeURIComponent(page.url()).includes('/pack/town-pack-copy'), 'Escape deletes nothing');
+  await page.locator('#ui-page-actions-button').click();
+  await page.getByRole('menuitem', {name: 'Delete'}).click();
+  await page.getByRole('alertdialog').getByRole('button', {name: 'Delete pack'}).click();
   await page.waitForFunction(() => !location.hash.includes('/pack/'));
-  assert.equal(await side.getByText('town-pack-copy', {exact: true}).count(), 0);
   // A second tab on the same workspace follows the edits made here.
   const other = await context.newPage();
-  await other.goto(`${site}/#/workspace/${encodeURIComponent(workspace)}`);
-  await other.getByRole('heading', {name: 'Sketchbook'}).waitFor();
-  assert.equal(await other.evaluate(() => [...document.querySelectorAll('#animus-sidebar .animus-tree-title, #animus-sidebar .animus-tree-id')]
-      .some((el) => el.textContent === 'town-pack-copy')), false);
-  await topbarAction(page, 'Undo');
-  await page.locator('.arcane-toast', {hasText: 'Undid: delete town-pack-copy'}).waitFor();
-  await (await sidebar(page)).getByText('town-pack-copy', {exact: true}).waitFor();
-  await other.waitForFunction(() => [...document.querySelectorAll('#animus-sidebar .animus-tree-title, #animus-sidebar .animus-tree-id')].some((el) => el.textContent === 'town-pack-copy'));
-  assert.equal(await other.locator('.animus-banner').count(), 0, 'an idle tab reloads without a warning');
-  await other.close();
-  // The first tab is in front again (rAF-based waits stall in a background tab).
+  await other.goto(`${site}/${base}/list/pack`);
+  await other.locator('.ui-library-row').first().waitFor();
+  assert.equal(await other.locator('.ui-library-row[data-key="pack:town-pack-copy"]').count(), 0);
   await page.bringToFront();
-  // Redo and Undo from the keyboard, outside any text box.
-  await closeDrawer(page);
-  await page.locator('#animus-main-heading').focus();
-  await page.keyboard.press('Control+Shift+Z');
-  await page.locator('.arcane-toast', {hasText: 'Redid: delete town-pack-copy'}).waitFor();
-  await page.waitForFunction(() => ![...document.querySelectorAll('#animus-sidebar .animus-tree-title, #animus-sidebar .animus-tree-id')].some((el) => el.textContent === 'town-pack-copy'));
-  await page.keyboard.press('Control+z');
-  await page.waitForFunction(() => [...document.querySelectorAll('#animus-sidebar .animus-tree-title, #animus-sidebar .animus-tree-id')].some((el) => el.textContent === 'town-pack-copy'));
-  // A text box keeps its own keys: Ctrl+Z inside the search box is not a workspace undo.
-  await (await sidebar(page)).getByRole('textbox', {name: 'Search documents'}).focus();
-  await page.keyboard.press('Control+z');
-  await page.waitForTimeout(150);
-  assert.ok(await page.evaluate(() => [...document.querySelectorAll('#animus-sidebar .animus-tree-title, #animus-sidebar .animus-tree-id')].some((el) => el.textContent === 'town-pack-copy')),
-      'Ctrl+Z in a text box did not undo the duplicate');
-  await page.keyboard.press('Escape');
-  // "/" focuses the document search (opening the drawer on phones); Escape closes the drawer.
-  await page.locator('#animus-main-heading').focus();
-  await page.keyboard.press('/');
-  await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'animus-doc-search');
-  if (await isCompact(page)) {
-    await page.locator('#animus-sidebar.is-open').waitFor();
-    await shot(page, label, '04b-drawer');
-    await page.keyboard.press('Tab');
-    await page.keyboard.press('Escape');
-    await page.locator('#animus-sidebar.is-open').waitFor({state: 'detached'});
-    await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'animus-documents-button');
-  } else {
-    await page.keyboard.press('Escape');
-  }
-  // The command palette opens a document by name.
-  if (await isCompact(page)) {
-    await topbarAction(page, 'Commands');
-  } else {
-    await page.locator('#animus-main-heading').focus();
-    await page.keyboard.press('Control+k');
-  }
-  const palette = page.getByRole('dialog', {name: 'Commands'});
-  await palette.waitFor();
-  await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'animus-palette-input');
-  await page.keyboard.type('market-loop');
-  assert.equal(await page.locator('#animus-palette-input').inputValue(), 'market-loop');
-  await palette.getByRole('option', {name: /market-loop/}).first().waitFor();
-  await shot(page, label, '04c-palette');
-  await page.keyboard.press('Enter');
+  await topbarAction(page, 'Undo');
+  await page.locator('.arcane-toast', {hasText: /Undid: delete /}).waitFor();
+  await other.locator('.ui-library-row[data-key="pack:town-pack-copy"]').waitFor();
+  await other.close();
+  await page.bringToFront();
+  await setMode(page, 'simple');
+
+  // Search opens a document by its name.
+  await openFromSidebar(page, 'market-loop');
   await page.waitForFunction(() => decodeURIComponent(location.hash).includes('/route/market-loop'));
-  await palette.waitFor({state: 'detached'});
-  // Escape closes the palette and gives focus back.
-  await page.locator('#animus-main-heading').focus();
-  if (await isCompact(page)) {
-    await topbarAction(page, 'Commands');
-  } else {
-    await page.keyboard.press('Meta+k');
-  }
-  await palette.waitFor();
-  await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'animus-palette-input');
-  await page.keyboard.type('nothing like this at all');
-  await palette.getByText('Nothing matches', {exact: false}).waitFor();
-  await page.keyboard.press('Escape');
-  await palette.waitFor({state: 'detached'});
 
-  // A broken field offers a fix.
-  await go(page, `#/workspace/${encodeURIComponent(workspace)}/npc/${encodeURIComponent('town/old-tom')}`);
-  await code(page, (json) => ({...json, id: 'wrong'}));
-  await page.locator('.animus-diagnostics li.is-error').first().waitFor();
-  await page.getByRole('button', {name: 'Set id to old-tom'}).click();
-  await page.getByText('Valid against the shared schema.').waitFor();
-
-  // Playground: the NPC with its skin and the rig playing an animation.
-  await code(page, (json) => ({...json, rig: {id: 'sketchbook:golem'}}));
-  await page.getByRole('tab', {name: 'Preview'}).click();
-  await page.getByText('Browser preview', {exact: true}).first().waitFor();
-  await page.locator('.animus-mc-stage[data-webgl="ready"]').waitFor();
-  await page.locator('.animus-npc-facts').getByText(/^(tom\.png|the PNG kept in this workspace) \(classic\)$/).waitFor();
-  await chooseAndWait(page.getByLabel('Animation'), 'sketchbook:golem/wave');
-  await page.getByRole('button', {name: 'Play'}).click();
-  await page.locator('.animus-npc-facts').getByText(/sketchbook:golem\/wave at tick [1-9]/).waitFor();
-  await shot(page, label, '05-npc-preview');
-
-  // Dry runs: the dialogue answers a prompt; the shop's click is server only.
-  await go(page, `#/workspace/${encodeURIComponent(workspace)}/behavior/${encodeURIComponent('sketchbook:old-tom-dialogue')}?view=preview`);
-  await page.getByRole('heading', {name: 'Dry run'}).waitFor();
-  await page.getByRole('button', {name: /^click: a player right-clicks/}).click();
-  await page.getByRole('button', {name: 'Show all'}).click();
-  await page.getByRole('button', {name: 'Any news?'}).click();
-  await page.locator('.animus-dryrun-speech').getByText('The harvest festival starts at', {exact: false}).waitFor();
-  await page.locator('.animus-dryrun-stage .animus-mc-text-line', {hasText: 'harvest festival'}).first().waitFor();
-  await shot(page, label, '06-dry-run-dialogue');
-  await go(page, `#/workspace/${encodeURIComponent(workspace)}/behavior/${encodeURIComponent('sketchbook:shop')}?view=preview`);
-  await page.getByRole('button', {name: /^click: a player right-clicks/}).click();
-  await page.locator('.animus-dryrun-step.is-serverOnly', {hasText: 'Would open shop'}).waitFor();
-  await page.getByText('1 server-only step not run.').waitFor();
-  await shot(page, label, '07-dry-run-server-only');
+  // Test: the dialogue answers a prompt; the shop's click is server only.
+  const test = async (id) => {
+    await go(page, `${base}/behavior/${encodeURIComponent(id)}`);
+    const pane = page.locator('[data-testid="test-pane"]');
+    const reveal = page.locator('.ui-page-header').getByRole('button', {name: 'Test', exact: true});
+    if (!(await pane.isVisible().catch(() => false)) && await reveal.isVisible().catch(() => false)) await reveal.click();
+    await pickStart(page, pane, 'On click');
+    return pane;
+  };
+  const dialogue = await test('sketchbook:old-tom-dialogue');
+  await dialogue.getByRole('button', {name: 'Any news?'}).click();
+  await dialogue.locator('.animus-conv-chat').getByText('The harvest festival starts at', {exact: false}).waitFor();
+  await dialogue.locator('.animus-mc-text-line', {hasText: 'harvest festival'}).first().waitFor();
+  await shot(page, label, '03b-test-dialogue');
+  const shop = await test('sketchbook:shop');
+  await shop.locator('[data-outcome="serverOnly"]', {hasText: 'open shop'}).first().waitFor();
+  await shop.getByText('1 step runs on the server only.').waitFor();
+  await shot(page, label, '03c-test-server-only');
 
   // Export the workspace as a data folder zip.
   const download = page.waitForEvent('download');
-  await topbarAction(page, 'Export the data folder zip', {menu: 'export'});
+  await topbarAction(page, 'Export zip');
   const zip = await download;
   assert.equal(zip.suggestedFilename(), 'sketchbook.zip');
   const bytes = fs.readFileSync(await zip.path());
@@ -295,77 +254,82 @@ async function run(browser, viewport, label, skinFile) {
     assert.ok(bytes.includes(Buffer.from(entry)), `zip holds ${entry}`);
   }
 
-  // Everything persists: reload keeps the documents and the undo steps.
+  // Everything persists: a reload keeps the documents and the undo steps.
   await page.reload();
-  await page.getByRole('heading', {name: 'Dry run'}).waitFor();
+  await page.locator('.ui-page-header').waitFor();
+  await closeDrawer(page);
   if (await isCompact(page)) {
-    await page.locator('#animus-menu-more').click();
-    assert.equal(await page.getByRole('menuitem', {name: 'Undo'}).isDisabled(), false, 'undo survives a reload');
+    await page.locator('#ui-overflow-button').click();
+    assert.equal(await page.getByRole('menuitem', {name: /^Undo/}).isDisabled(), false, 'undo survives a reload');
     await page.keyboard.press('Escape');
   } else {
-    assert.equal(await page.locator('.animus-topbar').getByRole('button', {name: 'Undo'}).isDisabled(), false, 'undo survives a reload');
+    assert.equal(await page.locator('.ui-topbar-history button').first().isDisabled(), false, 'undo survives a reload');
   }
 
-  // The starter workspace.
+  // The example workspace lands on its Home.
   await go(page, '');
-  await page.getByRole('heading', {name: 'Workspaces in this browser'}).waitFor();
-  await page.getByRole('link', {name: 'Sketchbook'}).waitFor();
-  await page.getByRole('button', {name: 'Create with example packs'}).click();
-  await page.getByRole('heading', {name: 'Try it in the browser'}).waitFor();
-  await page.getByRole('link', {name: /Preview Greeter/}).waitFor();
-  await shot(page, label, '08-starter');
+  await startAction(page, 'Open examples');
+  await page.waitForFunction(() => /^#\/workspace\/[^/?]+$/.test(location.hash));
+  await page.locator('#animus-main-heading').waitFor();
+  await shot(page, label, '04-examples');
 
-  // With no server paired, the sync page says how to pair one.
-  await go(page, `#/workspace/${encodeURIComponent(workspace)}/sync`);
-  await page.locator('[data-testid="sync-no-server"]', {hasText: 'No server paired. Run /animus editor pair'}).waitFor();
+  // With no server paired, Send to server says so.
+  await go(page, `${base}/sync`);
+  await page.getByRole('heading', {name: 'Send to server'}).waitFor();
+  await page.getByText('No server paired.', {exact: true}).waitFor();
   await page.getByRole('button', {name: 'Pair a server'}).waitFor();
-  await shot(page, label, '08b-sync-no-server');
+  await shot(page, label, '05-send-no-server');
 
-  // Pair with the fake server, pull a document, change it here, push.
+  // Pair with the fake server, pull a document (Advanced), change it here.
   const {code: pairing} = await control('pair?paths=direct', {});
   await go(page, `#/pair/${pairing}`);
   await page.getByRole('button', {name: 'Pair', exact: true}).click();
   await page.waitForFunction(() => location.hash.startsWith('#/server/'));
-  await go(page, `#/workspace/${encodeURIComponent(workspace)}/sync`);
-  await page.getByRole('heading', {name: 'Send to a server'}).waitFor();
-  await page.locator('.animus-pill[data-phase="online"]').waitFor();
-  await page.getByRole('button', {name: 'Load the server catalog'}).click();
-  await page.getByRole('checkbox', {name: 'npc town/baker'}).check();
-  await page.getByRole('button', {name: 'Compare 1 selected'}).click();
-  await page.getByRole('button', {name: 'Pull 1 document'}).click();
-  await (await sidebar(page)).getByText('town/baker', {exact: false}).first().waitFor();
-  await go(page, `#/workspace/${encodeURIComponent(workspace)}/npc/${encodeURIComponent('town/baker')}`);
+  await page.locator('.ui-save-bar').waitFor();
+  await go(page, `${base}/sync`);
+  await page.locator('[data-testid="send-server-state"]', {hasText: 'Online'}).waitFor({timeout: 20000});
+  await setMode(page, 'advanced');
+  await page.getByRole('tablist', {name: 'Direction'}).getByRole('tab', {name: 'Pull'}).click();
+  const pullList = page.locator('#pull-list');
+  await pullList.locator('.ui-library-row').first().waitFor();
+  await pullList.getByRole('textbox', {name: /Search/}).fill('baker');
+  const bakerRow = pullList.locator('.ui-library-row[data-key="npc:town/baker"]');
+  await bakerRow.locator('.ui-library-pick').click();
+  await pullList.locator('.ui-library-bulk').getByRole('button', {name: 'Pull', exact: true}).click();
+  await page.locator('.arcane-toast', {hasText: /Pulled 1 document into Sketchbook\./}).waitFor();
+  await setMode(page, 'simple');
+  await go(page, `${base}/npc/${encodeURIComponent('town/baker')}`);
   await code(page, (json) => ({...json, name: 'Baker Bea'}));
-  await go(page, `#/workspace/${encodeURIComponent(workspace)}/sync`);
-  await page.locator('.animus-pill[data-phase="online"]').waitFor();
-  await page.getByRole('button', {name: /^Compare with/}).click();
-  await page.getByRole('group', {name: 'Not on the server yet'}).or(page.getByText('Not on the server yet')).first().waitFor();
-  await page.getByText('Different on the server', {exact: true}).waitFor();
-  await page.getByRole('radio', {name: 'Replace it with mine'}).click();
-  const pushCount = Number((await page.getByRole('button', {name: /^Push \d+ documents?$/}).textContent()).match(/\d+/)[0]);
-  assert.ok(pushCount >= 14, `pushes the new documents and the baker: ${pushCount}`);
-  assert.equal(await page.getByRole('button', {name: /^Push \d+/}).isDisabled(), true, 'push waits for validation');
-  await page.getByRole('button', {name: /^Validate \d+ on the server/}).click();
-  await page.getByText('The server accepts this selection.').waitFor();
-  await shot(page, label, '09-push-validated');
-  await page.getByLabel('Change message', {exact: true}).fill('Offline sketches');
-  // Replacing a server copy asks first; Escape cancels and sends nothing.
-  await page.getByRole('button', {name: /^Push \d+/}).click();
-  await page.getByRole('alertdialog').getByText('Replace 1 server copy with yours?').waitFor();
-  await shot(page, label, '09b-replace-confirm');
+  await setMode(page, 'simple');
+
+  // Send: compared on arrival; the changed baker is kept on the server until
+  // "Use mine"; replacing asks first and Escape sends nothing.
+  await go(page, `${base}/sync`);
+  const summary = page.locator('[data-testid="send-summary"]');
+  await summary.filter({hasText: /new, 1 changed/}).waitFor({timeout: 20000});
+  const apply = page.locator('#send-apply');
+  const sendsNew = Number((await apply.textContent()).match(/\d+/)[0]);
+  assert.ok(sendsNew >= 15, `${label}: Apply sends the new documents: ${sendsNew}`);
+  await page.getByRole('group', {name: 'Changed documents'}).getByRole('button', {name: 'Use mine'}).click();
+  await apply.filter({hasText: `Apply ${sendsNew + 1}`}).waitFor();
+  await shot(page, label, '06-send');
+  await apply.click();
+  const confirm = page.getByRole('alertdialog');
+  await confirm.getByText('Replace 1 document on the server?').waitFor();
+  await shot(page, label, '07-send-replace');
   await page.keyboard.press('Escape');
-  await page.getByRole('alertdialog').waitFor({state: 'detached'});
-  await page.waitForFunction(() => document.activeElement?.id === 'animus-sync-push');
+  await confirm.waitFor({state: 'detached'});
   assert.notEqual((await control(`document?kind=npc&id=${encodeURIComponent('town/baker')}`)).source.name, 'Baker Bea', 'cancel sent nothing');
-  await page.getByRole('button', {name: /^Push \d+/}).click();
-  await page.getByRole('alertdialog').getByRole('button', {name: 'Replace and push'}).click();
-  await page.locator('.animus-ok', {hasText: /^Applied \d+ documents? as change/}).waitFor();
-  const state = await control('state');
+  await apply.click();
+  await confirm.getByRole('button', {name: 'Replace and apply'}).click();
+  await page.locator('.ui-alert', {hasText: /Applied \d+ documents\./}).first().waitFor({timeout: 20000});
   const baker = await control(`document?kind=npc&id=${encodeURIComponent('town/baker')}`);
-  assert.equal(baker.source.name, 'Baker Bea', 'the chosen overwrite reached the server');
+  assert.equal(baker.source.name, 'Baker Bea', 'the chosen replace reached the server');
+  const state = await control('state');
   assert.ok(state.documents.some((document) => document.kind === 'npc' && document.id === 'town/old-tom'), 'the new NPC reached the server');
-  await shot(page, label, '10-pushed');
-  await page.locator('[data-testid="sync-nothing"]', {hasText: /documents already match the server\.$/}).waitFor();
+  await summary.filter({hasText: 'Everything here matches the server.'}).waitFor();
+  assert.equal(await saveState(page).count(), 1, 'the save bar stays');
+  await shot(page, label, '08-sent');
 
   assert.deepEqual(errors, []);
   await context.close();
@@ -380,12 +344,10 @@ async function withoutStorage(browser, viewport, label) {
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto(site);
-  await page.getByRole('heading', {name: 'Start a workspace'}).waitFor();
-  await page.getByRole('status').filter({hasText: 'This browser is not keeping workspaces. Export a zip before closing the tab.'}).waitFor();
-  await page.getByRole('button', {name: 'Create blank workspace'}).click();
-  await page.waitForFunction(() => location.hash.includes('/new'));
+  await page.getByText('This browser is not keeping workspaces. Export a zip before closing the tab.').waitFor();
+  await blankWorkspace(page, 'Scratch');
   await page.getByText('This browser is not keeping workspaces.', {exact: false}).waitFor();
-  await shot(page, label, '11-no-storage');
+  await shot(page, label, '09-no-storage');
   assert.deepEqual(errors, []);
   await context.close();
 }

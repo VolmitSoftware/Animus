@@ -15,9 +15,10 @@ Map<String, bool> workspaceBehaviors(List<AnimusDocument> documents) => <String,
         if (document.kind == DocumentKind.behavior) document.id: asMap(document.json)['server'] == true,
     };
 
-/// Why a listed [id] is fine or not, in words.
-String serverBehaviorNote(String id, Map<String, bool> behaviors) => switch (behaviors[id]) {
-      true => 'Server behavior',
+/// Why a listed [id] may not run, in words; null when it is a server
+/// behavior here.
+String? serverBehaviorNote(String id, Map<String, bool> behaviors) => switch (behaviors[id]) {
+      true => null,
       false => 'Server behavior is off, so it will not run.',
       null => 'Not in this workspace. Runs if the server has it.',
     };

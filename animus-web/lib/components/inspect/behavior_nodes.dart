@@ -1,11 +1,8 @@
-/// One behavior node and its children as a collapsible tree row: the
-/// summary line shows the node's type and what it does in plain words; the
-/// body holds its tools, its fields and its children on a thin rail per
-/// level. Keyboard: Up and Down move between rows, Right opens, Left
-/// closes, Enter toggles, Delete asks in place before removing.
+/// One behavior node and its children as a card (the kit's quiet
+/// disclosure): the summary names the node in words and says what it does;
+/// the body starts with a toolbar (its type, and a "..." menu to move,
+/// duplicate or delete it), then its fields and its children.
 library;
-
-import 'dart:js_interop';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
@@ -13,25 +10,36 @@ import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
 import '../../config/docs_links.dart';
+import '../../logic/plural.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/behavior_edit.dart';
 import '../../logic/inspect/behavior_language.dart';
 import '../../logic/inspect/behavior_operands.dart';
 import '../../logic/inspect/behavior_summary.dart';
+import '../../logic/inspect/behavior_words.dart';
 import '../../logic/inspect/completion_catalog.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../model/animus_document.dart';
-import '../../services/browser.dart' show focusById;
+import '../../ui/action_row.dart';
+import '../../ui/badge.dart';
+import '../../ui/confirm_dialog.dart';
+import '../../ui/info_tip.dart';
+import '../../ui/menu.dart';
+import '../../ui/section.dart';
+import '../../ui/tone.dart';
 import '../gui/gui_fields.dart';
-import '../info_tip.dart';
-import '../offline/offline_fields.dart' show ConfirmRow;
 import 'behavior_capability.dart';
 import 'behavior_inputs.dart';
 import 'behavior_operand.dart';
 import 'inspect_fields.dart';
+import '../select/animus_select.dart';
+import '../../ui/field.dart';
+import '../../ui/number_input.dart';
+import '../../ui/stack.dart';
+import '../../ui/problem_text.dart';
 
-/// What every node row needs: the catalog, the document and its writers.
+/// What every node card needs: the catalog, the document and its writers.
 class BehaviorContext {
   const BehaviorContext({
     required this.catalog,
@@ -89,43 +97,34 @@ class BehaviorContext {
       });
 }
 
-/// A picker that adds a node of the chosen type.
-class AddNodeSelect extends StatelessWidget {
-  const AddNodeSelect({required this.context, required this.label, required this.onAdd, super.key});
+/// The labels the type picker shows, in words.
+Map<String, String> nodeTypeLabels(Iterable<String> types) => <String, String>{for (final String type in types) type: nodeLabel(type)};
+
+/// A menu button that adds a node of the picked type.
+class AddNodeMenu extends StatelessWidget {
+  const AddNodeMenu({required this.context, required this.label, required this.onAdd, super.key});
 
   final BehaviorContext context;
   final String label;
   final void Function(String type) onAdd;
 
   @override
-  Widget build(BuildContext build) => dom.div(classes: 'animus-add-node', <Widget>[
-        GuiSelect(
-          value: null,
-          options: context.nodeTypes,
-          noneLabel: label,
-          label: label,
-          onChanged: (String? type) {
-            if (type != null) onAdd(type);
-          },
-        ),
-      ]);
+  Widget build(BuildContext build) => AppMenu(
+        label: label,
+        icon: ArcaneIcon.plus(),
+        outline: true,
+        entries: <AppMenuEntry>[for (final String type in context.nodeTypes) AppMenuEntry(nodeLabel(type), () => onAdd(type))],
+      );
 }
 
-/// Moves focus between visible node rows of the same tree.
-void _moveFocus(web.Element from, int by) {
-  final web.Element? tree = from.closest('.animus-behavior-tree');
-  if (tree == null) return;
-  final web.NodeList all = tree.querySelectorAll('.animus-node-summary');
-  final List<web.HTMLElement> visible = <web.HTMLElement>[
-    for (int index = 0; index < all.length; index++)
-      if ((all.item(index)! as web.HTMLElement).offsetParent != null) all.item(index)! as web.HTMLElement,
-  ];
-  final int at = visible.indexWhere((web.HTMLElement element) => element == from);
-  final int next = at + by;
-  if (at >= 0 && next >= 0 && next < visible.length) visible[next].focus();
+/// Asks before deleting [what] (a step and what it holds).
+Future<void> confirmDelete(String what, String detail, void Function() remove) async {
+  if (await askToConfirm(title: 'Delete $what?', message: '$detail Undo brings it back.', confirmLabel: 'Delete', destructive: true)) remove();
 }
 
-class BehaviorNodeView extends StatefulWidget {
+/// A node card. [flat] draws a part's top node without its own card: the
+/// part's card already holds it.
+class BehaviorNodeView extends StatelessWidget {
   const BehaviorNodeView({
     required this.context,
     required this.node,
@@ -133,8 +132,10 @@ class BehaviorNodeView extends StatefulWidget {
     this.onRemove,
     this.onUp,
     this.onDown,
+    this.onDuplicate,
     this.caption,
     this.inLoop = false,
+    this.flat = false,
     super.key,
   });
 
@@ -144,71 +145,59 @@ class BehaviorNodeView extends StatefulWidget {
   final void Function()? onRemove;
   final void Function()? onUp;
   final void Function()? onDown;
+  final void Function()? onDuplicate;
 
-  /// Where the node sits: `then`, `step 2`, ...
+  /// Where the node sits: `Yes`, `Step 2`, ...
   final String? caption;
 
   /// Whether a loop of this routine encloses the node, outside parallel
   /// branches: `break` and `continue` need one.
   final bool inLoop;
+  final bool flat;
 
-  @override
-  State<BehaviorNodeView> createState() => _BehaviorNodeViewState();
-}
-
-int _nextNodeId = 0;
-
-class _BehaviorNodeViewState extends State<BehaviorNodeView> {
-  final String _id = 'animus-node-${_nextNodeId++}';
-
-  /// Kept here so a rebuild after an edit leaves the step as the reader
-  /// left it.
-  bool _open = true;
-
-  /// Delete was pressed on the summary and the inline question is showing.
-  bool _confirming = false;
-
-  BehaviorContext get ctx => component.context;
-  Object? get node => component.node;
-  List<JsonStep> get steps => component.steps;
-  String? get caption => component.caption;
-  bool get inLoop => component.inLoop;
-
+  BehaviorContext get ctx => context;
   String get _path => formatPath(steps);
+  String get _label => caption ?? 'Step';
 
   void _put(JsonMap next) => ctx.write(steps, next);
 
-  void _onKey(web.Event event) {
-    if (!event.isA<web.KeyboardEvent>()) return;
-    final web.KeyboardEvent key = event as web.KeyboardEvent;
-    final web.Element? summary = key.currentTarget as web.Element?;
-    if (summary == null) return;
+  /// The short line beside the type: a count for lists, else the summary.
+  String _line(JsonMap value) => switch (asString(value['type'])) {
+        'sequence' => _count(asList(value['steps']).length, 'step'),
+        'parallel' => _count(asList(value['branches']).length, 'branch'),
+        _ => nodeSummary(value, variables: ctx.variables),
+      };
+
+  static String _count(int count, String noun) => countOf(count, noun, plural: noun == 'branch' ? 'branches' : null);
+
+  /// The keys the shortcut sheet lists for a focused step.
+  void _onKey(web.KeyboardEvent key, void Function(bool open) show, String line) {
     switch (key.key) {
-      case 'ArrowDown':
+      case 'ArrowRight' || 'ArrowLeft':
         key.preventDefault();
-        _moveFocus(summary, 1);
-      case 'ArrowUp':
+        show(key.key == 'ArrowRight');
+      case 'ArrowDown' || 'ArrowUp':
         key.preventDefault();
-        _moveFocus(summary, -1);
-      case 'ArrowRight':
-        key.preventDefault();
-        if (!_open) setState(() => _open = true);
-      case 'ArrowLeft':
-        key.preventDefault();
-        if (_open) setState(() => _open = false);
+        _focusStep(key.target! as web.Element, key.key == 'ArrowDown' ? 1 : -1);
       case 'Delete':
-        if (component.onRemove == null) return;
+        if (onRemove == null) return;
         key.preventDefault();
-        setState(() {
-          _open = true;
-          _confirming = true;
-        });
+        confirmDelete(_label.toLowerCase(), '$line, with what it holds.', onRemove!);
     }
   }
 
-  void _cancelRemove() {
-    setState(() => _confirming = false);
-    focusById('$_id-summary');
+  /// Focuses the shown step summary [by] places from [from].
+  static void _focusStep(web.Element from, int by) {
+    final web.Element? editor = from.closest('.animus-behavior-editor');
+    if (editor == null) return;
+    final web.NodeList found = editor.querySelectorAll('.animus-node > details > summary');
+    final List<web.HTMLElement> shown = <web.HTMLElement>[
+      for (int index = 0; index < found.length; index++)
+        if ((found.item(index)! as web.Element).checkVisibility()) found.item(index)! as web.HTMLElement,
+    ];
+    final int at = shown.indexWhere((web.HTMLElement summary) => identical(summary, from));
+    if (at < 0 || at + by < 0 || at + by >= shown.length) return;
+    shown[at + by].focus();
   }
 
   @override
@@ -217,82 +206,68 @@ class _BehaviorNodeViewState extends State<BehaviorNodeView> {
     final String? type = asString(value['type']);
     final NodeSpec? spec = ctx.catalog.nodes[type];
     final List<Diagnostic> own = diagnosticsAt(ctx.diagnostics, _path);
-    final List<Diagnostic> nested = diagnosticsAt(ctx.diagnostics, _path, nested: true);
-    final bool failing = nested.any((Diagnostic d) => d.severity == DiagnosticSeverity.error);
+    final bool failing = diagnosticsAt(ctx.diagnostics, _path, nested: true).any((Diagnostic d) => d.severity == DiagnosticSeverity.error);
     final bool strayJump = (type == 'break' || type == 'continue') && !inLoop;
     final List<String> kept = unknownKeys(value, spec?.fields.map((FieldSpec field) => field.key) ?? const <String>[]);
-    final String label = caption ?? 'step';
-    return dom.details(
-      classes: 'animus-node${failing ? ' has-error' : ''}',
-      attributes: <String, String>{if (_open) 'open': '', 'data-node-path': _path, 'data-node-type': type ?? ''},
-      events: <String, void Function(web.Event)>{
-        'toggle': (web.Event event) {
-          if (event.target != event.currentTarget) return;
-          final bool open = (event.currentTarget! as web.HTMLDetailsElement).open;
-          if (open != _open) setState(() => _open = open);
-        },
-      },
-      <Widget>[
-        dom.summary(
-          id: '$_id-summary',
-          classes: 'animus-node-summary',
-          attributes: <String, String>{'aria-label': '$label, ${type ?? 'no type'}: ${nodeSummary(value, variables: ctx.variables)}${failing ? ', has problems' : ''}'},
-          events: <String, void Function(web.Event)>{
-            'keydown': _onKey,
-            'click': (web.Event event) {
-              if (takeSummaryClick(event)) setState(() => _open = !_open);
-            },
-          },
-          <Widget>[
-            dom.span(classes: 'animus-node-caption', <Widget>[Component.text(label)]),
-            dom.span(classes: 'animus-node-type', <Widget>[withTip(Component.text(type ?? '?'), spec?.description, docs: Docs.behaviorNodes)]),
-            dom.span(classes: 'animus-node-line', <Widget>[Component.text(nodeSummary(value, variables: ctx.variables))]),
-            if (failing) const dom.span(classes: 'animus-node-flag is-error', <Widget>[Component.text('problem')]),
-            if (strayJump) const dom.span(classes: 'animus-node-flag is-warning', <Widget>[Component.text('outside a loop')]),
-          ],
-        ),
-        dom.div(classes: 'animus-node-body', <Widget>[
-          if (_confirming && component.onRemove != null)
-            ConfirmRow(
-              question: 'Remove $label?',
-              detail: '${nodeSummary(value, variables: ctx.variables)}, with what it holds.',
-              confirmLabel: 'Remove',
-              onConfirm: () {
-                setState(() => _confirming = false);
-                component.onRemove!();
-              },
-              onCancel: _cancelRemove,
-            ),
-          dom.div(classes: 'animus-node-tools', <Widget>[
-            GuiSelect(
-              value: type,
-              options: ctx.nodeTypes,
-              noneLabel: 'Pick a step type',
-              label: 'Type of $label',
-              onChanged: (String? next) {
-                if (next != null) {
-                  _put(changeNodeType(value, next, ctx.catalog, routine: ctx.entry, variables: ctx.variables, server: ctx.server));
-                }
-              },
-            ),
-            if (spec == null)
-              dom.span(classes: 'animus-node-help', <Widget>[Component.text(type == null ? 'Pick a type' : 'Unknown type, kept as written')]),
-            if (component.onUp != null) GuiIconButton(icon: ArcaneIcon.arrowUp(size: IconSize.sm), label: 'Move $label up', onPressed: component.onUp!),
-            if (component.onDown != null) GuiIconButton(icon: ArcaneIcon.arrowDown(size: IconSize.sm), label: 'Move $label down', onPressed: component.onDown!),
-            if (component.onRemove != null) GuiIconButton(icon: ArcaneIcon.x(size: IconSize.sm), label: 'Remove $label', onPressed: component.onRemove!),
-          ]),
-          for (final Diagnostic problem in own)
-            dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', attributes: const <String, String>{'role': 'note'}, <Widget>[Component.text(problem.message)]),
-          if (strayJump)
-            dom.span(classes: 'animus-gui-problem is-warning', attributes: const <String, String>{'role': 'note'}, <Widget>[
-              Component.text('$type must be inside a repeat, foreach or while, outside parallel branches.'),
-            ]),
-          ..._fields(value, type, spec),
-          if (kept.isNotEmpty) dom.p(classes: 'animus-gui-note', <Widget>[Component.text('Kept as written: ${kept.join(', ')}')]),
-        ]),
+    final String line = _line(value);
+    final List<AppMenuEntry> menu = <AppMenuEntry>[
+      if (onUp != null) AppMenuEntry('Move up', onUp),
+      if (onDown != null) AppMenuEntry('Move down', onDown),
+      if (onDuplicate != null) AppMenuEntry('Duplicate', onDuplicate),
+      if (onRemove != null) ...<AppMenuEntry>[
+        if (onUp != null || onDown != null || onDuplicate != null) const AppMenuEntry.separator(),
+        AppMenuEntry('Delete', () => confirmDelete(_label.toLowerCase(), '$line, with what it holds.', onRemove!), destructive: true),
       ],
+    ];
+    final List<Widget> body = <Widget>[
+      ActionRow(
+        dense: true,
+        label: _label,
+        leading: <Widget>[
+          AnimusSelect.values(
+            value: type,
+            values: ctx.nodeTypes,
+            labels: nodeTypeLabels(ctx.nodeTypes),
+            noneLabel: 'Pick a type',
+            hiddenLabel: 'Type of ${_label.toLowerCase()}',
+            onChanged: (String? next) {
+              if (next != null) _put(changeNodeType(value, next, ctx.catalog, routine: ctx.entry, variables: ctx.variables, server: ctx.server));
+            },
+          ),
+          if (spec == null) noteLine(type == null ? 'Pick a type' : 'Unknown type, kept as written'),
+        ],
+        more: menu,
+      ),
+      for (final Diagnostic problem in own) _problem(problem.severity, problem.message),
+      if (strayJump) _problem(DiagnosticSeverity.warning, '${nodeLabel(type)} only works inside a repeat, a for each or a repeat while.'),
+      ..._fields(value, type, spec),
+      if (kept.isNotEmpty) noteLine('Kept as written: ${kept.join(', ')}'),
+    ];
+    final Map<String, String> attributes = <String, String>{'data-node-path': _path, 'data-node-type': type ?? ''};
+    if (flat) return dom.div(classes: 'animus-node is-flat', attributes: attributes, body);
+    return AppSection(
+      classes: 'animus-node${failing ? ' has-error' : ''}',
+      attributes: attributes,
+      onKey: (web.KeyboardEvent key, void Function(bool open) show) => _onKey(key, show, line),
+      summary: <Widget>[
+        Text(_label, size: FontSize.sm, color: TextColor.muted),
+        TipLabel(label: Component.text(nodeLabel(type)), tip: _tip(type, spec), docs: Docs.behaviorNodes),
+        Text(line, size: FontSize.sm, color: TextColor.muted),
+        if (failing) const StatusBadge('Problem', tone: BadgeTone.error),
+        if (strayJump) const StatusBadge('Outside a loop', tone: BadgeTone.warning),
+      ],
+      children: body,
     );
   }
+
+  /// The engine's word for the type, then what it does.
+  static String? _tip(String? type, NodeSpec? spec) {
+    if (type == null) return null;
+    final String about = nodeWords[type]?.line ?? spec?.description ?? '';
+    return 'Written as $type in the file. $about'.trim();
+  }
+
+  static Widget _problem(DiagnosticSeverity severity, String message) => problemLine(severity, message, classes: 'animus-node-problem');
 
   List<Diagnostic> _problems(String key, {bool nested = true}) => diagnosticsAt(ctx.diagnostics, formatPath(<JsonStep>[...steps, key]), nested: nested);
 
@@ -361,14 +336,14 @@ class _BehaviorNodeViewState extends State<BehaviorNodeView> {
 
   Widget _conditionMode(JsonMap value) {
     final bool expression = value.containsKey('expression');
-    return GuiRow(
-      label: 'Test',
-      help: 'A capability asks the game. An expression computes true or false.',
-      child: GuiSelect(
+    return Field(
+      label: 'Checks',
+      tip: 'Something in the game (a capability), or an expression that is true or false.',
+      child: AnimusSelect.values(
         value: expression ? 'expression' : 'capability',
-        options: const <String>['capability', 'expression'],
-        labels: const <String, String>{'capability': 'A capability', 'expression': 'An expression'},
-        label: 'Test of ${caption ?? 'step'}',
+        values: const <String>['capability', 'expression'],
+        labels: const <String, String>{'capability': 'Something in game', 'expression': 'An expression'},
+        hiddenLabel: 'What ${_label.toLowerCase()} checks',
         onChanged: (String? next) {
           if (next == null || (next == 'expression') == expression) return;
           final JsonMap out = <String, Object?>{...value};
@@ -388,29 +363,30 @@ class _BehaviorNodeViewState extends State<BehaviorNodeView> {
     );
   }
 
-  Widget _expressionRow(JsonMap value, FieldSpec field) => GuiRow(
-        label: fieldLabel(field, label: 'Expression'),
-        help: field.description,
+  Widget _expressionRow(JsonMap value, FieldSpec field) => Field(
+        label: 'Expression',
+        tip: field.description,
         problems: _problems('expression'),
         child: BehaviorExpressionInput(
           value: asString(value['expression']) ?? '',
           scope: ctx.scope,
-          label: 'Expression of ${caption ?? 'step'}',
+          label: 'Expression of ${_label.toLowerCase()}',
           placeholder: 'count < 3',
           onChanged: (String next) => ctx.write(<JsonStep>[...steps, 'expression'], next),
         ),
       );
 
-  Widget _operandRow(JsonMap value, FieldSpec field, String? type, {String? label, Widget? literal}) => GuiRow(
-        label: fieldLabel(field, label: label),
-        help: field.help,
+  Widget _operandRow(JsonMap value, FieldSpec field, String? type, {String? label, Widget? literal}) => Field(
+        label: label ?? humanizeKey(field.key),
+        help: field.boundsHint,
+        tip: field.description,
         problems: _problems(field.key),
         child: OperandControl(
           value: value[field.key],
           type: type,
           variables: ctx.variables,
           scope: ctx.scope,
-          label: '${label ?? humanizeKey(field.key)} of ${caption ?? 'step'}',
+          label: '${label ?? humanizeKey(field.key)} of ${_label.toLowerCase()}',
           literal: literal,
           onChanged: (Object? next) => ctx.write(<JsonStep>[...steps, field.key], next),
         ),
@@ -422,10 +398,10 @@ class _BehaviorNodeViewState extends State<BehaviorNodeView> {
       value,
       field,
       'integer',
-      label: 'Count',
-      literal: GuiNumberInput(
+      label: 'Times',
+      literal: NumberInput(
         value: count is num ? count : null,
-        label: 'Count of ${caption ?? 'step'}',
+        label: 'Times ${_label.toLowerCase()} repeats',
         onChanged: (num? next) => ctx.write(<JsonStep>[...steps, 'count'], (next ?? 0).round().clamp(0, 128)),
       ),
     );
@@ -433,16 +409,12 @@ class _BehaviorNodeViewState extends State<BehaviorNodeView> {
 
   Widget _returnRow(JsonMap value, FieldSpec field) {
     final bool has = value.containsKey('value');
-    return GuiRow(
+    return Field(
       label: 'Value',
-      help: field.description,
+      tip: field.description,
       problems: _problems('value'),
-      child: dom.div(classes: 'animus-control-stack', <Widget>[
-        GuiSwitch(
-          value: has,
-          label: 'Return a value',
-          onChanged: (bool on) => ctx.write(<JsonStep>[...steps, 'value'], on ? 0 : null),
-        ),
+      child: stack(<Widget>[
+        ArcaneToggleSwitch(value: has, label: 'Return a value', onChanged: (bool on) => ctx.write(<JsonStep>[...steps, 'value'], on ? 0 : null), size: ComponentSize.sm),
         if (has)
           OperandControl(
             value: value['value'],
@@ -455,36 +427,37 @@ class _BehaviorNodeViewState extends State<BehaviorNodeView> {
     );
   }
 
-  Widget _routineRow(JsonMap value, FieldSpec field) => GuiRow(
-        label: fieldLabel(field),
-        help: field.help,
+  Widget _routineRow(JsonMap value, FieldSpec field) => Field(
+        label: 'Part',
+        tip: 'The part (routine) this step runs. ${field.description ?? ''}'.trim(),
         problems: <Diagnostic>[
           ..._problems('routine'),
           if (value['routine'] is String && !ctx.routines.contains(value['routine']))
-            Diagnostic(DiagnosticSeverity.warning, formatPath(<JsonStep>[...steps, 'routine']), 'No routine ${value['routine']} in this document.'),
+            Diagnostic(DiagnosticSeverity.warning, formatPath(<JsonStep>[...steps, 'routine']), 'No part ${value['routine']} in this behavior.'),
         ],
-        child: GuiSelect(
+        child: AnimusSelect.values(
           value: asString(value['routine']),
-          options: ctx.routines,
-          noneLabel: 'Pick a routine',
-          label: 'Routine ${caption ?? 'step'} calls',
+          values: ctx.routines,
+          labels: <String, String>{for (final String name in ctx.routines) name: behaviorTitle(name)},
+          noneLabel: 'Pick a part',
+          hiddenLabel: 'Part ${_label.toLowerCase()} runs',
           onChanged: (String? next) => ctx.write(<JsonStep>[...steps, 'routine'], next),
         ),
       );
 
-  Widget _variablePicker(JsonMap value, FieldSpec field, List<String> options, {bool optional = false}) => GuiRow(
-        label: fieldLabel(field),
-        help: field.description,
+  Widget _variablePicker(JsonMap value, FieldSpec field, List<String> options, {bool optional = false}) => Field(
+        label: humanizeKey(field.key),
+        tip: field.description,
         problems: _problems(field.key, nested: false),
         child: options.isEmpty
-            ? const dom.p(classes: 'animus-gui-note', <Widget>[Component.text('Declare a variable first.')])
-            : GuiSelect(
+            ? noteLine('Add a variable first.')
+            : AnimusSelect.values(
                 value: asString(value[field.key]),
-                options: options,
-                labels: <String, String>{for (final String name in options) name: '$name (${asString(asMap(ctx.variables[name])['type']) ?? '?'})'},
+                values: options,
+                details: <String, String>{for (final String name in options) name: variableTypeWords[asString(asMap(ctx.variables[name])['type'])] ?? 'Anything'},
                 allowNone: optional || !field.required,
                 noneLabel: optional || !field.required ? 'Not set' : 'Pick a variable',
-                label: '${humanizeKey(field.key)} of ${caption ?? 'step'}',
+                hiddenLabel: '${humanizeKey(field.key)} of ${_label.toLowerCase()}',
                 onChanged: (String? next) => ctx.write(<JsonStep>[...steps, field.key], next),
               ),
       );
@@ -494,28 +467,27 @@ class _BehaviorNodeViewState extends State<BehaviorNodeView> {
     final List<String> options = executionVariables(ctx.variables, types: types);
     final Widget picker = _variablePicker(value, field, options);
     if (options.isNotEmpty || !field.required) return picker;
-    return GuiRow(
-      label: fieldLabel(field),
-      help: field.description,
+    return Field(
+      label: humanizeKey(field.key),
+      tip: field.description,
       problems: _problems(field.key, nested: false),
-      child: Button.ghost(
-        label: 'Declare item and use it',
-        size: ButtonSize.small,
-        onPressed: () {
+      child: ActionRow(secondary: <RowAction>[
+        RowAction('Add a variable', () {
           final String name = uniqueName('item', ctx.variables.keys);
           final JsonMap base = <String, Object?>{...ctx.document, 'variables': <String, Object?>{...ctx.variables, name: <String, Object?>{'type': 'any', 'initial': ''}}};
           ctx.writeDocument(asMap(writeIn(base, <JsonStep>[...steps, field.key], name)));
-        },
-      ),
+        }),
+      ]),
     );
   }
 
   Widget _list(JsonMap value, FieldSpec field, bool childLoop) {
     final List<JsonStep> at = <JsonStep>[...steps, field.key];
     final JsonList items = asList(value[field.key]);
-    final String noun = field.key == 'branches' ? 'branch' : 'step';
-    return dom.div(classes: 'animus-node-children', attributes: <String, String>{'role': 'group', 'aria-label': '${humanizeKey(field.key)} of ${caption ?? 'step'}'}, <Widget>[
-      if (items.isEmpty) dom.p(classes: 'animus-empty-line', <Widget>[Component.text(noun == 'step' ? 'No steps yet.' : 'A parallel needs at least one branch.')]),
+    final bool branches = field.key == 'branches';
+    final String noun = branches ? 'Branch' : 'Step';
+    return dom.div(classes: 'animus-node-children', attributes: <String, String>{'role': 'group', 'aria-label': '${branches ? 'Branches' : 'Steps'} of ${_label.toLowerCase()}'}, <Widget>[
+      if (items.isEmpty) noteLine(branches ? 'Add at least one branch.' : 'No steps yet.'),
       for (int index = 0; index < items.length; index++)
         BehaviorNodeView(
           key: ValueKey<String>(formatPath(<JsonStep>[...at, index])),
@@ -526,23 +498,37 @@ class _BehaviorNodeViewState extends State<BehaviorNodeView> {
           inLoop: childLoop,
           onUp: index == 0 ? null : () => ctx.write(at, moveItem(items, index, index - 1)),
           onDown: index == items.length - 1 ? null : () => ctx.write(at, moveItem(items, index, index + 1)),
+          onDuplicate: () => ctx.write(at, <Object?>[...items]..insert(index + 1, deepCopy(items[index]))),
           onRemove: () => ctx.write(at, removeItem(items, index)),
         ),
-      for (final Diagnostic problem in diagnosticsAt(ctx.diagnostics, formatPath(at)))
-        dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
-      AddNodeSelect(context: ctx, label: 'Add $noun', onAdd: (String type) => ctx.addAt(at, type, append: true)),
+      for (final Diagnostic problem in diagnosticsAt(ctx.diagnostics, formatPath(at))) _problem(problem.severity, problem.message),
+      ActionRow(dense: true, leading: <Widget>[
+        AddNodeMenu(context: ctx, label: 'Add ${noun.toLowerCase()}', onAdd: (String type) => ctx.addAt(at, type, append: true)),
+      ]),
     ]);
   }
+
+  /// The caption of a single-node field: a condition's Yes and No, a loop's
+  /// steps.
+  static String slotCaption(String key) => switch (key) {
+        'then' => 'Yes',
+        'else' => 'No',
+        'body' => 'Steps',
+        _ => humanizeKey(key),
+      };
 
   Widget _slot(JsonMap value, FieldSpec field, bool childLoop) {
     final List<JsonStep> at = <JsonStep>[...steps, field.key];
     final Object? child = value[field.key];
+    final String caption = slotCaption(field.key);
     if (child == null) {
-      return GuiRow(
-        label: fieldLabel(field),
-        help: field.help,
+      return Field(
+        label: caption,
+        tip: field.description,
         problems: diagnosticsAt(ctx.diagnostics, formatPath(at)),
-        child: AddNodeSelect(context: ctx, label: 'Add ${field.key}', onAdd: (String type) => ctx.addAt(at, type)),
+        child: ActionRow(dense: true, leading: <Widget>[
+          AddNodeMenu(context: ctx, label: 'Add', onAdd: (String type) => ctx.addAt(at, type)),
+        ]),
       );
     }
     return dom.div(classes: 'animus-node-children', <Widget>[
@@ -551,7 +537,7 @@ class _BehaviorNodeViewState extends State<BehaviorNodeView> {
         context: ctx,
         node: child,
         steps: at,
-        caption: field.key,
+        caption: caption,
         inLoop: childLoop,
         onRemove: field.required ? null : () => ctx.write(at, null),
       ),

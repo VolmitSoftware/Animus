@@ -1,4 +1,5 @@
-// The workspace overview of a data folder opened as a zip: counts by kind, ways to try it, and the documents that need repair.
+// A data folder opened as a zip: Home's counts by job, then in Advanced the
+// GUI counts and Needs attention, which opens a document that needs repair.
 // No fake server: the zip is built from test/fixtures/npc_browser and test/fixtures/gui_editors as an Animus/ folder.
 const fs = require('node:fs');
 const os = require('node:os');
@@ -7,7 +8,7 @@ const {execFileSync} = require('node:child_process');
 
 /** Animus.zip holding both fixtures under Animus/, in a fresh temp folder. */
 function dataZip(L) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'animus-42-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'animus-43-'));
   const root = path.join(dir, 'Animus');
   for (const name of ['npc_browser', 'gui_editors']) fs.cpSync(path.join(L.REPO, 'animus-web', 'test', 'fixtures', name), root, {recursive: true});
   execFileSync('zip', ['-qr', 'Animus.zip', 'Animus'], {cwd: dir});
@@ -19,27 +20,37 @@ module.exports = async (L) => {
   const f = await L.session({id: '43-workspace-overview'});
   const page = await f.start(`${L.SITE}/#/`);
   const h = L.human(f);
-  // The counts and the error banner sit above h.reveal()'s middle band at the top of an unscrolled page; glide without scrolling.
-  const glance = async (loc, ms) => { await h.moveTo(loc, {noReveal: true}); await h.pause(ms); };
-  await page.getByRole('button', {name: 'Open zip'}).waitFor();
+  const open = page.getByRole('button', {name: 'Open zip'});
+  await open.waitFor();
   await page.waitForTimeout(2000);
   f.mark();
   await h.pause(800);
-  page.once('filechooser', (chooser) => chooser.setFiles(zip));
-  await h.hover(page.getByRole('button', {name: 'Open zip'}), 900);
-  await h.click(page.getByRole('button', {name: 'Open zip'}), {after: 1500});
+  const chooser = page.waitForEvent('filechooser', {timeout: 20000});
+  await h.hover(page.getByRole('heading', {name: /^Open my files/}), 900);
+  await h.click(open, {after: 300});
+  await (await chooser).setFiles(zip);
   const main = page.getByRole('main');
   await main.getByRole('heading', {name: 'Animus', level: 1}).waitFor();
-  await glance(main.getByText('NPCs', {exact: true}), 1000);
-  await glance(main.getByText('Chest GUIs', {exact: true}), 1000);
-  await h.result(1500);
-  await h.hover(main.getByRole('link', {name: 'Preview Baker'}), 900);
-  await h.hover(main.getByRole('link', {name: 'Dry-run harbor:ferryman'}), 900);
-  await h.hover(main.getByRole('heading', {name: '2 documents need repair'}), 1200);
-  await h.hover(main.getByText(/^\$\.keys\.X\.actions/), 1400);
-  await h.click(main.getByRole('link', {name: 'Chest GUIs: town:gloss-only'}), {after: 1200});
-  await glance(page.getByText("Type: action 'camera' is not available in Animus", {exact: true}), 800);
+  await h.pause(900);
+  const toasts = page.getByRole('region', {name: 'Notifications'});
+  // Rest just left of each notice, so its words stay readable when the one below closes and it moves down.
+  await h.moveTo(toasts.getByText(/^Opened \d+ documents/), {ox: -0.2, noReveal: true});
+  await h.result(1800);
+  // Simple says how many of the documents only Advanced lists.
+  await h.moveTo(toasts.getByText(/imported documents? (is|are) in Advanced\.$/), {ox: -0.2, noReveal: true});
   await h.result(2000);
+  const library = main.getByRole('navigation', {name: 'Library'});
+  await h.hover(library.getByRole('link', {name: /^NPCs/}), 900);
+  await h.mode('advanced');
+  await h.hover(library.getByRole('link', {name: /^GUIs/}), 1000);
+  const attention = main.getByRole('region', {name: /^Needs attention/});
+  await h.hover(attention.getByRole('heading'), 1200);
+  await h.click(attention.getByRole('link', {name: /^town:gloss-only/}), {after: 1500});
+  await page.getByRole('heading', {name: 'Gloss only', level: 1}).waitFor();
+  await h.click(main.getByRole('button', {name: '1 problem'}), {after: 1200, noReveal: true});
+  // The problem line spans the page; rest just under its start.
+  await h.moveTo(page.getByText(/is not available in Animus/).first(), {ox: 0.12, oy: 1.9});
+  await h.result(2200);
   fs.rmSync(path.dirname(zip), {recursive: true, force: true});
-  return L.finish(f, {closing: 'The zip opened 20 documents; two need repair, each one link away'});
+  return L.finish(f, {closing: 'The zip opened 22 documents; two need repair, each one link away'});
 };

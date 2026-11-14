@@ -4,7 +4,8 @@
   "schema": "editor-v1.schema.json",
   "headers": {
     "authorization": "Authorization: Bearer <token> on every request except hello and pair.",
-    "counter": "X-Animus-Counter: a strictly increasing integer per token on every mutating request (POST and DELETE except pair). A value at or below the last accepted one is refused with counter-replayed.",
+    "counter": "X-Animus-Counter: a strictly increasing integer per token on every mutating request (POST and DELETE except pair, documents/read, which only reads, and DELETE /v1/token). A value at or below the last accepted one is refused with counter-replayed.",
+    "retry": "A rate-limited (429) or busy (503) answer carries error.retryAfterMillis and Retry-After in whole seconds, on the direct path and in the relay response frame alike. Wait that long and send the same request again.",
     "origin": "Origin must equal one of [editor] allowedOrigins exactly, or the request is refused with origin-not-allowed."
   },
   "changeSets": {
@@ -20,10 +21,12 @@
     {"method": "GET", "path": "/v1/lookups", "scope": "read", "request": null, "responses": {"200": "lookups-response"}},
     {"method": "GET", "path": "/v1/catalog", "scope": "read", "query": {"kind": "kind", "after": "string"}, "request": null, "responses": {"200": "catalog-response"}},
     {"method": "GET", "path": "/v1/documents/{kind}/{id}", "scope": "read", "request": null, "responses": {"200": "document-response", "404": "error-response"}},
+    {"method": "POST", "path": "/v1/documents/read", "scope": "read", "counter": false, "request": "documents-read-request", "responses": {"200": "documents-read-response", "400": "error-response"}},
     {"method": "GET", "path": "/v1/skins/{hash}/texture.png", "scope": "read", "request": null, "responses": {"200": "image/png", "404": "error-response"}},
     {"method": "POST", "path": "/v1/validate", "scope": "validate", "request": "validate-request", "responses": {"200": "validate-response"}},
     {"method": "POST", "path": "/v1/previews", "scope": "preview", "request": "preview-request", "responses": {"200": "preview-response", "409": "error-response", "422": "error-response"}},
     {"method": "DELETE", "path": "/v1/previews/{previewId}", "scope": "preview", "request": null, "responses": {"204": null, "404": "error-response"}},
+    {"method": "DELETE", "path": "/v1/token", "scope": null, "counter": false, "description": "The bearer token revokes itself: its event streams close and its previews end. Not rate limited; a token already revoked answers 204 again.", "request": null, "responses": {"204": null, "401": "error-response"}},
     {"method": "POST", "path": "/v1/changes", "scope": "apply:*", "request": "change-set", "responses": {"200": "change-applied", "409": "change-conflict", "422": "change-invalid"}},
     {"method": "GET", "path": "/v1/changes/{idempotencyKey}", "scope": "read", "request": null, "responses": {"200": "change-status-response"}},
     {"method": "POST", "path": "/v1/changes/{changeId}/undo", "scope": "apply:*", "request": "undo-request", "responses": {"200": "change-applied", "409": "change-conflict"}},
@@ -44,7 +47,7 @@
     "scope-missing": 403, "group-denied": 403, "origin-not-allowed": 403, "counter-replayed": 409,
     "not-found": 404, "invalid-request": 400, "too-large": 413, "rate-limited": 429, "busy": 503,
     "conflict": 409, "preview-refused": 422, "player-offline": 409, "gloss-unavailable": 422,
-    "unsupported-protocol": 400, "server-offline": 503, "timeout": 504, "internal": 500
+    "unsupported-protocol": 400, "server-offline": 503, "timeout": 504, "internal": 500, "world-unloaded": 404
   },
   "kinds": {
     "npc": {"folder": "npcs", "applyScope": "apply:npcs", "schema": "generated/npc.schema.json"},
@@ -70,7 +73,8 @@
     "linkTemplate": "https://animus.volmitsoftware.com/#/pair/{code}",
     "secretMinutes": 10,
     "defaultTokenDays": 7,
-    "defaultScopes": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "terrain"],
+    "slidingExpiry": "A token expires defaultTokenDays (or its expires= lifetime) after its last use; each use moves expiresAt forward.",
+    "defaultScopes": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "import", "spawn", "terrain"],
     "tokenRecheckSeconds": 60
   },
   "limits": {
@@ -78,6 +82,10 @@
     "importBodyBytes": 16777216,
     "changeSetDocuments": 512,
     "catalogPageSize": 1000,
+    "catalogPageBytes": 524288,
+    "documentsReadRefs": 200,
+    "documentsReadBytes": 524288,
+    "catalogEventFrameBytes": 49152,
     "concurrentRequestsPerToken": 8,
     "openConnections": 64,
     "eventFramesPerSecond": 20,

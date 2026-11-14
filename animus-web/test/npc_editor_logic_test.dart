@@ -140,7 +140,12 @@ void main() {
         },
       };
       expect(<String>[for (final MisplacedField field in misplacedBodyFields(converted, 'minecraft:horse')) field.field], <String>['skin', 'pose', 'armorStand', 'llama']);
-      expect(misplacedBodyFields(converted, 'minecraft:horse').first.reason, 'Skins show only on minecraft:player bodies.');
+      expect(<String>[for (final MisplacedField field in misplacedBodyFields(converted, 'minecraft:horse')) field.reason], <String>[
+        'Skins show only on player bodies.',
+        'The sitting pose shows only on player bodies.',
+        'Only for armor stand bodies.',
+        'Only for llama bodies.',
+      ]);
       expect(withoutMisplacedBodyFields(converted, 'minecraft:horse').keys, isNot(anyElement(isIn(<String>['skin', 'pose', 'armorStand', 'llama']))));
       expect(withoutMisplacedBodyFields(converted, 'minecraft:horse')['horse'], <String, Object?>{'color': 'black'});
       expect(misplacedBodyFields(_npc('hero', skin: 'a' * 64), 'minecraft:player'), isEmpty);

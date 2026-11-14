@@ -117,6 +117,60 @@ String objectiveLine(JsonMap objective, {String Function(String id)? npcName}) {
   };
 }
 
+/// The keys of the lines a quest says (`messages`), in the order the
+/// editor lists them.
+const List<String> questMessageKeys = <String>['offer', 'accept', 'decline', 'complete'];
+
+/// [path] is [field] or a path inside it.
+bool pathUnder(String path, String field) => path == field || path.startsWith('$field.') || path.startsWith('$field[');
+
+/// The Quest tab's fields only Advanced shows: the NPC to return to, who
+/// may start it, how often, and the messages.
+const List<String> questSettingsAdvancedPaths = <String>[r'$.turnIn', r'$.requirements', r'$.repeat', r'$.messages'];
+
+/// How many of the Quest tab's Advanced fields [quest] sets, each counted
+/// once.
+int questSettingsInUse(JsonMap quest) {
+  final JsonMap requirements = asMap(quest['requirements']);
+  final JsonMap messages = asMap(quest['messages']);
+  return <bool>[
+    quest['turnIn'] != null,
+    requirements['permission'] != null,
+    asList(requirements['quests']).isNotEmpty,
+    requirements['condition'] != null,
+    quest['repeat'] != null,
+    for (final String key in questMessageKeys) messages[key] != null,
+  ].where((bool on) => on).length;
+}
+
+/// The paths of the stage and objective fields only Advanced shows: each
+/// stage's order and the ids of objectives that are not custom.
+List<String> questStagesAdvancedPaths(JsonMap quest) {
+  final List<String> out = <String>[];
+  final JsonList stages = asList(quest['stages']);
+  for (int stage = 0; stage < stages.length; stage++) {
+    out.add('\$.stages[$stage].order');
+    final JsonList objectives = asList(asMap(stages[stage])['objectives']);
+    for (int index = 0; index < objectives.length; index++) {
+      if (asString(asMap(objectives[index])['type']) != 'custom') out.add('\$.stages[$stage].objectives[$index].id');
+    }
+  }
+  return out;
+}
+
+/// How many of the stage and objective fields only Advanced shows [quest]
+/// sets.
+int questStagesInUse(JsonMap quest) {
+  int count = 0;
+  for (final Object? stage in asList(quest['stages'])) {
+    if (asString(asMap(stage)['order']) != null) count++;
+    for (final Object? objective in asList(asMap(stage)['objectives'])) {
+      if (asString(asMap(objective)['type']) != 'custom' && asString(asMap(objective)['id']) != null) count++;
+    }
+  }
+  return count;
+}
+
 /// The name behaviors of the quest's namespace read its stage by.
 String questStateName(String id) => id.contains(':') ? id.substring(id.indexOf(':') + 1) : id;
 
@@ -188,7 +242,7 @@ List<Diagnostic> questChecks(JsonMap quest, {Set<String>? npcs, Set<String>? que
     out.add(const Diagnostic(
       DiagnosticSeverity.info,
       r'$.rewards.commands',
-      'commands run only when the quest id or its namespace is on the command allow-list in config.toml',
+      'run only when the quest or its namespace is on the command allow-list in config.toml',
       code: questCheckCode,
     ));
   }

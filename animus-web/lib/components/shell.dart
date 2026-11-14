@@ -1,60 +1,79 @@
-import 'dart:convert';
-import 'dart:js_interop';
-import 'dart:typed_data';
+/// The app frame: a fixed-height grid where only the page body scrolls. The
+/// top bar, the nav (an icon rail at 1100 px and below, a drawer on phones)
+/// and the save bar stay on screen. Owns the page-wide shortcuts, the Mode
+/// switch, search, Review and the confirmations.
+library;
+
+import 'dart:async';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
-import '../logic/data_folder.dart';
-import '../logic/gui/gloss_bundle.dart';
+import '../logic/command_search.dart';
 import '../logic/gui/gui_json.dart';
-import '../logic/gui/gui_text.dart';
 import '../logic/npc/npc_integrations.dart';
-import '../logic/offline/new_documents.dart';
 import '../logic/npc/skin_edits.dart';
-import '../logic/recording/rename_references.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
-import '../model/server_binding.dart';
+import '../model/display_name.dart' show needsPath;
+import '../model/document_summary.dart' show DocumentSummary;
+import '../model/server_binding.dart' show documentKey;
 import '../services/browser.dart';
+import '../services/server/connection_status.dart';
 import '../state/catalog_entry.dart';
 import '../state/editor_store.dart';
+import '../state/library.dart';
 import '../state/live_session.dart';
 import '../state/server_hub.dart';
 import '../state/workspace_repository.dart';
 import '../state/workspace_route.dart';
+import '../ui/alert.dart';
+import '../ui/confirm_dialog.dart';
+import '../ui/edit_scope.dart';
+import '../ui/empty_state.dart';
+import '../ui/editor_mode.dart';
+import '../ui/mode.dart';
+import '../ui/page_header.dart';
+import '../ui/library_rows.dart' show npcLine;
+import '../ui/recent.dart';
+import '../ui/save_state.dart' show ServerLink;
+import '../ui/sheet.dart';
+import 'advanced_notice.dart';
 import 'citizens_screen.dart';
-import '../logic/command_search.dart';
-import 'command_palette.dart';
 import 'document_view.dart';
-import 'gui/gui_fields.dart';
+import 'document_wait.dart';
+import 'list_page.dart';
 import 'npc/npc_browser.dart';
 import 'offline/home_screen.dart';
-import 'offline/kind_list_page.dart';
 import 'offline/new_document_page.dart';
-import 'offline/offline_fields.dart';
 import 'offline/sync_page.dart';
-import 'recording/recording_list.dart';
+import 'recording/movement_page.dart';
+import 'rig/rig_actions.dart' show exportWorkspace;
 import 'select/picker_scope.dart';
-import 'rig/rig_actions.dart';
-import 'rig/rig_editor.dart';
 import 'server/live_bar.dart';
 import 'server/pair_page.dart';
 import 'server/server_overview.dart';
+import 'shell_actions.dart';
+import 'shell_save_bar.dart';
 import 'shell_sidebar.dart';
+import 'shell_topbar.dart';
 import 'shortcut_sheet.dart';
 import 'shortcuts.dart';
-import 'shell_topbar.dart';
 import 'workspace_overview.dart';
-import '../logic/plural.dart';
 
-/// The id of every screen's `<main>`, the target of the skip link.
+/// The id of every workspace page's `<main>`, the target of the skip link.
 const String mainId = 'animus-main';
 
-/// Widths at which the sidebar becomes a drawer and the top bar a short row.
+/// Widths at which the nav becomes a drawer and the top bar a short row.
 const String compactQuery = '(max-width: 760px)';
+
+/// The most Search lists at once.
+const int paletteLimit = 60;
+
+/// Widths at which the nav is an icon rail.
+const String railQuery = '(max-width: 1100px)';
 
 class EditorShell extends StatefulWidget {
   const EditorShell({
@@ -82,45 +101,90 @@ class EditorShell extends StatefulWidget {
   State<EditorShell> createState() => _EditorShellState();
 }
 
-class _EditorShellState extends State<EditorShell> {
-  bool _busy = false;
-
-  /// Why the last folder or zip opened nothing, shown on home.
-  String? _openProblem;
+class _EditorShellState extends State<EditorShell> with WorkspaceActions {
   bool _compact = false;
-  bool _drawerOpen = false;
+  bool _rail = false;
+  bool _navOpen = false;
   bool _paletteOpen = false;
+
+  /// What Search holds; a new opening starts empty.
+  String _paletteQuery = '';
+  int _paletteOpens = 0;
   bool _sheetOpen = false;
-
-  /// The sidebar hidden on wide screens (Cmd or Ctrl+B); phones use the
-  /// drawer instead.
-  bool _sidebarHidden = false;
-
-  /// A Gloss bundle whose documents would replace ones the workspace has,
-  /// waiting for the user to confirm.
-  ({GlossImport imported, String file, List<DocumentLocation> clashes})? _glossPending;
-  void Function()? _stopKeys;
-  void Function()? _stopMedia;
+  bool _reviewOpen = false;
+  EditorMode _mode = loadMode();
+  List<String> _recent = const <String>[];
+  String? _recentFor;
+  late final SaveFlow _flow = SaveFlow(() {
+    if (mounted) setState(() {});
+  });
+  final List<void Function()> _stops = <void Function()>[];
+  final ArrivalNotices _arrivals = ArrivalNotices(window: const Duration(seconds: 1));
+  String? _arrivalToast;
+  StreamSubscription<List<DocumentRef>>? _serverArrivals;
 
   @override
   void initState() {
     super.initState();
-    final (bool compact, void Function() stop) = watchMedia(compactQuery, (bool compact) {
+    final (bool compact, void Function() stopCompact) = watchMedia(compactQuery, (bool compact) {
       if (!mounted) return;
       setState(() {
         _compact = compact;
-        if (!compact) _setDrawer(false);
+        if (!compact) _navOpen = false;
       });
     });
+    final (bool rail, void Function() stopRail) = watchMedia(railQuery, (bool rail) {
+      if (mounted) setState(() => _rail = rail);
+    });
     _compact = compact;
-    _stopMedia = stop;
-    _stopKeys = onKeyDown(_shortcut);
+    _rail = rail;
+    _stops.addAll(<void Function()>[stopCompact, stopRail, onKeyDown(_shortcut)]);
+    component.store.addListener(_storeChanged);
+    _listenForArrivals();
+    _remember();
+  }
+
+  /// Documents the paired server gains while Simple hides their kind.
+  void _listenForArrivals() {
+    _serverArrivals?.cancel();
+    _serverArrivals = component.session?.arrivals.listen((List<DocumentRef> refs) {
+      final String? workspaceId = component.store.workspace?.id;
+      if (workspaceId != null) announce(Arrival.server, <ArrivedDocument>[for (final DocumentRef ref in refs) (kind: ref.kind, id: ref.id)], workspaceId);
+    });
+  }
+
+  @override
+  bool announce(Arrival arrival, List<ArrivedDocument> documents, String workspaceId) {
+    if (_mode != EditorMode.simple) return false;
+    final AdvancedNotice? notice = _arrivals.add(arrival, documents);
+    if (notice == null) return false;
+    final String? shown = _arrivalToast;
+    if (shown != null) ArcaneSonner.dismiss(shown);
+    _arrivalToast = ArcaneSonner.info(
+      notice.message,
+      duration: 8000,
+      action: ToastAction(label: 'Switch to Advanced', onPressed: () => _showInAdvanced(notice.landing(workspaceId))),
+    );
+    return true;
+  }
+
+  /// Switch to Advanced from an arrival notice, landing on what arrived.
+  void _showInAdvanced(EditorRoute landing) {
+    final String? shown = _arrivalToast;
+    if (shown != null) ArcaneSonner.dismiss(shown);
+    _arrivalToast = null;
+    _setMode(EditorMode.advanced);
+    component.onNavigate(landing);
   }
 
   @override
   void dispose() {
-    _stopKeys?.call();
-    _stopMedia?.call();
+    for (final void Function() stop in _stops) {
+      stop();
+    }
+    component.store.removeListener(_storeChanged);
+    _serverArrivals?.cancel();
+    _flow.dispose();
     setScrollLocked(false);
     super.dispose();
   }
@@ -128,20 +192,73 @@ class _EditorShellState extends State<EditorShell> {
   @override
   void didUpdateWidget(EditorShell oldComponent) {
     super.didUpdateWidget(oldComponent);
-    // Moving to another screen (or leaving the workspace) closes the drawer.
-    if (_drawerOpen && (component.store.workspace == null || oldComponent.route != component.route)) _setDrawer(false);
-    // The live bar's last notice was news on the page it came from.
-    if (oldComponent.route != component.route) oldComponent.session?.markLogSeen();
+    if (oldComponent.route != component.route) {
+      _navOpen = false;
+      oldComponent.session?.markLogSeen();
+    }
+    // Review belongs to one live session; a new pairing or another server
+    // starts without it.
+    if (!identical(oldComponent.session, component.session)) {
+      _reviewOpen = false;
+      _listenForArrivals();
+    }
+    _remember();
   }
 
-  /// The page-wide shortcuts ([shortcutGroups]). Keys typed into a text
-  /// box stay with the box; Escape is handled by whatever has focus.
+  void _storeChanged() => _flow.watch(component.store);
+
+  /// Keeps the open document at the top of the workspace's Recent.
+  void _remember() {
+    final WorkspaceSnapshot? workspace = component.store.workspace;
+    if (workspace == null) return;
+    if (_recentFor != workspace.id) {
+      _recentFor = workspace.id;
+      _recent = _loadRecent(workspace.id);
+    }
+    final EditorRoute route = component.route;
+    if (route is DocumentRoute && route.workspaceId == workspace.id) {
+      final String key = '${route.kind.wireName}:${route.documentId}';
+      if (_recent.isEmpty || _recent.first != key) {
+        _recent = pushRecent(_recent, key);
+        _saveRecent(workspace.id, _recent);
+      }
+    }
+  }
+
+  static List<String> _loadRecent(String workspaceId) {
+    try {
+      return decodeRecent(web.window.localStorage.getItem(recentStorageKey(workspaceId)));
+    } on Object {
+      return const <String>[];
+    }
+  }
+
+  static void _saveRecent(String workspaceId, List<String> keys) {
+    try {
+      web.window.localStorage.setItem(recentStorageKey(workspaceId), encodeRecent(keys));
+    } on Object {
+      // Storage blocked: Recent lasts for this page.
+    }
+  }
+
+  void _setMode(EditorMode mode) {
+    saveMode(mode);
+    setState(() => _mode = mode);
+  }
+
+  /// The page-wide shortcuts ([pageGroups]). Keys typed into a text box
+  /// stay with the box, except Mod+S, which always saves.
   void _shortcut(web.KeyboardEvent event) {
-    if (_paletteOpen || _sheetOpen || isTypingTarget(event.target)) return;
     final ShortcutAction? action = matchShortcut(key: event.key, mod: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey);
     if (action == null) return;
+    if (isTypingTarget(event.target) && !firesWhileTyping(action)) return;
+    if ((_paletteOpen || _sheetOpen) && action != ShortcutAction.save) return;
     final WorkspaceSnapshot? workspace = component.store.workspace;
-    if (workspace == null && action != ShortcutAction.palette && action != ShortcutAction.sheet) return;
+    if (workspace == null && action != ShortcutAction.palette && action != ShortcutAction.sheet) {
+      // Never the browser's own Save page.
+      if (action == ShortcutAction.save) event.preventDefault();
+      return;
+    }
     event.preventDefault();
     _run(action, workspace);
   }
@@ -149,19 +266,15 @@ class _EditorShellState extends State<EditorShell> {
   void _run(ShortcutAction action, WorkspaceSnapshot? workspace) {
     switch (action) {
       case ShortcutAction.palette:
-        _openPalette();
+        _setPalette(true);
       case ShortcutAction.sheet:
-        _openSheet();
-      case ShortcutAction.search:
-        _focusSearch();
+        setState(() => _sheetOpen = true);
       case ShortcutAction.undo:
         _undo();
       case ShortcutAction.redo:
         _redo();
       case ShortcutAction.save:
         _save(workspace!);
-      case ShortcutAction.sidebar:
-        _toggleSidebar();
       case ShortcutAction.newDocument:
         component.onNavigate(NewDocumentRoute(workspace!.id));
       case ShortcutAction.browseNpcs:
@@ -169,257 +282,119 @@ class _EditorShellState extends State<EditorShell> {
     }
   }
 
-  /// Every edit is saved as it lands, so Save retries one the browser
-  /// refused; in a live workspace it presses Apply.
+  /// Mod+S: Apply on a server; in this browser every edit is kept as it
+  /// lands, so it retries a refused save or says Saved.
   void _save(WorkspaceSnapshot workspace) {
-    if (workspace.server != null && component.session != null) {
-      final web.HTMLButtonElement? apply = web.document.getElementById('animus-live-apply') as web.HTMLButtonElement?;
-      if (apply != null && !apply.disabled) {
-        apply.click();
-      } else {
-        ArcaneSonner.info('Nothing to apply. Edits are kept as drafts until Apply.');
-      }
+    final LiveSession? session = component.session;
+    if (workspace.server != null && session != null) {
+      _flow.apply(session, simple: _mode == EditorMode.simple, onBlocked: _openReview);
     } else if (component.store.hasUnsavedEdit) {
       component.store.saveAgain();
     } else {
-      ArcaneSonner.info('Saved. Every edit is kept in this browser as you make it.');
+      _flow.flash();
     }
   }
 
-  void _toggleSidebar() {
-    if (_compact) {
-      _drawerOpen ? _closeDrawer() : _openDrawer();
-    } else {
-      setState(() => _sidebarHidden = !_sidebarHidden);
-    }
+  void _openReview() {
+    if (mounted) setState(() => _reviewOpen = true);
   }
 
-  void _focusSearch() {
-    if (_compact && !_drawerOpen) setState(() => _setDrawer(true));
-    if (!_compact && _sidebarHidden) setState(() => _sidebarHidden = false);
-    focusWhenShown(documentSearchId);
-  }
-
-  void _setDrawer(bool open) {
-    _drawerOpen = open;
-    setScrollLocked(open || _paletteOpen || _sheetOpen);
-  }
-
-  void _openDrawer() {
-    setState(() => _setDrawer(true));
-    // The open document's link, else the search box, takes focus.
-    web.window.setTimeout((() {
-      final web.HTMLElement? current = web.document.querySelector('#animus-sidebar [aria-current="page"]') as web.HTMLElement?;
-      if (current != null) {
-        current.scrollIntoView(web.ScrollIntoViewOptions(block: 'center'));
-        current.focus();
-      } else {
-        focusById(documentSearchId);
-      }
-    }).toJS, 30.toJS);
-  }
-
-  void _closeDrawer() {
-    setState(() => _setDrawer(false));
-    focusWhenShown('animus-documents-button');
-  }
-
-  void _openPalette() {
-    setState(() => _paletteOpen = true);
-    setScrollLocked(true);
-  }
-
-  void _closePalette() {
-    setState(() => _paletteOpen = false);
-    setScrollLocked(_drawerOpen || _sheetOpen);
-  }
-
-  void _openSheet() {
-    setState(() => _sheetOpen = true);
-    setScrollLocked(true);
-  }
-
-  void _closeSheet() {
-    setState(() => _sheetOpen = false);
-    setScrollLocked(_drawerOpen || _paletteOpen);
-  }
-
-  Future<void> _undo() async {
-    final String? label = await component.store.undo();
-    if (label != null) ArcaneSonner.info('Undid: $label');
-  }
-
-  Future<void> _redo() async {
-    final String? label = await component.store.redo();
-    if (label != null) ArcaneSonner.info('Redid: $label');
-  }
-
-  Future<void> _open(Future<PickedFiles?> Function() pick, {required bool zip}) async {
+  void _setPalette(bool open) {
     setState(() {
-      _busy = true;
-      _openProblem = null;
+      _paletteOpen = open;
+      if (open) {
+        _paletteQuery = '';
+        _paletteOpens++;
+      }
     });
-    try {
-      final PickedFiles? picked = await pick();
-      if (picked == null) return;
-      final WorkspaceSnapshot snapshot = await component.store.openFiles(picked.name, picked.files, requireDocuments: true, zip: zip);
-      final int invalid = snapshot.documents.where((AnimusDocument document) => !document.valid).length;
-      final int upgraded = component.store.upgraded.length;
-      final String upgrades = upgraded == 0 ? '' : ' Upgraded ${countOf(upgraded, 'file')} to schemaVersion 2.';
-      if (invalid > 0) {
-        ArcaneSonner.warning('Opened ${countOf(snapshot.documents.length, 'document')}; $invalid ${invalid == 1 ? 'needs' : 'need'} repair.$upgrades');
-      } else {
-        ArcaneSonner.success('Opened ${countOf(snapshot.documents.length, 'document')}.$upgrades');
-      }
-      component.onNavigate(WorkspaceRoute(snapshot.id));
-      focusMainHeading();
-    } on NoDocumentsFound catch (refused) {
-      // Nothing was saved; home says why beside the open buttons.
-      if (mounted) setState(() => _openProblem = refused.message);
-      if (component.route is! HomeRoute) ArcaneSonner.error(refused.message);
-    } on Object catch (failure) {
-      ArcaneSonner.error('Could not open the files ($failure). Pick plugins/Animus or a complete zip of it.');
-    } finally {
-      if (mounted) setState(() => _busy = false);
+    setScrollLocked(open);
+  }
+
+  static const Set<String> _libraryGroups = <String>{'Recent', 'Library'};
+
+  /// Search on shadcn's command palette: documents first, then commands;
+  /// with nothing typed, the recent documents and the commands. The editor
+  /// ranks and caps the matches ([paletteLimit]) and hands over only those.
+  Widget _palette(WorkspaceSnapshot? workspace) {
+    final List<PaletteCommand> all = _paletteOpen ? _commands(workspace) : const <PaletteCommand>[];
+    final List<PaletteCommand> pool = _paletteQuery.trim().isEmpty ? <PaletteCommand>[for (final PaletteCommand command in all) if (command.group != 'Library') command] : all;
+    final bool phone = web.window.matchMedia('(max-width: 760px)').matches;
+    final List<PaletteCommand> shown = filterCommands(pool, _paletteQuery).take(paletteLimit).toList();
+    final int hidden = shown.isEmpty && workspace != null && _mode == EditorMode.simple && _paletteQuery.trim().isNotEmpty ? _hiddenMatches(_paletteQuery) : 0;
+    // One group per heading, in the order of each group's best match.
+    final Map<String, List<CommandItem>> grouped = <String, List<CommandItem>>{};
+    for (final PaletteCommand command in shown) {
+      (grouped[command.group] ??= <CommandItem>[]).add(CommandItem(
+        label: command.label,
+        // Phones have no keys to press: a command's shortcut is left out.
+        shortcut: phone && !_libraryGroups.contains(command.group) ? null : command.hint,
+        keywords: <String>[...command.keywords, ?command.hint],
+        onSelect: command.run,
+      ));
     }
-  }
-
-  String _fileStem(WorkspaceSnapshot workspace) {
-    final String stem = workspace.name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
-    return stem.isEmpty ? 'animus' : stem;
-  }
-
-  void _exportGloss(WorkspaceSnapshot workspace) {
-    final GlossExport exported = writeGlossBundle(workspace.documents);
-    if (exported.exported == 0) {
-      ArcaneSonner.warning('No chest GUIs, menus, holograms or presets Gloss can run.${exported.skipped.isEmpty ? '' : ' Skipped: ${exported.skipped.join('; ')}'}');
-      return;
-    }
-    downloadBytes('${_fileStem(workspace)}.gloss-workspace.json', utf8.encode(exported.bundle), type: 'application/json');
-    ArcaneSonner.success('Exported ${countOf(exported.exported, 'document')} as a Gloss bundle.'
-        '${exported.skipped.isEmpty ? '' : ' Skipped ${exported.skipped.length}: ${exported.skipped.join('; ')}'}');
-  }
-
-  Future<void> _importGloss() async {
-    final (String, Uint8List)? picked = await pickFile('.json,application/json');
-    if (picked == null) return;
-    final GlossImport imported = readGlossBundle(utf8.decode(picked.$2, allowMalformed: true));
-    if (imported.error != null) {
-      ArcaneSonner.error(imported.error!);
-      return;
-    }
-    final List<DocumentLocation> clashes = glossConflicts(imported, component.store.workspace?.documents ?? const <AnimusDocument>[]);
-    if (clashes.isNotEmpty) {
-      setState(() => _glossPending = (imported: imported, file: picked.$1, clashes: clashes));
-      return;
-    }
-    await _commitGloss(imported, picked.$1);
-  }
-
-  Future<void> _commitGloss(GlossImport imported, String file) async {
-    if (_glossPending != null) setState(() => _glossPending = null);
-    await component.store.commit(
-      documents: <DocumentChange>[
-        for (final GlossImportedDocument document in imported.documents) DocumentChange(document.location.kind, document.location.id, document.source),
-      ],
-      label: 'import $file',
-    );
-    final int invalid = imported.documents
-        .where((GlossImportedDocument d) => !(component.store.document(d.location.kind, d.location.id)?.valid ?? false))
-        .length;
-    final String skipped = imported.skipped.isEmpty ? '' : ' Skipped: ${imported.skipped.join('; ')}.';
-    final String notes = imported.notes.isEmpty ? '' : ' ${imported.notes.join(' ')}';
-    if (invalid > 0) {
-      ArcaneSonner.warning('Imported ${countOf(imported.documents.length, 'document')} from $file; $invalid ${invalid == 1 ? 'uses' : 'use'} features Animus refuses.$skipped$notes');
-    } else {
-      ArcaneSonner.success('Imported ${countOf(imported.documents.length, 'document')} from $file.$skipped$notes');
-    }
-  }
-
-  Widget _glossConfirm(({GlossImport imported, String file, List<DocumentLocation> clashes}) pending) {
-    final List<DocumentLocation> clashes = pending.clashes;
-    final String named = clashes.take(5).map((DocumentLocation l) => '${l.kind.label} ${l.id}').join(', ');
-    final String more = clashes.length > 5 ? ' and ${clashes.length - 5} more' : '';
-    return ConfirmRow(
-      key: const ValueKey<String>('gloss-confirm'),
-      question: 'Replace ${countOf(clashes.length, 'document')} with the copies in ${pending.file}?',
-      detail: '$named$more. Undo brings them back.',
-      confirmLabel: 'Replace and import',
-      onConfirm: () => _commitGloss(pending.imported, pending.file),
-      onCancel: () => setState(() => _glossPending = null),
-    );
-  }
-
-  /// Where [document] goes under [id]: a behavior inside a pack stays in its
-  /// pack's folder.
-  String _pathFor(AnimusDocument document, String id) {
-    final int behaviors = document.path.indexOf('/behaviors/');
-    if (document.kind == DocumentKind.behavior && document.path.startsWith('packs/') && behaviors > 0) {
-      final int colon = id.indexOf(':');
-      return '${document.path.substring(0, behaviors)}/behaviors/${id.substring(0, colon)}/${id.substring(colon + 1)}.json';
-    }
-    return newDocumentPath(document.kind, id);
-  }
-
-  /// Moves (or with [copy], copies) a document to [id] in one undo step. A
-  /// move takes the references along: NPCs listing a renamed behavior or
-  /// group, the animations and NPCs of a renamed rig, and the NPCs and routes
-  /// that play a renamed recording.
-  Future<String?> _relocate(WorkspaceSnapshot workspace, AnimusDocument document, String id, {required bool copy}) async {
-    final DocumentKind kind = document.kind;
-    if (id == document.id) return copy ? 'Pick an id that is not taken.' : null;
-    if (!validDocumentId(kind, id)) return 'Use ${idHint(kind)}.';
-    if (component.store.document(kind, id) != null) return '${kind.label}: $id already exists.';
-    final Object? json = document.json;
-    final String source = json is Map<String, Object?> ? prettyJson(rewriteIdentity(kind, json, id, fresh: copy)) : document.source;
-    final List<DocumentChange> changes = <DocumentChange>[
-      if (!copy) DocumentChange(kind, document.id, null),
-      DocumentChange(kind, id, source, path: _pathFor(document, id)),
+    final List<CommandGroup> groups = <CommandGroup>[
+      for (final MapEntry<String, List<CommandItem>> group in grouped.entries) CommandGroup(heading: group.key, items: group.value),
     ];
-    if (!copy) {
-      for (final AnimusDocument other in workspace.documents) {
-        final Object? value = other.json;
-        if (value is! Map<String, Object?>) continue;
-        if (kind == DocumentKind.behavior && other.kind == DocumentKind.npc && stringList(value['behaviors']).contains(document.id)) {
-          changes.add(DocumentChange(other.kind, other.id, prettyJson(<String, Object?>{
-            ...value,
-            'behaviors': <String>[for (final String behavior in stringList(value['behaviors'])) behavior == document.id ? id : behavior],
-          })));
-        } else if (kind == DocumentKind.rig && other.kind == DocumentKind.animation && value['rig'] == document.id) {
-          changes.add(DocumentChange(other.kind, other.id, prettyJson(<String, Object?>{...value, 'rig': id})));
-        } else if (kind == DocumentKind.rig && other.kind == DocumentKind.npc && asMap(value['rig'])['id'] == document.id) {
-          changes.add(DocumentChange(other.kind, other.id, prettyJson(<String, Object?>{...value, 'rig': <String, Object?>{...asMap(value['rig']), 'id': id}})));
-        } else if (renamedReferences(kind, document.id, id, other.kind, value) case final JsonMap renamed) {
-          changes.add(DocumentChange(other.kind, other.id, prettyJson(renamed)));
-        }
-      }
+    return ArcaneCommand(
+      key: ValueKey<int>(_paletteOpens),
+      id: 'ui-search',
+      isOpen: _paletteOpen,
+      externalFilter: true,
+      animate: false,
+      // Phones have no keys: the key hints under the list go too.
+      keyHints: !phone,
+      placeholder: 'Search NPCs, shops, commands',
+      emptyMessage: hidden > 0 ? hiddenMatchesText(hidden) : 'Nothing matches.',
+      groups: groups,
+      onSearch: (String query) => setState(() => _paletteQuery = query),
+      onClose: () => _setPalette(false),
+    );
+  }
+
+  /// How many documents only Advanced lists match [query].
+  int _hiddenMatches(String query) => filterCommands(<PaletteCommand>[
+        for (final DocumentKind kind in DocumentKind.values)
+          if (!kindShown(kind, EditorMode.simple))
+            for (final LibraryEntry entry in component.store.library(kind)) PaletteCommand('Library', entry.name, () {}, hint: kindLabel(kind), keywords: <String>[entry.id, kind.wireName]),
+      ], query).length;
+
+  Future<void> _undo() async => _toldHistory(await component.store.undo(), 'Undid');
+
+  Future<void> _redo() async => _toldHistory(await component.store.redo(), 'Redid');
+
+  void _toldHistory(HistoryMove? move, String done) {
+    if (move == null) return;
+    final String? refused = move.refused;
+    refused == null ? ArcaneSonner.info('$done: ${move.label}') : ArcaneSonner.warning(refused);
+  }
+
+  void _reconnect() {
+    final LiveSession? session = component.session;
+    if (session == null) return;
+    if (session.connection.status.phase == ConnectionPhase.reconnecting) {
+      session.connection.retryNow();
+    } else {
+      component.hub.connect(session.serverId);
     }
-    await component.store.commit(documents: changes, label: copy ? 'duplicate ${document.id} as $id' : 'rename ${document.id} to $id');
-    final int references = changes.length - (copy ? 1 : 2);
-    ArcaneSonner.success(copy
-        ? 'Copied ${document.id} as $id.'
-        : 'Moved ${document.id} to $id${references > 0 ? ' and updated $references reference${references == 1 ? '' : 's'}' : ''}.');
-    component.onNavigate(DocumentRoute(workspace.id, kind, id));
-    focusMainHeading();
-    return null;
   }
 
   TopbarActions _actions(WorkspaceSnapshot? workspace) {
     final EditorStore store = component.store;
-    final bool idle = !_busy;
     return TopbarActions(
-      onPalette: _openPalette,
+      onPalette: () => _setPalette(true),
       onToggleTheme: component.onToggleTheme,
-      onOpenFolder: idle ? () => _open(pickDirectory, zip: false) : null,
-      onOpenZip: idle ? () => _open(pickZip, zip: true) : null,
+      onShortcuts: () => setState(() => _sheetOpen = true),
+      onMode: _setMode,
+      onNavigate: component.onNavigate,
+      onOpenFolder: busy ? null : () => openFiles(pickDirectory, zip: false),
+      onOpenZip: busy ? null : () => openFiles(pickZip, zip: true),
       onUndo: workspace != null && store.canUndo ? _undo : null,
       onRedo: workspace != null && store.canRedo ? _redo : null,
-      onImportBbmodel: workspace != null && idle ? () => _importBbmodel(workspace) : null,
-      onImportGloss: workspace != null ? _importGloss : null,
+      onImportBbmodel: workspace != null && !busy ? () => importBbmodel(workspace) : null,
+      onImportGloss: workspace != null ? importGloss : null,
       onExportZip: workspace != null ? () => exportWorkspace(workspace) : null,
-      onExportGloss: workspace != null ? () => _exportGloss(workspace) : null,
-      onDocuments: workspace != null ? (_drawerOpen ? _closeDrawer : _openDrawer) : null,
-      onShowSidebar: workspace != null && _sidebarHidden && !_compact ? _toggleSidebar : null,
+      onExportGloss: workspace != null ? () => exportGloss(workspace) : null,
+      onNav: workspace != null ? () => setState(() => _navOpen = !_navOpen) : null,
     );
   }
 
@@ -427,137 +402,243 @@ class _EditorShellState extends State<EditorShell> {
   Widget build(BuildContext context) {
     final EditorStore store = component.store;
     final WorkspaceSnapshot? workspace = store.workspace;
-    return dom.div(classes: 'animus-shell', <Widget>[
-      dom.button(
-        classes: 'animus-skip',
-        attributes: const <String, String>{'type': 'button'},
-        events: <String, void Function(web.Event)>{'click': (web.Event _) => focusById(mainId)},
-        <Widget>[Component.text(workspace != null ? 'Skip to document' : 'Skip to content')],
-      ),
-      ShellTopbar(
-        actions: _actions(workspace),
-        dark: component.brightness == Brightness.dark,
-        compact: _compact,
-        workspace: workspace,
-        // The live bar shows the connection inside a server workspace, so the
-        // top bar shows it only on the screens without one.
-        session: _showsLiveBar(workspace) ? null : component.session,
-        undoLabel: store.undoLabel,
-        redoLabel: store.redoLabel,
-        drawerOpen: _drawerOpen,
-      ),
-      if (!store.persistent)
-        const dom.div(key: ValueKey<String>('storage-banner'), classes: 'animus-banner is-warning', attributes: <String, String>{'role': 'status'}, <Widget>[
-          Component.text('This browser is not keeping workspaces. Export a zip before closing the tab.'),
-        ]),
-      if (store.problem != null) _problemBanner(store, workspace),
-      if (component.route is PairRoute)
-        PairPage(
-          key: ValueKey<String>('pair:${(component.route as PairRoute).code}'),
-          code: (component.route as PairRoute).code,
-          hub: component.hub,
-          onPaired: (String id) => replaceHash(ServerRoute(id, const <String>[]).format()),
-        )
-      else if (component.route is ServerRoute && component.hub.server((component.route as ServerRoute).serverId) == null)
-        const dom.main_(id: mainId, classes: 'animus-home', attributes: <String, String>{'tabindex': '-1'}, <Widget>[
-          dom.section(classes: 'animus-panel is-error', <Widget>[
-            dom.h1(id: mainHeadingId, attributes: <String, String>{'tabindex': '-1'}, <Widget>[Component.text('Server not paired')]),
-            dom.p(<Widget>[Component.text('Run /animus editor pair and open the link, or paste it under Servers.')]),
-            dom.p(<Widget>[dom.a(href: '#/', <Widget>[Component.text('Back to workspaces')])]),
+    final bool unpaired = component.route is ServerRoute && component.hub.server((component.route as ServerRoute).serverId) == null;
+    final EditorRoute here = component.route;
+    final bool framed = workspace != null && here is! PairRoute && !unpaired && !(here is CitizensRoute && here.workspaceId == null);
+    final LiveSession? session = workspace?.server == null ? null : component.session;
+    return ModeScope(
+      mode: _mode,
+      onChanged: _setMode,
+      child: dom.div(
+        classes: 'ui-app${framed ? '' : ' is-bare'}${_rail ? ' is-rail' : ''}${_compact ? ' is-compact' : ''}',
+        <Widget>[
+          dom.div(classes: 'ui-skip', <Widget>[
+            Button.outline(label: 'Skip to content', onPressed: () => focusById(framed ? mainId : mainHeadingId)),
           ]),
-        ])
-      else if (workspace == null && component.route is CitizensRoute)
-        CitizensScreen(key: const ValueKey<String>('citizens'), hub: component.hub, store: component.store, onNavigate: component.onNavigate)
-      else if (workspace == null)
-        _home(store)
-      else
-        _workspace(workspace),
-      if (_paletteOpen) CommandPalette(key: const ValueKey<String>('palette'), commands: _commands(workspace), onClose: _closePalette),
-      if (_sheetOpen) ShortcutSheet(key: const ValueKey<String>('shortcuts'), onClose: _closeSheet),
-    ]);
+          ShellTopbar(
+            actions: _actions(workspace),
+            dark: component.brightness == Brightness.dark,
+            compact: _compact,
+            mode: _mode,
+            hub: component.hub,
+            workspaces: store.workspaces,
+            workspace: framed ? workspace : null,
+            undoLabel: store.undoLabel,
+            redoLabel: store.redoLabel,
+            navOpen: _navOpen,
+            elsewhere: framed && component.session?.waiting == true,
+          ),
+          if (framed && !_compact)
+            dom.div(classes: 'ui-nav', <Widget>[
+              ShellNav(
+                store: store,
+                workspace: workspace,
+                route: component.route,
+                mode: _mode,
+                layout: _rail ? NavLayout.rail : NavLayout.full,
+                recent: _recent,
+                session: session,
+              ),
+            ]),
+          if (framed)
+            dom.main_(id: mainId, classes: 'ui-page', attributes: const <String, String>{'tabindex': '-1'}, <Widget>[
+              ..._alerts(store),
+              _workspace(workspace),
+            ])
+          else
+            dom.div(classes: 'ui-page', <Widget>[..._alerts(store), _bare(store, unpaired)]),
+          if (framed)
+            ShellSaveBar(
+              store: store,
+              workspace: workspace,
+              session: session,
+              flow: _flow,
+              advanced: _mode == EditorMode.advanced,
+              onReview: _openReview,
+              onReconnect: _reconnect,
+              // Send to server is offered everywhere but on its own page.
+              onSend: component.route is SyncRoute ? null : () => component.onNavigate(SyncRoute(workspace.id)),
+            ),
+          if (framed && _compact)
+            Sheet(
+              id: 'ui-nav-drawer',
+              open: _navOpen,
+              fromStart: true,
+              title: 'Menu',
+              onClose: () {
+                setState(() => _navOpen = false);
+                focusWhenShown('ui-nav-button');
+              },
+              child: ShellNav(
+                store: store,
+                workspace: workspace,
+                route: component.route,
+                mode: _mode,
+                layout: NavLayout.drawer,
+                recent: _recent,
+                session: session,
+                header: ModeSwitch(mode: _mode, onChanged: _setMode),
+              ),
+            ),
+          if (framed && session != null)
+            Sheet(
+              id: 'ui-review',
+              open: _reviewOpen,
+              title: 'Review',
+              onClose: () => setState(() => _reviewOpen = false),
+              child: _reviewOpen ? _review(session, workspace) : const Component.fragment(<Widget>[]),
+            ),
+          _palette(workspace),
+          ShortcutSheet(open: _sheetOpen, onClose: () => setState(() => _sheetOpen = false)),
+          const ConfirmHost(),
+        ],
+      ),
+    );
   }
 
-  /// True when the route renders the workspace with its live bar.
-  bool _showsLiveBar(WorkspaceSnapshot? workspace) {
+  /// Review: the changes, conflicts and history of a server workspace. For
+  /// now the live editing panel, which the Review rebuild replaces.
+  Widget _review(LiveSession session, WorkspaceSnapshot workspace) {
     final EditorRoute route = component.route;
-    if (workspace == null || workspace.server == null || component.session == null || route is PairRoute) return false;
-    return !(route is ServerRoute && component.hub.server(route.serverId) == null);
+    final String? focus = route is DocumentRoute ? documentKey(route.kind, route.documentId) : null;
+    return LiveBar(
+      session: session,
+      focus: focus,
+      onOpenServer: () {
+        setState(() => _reviewOpen = false);
+        component.onNavigate(WorkspaceRoute(workspace.id));
+      },
+    );
   }
 
-  Widget _problemBanner(EditorStore store, WorkspaceSnapshot? workspace) =>
-      dom.div(key: const ValueKey<String>('banner'), classes: 'animus-banner is-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[
-        dom.span(<Widget>[Component.text(store.problem!)]),
-        dom.div(classes: 'animus-row', <Widget>[
-          if (store.hasUnsavedEdit) ...<Widget>[
-            Button.secondary(label: 'Save again', size: ButtonSize.small, onPressed: store.saveAgain),
-            if (workspace != null) Button.ghost(label: 'Export zip', size: ButtonSize.small, onPressed: () => exportWorkspace(workspace)),
-          ] else
-            Button.ghost(label: 'Dismiss', size: ButtonSize.small, onPressed: store.dismissProblem),
-        ]),
+  List<Widget> _alerts(EditorStore store) => <Widget>[
+        if (!store.persistent)
+          const AppAlert(
+            key: ValueKey<String>('storage-alert'),
+            tone: AlertTone.warning,
+            message: 'This browser is not keeping workspaces. Export a zip before closing the tab.',
+          ),
+        // A refused save is the save bar's; other load and save problems show here.
+        if (store.problem != null && !store.hasUnsavedEdit)
+          AppAlert(
+            key: const ValueKey<String>('problem-alert'),
+            tone: AlertTone.error,
+            message: store.problem!,
+            live: true,
+            onDismiss: store.dismissProblem,
+          ),
+      ];
+
+  /// The pages outside a workspace: start, pairing, the converter.
+  Widget _bare(EditorStore store, bool unpaired) {
+    final EditorRoute route = component.route;
+    if (route is PairRoute) {
+      return PairPage(
+        key: ValueKey<String>('pair:${route.code}'),
+        code: route.code,
+        hub: component.hub,
+        onPaired: (String id) => replaceHash(ServerRoute(id, const <String>[]).format()),
+      );
+    }
+    if (unpaired) {
+      return const dom.main_(id: mainId, classes: 'ui-start', attributes: <String, String>{'tabindex': '-1'}, <Widget>[
+        AppAlert(tone: AlertTone.error, title: 'Server not paired', message: 'Run /animus editor pair in game and open the link.'),
+        Row(children: <Widget>[Button.link(label: 'All workspaces', href: '#/')]),
       ]);
+    }
+    if (route is CitizensRoute) {
+      return CitizensScreen(key: const ValueKey<String>('citizens'), hub: component.hub, store: store, onNavigate: component.onNavigate, announce: announce);
+    }
+    return HomeScreen(
+      store: store,
+      hub: component.hub,
+      busy: busy,
+      openProblem: openProblem,
+      onOpenFolder: () => openFiles(pickDirectory, zip: false),
+      onOpenZip: () => openFiles(pickZip, zip: true),
+      onNavigate: component.onNavigate,
+    );
+  }
+
+  /// A document row's muted line: its kind; in Advanced with a short id or
+  /// an unnamed NPC's path, in Simple with where an unnamed NPC stands. A
+  /// skin's 64-character hash would squeeze the name, so it is found but
+  /// not shown.
+  static String _hint(DocumentKind kind, String name, String id, bool advanced, DocumentSummary summary) {
+    if (advanced && (needsPath(kind, name) || (name != id && id.length <= 24))) return '${kindLabel(kind)}, $id';
+    final String? place = needsPath(kind, name) ? npcLine(summary, place: true) : null;
+    return place == null ? kindLabel(kind) : '${kindLabel(kind)}, $place';
+  }
 
   List<PaletteCommand> _commands(WorkspaceSnapshot? workspace) {
     final EditorStore store = component.store;
     final bool dark = component.brightness == Brightness.dark;
+    final bool advanced = _mode == EditorMode.advanced;
     return <PaletteCommand>[
       if (workspace != null) ...<PaletteCommand>[
+        for (final String key in _recent)
+          if (_documentOf(key) case final AnimusDocument document when kindShown(document.kind, _mode))
+            PaletteCommand('Recent', store.libraryEntry(document.kind, document.id)?.name ?? document.id,
+                () => component.onNavigate(DocumentRoute(workspace.id, document.kind, document.id)),
+                hint: _hint(document.kind, store.libraryEntry(document.kind, document.id)?.name ?? document.id, document.id, advanced,
+                    store.libraryEntry(document.kind, document.id)?.summary ?? DocumentSummary.empty),
+                keywords: <String>[document.id]),
+        // Every document the workspace lists in this mode, loaded or still on
+        // the server.
+        for (final DocumentKind kind in DocumentKind.values)
+          if (kindShown(kind, _mode))
+            for (final LibraryEntry entry in store.library(kind))
+            PaletteCommand(
+              'Library',
+              entry.name,
+              () => component.onNavigate(DocumentRoute(workspace.id, kind, entry.id)),
+              hint: _hint(kind, entry.name, entry.id, advanced, entry.summary),
+              keywords: <String>[entry.id, kind.wireName],
+            ),
+        for (final NavJob job in visibleJobs(_mode, server: workspace.server != null))
+          PaletteCommand('Go to', job.label, () => component.onNavigate(jobRoute(job, workspace.id))),
         if (store.canUndo) PaletteCommand('Edit', 'Undo ${store.undoLabel}', _undo, hint: platformKeys('Mod+Z'), keywords: const <String>['undo']),
         if (store.canRedo) PaletteCommand('Edit', 'Redo ${store.redoLabel}', _redo, hint: platformKeys('Mod+Shift+Z'), keywords: const <String>['redo']),
-        PaletteCommand('Edit', workspace.server == null ? 'Save' : 'Apply to the server', () => _save(workspace), hint: platformKeys('Mod+S'), keywords: const <String>['save', 'apply']),
-        PaletteCommand('Workspace', 'Search documents', _focusSearch, hint: platformKeys('Mod+F'), keywords: const <String>['find', 'filter']),
-        PaletteCommand('Workspace', 'New document', () => component.onNavigate(NewDocumentRoute(workspace.id)), hint: 'N', keywords: const <String>['create', 'add']),
-        PaletteCommand('Workspace', 'New conversation', () => component.onNavigate(NewDocumentRoute.conversation(workspace.id)), keywords: const <String>['dialogue', 'talk', 'create']),
-        PaletteCommand('Workspace', 'Export the data folder zip', () => exportWorkspace(workspace), keywords: const <String>['download', 'save']),
-        PaletteCommand('Workspace', 'Export a Gloss bundle', () => _exportGloss(workspace), keywords: const <String>['download']),
-        PaletteCommand('Workspace', 'Import a Blockbench model', () => _importBbmodel(workspace), keywords: const <String>['bbmodel', 'rig']),
-        PaletteCommand('Workspace', 'Import a Gloss bundle', _importGloss),
-        if (workspace.server == null) PaletteCommand('Workspace', 'Send to a server', () => component.onNavigate(SyncRoute(workspace.id)), keywords: const <String>['push', 'pull', 'sync']),
-        PaletteCommand('Workspace', 'Browse NPCs', () => component.onNavigate(NpcListRoute(workspace.id)), hint: 'B', keywords: const <String>['search', 'filter']),
-        PaletteCommand('Workspace', _compact || !_sidebarHidden ? 'Show or hide the sidebar' : 'Show the sidebar', _toggleSidebar, hint: platformKeys('Mod+B'), keywords: const <String>['documents', 'panel']),
-        if (workspace.documents.any((AnimusDocument document) => document.kind == DocumentKind.recording))
-          PaletteCommand('Workspace', 'Browse recordings', () => component.onNavigate(RecordingListRoute(workspace.id)), keywords: const <String>['performance', 'playback']),
-        PaletteCommand('Workspace', 'Workspace overview', () => component.onNavigate(WorkspaceRoute(workspace.id))),
-        for (final AnimusDocument document in workspace.documents)
-          PaletteCommand(
-            'Documents',
-            guiPlainText(document.title),
-            () => component.onNavigate(DocumentRoute(workspace.id, document.kind, document.id)),
-            hint: document.title == document.id ? document.kind.label : '${document.kind.label}, ${document.id}',
-            keywords: <String>[document.id, document.kind.wireName, 'open'],
-          ),
+        PaletteCommand('Create', 'New document', () => component.onNavigate(NewDocumentRoute(workspace.id)), hint: 'N', keywords: const <String>['create', 'add']),
+        PaletteCommand('Files', 'Export zip', () => exportWorkspace(workspace), keywords: const <String>['download', 'save']),
+        if (advanced) ...<PaletteCommand>[
+          PaletteCommand('Files', 'Export Gloss bundle', () => exportGloss(workspace), keywords: const <String>['download']),
+          PaletteCommand('Files', 'Import Blockbench model', () => importBbmodel(workspace), keywords: const <String>['bbmodel', 'rig']),
+          PaletteCommand('Files', 'Import Gloss bundle', importGloss),
+        ],
       ],
       for (final WorkspaceSummary summary in store.workspaces)
         if (summary.id != workspace?.id)
           PaletteCommand(
-            'Workspaces',
-            'Switch to ${summary.name}',
+            'Switch',
+            summary.name,
             () => component.onNavigate(summary.serverId != null && component.hub.server(summary.serverId!) != null
                 ? ServerRoute(summary.serverId!, const <String>[])
                 : WorkspaceRoute(summary.id)),
-            hint: countOf(summary.documentCount, 'document'),
           ),
-      PaletteCommand('Workspaces', 'All workspaces', () => component.onNavigate(const HomeRoute()), keywords: const <String>['home']),
-      PaletteCommand('App', 'Keyboard shortcuts', _openSheet, hint: '?', keywords: const <String>['keys', 'help', 'hotkeys']),
-      PaletteCommand('App', dark ? 'Use light theme' : 'Use dark theme', component.onToggleTheme, keywords: const <String>['theme', 'dark', 'light']),
-      PaletteCommand('App', 'Open data folder', () => _open(pickDirectory, zip: false)),
-      PaletteCommand('App', 'Open zip', () => _open(pickZip, zip: true)),
-      PaletteCommand('App', converterTitle, () => component.onNavigate(const CitizensRoute()), keywords: const <String>['citizens', 'shopkeepers', 'denizen', 'convert']),
+      PaletteCommand('Switch', 'All workspaces', () => component.onNavigate(const HomeRoute()), keywords: const <String>['home']),
+      PaletteCommand('App', 'Mode: ${_mode == EditorMode.simple ? 'Advanced' : 'Simple'}',
+          () => _setMode(_mode == EditorMode.simple ? EditorMode.advanced : EditorMode.simple), keywords: const <String>['mode', 'simple', 'advanced']),
+      PaletteCommand('App', 'Keyboard shortcuts', () => setState(() => _sheetOpen = true), hint: '?', keywords: const <String>['keys', 'help']),
+      PaletteCommand('App', dark ? 'Light theme' : 'Dark theme', component.onToggleTheme, keywords: const <String>['theme', 'dark', 'light']),
+      PaletteCommand('Files', 'Open folder', () => openFiles(pickDirectory, zip: false)),
+      PaletteCommand('Files', 'Open zip', () => openFiles(pickZip, zip: true)),
+      PaletteCommand('Files', converterTitle, () => component.onNavigate(CitizensRoute(workspaceId: workspace?.id)), keywords: const <String>['citizens', 'shopkeepers', 'denizen']),
     ];
   }
 
-  Widget _home(EditorStore store) => HomeScreen(
-        store: store,
-        hub: component.hub,
-        busy: _busy,
-        openProblem: _openProblem,
-        onOpenFolder: () => _open(pickDirectory, zip: false),
-        onOpenZip: () => _open(pickZip, zip: true),
-        onNavigate: component.onNavigate,
-      );
+  /// The kind whose list an address opens when the mode does not show it:
+  /// Simple offers the switch instead of an Advanced kind's list. A document
+  /// a Simple page links to still opens, in its Simple form.
+  DocumentKind? _advancedKind(EditorRoute route) =>
+      route is KindListRoute && !kindShown(route.kind, _mode) ? route.kind : null;
 
-  /// Kinds whose id the user picks (a skin's is its content hash, presets
-  /// have one fixed id).
-  bool _movable(DocumentKind kind) => kind != DocumentKind.skin && kind != DocumentKind.presets && kind != DocumentKind.serverBehaviors;
+  AnimusDocument? _documentOf(String key) {
+    final int colon = key.indexOf(':');
+    if (colon < 0) return null;
+    final DocumentKind? kind = DocumentKind.parse(key.substring(0, colon));
+    return kind == null ? null : component.store.document(kind, key.substring(colon + 1));
+  }
 
   Widget _workspace(WorkspaceSnapshot workspace) {
     final EditorRoute route = component.route;
@@ -568,29 +649,29 @@ class _EditorShellState extends State<EditorShell> {
       workspaceId: workspace.id,
       route: route,
       onNavigate: component.onNavigate,
-      child: dom.div(key: ValueKey<String>('workspace:${workspace.id}'), classes: 'animus-workspace${_sidebarHidden && !_compact ? ' is-sidebar-hidden' : ''}', <Widget>[
-      ShellSidebar(
-        workspace: workspace,
-        route: route,
-        compact: _compact,
-        open: _drawerOpen,
-        onClose: _closeDrawer,
-        session: component.session,
-        hasCodeDraft: component.store.hasCodeDraft,
-      ),
-      dom.main_(id: mainId, classes: 'animus-main', attributes: const <String, String>{'tabindex': '-1'}, <Widget>[
-        if (_glossPending != null) _glossConfirm(_glossPending!),
-        if (session != null)
-          LiveBar(
-            session: session,
-            focus: document == null ? null : documentKey(document.kind, document.id),
-            onOpenServer: () => component.onNavigate(WorkspaceRoute(workspace.id)),
-          ),
-        if (selected != null && document != null)
+      nameOf: (DocumentKind kind, String id) => component.store.libraryEntry(kind, id)?.name,
+      child: EditScope(
+        editable: session == null || linkOf(session) != ServerLink.needsPairing,
+        child: dom.div(key: ValueKey<String>('workspace:${workspace.id}'), classes: 'ui-page-body', <Widget>[
+        if (route is CitizensRoute)
+          CitizensScreen(key: const ValueKey<String>('citizens'), hub: component.hub, store: component.store, onNavigate: component.onNavigate, announce: announce, landmark: false)
+        else if (_advancedKind(route) case final DocumentKind kind)
+          dom.div(key: ValueKey<String>('advanced:${kind.wireName}'), classes: 'ui-list-page', <Widget>[
+            PageHeader(title: kind.label, crumbs: <Crumb>[Crumb(workspace.name, href: WorkspaceRoute(workspace.id).format()), Crumb(kind.label)]),
+            EmptyState(
+              message: '${kind.label} are in Advanced.',
+              action: Button.primary(label: 'Switch to Advanced', onPressed: () => _setMode(EditorMode.advanced)),
+            ),
+          ])
+        else if (selected != null && document != null)
           DocumentPane(
             key: ValueKey<String>('${selected.kind.wireName}:${selected.documentId}'),
             document: document,
             view: selected.view,
+            tab: selected.tab,
+            workspaceName: workspace.name,
+            workspaceId: workspace.id,
+            name: component.store.libraryEntry(selected.kind, selected.documentId)?.name,
             onView: (ViewMode view) => component.onNavigate(selected.withView(view)),
             onSource: (String source) => component.store.editSource(document.kind, document.id, source),
             codeDraft: component.store.codeDraft(document.kind, document.id),
@@ -599,51 +680,47 @@ class _EditorShellState extends State<EditorShell> {
                   documents: <DocumentChange>[DocumentChange.update(document.kind, document.id, update)],
                   coalesce: coalesce == null ? null : '${document.kind.wireName}:${document.id}:$coalesce',
                 ),
-            onRename: _movable(document.kind) ? (String id) => _relocate(workspace, document, id, copy: false) : null,
-            onDuplicate: _movable(document.kind) && document.kind != DocumentKind.recording ? (String id) => _relocate(workspace, document, id, copy: true) : null,
-            onDelete: () async {
-              await component.store.commit(documents: <DocumentChange>[DocumentChange(document.kind, document.id, null)], label: 'delete ${document.id}');
-              component.onNavigate(WorkspaceRoute(workspace.id));
-              focusMainHeading();
-              ArcaneSonner.info('Deleted ${document.id}. Undo brings it back.');
-            },
-            skinDocument: _skinOf(document),
+            onRename: movable(document.kind) ? (String id) => relocate(workspace, document, id, copy: false) : null,
+            onDuplicate: movable(document.kind) && document.kind != DocumentKind.recording ? (String id) => relocate(workspace, document, id, copy: true) : null,
+            onDelete: () => deleteDocument(workspace, document),
+            skinDocument: skinOf(document),
             resources: workspace.resources,
-            editor: _rigEditor(workspace, document),
+            editor: rigEditor(workspace, document),
             serverDiagnostics: session?.serverDiagnostics[documentKey(document.kind, document.id)] ?? const <Diagnostic>[],
             liveSchemas: session?.schemas,
             liveLookups: session?.lookups,
             workspaceDocuments: workspace.documents,
             onOpen: (DocumentKind kind, String id) => component.onNavigate(DocumentRoute(workspace.id, kind, id)),
             onCommit: (List<DocumentChange> changes, String label) => component.store.commit(documents: changes, label: label),
-            onServerPreview: session == null ? null : () => session.startPreview(),
-            newConversationHref: NewDocumentRoute.conversation(workspace.id).format(),
+            library: component.store.library,
+            load: session == null ? null : (List<DocumentRef> refs) => session.ensureLoaded(refs),
             serverBehaviors: <String>[
               for (final CatalogEntry entry in session?.catalog ?? const <CatalogEntry>[])
                 if (entry.kind == DocumentKind.behavior) entry.id,
             ],
             serverPlugins: reportedPlugins(session?.connection.capabilities),
+            npcLibrary: document.kind == DocumentKind.npc && workspace.server != null ? component.store.library(DocumentKind.npc) : null,
+            skinTexture: (String id) => component.store.libraryEntry(DocumentKind.skin, id)?.summary.texture,
             skinEditing: SkinEditing(
               resources: workspace.resources,
               commit: (SkinChange change) => component.store.commit(documents: change.documents, resources: change.resources, label: change.label),
             ),
           )
         else if (selected != null)
-          dom.section(classes: 'animus-panel is-error', <Widget>[
-            dom.h1(id: mainHeadingId, attributes: const <String, String>{'tabindex': '-1'}, <Widget>[
-              Component.text('${selected.kind.label}: ${selected.documentId} is not in this workspace'),
-            ]),
-            const dom.p(<Widget>[Component.text('It was renamed or deleted, or the link is from another workspace.')]),
-            dom.p(<Widget>[
-              dom.a(href: WorkspaceRoute(workspace.id).format(), const <Widget>[Component.text('Open the workspace overview')]),
-            ]),
-          ])
+          DocumentWait(
+            key: ValueKey<String>('wait:${selected.kind.wireName}:${selected.documentId}'),
+            kind: selected.kind,
+            id: selected.documentId,
+            entry: component.store.libraryEntry(selected.kind, selected.documentId),
+            session: session,
+            onHome: () => component.onNavigate(WorkspaceRoute(workspace.id)),
+          )
         else if (route is RecordingListRoute)
-          RecordingList(key: ValueKey<String>('recording-list:${workspace.id}'), workspace: workspace)
+          MovementPage(key: ValueKey<String>('list:${workspace.id}:recording'), store: component.store, workspace: workspace, kind: DocumentKind.recording, onNavigate: component.onNavigate)
         else if (route is NpcListRoute)
           NpcBrowser(key: ValueKey<String>('npc-browser:${workspace.id}'), store: component.store, workspace: workspace, session: session)
         else if (route is KindListRoute)
-          KindListPage(key: ValueKey<String>('list:${workspace.id}:${route.kind.wireName}'), workspace: workspace, kind: route.kind)
+          ListPage(key: ValueKey<String>('list:${workspace.id}:${route.kind.wireName}'), store: component.store, workspace: workspace, kind: route.kind, onNavigate: component.onNavigate)
         else if (route is NewDocumentRoute)
           NewDocumentPage(
             key: ValueKey<String>('new:${workspace.id}:${route.folder ?? ''}:${route.name ?? ''}:${route.conversation}'),
@@ -670,59 +747,11 @@ class _EditorShellState extends State<EditorShell> {
             workspace: workspace,
             ignored: component.store.ignored,
             upgraded: component.store.upgraded,
+            ownRoutes: component.store.libraryOwnRoutes(),
             onNavigate: component.onNavigate,
           ),
-      ]),
-    ]),
+        ]),
+      ),
     );
-  }
-
-  Future<void> _importBbmodel(WorkspaceSnapshot workspace) async {
-    setState(() => _busy = true);
-    try {
-      String namespace = 'animus';
-      for (final AnimusDocument document in workspace.documents) {
-        if (document.kind == DocumentKind.rig && document.id.contains(':')) {
-          namespace = document.id.substring(0, document.id.indexOf(':'));
-          break;
-        }
-      }
-      final String? id = await importBbmodelFile(component.store, namespace);
-      if (id != null) component.onNavigate(DocumentRoute(workspace.id, DocumentKind.rig, id));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  /// The rig editor for a rig, or for an animation whose rig is here.
-  Widget? _rigEditor(WorkspaceSnapshot workspace, AnimusDocument document) {
-    final Object? json = document.json;
-    AnimusDocument? rig;
-    String? animation;
-    if (document.kind == DocumentKind.rig) {
-      rig = document;
-    } else if (document.kind == DocumentKind.animation && json is Map<String, Object?> && json['rig'] is String) {
-      rig = component.store.document(DocumentKind.rig, json['rig']! as String);
-      animation = document.id;
-    }
-    if (rig == null || rig.json is! Map<String, Object?>) return null;
-    final DocumentRoute? current = component.route is DocumentRoute ? component.route as DocumentRoute : null;
-    return RigEditor(
-      key: ValueKey<String>('rig-editor:${rig.id}'),
-      store: component.store,
-      rig: rig,
-      animationId: animation,
-      onOpen: (DocumentKind kind, String id) =>
-          component.onNavigate(DocumentRoute(workspace.id, kind, id, current?.view ?? ViewMode.visual)),
-    );
-  }
-
-  AnimusDocument? _skinOf(AnimusDocument document) {
-    final Object? json = document.json;
-    if (document.kind != DocumentKind.npc || json is! Map<String, Object?> || json['skin'] is! String) return null;
-    final String hash = json['skin']! as String;
-    final AnimusDocument? skin = component.store.document(DocumentKind.skin, hash);
-    if (skin == null && component.store.workspace?.server != null) component.session?.openSkin(hash);
-    return skin;
   }
 }

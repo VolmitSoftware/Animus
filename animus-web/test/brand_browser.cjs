@@ -1,11 +1,11 @@
-// Checks the Animus brand in the built site: the mark in the top bar, the
-// boot splash and the home page, the icon set, the pink accent on grey
-// surfaces in both themes, the system theme when none is stored, AA
-// contrast on the primary button, a neutral disabled button, Geist on
-// controls, a quiet selected view tab (raised grey, full pink border), a pink focus ring, the theme toggle,
-// theme-color and no sideways scrolling, at desktop and phone widths.
-// ANIMUS_SCREENSHOTS (optional, outside the repository) receives home,
-// document and focus shots per theme and width.
+// The Animus brand on shadcn Midnight in the built site: the mark in the top
+// bar, the boot splash and home, the icon set, Midnight's own surfaces
+// (#0a0a0a dark, white light) with the pink only on the primary and the
+// ring, the system theme when none is stored, AA text on the primary button,
+// Geist on controls, a pink focus ring, the theme switch in the overflow
+// menu and theme-color, no sideways scrolling, at desktop and phone widths.
+// ANIMUS_SCREENSHOTS (optional, outside the repository) receives home and
+// focus shots per theme and width.
 //
 //   python3 tool/serve_site.py --port <port>
 //   ANIMUS_WEB_URL=http://127.0.0.1:<port> PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node test/brand_browser.cjs
@@ -13,14 +13,13 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const {openFromSidebar, topbarAction} = require('./support/shell.cjs');
+const {topbarAction, startAction} = require('./support/shell.cjs');
 
-const exportFolder = path.resolve(__dirname, '../../schema/fixtures/export');
 const shots = process.env.ANIMUS_SCREENSHOTS;
-const url = process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })();
+const url = process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site'); })();
 const themes = {
-  dark: {background: 'rgb(13, 13, 15)', panel: 'rgb(22, 21, 24)', primary: 'rgb(255, 95, 168)', raised: 'rgb(34, 32, 36)', themeColor: '#0d0d0f'},
-  light: {background: 'rgb(245, 243, 244)', panel: 'rgb(252, 250, 251)', primary: 'rgb(194, 24, 91)', raised: 'rgb(239, 235, 237)', themeColor: '#f5f3f4'},
+  dark: {background: 'rgb(10, 10, 10)', primary: '#ff5fa8', primaryRgb: 'rgb(255, 95, 168)', ring: 'rgb(255, 179, 214)', themeColor: '#0a0a0a'},
+  light: {background: 'rgb(255, 255, 255)', primary: '#c2185b', primaryRgb: 'rgb(194, 24, 91)', ring: 'rgb(102, 10, 51)', themeColor: '#ffffff'},
 };
 
 function parse(colour) {
@@ -41,7 +40,7 @@ function contrast(a, b) {
 async function shot(page, name) {
   if (!shots) return;
   fs.mkdirSync(shots, {recursive: true});
-  await page.screenshot({path: path.join(shots, `${name}.png`), fullPage: false});
+  await page.screenshot({path: path.join(shots, `brand-${name}.png`)});
 }
 
 async function noSideways(page, where) {
@@ -49,7 +48,6 @@ async function noSideways(page, where) {
   assert.ok(overflow <= 0, `${where} scrolls sideways by ${overflow}px`);
 }
 
-/** An <img> that loaded the brand mark. */
 async function markShown(locator, where) {
   await locator.waitFor();
   const loaded = await locator.evaluate(img => img.complete && img.naturalWidth > 0 && img.getAttribute('alt') === '' && img.hasAttribute('width'));
@@ -58,11 +56,8 @@ async function markShown(locator, where) {
 
 async function icons(page) {
   for (const [file, type] of [
-    ['/favicon.svg', 'image/svg+xml'],
-    ['/favicon.ico', 'image/'],
-    ['/apple-touch-icon.png', 'image/png'],
-    ['/icon-512.png', 'image/png'],
-    ['/assets/brand/animus-mark.svg', 'image/svg+xml'],
+    ['/favicon.svg', 'image/svg+xml'], ['/favicon.ico', 'image/'], ['/apple-touch-icon.png', 'image/png'],
+    ['/icon-512.png', 'image/png'], ['/assets/brand/animus-mark.svg', 'image/svg+xml'], ['/arcane-runtime.js', 'text/javascript'],
   ]) {
     const response = await page.request.get(new URL(file, url).toString());
     assert.equal(response.status(), 200, `${file} is served`);
@@ -70,15 +65,14 @@ async function icons(page) {
   }
   const html = await (await page.request.get(url)).text();
   assert.match(html, /<div class="animus-boot" id="loading" role="status" aria-label="Loading the Animus editor">/);
-  assert.match(html, /<img class="animus-boot-mark" src="\/assets\/brand\/animus-mark.svg" width="72" height="72" alt=""/);
+  assert.match(html, /<script defer data-arcane-runtime src="\/arcane-runtime.js"><\/script>/);
 }
 
 async function run(browser, viewport, label) {
-  // Nothing stored: the system's light preference wins before and after the bundle starts.
   const fresh = await browser.newPage({viewport, colorScheme: 'light'});
   await fresh.goto(url);
-  await fresh.getByRole('heading', {name: 'Start a workspace'}).waitFor();
-  assert.equal(await fresh.evaluate(() => document.documentElement.className), 'light', `${label}: system light theme`);
+  await fresh.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
+  assert.equal(await fresh.evaluate(() => document.documentElement.className), 'dark', `${label}: Midnight on a first visit, whatever the system theme`);
   await icons(fresh);
   await fresh.close();
 
@@ -92,83 +86,77 @@ async function run(browser, viewport, label) {
     await page.goto(url);
     await page.evaluate(mode => window.localStorage.setItem('animus.theme', mode), name);
     await page.reload();
-    await page.getByRole('heading', {name: 'Start a workspace'}).waitFor();
+    await page.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
     assert.equal(await page.evaluate(() => document.documentElement.className), name);
     assert.equal(await page.locator('#animus-theme-color').getAttribute('content'), theme.themeColor);
     const root = page.locator('#arcane-root');
-    assert.equal(await root.evaluate(el => getComputedStyle(el).backgroundColor), theme.background, `${name} surface`);
-    assert.equal(await root.evaluate(el => getComputedStyle(el).getPropertyValue('--primary').trim()),
-        name === 'dark' ? '#ff5fa8' : '#c2185b');
-    await markShown(page.locator('.animus-brand img.animus-mark'), `${label} ${name} top bar`);
-    await markShown(page.locator('.animus-start-mark'), `${label} ${name} home`);
+    const tokens = await root.evaluate(el => ({
+      background: getComputedStyle(el).backgroundColor,
+      primary: getComputedStyle(el).getPropertyValue('--primary').trim(),
+      radius: getComputedStyle(el).getPropertyValue('--radius').trim(),
+    }));
+    assert.equal(tokens.background, theme.background, `${name} Midnight surface`);
+    assert.equal(tokens.primary, theme.primary, `${name} pink primary`);
+    assert.notEqual(tokens.radius, '0px', `${name} keeps shadcn's radius`);
+    await markShown(page.locator('.ui-brand img.animus-mark'), `${label} ${name} top bar`);
+    await markShown(page.locator('.ui-start-mark'), `${label} ${name} home`);
     await noSideways(page, `${label} ${name} home`);
     await shot(page, `${label}-${name}-home`);
 
-    // Controls read in Geist; code keeps Geist Mono.
     const buttonFont = await page.locator('.arcane-button').first().evaluate(el => getComputedStyle(el).fontFamily);
     assert.match(buttonFont, /^Geist,/, `${name} button font ${buttonFont}`);
 
-    // The first primary button: pink fill, AA text, and a pink focus ring from the keyboard.
-    const primary = page.locator(".arcane-button[data-variant='primary']").first();
+    // A returning start page has no primary; the pair page's field always does.
+    if (!(await page.locator(".arcane-button[data-variant='primary']:visible").count())) {
+      await page.goto(`${url}/#/pair`);
+      await page.getByRole('textbox', {name: 'New link'}).waitFor();
+    }
+    const primary = page.locator(".arcane-button[data-variant='primary']:visible").first();
     await primary.waitFor();
     const fill = await primary.evaluate(el => getComputedStyle(el).backgroundColor);
     const text = await primary.evaluate(el => getComputedStyle(el).color);
-    assert.equal(fill, theme.primary, `${name} primary button fill`);
+    assert.equal(fill, theme.primaryRgb, `${name} primary button fill`);
     assert.ok(contrast(fill, text) >= 4.5, `${name} primary button text ${contrast(fill, text).toFixed(2)}:1`);
     await primary.focus();
     await page.keyboard.press('Shift+Tab');
     await page.keyboard.press('Tab');
-    const ring = await primary.evaluate(el => `${getComputedStyle(el).boxShadow} ${getComputedStyle(el).outlineColor} ${getComputedStyle(el).outlineStyle}`);
-    assert.ok(/rgb\(255, 179, 214\)|rgb\(194, 24, 91\)/.test(ring), `${name} focus ring is pink: ${ring}`);
+    // The library's own ring: 3 px of the ring token at half strength,
+    // easing in with the button's transition; the token is the brand pink.
+    const ringed = await primary.evaluate(el => new Promise(resolve => {
+      const started = performance.now();
+      const check = () => {
+        const shadow = getComputedStyle(el).boxShadow;
+        if (/0px 0px 0px 3px/.test(shadow) || performance.now() - started > 1500) resolve(shadow);
+        else requestAnimationFrame(check);
+      };
+      check();
+    }));
+    assert.match(ringed, /0px 0px 0px 3px/, `${name} focus ring keeps the library's geometry: ${ringed}`);
+    const ringToken = await page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--ring)';
+      document.getElementById('arcane-root').appendChild(probe);
+      const colour = getComputedStyle(probe).color;
+      probe.remove();
+      return colour;
+    });
+    assert.equal(ringToken, theme.ring, `${name} ring token is the brand pink`);
     await shot(page, `${label}-${name}-focus`);
 
-    // A document with its views and sidebar selection.
-    const chooser = page.waitForEvent('filechooser');
-    await page.getByRole('button', {name: 'Open folder'}).first().click();
-    await (await chooser).setFiles(exportFolder);
-    await page.getByRole('heading', {name: '1 document needs repair'}).waitFor();
-    // Plain links take the accent.
-    const link = page.locator('.animus-try-list a').first();
-    assert.equal(await link.evaluate(el => getComputedStyle(el).color), theme.primary, `${name} links are pink`);
-    // With nothing to undo, Undo is disabled, and a disabled filled button is grey, not pale pink.
-    if (label === 'desktop') {
-      assert.equal(await page.locator('.animus-topbar').getByRole('button', {name: 'Undo'}).isDisabled(), true);
+    // The theme switch in the overflow menu flips the theme and theme-color in place.
+    if (page.url().includes('#/pair')) {
+      await page.goto(url);
+      await page.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
     }
-    await openFromSidebar(page, 'Greeter');
-    await page.getByRole('tab', {name: 'Code'}).click();
-    await page.locator('.animus-code textarea').waitFor();
-    assert.equal(await page.locator('.animus-panel.animus-code').evaluate(el => getComputedStyle(el).backgroundColor), theme.panel, `${name} panels are grey, not pink-tinted`);
-    const apply = page.getByRole('button', {name: 'Apply to draft'});
-    assert.equal(await apply.isDisabled(), true);
-    const applyFill = await apply.evaluate(el => getComputedStyle(el).backgroundColor);
-    assert.notEqual(applyFill, theme.primary, `${name} disabled primary is not pink`);
-    assert.ok(contrast(applyFill, await apply.evaluate(el => getComputedStyle(el).color)) >= 4.5, `${name} disabled text stays readable`);
-    // The selected view tab is a raised grey with a full pink border, not a pink fill or an underline.
-    await page.mouse.move(1, viewport.height - 1);
-    const tab = page.getByRole('tab', {name: 'Code'});
-    assert.equal(await tab.getAttribute('aria-selected'), 'true');
-    await tab.evaluate((el, expected) => new Promise((resolve, reject) => {
-      const started = performance.now();
-      const poll = () => {
-        const style = getComputedStyle(el);
-        const sides = [style.borderTopColor, style.borderRightColor, style.borderBottomColor, style.borderLeftColor];
-        const widths = [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth];
-        if (style.backgroundColor === expected.raised && sides.every(colour => colour === expected.primary)
-            && widths.every(width => width === widths[0] && width !== '0px') && style.boxShadow === 'none' && style.borderTopLeftRadius === '0px') return resolve();
-        if (performance.now() - started > 3000) return reject(new Error(`selected view tab is ${style.backgroundColor} ${sides.join(' ')} ${widths.join(' ')} ${style.boxShadow}`));
-        setTimeout(poll, 10);
-      };
-      poll();
-    }), theme);
-    await markShown(page.locator('.animus-brand img.animus-mark'), `${label} ${name} document top bar`);
-    await noSideways(page, `${label} ${name} document`);
-    await shot(page, `${label}-${name}-document`);
-
-    // The toggle flips the theme and its theme-color in place.
+    // A returning visit keeps Open examples in the start row's "..." menu.
+    await startAction(page, 'Open examples');
+    await page.waitForFunction(() => /#\/workspace\//.test(location.hash));
+    await page.locator('.ui-save-bar').waitFor();
     const other = name === 'dark' ? 'light' : 'dark';
-    await topbarAction(page, `Use ${other} theme`);
+    await topbarAction(page, other === 'light' ? 'Light theme' : 'Dark theme');
     await page.waitForFunction(fill => getComputedStyle(document.getElementById('arcane-root')).backgroundColor === fill, themes[other].background);
     assert.equal(await page.locator('#animus-theme-color').getAttribute('content'), themes[other].themeColor);
+    await noSideways(page, `${label} ${name} workspace`);
   }
   assert.deepEqual(errors, []);
   await page.close();

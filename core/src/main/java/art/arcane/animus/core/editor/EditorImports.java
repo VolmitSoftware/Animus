@@ -106,6 +106,13 @@ public final class EditorImports {
     /** The command namespaces applying this staged import adds to the allow-list; see {@link CitizensDropIn#commandGrants()}. */
     public List<String> commandGrants(String importId) throws EditorError, IOException { expect(importId, false); return dropIn().commandGrants(); }
 
+    /** The documents applying this staged import writes, by data folder path; nothing is installed. */
+    public Map<String, String> stagedWrites(String importId) throws EditorError, IOException {
+        expect(importId, false);
+        try { return dropIn().stagedWrites(); }
+        catch (IOException refused) { throw new EditorError(EditorError.Code.CONFLICT, refused.getMessage() == null ? "The staged import cannot be read." : clip(refused.getMessage(), 2048)); }
+    }
+
     public JsonObject rollback(String importId) throws EditorError, IOException { expect(importId, true); return run(CitizensDropIn::rollbackApplied, EditorError.Code.CONFLICT); }
 
     /** The current state, with the review lines once applied. */

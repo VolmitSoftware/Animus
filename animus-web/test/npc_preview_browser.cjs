@@ -1,13 +1,15 @@
 // Opens test/fixtures/npc_preview as a data folder in the built site and
 // checks that the Preview stage draws every sample NPC: frames rendered,
 // nothing left waiting for a texture, a canvas that is not one flat colour,
-// and no console errors, at desktop width in the dark theme and phone width
-// in the light one, with no horizontal overflow. It also orbits the stage
-// from the keyboard, loads a skin PNG from the inspector, and checks that a
-// PNG of the wrong size says why. A player with no skin wears its built-in
-// placeholder (served, decoded, not blank), and picking a built-in skin in
-// the inspector wears it. A pack without a body's texture still settles
-// and says the body is drawn white. Needs the asset pack (tool/extract_minecraft_world_assets.dart)
+// a canvas of at least 240 px, and no console errors, at desktop width in
+// the dark theme and phone width (preview behind the header's Preview
+// button) in the light one, with no horizontal overflow. It also orbits the
+// stage from the keyboard, loads a skin PNG from the inspector, and checks
+// that a PNG of the wrong size says why. A player with no skin wears its
+// built-in placeholder (served, decoded, not blank; the stage's tip names
+// it), and picking a built-in skin in the inspector wears it. A pack without
+// a body's texture still settles: the status line counts the part not drawn
+// and its tip says the body is drawn white. Needs the asset pack (tool/extract_minecraft_world_assets.dart)
 // in the build.
 //
 //   python3 tool/serve_site.py --port <port>
@@ -17,7 +19,19 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const {closeDrawer, sidebar, topbarAction} = require('./support/shell.cjs');
+const {topbarAction, workspaceOpen} = require('./support/shell.cjs');
+const {showPreview, stageDrawn, stageFrames, stageLine, stageTip, waitForStageTip} = require('./support/stage.cjs');
+const {npcTab} = require('./support/npc_tabs.cjs');
+
+/** Opens the skin chooser from the skin field on Basics. */
+async function chooseSkin(page) {
+  const field = (await npcTab(page, 'Basics')).locator('[data-skin="field"]');
+  await field.scrollIntoViewIfNeeded();
+  await field.locator('[data-skin="change"]').click();
+  const dialog = page.getByRole('dialog', {name: 'Choose a skin'});
+  await dialog.waitFor();
+  return dialog;
+}
 
 const folder = path.resolve(__dirname, 'fixtures/npc_preview');
 const shots = process.env.ANIMUS_SCREENSHOTS;
@@ -74,27 +88,26 @@ async function run(browser, viewport, label, dark) {
     if (match) placeholders.set(match[1], response.status());
   });
   await page.goto(process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })());
-  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+  await page.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Open folder'}).first().click();
   await (await chooser).setFiles(folder);
-  await (await sidebar(page)).getByText('Hero', {exact: true}).waitFor();
-  await closeDrawer(page);
+  await workspaceOpen(page);
   const isDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
   if (isDark !== dark) await topbarAction(page, dark ? 'Use dark theme' : 'Use light theme');
   await page.waitForFunction(want => document.documentElement.classList.contains(want ? 'dark' : 'light'), dark);
   const workspace = page.url().split('#')[1].split('?')[0];
   for (const [title, id] of samples) {
-    await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/${encodeURIComponent(id)}?view=preview`);
+    await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/${encodeURIComponent(id)}`);
     // The heading shows the name without its legacy colour codes.
     await page.locator('h1').getByText(title.replace(/[&§][0-9a-fk-or]/gi, ''), {exact: true}).waitFor();
+    await showPreview(page);
     const host = page.locator('.animus-mc-gl-host');
-    await page.waitForFunction(() => {
-      const element = document.querySelector('.animus-mc-gl-host');
-      return element && Number(element.getAttribute('data-frames')) > 0 && element.getAttribute('data-unbuilt') === '0';
-    });
+    await stageDrawn(page);
     const stage = page.locator('.animus-mc-stage');
     assert.equal(await stage.getAttribute('data-webgl'), 'ready', `${id}: WebGL`);
+    const size = await stage.boundingBox();
+    assert.ok(size.height >= 239, `${id}: the canvas is ${Math.round(size.height)} px tall`);
     const png = await stage.screenshot();
     const count = await colours(page, png);
     assert.ok(count > 40, `${id}: canvas looks blank (${count} colours)`);
@@ -118,42 +131,37 @@ async function run(browser, viewport, label, dark) {
     assert.ok(overflow <= 0, `${id}: ${overflow}px of horizontal overflow`);
   }
   // A player with no skin wears its placeholder.
-  const drawn = async n => page.waitForFunction(min => {
-    const element = document.querySelector('.animus-mc-gl-host');
-    return element && Number(element.getAttribute('data-frames')) > min && element.getAttribute('data-unbuilt') === '0';
-  }, n);
   const wearsPlaceholder = async (file, shot) => {
     await page.waitForFunction(name => performance.getEntriesByType('resource').some(entry => entry.name.endsWith(`/assets/skins/placeholder/${name}`)), file);
-    await drawn(0);
+    await stageDrawn(page);
     assert.equal(placeholders.get(file), 200, `${file}: served`);
-    assert.equal(await page.locator('.animus-mc-status').getByText('drawn plain white').count(), 0, `${file}: decoded`);
+    assert.ok(!/not drawn/.test(await stageLine(page)), `${file}: decoded (${await stageLine(page)})`);
     const png = await page.locator('.animus-mc-stage').screenshot();
     const count = await colours(page, png);
     assert.ok(count > 40, `${file}: canvas looks blank (${count} colours)`);
     if (shots) fs.writeFileSync(path.join(shots, `${label}-${shot}.png`), png);
   };
-  await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/players%2Fmerchant?view=preview`);
-  const skinState = page.locator('[data-testid="npc-skin-state"]');
-  await skinState.getByText(/none; preview shows the placeholder \w+ skin \(classic\)/).waitFor();
-  const look = /placeholder (\w+) skin/.exec(await skinState.textContent())[1].toLowerCase();
+  await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/players%2Fmerchant`);
+  await showPreview(page);
+  await waitForStageTip(page, /Skin: none, so the preview shows the \w+ stand-in, classic arms\./);
+  const look = /the (\w+) stand-in/.exec(await stageTip(page))[1].toLowerCase();
   await wearsPlaceholder(`${look}.png`, `placeholder-${look}-classic`);
   // Picking a built-in skin wears it.
   const other = look === 'miner' ? 'Scholar' : 'Miner';
-  await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/players%2Fmerchant?view=visual`);
-  const appearance = page.locator('details[data-section="appearance"]');
-  if (!(await appearance.evaluate(element => element.open))) await appearance.locator('summary').first().click();
-  const grid = page.getByRole('group', {name: 'Built-in skins'});
-  assert.equal(await grid.getByRole('button').count(), 8);
-  await grid.getByRole('button', {name: `Wear the built-in ${other} skin`}).click();
-  await page.waitForFunction((name) => document.querySelector(`[aria-label="Wear the built-in ${name} skin"]`)?.getAttribute('aria-pressed') === 'true', other);
-  await skinState.getByText(`the built-in ${other} skin (classic)`).waitFor();
+  let dialog = await chooseSkin(page);
+  await dialog.getByText('Built-in', {exact: true}).click();
+  await dialog.locator('.ui-library-row', {hasText: other}).click();
+  await dialog.waitFor({state: 'hidden'});
+  await showPreview(page);
+  await page.waitForFunction(name => document.querySelector('[data-npc-stage]')?.dataset.skin === `the built-in ${name} skin`, other);
   await wearsPlaceholder(`${other.toLowerCase()}.png`, `builtin-${other.toLowerCase()}-picked`);
   if (shots) fs.writeFileSync(path.join(shots, `${label}-placeholder-picker.png`), await page.screenshot({fullPage: true}));
   // Text above the hero: the hologram lines and the native nameplate.
-  await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/players%2Fhero?view=split`);
+  await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/players%2Fhero`);
+  await showPreview(page);
   await page.locator('.animus-mc-text').first().waitFor();
   assert.ok((await page.locator('.animus-mc-text-line').allTextContents()).includes('Quest Giver'));
-  await page.locator('.animus-code textarea').waitFor();
+  await stageDrawn(page);
   // Orbit the camera: a drag must draw new frames.
   const before = Number(await page.locator('.animus-mc-gl-host').getAttribute('data-frames'));
   const box = await page.locator('.animus-mc-stage').boundingBox();
@@ -162,7 +170,7 @@ async function run(browser, viewport, label, dark) {
   await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2 + 20, {steps: 5});
   await page.mouse.up();
   await page.waitForFunction(n => Number(document.querySelector('.animus-mc-gl-host').getAttribute('data-frames')) > n, before);
-  if (shots) fs.writeFileSync(path.join(shots, `${label}-hero-split-orbit.png`), await page.screenshot({fullPage: true}));
+  if (shots) fs.writeFileSync(path.join(shots, `${label}-hero-orbit.png`), await page.screenshot({fullPage: true}));
   // Orbit from the keyboard: the focused stage takes the arrow keys.
   const keyed = Number(await page.locator('.animus-mc-gl-host').getAttribute('data-frames'));
   await page.locator('.animus-mc-stage').focus();
@@ -171,7 +179,8 @@ async function run(browser, viewport, label, dark) {
   await page.waitForFunction(n => Number(document.querySelector('.animus-mc-gl-host').getAttribute('data-frames')) > n, keyed);
   await page.keyboard.press('0');
   assert.equal(await page.locator('.animus-mc-stage').getAttribute('role'), 'img');
-  assert.ok((await page.locator('.animus-mc-stage').getAttribute('aria-describedby')).includes('-status'));
+  const keys = await page.locator('.animus-mc-stage').getAttribute('aria-describedby');
+  assert.match(await page.locator(`[id="${keys}"]`).textContent(), /Drag to orbit/);
   // Load a skin PNG from a file: a generated 64x64 two-colour skin.
   const skin = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
@@ -187,21 +196,18 @@ async function run(browser, viewport, label, dark) {
   const scratch = fs.mkdtempSync(path.join(shots || require('node:os').tmpdir(), 'animus-skin-'));
   const skinFile = path.join(scratch, 'skin.png');
   fs.writeFileSync(skinFile, Buffer.from(skin, 'base64'));
-  await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/players%2Fhero?view=visual`);
-  const heroLook = page.locator('details[data-section="appearance"]');
-  if (!(await heroLook.evaluate(element => element.open))) await heroLook.locator('summary').first().click();
-  // The visual view has its own stage, counting frames from zero.
-  const framesBefore = Number(await page.locator('.animus-mc-gl-host').getAttribute('data-frames'));
+  await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/players%2Fhero`);
+  await showPreview(page);
+  const framesBefore = await stageFrames(page);
+  dialog = await chooseSkin(page);
   const skinChooser = page.waitForEvent('filechooser');
-  await heroLook.getByRole('button', {name: 'From PNG file'}).click();
+  await dialog.getByRole('button', {name: 'Upload PNG'}).click();
   await (await skinChooser).setFiles(skinFile);
-  await page.locator('.animus-npc-facts').getByText(/skin\.png \((classic|slim)\)/).waitFor();
-  await page.waitForFunction(n => {
-    const element = document.querySelector('.animus-mc-gl-host');
-    return Number(element.getAttribute('data-frames')) > n && element.getAttribute('data-unbuilt') === '0';
-  }, framesBefore);
+  await dialog.waitFor({state: 'hidden'});
+  await page.waitForFunction(() => /skin\.png|PNG kept/.test(document.querySelector('[data-npc-stage]')?.dataset.skin || ''));
+  await stageDrawn(page, framesBefore);
   if (shots) fs.writeFileSync(path.join(shots, `${label}-hero-loaded-skin.png`), await page.locator('.animus-mc-stage').screenshot());
-  // A PNG that is not a skin: the inspector says why.
+  // A PNG that is not a skin: the skin chooser says why.
   const tiny = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
     canvas.width = 10;
@@ -211,10 +217,11 @@ async function run(browser, viewport, label, dark) {
   });
   const tinyFile = path.join(scratch, 'tiny.png');
   fs.writeFileSync(tinyFile, Buffer.from(tiny, 'base64'));
+  dialog = await chooseSkin(page);
   const tinyChooser = page.waitForEvent('filechooser');
-  await heroLook.getByRole('button', {name: 'From PNG file'}).click();
+  await dialog.getByRole('button', {name: 'Upload PNG'}).click();
   await (await tinyChooser).setFiles(tinyFile);
-  await heroLook.getByRole('alert').getByText('this image is 10x10. Pick a 64x64 Minecraft skin PNG.').waitFor();
+  await page.getByRole('alert').getByText(/this image is 10x10\. Pick a 64x64 Minecraft skin PNG\./).first().waitFor();
   if (shots) fs.writeFileSync(path.join(shots, `${label}-skin-failure.png`), await page.screenshot({fullPage: true}));
   fs.rmSync(scratch, {recursive: true, force: true});
   assert.deepEqual(errors, []);
@@ -233,19 +240,17 @@ async function missingTexture(browser) {
     await route.fulfill({response, json: pack});
   });
   await page.goto(process.env.ANIMUS_WEB_URL);
-  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+  await page.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Open folder'}).first().click();
   await (await chooser).setFiles(folder);
-  await (await sidebar(page)).getByText('Ribbit', {exact: true}).waitFor();
+  await workspaceOpen(page);
   const workspace = page.url().split('#')[1].split('?')[0];
-  await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/${encodeURIComponent('animals/frog')}?view=preview`);
-  await page.waitForFunction(() => {
-    const element = document.querySelector('.animus-mc-gl-host');
-    return element && Number(element.getAttribute('data-frames')) > 0 && element.getAttribute('data-unbuilt') === '0';
-  });
+  await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/${encodeURIComponent('animals/frog')}`);
+  await stageDrawn(page);
   assert.ok(Number(await page.locator('.animus-mc-gl-host').getAttribute('data-drawn')) > 0, 'missing texture: no mesh drawn');
-  await page.locator('.animus-mc-status').getByText(/is not in the asset pack and is drawn white/).waitFor();
+  await page.waitForFunction(() => /1 part not drawn/.test(document.querySelector('.ui-stage-status')?.textContent || ''));
+  await waitForStageTip(page, /is not in the asset pack and is drawn white/);
   await page.close();
 }
 

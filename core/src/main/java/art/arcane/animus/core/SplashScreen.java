@@ -1,5 +1,6 @@
 package art.arcane.animus.core;
 
+import art.arcane.animus.core.config.EditorSettings;
 import art.arcane.volmlib.util.plugin.SplashScreenSupport;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,7 +12,6 @@ import java.util.Objects;
  */
 public final class SplashScreen {
     public static final String TAGLINE = "Virtual NPCs, behaviors & shops";
-    public static final String EDITOR_URL = "https://animus.volmitsoftware.com";
     static final String FILL = "#b0185f";
     static final String EDGE = "#ff4fa3";
     static final String META = "#9a9a9a";
@@ -87,19 +87,28 @@ public final class SplashScreen {
         }
     }
 
-    /** @param server server software and version, such as {@code Paper 26.3-12-abc1234} */
-    public record Details(String version, String server, Startup startup, int javaMajor, String date) {
+    /**
+     * @param server server software and version, such as {@code Paper 26.3-12-abc1234}
+     * @param editorUrl the web editor address pairing links use ({@code [editor] editorUrl})
+     */
+    public record Details(String version, String server, Startup startup, int javaMajor, String date, String editorUrl) {
         public Details {
             Objects.requireNonNull(version, "version");
             Objects.requireNonNull(server, "server");
             Objects.requireNonNull(startup, "startup");
             Objects.requireNonNull(date, "date");
+            Objects.requireNonNull(editorUrl, "editorUrl");
         }
 
         /** This build's version, Java and today's date. */
-        public static Details current(String server, Startup startup) {
-            return new Details(BuildIdentity.VERSION, server, startup, SplashScreenSupport.javaMajorVersion(), SplashScreenSupport.startupDate());
+        public static Details current(String server, Startup startup, String editorUrl) {
+            return new Details(BuildIdentity.VERSION, server, startup, SplashScreenSupport.javaMajorVersion(), SplashScreenSupport.startupDate(), editorUrl);
         }
+    }
+
+    /** The configured {@code editorUrl}, or the default when Animus did not get as far as reading config.toml. */
+    public static String editorUrl(AnimusRuntime runtime) {
+        return runtime != null && runtime.isRunning() ? runtime.editorSettings().editorUrl() : EditorSettings.DEFAULT.editorUrl();
     }
 
     private SplashScreen() {}
@@ -118,7 +127,7 @@ public final class SplashScreen {
         List<String> column = List.of("",
                 accent + "   Animus, " + meta + TAGLINE + " " + colors.paint(TRAIN) + "[" + colors.text(SplashScreenSupport.releaseTrain(details.version())) + " RELEASE]",
                 meta + "   Version: " + accent + colors.text(details.version()),
-                meta + "   By: " + accent + "Volmit Software (Arcane Arts)" + meta + " | Web Editor: " + accent + EDITOR_URL + meta + " | Startup: " + status,
+                meta + "   By: " + accent + "Volmit Software (Arcane Arts)" + meta + " | Web Editor: " + accent + colors.text(details.editorUrl()) + meta + " | Startup: " + status,
                 meta + "   Server: " + accent + colors.text(details.server()) + meta + " | MC Support: " + accent + supportedMinecraft(),
                 meta + "   Java: " + accent + details.javaMajor() + meta + " | Date: " + accent + details.date());
         List<String> lines = new ArrayList<>(ART.size());

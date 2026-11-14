@@ -1,40 +1,42 @@
-/// The editable part of a recording's Visual view: its id (moved through the
-/// document rename, which carries the NPCs and routes that play it), and the
-/// description, tags, default playback and speed the server stores with it.
+/// The editable part of a recording: its description, tags, default
+/// playback and speed, which the server stores beside the frames, and Make
+/// route. The page header renames the recording.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
-import '../../logic/select/select_model.dart' show withDefault;
 import '../../logic/recording/recording_edit.dart';
-import '../../logic/suggest/field_profile.dart';
+import '../../logic/recording/recording_facts.dart';
 import '../../model/animus_document.dart';
+import '../../services/browser.dart' show focusWhenShown;
+import '../../ui/action_row.dart';
+import '../../ui/dialog.dart';
+import '../../ui/field.dart';
+import '../../ui/toggle_choice.dart';
 import '../gui/gui_fields.dart';
-import '../select/suggest_input.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../suggest/autocomplete_input.dart';
+import '../../ui/number_input.dart';
+import '../npc/npc_layout.dart';
 
-const String recordingIdInputId = 'animus-recording-id';
 const String recordingDescriptionId = 'animus-recording-description';
-const String recordingTagInputId = 'animus-recording-tag';
-const String recordingPlaybackId = 'animus-recording-playback';
+const String recordingTagsId = 'animus-recording-tags';
 const String recordingSpeedId = 'animus-recording-speed';
 const String recordingRouteInputId = 'animus-recording-route';
 
 class RecordingDetailsForm extends StatefulWidget {
-  const RecordingDetailsForm({required this.document, required this.onJson, this.onRename, this.onMakeRoute, this.knownTags = const <String>[], super.key});
+  const RecordingDetailsForm({required this.document, required this.onJson, this.onMakeRoute, this.knownTags = const <String>[], super.key});
 
   final AnimusDocument document;
   final JsonEdit onJson;
 
-  /// Moves the recording to a new id; returns a problem to show, or null.
-  final Future<String?> Function(String id)? onRename;
-
   /// Makes a route under an id that follows the recording; returns a problem to show, or null.
   final Future<String?> Function(String id)? onMakeRoute;
 
-  /// Tags other recordings use, offered while typing one.
+  /// Tags other recordings use, offered in the tip.
   final List<String> knownTags;
 
   @override
@@ -42,11 +44,12 @@ class RecordingDetailsForm extends StatefulWidget {
 }
 
 class _RecordingDetailsFormState extends State<RecordingDetailsForm> {
-  String? _id;
-  String? _idProblem;
-  String _newTag = '';
+  /// The tags as typed while the box is in use.
+  String? _tagsTyped;
+  String? _tagsProblem;
   String? _speedProblem;
-  String? _routeId;
+  bool _routeOpen = false;
+  String _routeId = '';
   String? _routeProblem;
 
   JsonMap get _json => asMap(component.document.json);
@@ -57,166 +60,103 @@ class _RecordingDetailsFormState extends State<RecordingDetailsForm> {
     component.onJson(writeAt(shown, const <JsonStep>[], details.writeTo(shown)), coalesce: 'recording:$field');
   }
 
-  Future<void> _rename() async {
-    final String? next = _id?.trim();
-    if (next == null || next == component.document.id) return;
-    final String? problem = await component.onRename!(next);
-    if (!mounted) return;
+  void _tags(String text) {
+    final List<String> tags = parseRecordingTags(text);
+    final String? problem = recordingTagsProblem(tags);
     setState(() {
-      _idProblem = problem;
-      if (problem == null) _id = null;
+      _tagsTyped = text;
+      _tagsProblem = problem;
     });
+    if (problem == null && tags.join(',') != _details.tags.join(',')) _write(_details.copyWith(tags: tags), 'tags');
   }
 
-  Future<void> _makeRoute(String id) async {
+  void _openRoute() {
+    setState(() {
+      _routeOpen = true;
+      _routeId = component.document.id;
+      _routeProblem = null;
+    });
+    focusWhenShown(recordingRouteInputId);
+  }
+
+  void _closeRoute() => setState(() => _routeOpen = false);
+
+  Future<void> _makeRoute() async {
+    final String id = _routeId.trim();
+    if (!recordingIdPattern.hasMatch(id)) {
+      setState(() => _routeProblem = 'Use 1-64 lowercase letters, digits, _ or -.');
+      return;
+    }
     final String? problem = await component.onMakeRoute!(id);
     if (!mounted) return;
     setState(() {
       _routeProblem = problem;
-      if (problem == null) _routeId = null;
+      if (problem == null) _routeOpen = false;
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final RecordingDetails details = _details;
-    final String routeId = (_routeId ?? component.document.id).trim();
-    final bool routeValid = recordingIdPattern.hasMatch(routeId);
     final List<Diagnostic> diagnostics = component.document.diagnostics;
-    final String id = _id ?? component.document.id;
-    final bool idChanged = id.trim() != component.document.id;
-    final bool idValid = recordingIdPattern.hasMatch(id.trim());
-    final String adding = _newTag;
-    final bool tagValid = recordingTagPattern.hasMatch(adding) && !details.tags.contains(adding) && details.tags.length < recordingTagLimit;
-    void addTag() {
-      _write(details.copyWith(tags: <String>[...details.tags, adding]), 'tags');
-      setState(() => _newTag = '');
-    }
-
+    final List<String> unused = <String>[for (final String tag in component.knownTags) if (!details.tags.contains(tag)) tag];
     return dom.div(
       classes: 'animus-recording-details',
       attributes: const <String, String>{'data-recording': 'details'},
       <Widget>[
-        if (component.onRename != null)
-          GuiRow(
-            label: 'Id',
-            forId: recordingIdInputId,
-            tip: 'Renaming moves the file and updates the NPCs and routes that play it.',
-            problems: diagnosticsAt(diagnostics, r'$.id'),
-            child: dom.div(classes: 'animus-gui-line', <Widget>[
-              GuiTextInput(
-                id: recordingIdInputId,
-                value: id,
-                onChanged: (String value) => setState(() {
-                  _id = value;
-                  _idProblem = null;
-                }),
-              ),
-              Button.secondary(id: 'animus-recording-rename', label: 'Rename', size: ButtonSize.small, disabled: !idChanged || !idValid, onPressed: _rename),
-              if (_idProblem != null || (idChanged && !idValid))
-                dom.span(classes: 'animus-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(_idProblem ?? 'Use 1-64 lowercase letters, digits, _ or -.')]),
-            ]),
-          ),
-        if (component.onMakeRoute != null)
-          GuiRow(
-            label: 'Route',
-            forId: recordingRouteInputId,
-            tip: 'A route along the recorded path. Each leg keeps the style recorded on it: sneak, sprint, swim or glide.',
-            child: dom.div(classes: 'animus-gui-line', <Widget>[
-              GuiTextInput(
-                id: recordingRouteInputId,
-                value: routeId,
-                onChanged: (String value) => setState(() {
-                  _routeId = value;
-                  _routeProblem = null;
-                }),
-              ),
-              Button.secondary(id: 'animus-recording-make-route', label: 'Make route', size: ButtonSize.small, disabled: !routeValid, onPressed: () => _makeRoute(routeId)),
-              if (_routeProblem != null || !routeValid)
-                dom.span(classes: 'animus-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(_routeProblem ?? 'Use 1-64 lowercase letters, digits, _ or -.')]),
-            ]),
-          ),
-        GuiRow(
+        Field(
           label: 'Description',
           forId: recordingDescriptionId,
-          help: '${details.description.length} / $recordingDescriptionLimit',
+          hint: '${details.description.length} of $recordingDescriptionLimit',
           problems: diagnosticsAt(diagnostics, r'$.description'),
-          child: GuiTextInput(
+          child: AutocompleteInput(
             id: recordingDescriptionId,
             value: details.description,
-            profile: FieldProfile.richText,
             placeholder: 'What the NPC acts out',
             onChanged: (String value) {
               if (value.length <= recordingDescriptionLimit) _write(details.copyWith(description: value), 'description');
             },
+            profile: FieldProfile.none,
           ),
         ),
-        GuiRow(
+        Field(
           label: 'Tags',
-          forId: recordingTagInputId,
-          help: 'a-z, 0-9, _ and -',
+          forId: recordingTagsId,
+          hint: 'Separate with commas',
+          tip: unused.isEmpty ? 'Words to find the recording by.' : 'Words to find the recording by. Others in use: ${unused.take(8).join(', ')}.',
+          error: _tagsProblem,
           problems: diagnosticsAt(diagnostics, r'$.tags', nested: true),
-          child: dom.div(classes: 'animus-tag-editor', <Widget>[
-            if (details.tags.isNotEmpty)
-              dom.div(classes: 'animus-npc-tag-cloud', <Widget>[
-                for (final String tag in details.tags)
-                  dom.span(
-                    classes: 'animus-npc-tag',
-                    attributes: <String, String>{'data-tag': tag},
-                    <Widget>[
-                      Component.text(tag),
-                      GuiIconButton(
-                        icon: ArcaneIcon.x(size: IconSize.sm),
-                        label: 'Remove tag $tag',
-                        size: ButtonSize.icon,
-                        onPressed: () => _write(details.copyWith(tags: <String>[...details.tags]..remove(tag)), 'tags'),
-                      ),
-                    ],
-                  ),
-              ]),
-            dom.div(classes: 'animus-gui-line', <Widget>[
-              SuggestInput(
-                // A fresh field per added tag, so the typed text clears.
-                key: ValueKey<int>(details.tags.length),
-                id: recordingTagInputId,
-                value: adding,
-                label: 'New tag',
-                placeholder: 'market',
-                profile: FieldProfile(options: <ValueOption>[
-                  for (final String tag in component.knownTags)
-                    if (!details.tags.contains(tag)) ValueOption(tag, detail: 'tag'),
-                ]),
-                onChanged: (String value) => setState(() => _newTag = value.trim().toLowerCase()),
-                onSubmit: tagValid ? addTag : null,
-              ),
-              Button.ghost(id: 'animus-recording-add-tag', label: 'Add tag', size: ButtonSize.small, disabled: !tagValid, onPressed: addTag),
-            ]),
-          ]),
-        ),
-        GuiRow(
-          label: 'Playback',
-          forId: recordingPlaybackId,
-          tip: 'Used when the NPC or play-recording action names no playback.',
-          problems: diagnosticsAt(diagnostics, r'$.playback'),
-          child: GuiSelect(
-            id: recordingPlaybackId,
-            value: withDefault(details.playback, recordingPlaybacks, 'loop').value,
-            options: withDefault(details.playback, recordingPlaybacks, 'loop').options,
-            allowNone: true,
-            noneLabel: 'loop (default)',
-            onChanged: (String? next) => _write(details.copyWith(playback: () => next), 'playback'),
+          child: TextInput(
+            id: recordingTagsId,
+            value: _tagsTyped ?? details.tags.join(', '),
+            onChanged: _tags,
+            onBlur: () => setState(() => _tagsTyped = null),
           ),
         ),
-        GuiRow(
+        Field(
+          label: 'Playback',
+          tip: 'How an NPC plays it when the NPC or the action names no playback.',
+          docs: Docs.recordingPlayback,
+          problems: diagnosticsAt(diagnostics, r'$.playback'),
+          child: ToggleChoice<String>(
+            label: 'Playback',
+            options: <ChoiceOption<String>>[for (final MapEntry<String, String> entry in playbackLabels.entries) ChoiceOption<String>(entry.key, entry.value)],
+            value: details.playback ?? 'loop',
+            onChanged: (String next) => _write(details.copyWith(playback: () => next == 'loop' ? null : next), 'playback'),
+          ),
+        ),
+        Field(
           label: 'Speed',
           forId: recordingSpeedId,
-          tip: 'Recorded ticks per game tick. 2 plays twice as fast.',
-          help: _speedProblem ?? '0.25 to 4',
+          hint: _speedProblem == null ? '0.25 to 4 times' : null,
+          tip: 'How fast an NPC plays it: 1 as recorded, 2 twice as fast, 0.5 at half speed.',
+          error: _speedProblem,
           problems: diagnosticsAt(diagnostics, r'$.speed'),
-          child: GuiNumberInput(
+          child: NumberInput(
             id: recordingSpeedId,
             value: details.speed,
             integer: false,
+            digits: 4,
             placeholder: '1',
             onChanged: (num? value) {
               final double speed = value?.toDouble() ?? 1;
@@ -226,7 +166,40 @@ class _RecordingDetailsFormState extends State<RecordingDetailsForm> {
             },
           ),
         ),
+        if (component.onMakeRoute != null) ...<Widget>[
+          ActionRow(
+            label: 'Recording actions',
+            secondary: <RowAction>[RowAction('Make route', _openRoute, icon: ArcaneIcon.route(), id: 'animus-recording-make-route')],
+          ),
+          if (_routeOpen) _routeDialog(),
+        ],
       ],
     );
   }
+
+  Widget _routeDialog() => AppDialog(
+        open: true,
+        id: 'make-route',
+        title: 'Make route',
+        onClose: _closeRoute,
+        footer: DialogFooter(cancel: RowAction('Cancel', _closeRoute), primary: RowAction('Make route', _makeRoute)),
+        children: <Widget>[
+          mutedLine('A route along the recorded steps. Each leg keeps how it was walked: sneak, sprint, swim or glide.'),
+          Field(
+            label: 'Route name',
+            forId: recordingRouteInputId,
+            required: true,
+            error: _routeProblem,
+            child: TextInput(
+              id: recordingRouteInputId,
+              value: _routeId,
+              onChanged: (String value) => setState(() {
+                _routeId = value;
+                _routeProblem = null;
+              }),
+              onSubmitted: (String _) => _makeRoute(),
+            ),
+          ),
+        ],
+      );
 }

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "id": "harbor",
+  "description": "Harbor colours and the dock hologram",
+  "values": {
+    "modules": {
+      "animus:look-close": {
+        "range": 6
+      }
+    },
+    "tags": [
+      "harbor"
+    ],
+    "teamColor": "aqua",
+    "hologram": {
+      "lines": [
+        "Harbor watch"
+      ]
+    }
+  }
+}

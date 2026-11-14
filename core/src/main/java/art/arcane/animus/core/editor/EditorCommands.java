@@ -1,6 +1,7 @@
 package art.arcane.animus.core.editor;
 
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.storage.NpcPaths;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.Palette;
 import java.io.IOException;
@@ -46,14 +47,21 @@ public final class EditorCommands {
         EditorTokens.Grant grant;
         try { grant = grant(actor, label, scopes, groups, expires, editor.settings().tokenDays()); }
         catch (IllegalArgumentException invalid) { actor.tell(Palette.error(invalid.getMessage())); return; }
-        work(actor, () -> {
-            EditorService.PairingLink link = editor.pair(grant);
-            String token = link.pairing().tokenId();
-            return List.of(ChatLine.success("Pairing link ready; open it once within " + EditorTokens.PAIRING_LIFETIME.toMinutes() + " minutes").link("Open editor", link.link()),
-                    ChatLine.reply("The paired editor may " + String.join(" ", grant.scopes().stream().map(EditorScope::wireName).toList())
-                            + (grant.groups().isEmpty() ? "" : " for groups " + String.join(",", grant.groups()))
-                            + "; pairing lasts " + describe(grant.lifetime())).copy("[Token id]", token, "Click to copy the token id").suggest("Revoke", "/animus editor revoke " + token, "Revoke this token"));
-        });
+        work(actor, () -> reply(actor, editor.pair(grant), grant));
+    }
+
+    /**
+     * One line for a player: the link to open or copy, and [Revoke], which also cancels a link not opened yet. The console
+     * gets the link and a second line with the scopes, folders and lifetime.
+     */
+    static List<ChatLine> reply(CommandActor actor, EditorService.PairingLink link, EditorTokens.Grant grant) {
+        String token = link.pairing().tokenId();
+        ChatLine ready = ChatLine.success("Link ready. Open it within " + EditorTokens.PAIRING_LIFETIME.toMinutes() + " minutes")
+                .open("Open editor", link.link(), "Open in your browser").copy("[Copy]", link.link(), "Copy the link");
+        if (actor.player().isPresent()) return List.of(ready.suggest("Revoke", "/animus editor revoke " + token, "Cancel this link, or end the editor it paired"));
+        return List.of(ready, ChatLine.reply("Scopes " + String.join(" ", grant.scopes().stream().map(EditorScope::wireName).toList())
+                + (grant.groups().isEmpty() ? "" : " for folders " + String.join(",", grant.groups()))
+                + "; ends after " + describe(grant.lifetime()) + " unused; token " + token));
     }
 
     /** One line per token: id, label, scopes, groups, expiry, last use, client and open streams. */
@@ -155,6 +163,8 @@ public final class EditorCommands {
         if (granted.contains(EditorScope.APPLY_COMMANDS) && actor.player().isPresent() && !actor.permitted(COMMANDS_PERMISSION))
             throw new IllegalArgumentException("apply:commands lets the editor run console commands; it needs " + COMMANDS_PERMISSION + " or the console");
         List<String> grouped = Arrays.stream(groups.split(",")).map(String::strip).filter((String group) -> !group.isEmpty()).toList();
+        for (String group : grouped)
+            if (!NpcPaths.folder(group)) throw new IllegalArgumentException("folders take lowercase folder names under npcs/, such as town or town/market; " + group + " is not one");
         Duration lifetime = expires.isBlank() ? Duration.ofDays(tokenDays) : duration(expires);
         Optional<UUID> admin = actor.player();
         return new EditorTokens.Grant(label.strip(), admin, granted, grouped, lifetime);

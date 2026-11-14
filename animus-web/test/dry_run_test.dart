@@ -4,6 +4,8 @@ import 'package:animus_editor/config/starter_packs.g.dart';
 import 'package:animus_editor/logic/gui/gui_json.dart';
 import 'package:animus_editor/logic/offline/dry_run.dart';
 import 'package:animus_editor/logic/offline/new_documents.dart';
+import 'package:animus_editor/model/animus_document.dart';
+import 'package:animus_editor/model/document_kind.dart';
 import 'package:test/test.dart';
 
 List<String> speech(DryRunSession session) => <String>[
@@ -31,6 +33,29 @@ void main() {
     expect(speech(again), <String>['Welcome, Player! Nice to meet you.', 'Good to see you again, Player!']);
     expect(again.runs, hasLength(2));
     expect(dryRun(greeter, DryRunInputs.start('click').withTrigger('click').withoutLast()).runs, hasLength(1));
+  });
+
+  test('should name a sound plainly for Simple and by its key otherwise', () {
+    final JsonMap bell = <String, Object?>{
+      'entry': 'main',
+      'routines': <String, Object?>{
+        'main': <String, Object?>{'type': 'action', 'capability': 'animus:play-sound', 'arguments': <String, Object?>{'sound': 'minecraft:block.note_block.chime'}},
+      },
+    };
+    String said({required bool plain}) => dryRun(bell, DryRunInputs.start(null), plain: plain).runs.single.steps.single.text;
+    expect(said(plain: true), 'Plays sound note block chime.');
+    expect(said(plain: false), 'Plays sound minecraft:block.note_block.chime.');
+  });
+
+  test('should word the steps plainly for Simple', () {
+    final JsonMap greeter = behaviorFromTemplate(BehaviorTemplate.greeter, 'a:g');
+    final List<String> engine = <String>[for (final DryRunStep step in dryRun(greeter, DryRunInputs.start('click')).runs.single.steps) step.text];
+    expect(engine.any((String text) => text.contains('so else runs')), isTrue, reason: 'Advanced keeps the engine words');
+    final List<String> plain = <String>[for (final DryRunStep step in dryRun(greeter, DryRunInputs.start('click'), plain: true).runs.single.steps) step.text];
+    expect(plain, contains('Checks flag met with this NPC is true: it is not set, so the No steps run.'));
+    expect(plain.join(' '), isNot(contains('minecraft:')));
+    expect(plain.join(' '), isNot(contains('(relationship)')));
+    expect(plain.join(' '), isNot(matches(RegExp(r'\b(then|else) runs'))));
   });
 
   test('should open a prompt, then run the answer trigger the user picks', () {
@@ -87,9 +112,28 @@ void main() {
     expect(ignored.runs, hasLength(1));
   });
 
+  test('should name documents and modded ids plainly for Simple', () {
+    final JsonMap steps = <String, Object?>{
+      'entry': 'main',
+      'routines': <String, Object?>{
+        'main': <String, Object?>{'type': 'sequence', 'steps': <Object?>[
+          <String, Object?>{'type': 'action', 'capability': 'animus:navigate', 'arguments': <String, Object?>{'route': 'town:loop'}},
+          <String, Object?>{'type': 'action', 'capability': 'animus:play-animation', 'arguments': <String, Object?>{'animation': 'rigs:wave'}},
+          <String, Object?>{'type': 'action', 'capability': 'animus:spawn-particle', 'arguments': <String, Object?>{'particle': 'mymod:sparks'}},
+          <String, Object?>{'type': 'action', 'capability': 'animus:set-equipment', 'arguments': <String, Object?>{'item': 'mymod:ruby', 'slot': 'main_hand'}},
+          <String, Object?>{'type': 'action', 'capability': 'animus:open-gui', 'arguments': <String, Object?>{'gui': 'shop:counter'}},
+        ]},
+      },
+    };
+    final String plain = <String>[for (final DryRunStep step in dryRun(steps, DryRunInputs.start(null), plain: true, names: (DocumentKind kind, String id) => 'the ${kind.wireName} ${id.split(':').last}').runs.single.steps) step.text].join(' ');
+    expect(plain, allOf(contains('Follows route the route loop'), contains('Plays animation the animation wave'), contains('sparks (mymod) particles'), contains('Holds ruby'), contains('GUI the inventory counter')));
+    expect(plain, isNot(matches(RegExp(r'\b[a-z0-9_.-]+:[a-z0-9_./-]+'))));
+  });
+
   test('should list a shop as not run and a command with its text', () {
     final JsonMap shop = behaviorFromTemplate(BehaviorTemplate.shop, 'a:s', shop: 'town:market');
     expect(dryRun(shop, DryRunInputs.start('click')).serverOnly.single.text, startsWith('Would open shop town:market.'));
+    expect(dryRun(shop, DryRunInputs.start('click'), plain: true).serverOnly.single.text, startsWith('Would open shop Market.'));
     final JsonMap command = <String, Object?>{
       'schemaVersion': 1,
       'revision': 1,
@@ -135,5 +179,47 @@ void main() {
         expect(problems, isEmpty, reason: '${file.key} ${start.label}');
       }
     }
+  });
+  test('should print text values without colour codes for Simple', () {
+    final JsonMap behavior = <String, Object?>{
+      'entry': 'main',
+      'routines': <String, Object?>{
+        'main': <String, Object?>{
+          'type': 'action',
+          'capability': 'animus:set-flag',
+          'arguments': <String, Object?>{'name': 'hud', 'value': '&#5FD3FFClick an option above'},
+        },
+      },
+    };
+    final String plain = dryRun(behavior, DryRunInputs.start(null), plain: true).runs.single.steps.single.text;
+    expect(plain, 'Sets flag hud to Click an option above.');
+    expect(plain, isNot(contains('&#')));
+    expect(dryRun(behavior, DryRunInputs.start(null)).runs.single.steps.single.text, contains('"&#5FD3FFClick an option above"'),
+        reason: 'Advanced keeps the value as written');
+  });
+
+  test('should note only a server behavior the server list leaves out', () {
+    AnimusDocument behavior({required bool server}) => AnimusDocument(
+          kind: DocumentKind.behavior,
+          id: 'town:bell',
+          path: 'behaviors/town/bell.json',
+          source: '{}',
+          json: <String, Object?>{'id': 'town:bell', if (server) 'server': true},
+          diagnostics: const <Diagnostic>[],
+        );
+    final List<AnimusDocument> listed = <AnimusDocument>[
+      const AnimusDocument(
+        kind: DocumentKind.serverBehaviors,
+        id: DocumentKind.serverBehaviorsId,
+        path: DocumentKind.serverBehaviorsPath,
+        source: '{}',
+        json: <String, Object?>{'schemaVersion': 1, 'behaviors': <Object?>['town:bell']},
+        diagnostics: <Diagnostic>[],
+      ),
+    ];
+    expect(testPaneNote(behavior(server: true), const <AnimusDocument>[]), 'Not running on the server yet');
+    expect(testPaneNote(behavior(server: true), listed), isNull);
+    expect(testPaneNote(behavior(server: false), listed), isNull);
+    expect(testPaneNote(behavior(server: false), const <AnimusDocument>[]), isNull);
   });
 }

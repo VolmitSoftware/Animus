@@ -89,6 +89,12 @@ public final class ImportApplications {
         return installed.transaction();
     }
 
+    /** What installing the application writes, by path, read from its staged objects; nothing is installed. */
+    public static Map<String,String> documents(DocumentStore store,String importId,String applicationId) throws IOException {
+        LoadBudget budget=new LoadBudget();
+        return candidates(store,plan(store,importId,applicationId,budget),budget);
+    }
+
     private record Installed(String transaction,boolean repeated) {}
 
     private static Installed install(DocumentStore store,String importId,String applicationId,String transaction) throws IOException {

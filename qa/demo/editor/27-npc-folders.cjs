@@ -1,33 +1,52 @@
-// The NPC Browse folder tree: a new folder inside town/, market/ renamed to
-// bazaar/, then harbor/ moved into town/ with its NPCs.
+// NPC folders in the Advanced NPC list: two guards moved to a new folder
+// town/square, town/market renamed to bazaar, then harbor moved into town
+// with its NPCs; the Folder filter lists the result.
 // Fake server data: --data=../qa/demo/editor/fixtures/town-deep (from animus-web/).
 module.exports = async (L) => {
-  const {film: f, page, h} = await L.pairedSession('27-npc-folders');
-  const side = page.getByRole('complementary', {name: 'Documents'});
-  await page.waitForTimeout(1500);
+  const {film: f, page, h} = await L.pairedSession('27-npc-folders', {path: '/npcs'});
+  const list = page.getByRole('listbox', {name: 'NPCs'});
+  await list.waitFor();
+  await page.waitForTimeout(1200);
   f.mark();
   await h.pause(300);
-  await h.click(side.getByRole('link', {name: 'Browse'}).first(), {after: 1000});
-  const tree = page.getByRole('tree', {name: 'Folders'});
-  const acts = page.getByRole('group', {name: 'Folder actions'});
-  const folder = (path) => tree.getByRole('treeitem', {name: new RegExp(`^npcs/${path}/,`)});
-  await h.click(folder('town'), {after: 1000});
-  await h.click(acts.getByRole('button', {name: 'New folder'}), {after: 700});
-  await h.type(acts.getByRole('textbox', {name: 'New folder in npcs/town/'}), 'square', {after: 300});
-  await h.click(acts.getByRole('button', {name: 'Make folder'}), {after: 900});
-  await h.hover(folder('town/square'), 1200);
-  await h.click(folder('town/market'), {after: 900});
-  await h.click(acts.getByRole('button', {name: 'Rename'}), {after: 700});
-  await h.type(acts.getByRole('textbox', {name: 'New name for npcs/town/market/'}), 'bazaar', {clear: true, after: 300});
-  await h.click(acts.getByRole('button', {name: 'Rename folder'}), {after: 900});
-  await h.result(1800);
-  await h.click(folder('harbor'), {after: 900});
-  await h.click(acts.getByRole('button', {name: 'Move'}), {after: 700});
-  const into = acts.getByRole('combobox', {name: 'Move npcs/harbor/ into'});
-  await h.click(into, {after: 700});
-  await h.click((await L.listboxOf(into)).getByRole('option', {name: 'town/', exact: true}), {after: 700});
-  await h.click(acts.getByRole('button', {name: 'Move folder'}), {after: 1000});
-  await h.hover(folder('town/harbor'), 600);
+  await h.mode('advanced');
+  await h.hover(list.getByRole('option', {name: /^Baker/}), 900);
+  // A folder exists while it holds NPCs: moving two guards to a typed path makes town/square.
+  for (const name of [/^North Guard/, /^South Guard/]) {
+    await h.click(list.getByRole('option', {name}).getByRole('checkbox'), {after: 400});
+  }
+  const picked = page.getByRole('toolbar', {name: 'Picked rows'});
+  await h.click(picked.getByRole('button', {name: 'Folder', exact: true}), {after: 800});
+  const move = page.getByRole('dialog', {name: /^Move 2 NPCs/});
+  await h.type(move.getByRole('textbox', {name: 'Or a new folder'}), 'town/square', {after: 300});
+  await h.click(move.getByRole('button', {name: 'Move', exact: true}), {after: 1000});
+  await h.hover(list.getByRole('option', {name: /^North Guard/}), 900);
+  await h.result(1600);
+  const more = page.getByRole('toolbar', {name: 'Page actions'}).getByRole('button', {name: 'More actions'});
+  await h.click(more, {after: 600});
+  await h.click(page.getByRole('menuitem', {name: 'Rename folder'}), {after: 800, noReveal: true});
+  const rename = page.getByRole('dialog', {name: 'Rename folder'});
+  await h.pick(rename.getByRole('combobox', {name: 'Folder'}), 'town/market', {after: 600});
+  await h.type(rename.getByRole('textbox', {name: 'New name'}), 'bazaar', {clear: true, after: 300});
+  await h.click(rename.getByRole('button', {name: 'Rename', exact: true}), {after: 1000});
+  await h.hover(list.getByRole('option', {name: /^Fishmonger/}), 900);
+  await h.result(1600);
+  await h.click(more, {after: 600});
+  await h.click(page.getByRole('menuitem', {name: 'Move folder'}), {after: 800, noReveal: true});
+  const moveFolder = page.getByRole('dialog', {name: 'Move folder'});
+  await h.pick(moveFolder.getByRole('combobox', {name: 'Folder'}), 'harbor', {after: 600});
+  await h.pick(moveFolder.getByRole('combobox', {name: 'Move into'}), 'town', {after: 600});
+  await h.click(moveFolder.getByRole('button', {name: 'Move', exact: true}), {after: 1000});
+  await h.hover(list.getByRole('option', {name: /^Ferryman/}), 900);
+  const filter = page.getByRole('combobox', {name: 'Folder', exact: true});
+  await h.click(filter, {after: 900});
+  const folders = await L.listboxOf(filter);
+  for (const value of ['town/square', 'town/bazaar', 'town/harbor']) {
+    await h.hover(folders.locator(`[role="option"][data-arcane-value="${value}"]`), 700);
+  }
+  await h.click(folders.locator('[role="option"][data-arcane-value="town"]'), {after: 800, noReveal: true});
+  // Rest beside the filter, off the rows.
+  await h.moveTo(filter, {ox: 1.25});
   await h.result(2400);
   return L.finish(f, {closing: 'town/ now holds square/, bazaar/ and harbor/ with its NPCs'});
 };

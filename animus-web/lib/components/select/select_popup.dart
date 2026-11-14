@@ -9,11 +9,12 @@ import 'dart:math' as math;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
 import '../../logic/select/popup_fit.dart';
 import '../../logic/select/select_model.dart';
+import '../../ui/stack.dart';
+import '../gui/gui_stack.dart' show blockTruncated;
 
 /// Widths at which a dropdown opens as a sheet.
 const int sheetWidth = 760;
@@ -48,7 +49,7 @@ class PopupPlacement {
 
 /// The bottom of the sticky top bar in viewport px: popups stay under it.
 double topBarBottom() {
-  final web.Element? bar = web.document.querySelector('.animus-topbar');
+  final web.Element? bar = web.document.querySelector('.ui-topbar');
   return bar == null ? 0 : math.max(0, bar.getBoundingClientRect().bottom.toDouble());
 }
 
@@ -95,9 +96,8 @@ PopupPlacement placePopup(String anchorId, double wanted, {bool sheet = true, bo
   );
 }
 
-/// About how tall a popup with these rows is, for placement.
-double popupHeight({required int options, required int groups, required int actions, required bool search}) =>
-    options * 32 + groups * 26 + actions * 34 + (search ? 46 : 0) + 8;
+/// About how tall a suggestion popup with these rows is, for placement.
+double popupHeight({required int options, required int actions}) => options * 32 + actions * 34 + 18;
 
 /// Whether the box [rect] has left the part of the window under the top bar.
 bool _offscreen(web.DOMRect rect) => rect.bottom <= topBarBottom() || rect.top >= web.window.innerHeight;
@@ -198,7 +198,8 @@ Widget faceThumb(String url) => dom.span(
       const <Widget>[],
     );
 
-/// The listbox and its footer.
+/// The suggestion listbox of a free-text field, with its "+ New" and
+/// "Manage" rows under a separator.
 class SelectListbox extends StatelessWidget {
   const SelectListbox({
     required this.baseId,
@@ -210,7 +211,6 @@ class SelectListbox extends StatelessWidget {
     this.selected = const <String>{},
     this.actions = const <SelectAction>[],
     this.query = '',
-    this.multiple = false,
     super.key,
   });
 
@@ -223,103 +223,66 @@ class SelectListbox extends StatelessWidget {
   final Set<String> selected;
   final List<SelectAction> actions;
   final String query;
-  final bool multiple;
   final void Function(int index) onPick;
   final void Function(int index) onHover;
 
   String get listboxId => '$baseId-listbox';
 
-  Widget _row(int index, {required String label, String? hint, String? value, bool disabled = false, String? swatch, String? skinFace, bool action = false}) {
+  Widget _row(int index, {required String label, String? hint, String? value, String? action}) {
     final bool isSelected = value != null && selected.contains(value);
     return dom.div(
       id: rowId(baseId, index),
-      classes: 'animus-select-option${index == active ? ' is-active' : ''}${isSelected ? ' is-selected' : ''}${action ? ' is-action' : ''}',
+      classes: 'animus-select-option${index == active ? ' is-active' : ''}',
       attributes: <String, String>{
         'role': 'option',
         'aria-selected': '$isSelected',
-        if (disabled) 'aria-disabled': 'true',
         'data-value': ?value,
-        if (action) 'data-action': actions[index - rows.options.length].id,
+        'data-action': ?action,
       },
       events: <String, void Function(web.Event)>{
         // Keep focus on the control while the pointer picks.
         'mousedown': (web.Event event) => event.preventDefault(),
-        'click': (web.Event _) {
-          if (!disabled) onPick(index);
-        },
+        'click': (web.Event _) => onPick(index),
         'pointermove': (web.Event _) {
-          if (index != active && !disabled) onHover(index);
+          if (index != active) onHover(index);
         },
       },
       <Widget>[
-        if (swatch != null) dom.span(classes: 'animus-select-swatch', attributes: <String, String>{'aria-hidden': 'true', 'style': 'background:$swatch'}, const <Widget>[]),
-        if (skinFace != null) faceThumb(skinFace),
-        if (multiple && !action) dom.span(classes: 'animus-select-check${isSelected ? ' is-on' : ''}', attributes: const <String, String>{'aria-hidden': 'true'}, const <Widget>[]),
-        dom.span(classes: 'animus-select-text', <Widget>[
-          dom.span(classes: 'animus-select-label', <Widget>[Component.text(label)]),
-          if (hint != null) dom.span(classes: 'animus-select-hint', <Widget>[Component.text(hint)]),
-        ]),
+        Expanded(
+          child: stack(spacing: 0, <Widget>[
+            blockTruncated(label),
+            if (hint != null) mutedText(hint, small: true),
+          ]),
+        ),
+        if (isSelected) ArcaneIcon.check(size: IconSize.sm),
       ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> body = <Widget>[];
-    String? group;
-    List<Widget>? members;
-    int groupIndex = 0;
-    void closeGroup() {
-      if (members != null && group != null) {
-        final String head = '$baseId-group-${groupIndex++}';
-        body.add(dom.div(attributes: <String, String>{'role': 'group', 'aria-labelledby': head}, <Widget>[
-          dom.div(id: head, classes: 'animus-select-group', attributes: const <String, String>{'role': 'presentation'}, <Widget>[Component.text(group)]),
-          ...members!,
-        ]));
-      }
-      members = null;
-    }
-
-    for (int index = 0; index < rows.options.length; index++) {
-      final SelectOption option = rows.options[index];
-      final Widget row = _row(
-        index,
-        label: option.label,
-        hint: option.description,
-        value: option.value,
-        disabled: option.disabled,
-        swatch: option.swatch,
-        skinFace: option.skinFace,
-      );
-      if (option.group == null) {
-        closeGroup();
-        group = null;
-        body.add(row);
-      } else {
-        if (option.group != group) {
-          closeGroup();
-          group = option.group;
-          members = <Widget>[];
-        }
-        members!.add(row);
-      }
-    }
-    closeGroup();
+    final String typed = query.trim();
     return dom.div(classes: 'animus-select-scroll', <Widget>[
       dom.div(
         id: listboxId,
-        attributes: <String, String>{'role': 'listbox', 'aria-label': label, if (multiple) 'aria-multiselectable': 'true'},
+        attributes: <String, String>{'role': 'listbox', 'aria-label': label},
         <Widget>[
-          ...body,
+          for (int index = 0; index < rows.options.length; index++)
+            _row(index, label: rows.options[index].label, hint: rows.options[index].description, value: rows.options[index].value),
           if (rows.options.isEmpty)
-            dom.div(classes: 'animus-select-empty', attributes: const <String, String>{'role': 'presentation'}, <Widget>[
-              Component.text(query.trim().isEmpty ? 'Nothing to pick yet' : 'Nothing matches "${query.trim()}"'),
+            dom.div(attributes: const <String, String>{'role': 'presentation'}, <Widget>[
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Text(typed.isEmpty ? 'Nothing to pick yet' : 'Nothing matches "$typed"', size: FontSize.xs, color: TextColor.muted, cssStyle: const ArcaneStyleData(display: Display.block)),
+              ),
             ]),
-          if (actions.isNotEmpty)
-            dom.div(classes: 'animus-select-footer', attributes: const <String, String>{'role': 'group', 'aria-label': 'Actions'}, <Widget>[
+          if (actions.isNotEmpty) ...<Widget>[
+            const ArcaneSeparator(margin: 4),
+            dom.div(attributes: const <String, String>{'role': 'group', 'aria-label': 'Actions'}, <Widget>[
               for (int index = 0; index < actions.length; index++)
-                _row(rows.options.length + index, label: actions[index].label, hint: actions[index].hint, action: true),
+                _row(rows.options.length + index, label: actions[index].label, hint: actions[index].hint, action: actions[index].id),
             ]),
+          ],
         ],
       ),
     ]);

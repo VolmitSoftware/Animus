@@ -315,7 +315,7 @@ final class _Checker {
       final String slotPath = childPath(childPath(path, 'slots'), entry.key);
       final int? slot = int.tryParse(entry.key);
       if (slot != null && slot >= width * rows) {
-        error(slotPath, 'slot $slot is outside a ${width}x$rows window (slots 0 to ${width * rows - 1})', code: layoutCode);
+        error(slotPath, 'Slot ${slot + 1} is outside a ${width}x$rows window (slots 1 to ${width * rows})', code: layoutCode);
       }
       component(entry.value, slotPath, names, chest: true);
     }
@@ -425,6 +425,7 @@ final class _Checker {
     for (int index = 0; index < frames.length; index++) {
       final Object? frame = frames[index];
       if (frame is String && frame.contains('|animation.')) error(indexPath(r'$.frames', index), 'a frame cannot show another animation', code: layoutCode);
+      template(frame, indexPath(r'$.frames', index), ExpressionNames.standard);
     }
   }
 
@@ -459,7 +460,7 @@ final class _Checker {
           final JsonMap entry = asMap(slotEntry.value);
           final int? slot = int.tryParse(slotEntry.key);
           if (slot != null && slot >= rows * 9) {
-            error(path, 'slot $slot is outside a $rows-row page (slots 0 to ${rows * 9 - 1})', code: layoutCode);
+            error(path, 'Slot ${slot + 1} is outside a $rows-row page (slots 1 to ${rows * 9})', code: layoutCode);
           } else if (slot != null) {
             final String? control = shopControlAt(slot, rows);
             if (control != null) warning(path, 'slot $slot sits under the $control control and is hidden while that control shows', layoutCode);

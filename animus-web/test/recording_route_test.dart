@@ -53,4 +53,24 @@ void main() {
       expect(recordingRoute(_recording(<List<num>>[<num>[0, 0, 0, 0, 1]])), isNull);
     });
   });
+
+  group('recordingPathOf', () {
+    test('test_recordingPathOf_sameDocument_isWorkedOutOnce', () {
+      final JsonMap json = <String, Object?>{
+        'origin': <String, Object?>{'x': 0, 'y': 64, 'z': 0},
+        'frames': <Object?>[
+          <Object?>[0, 0, 0, 0, 0, 0, 1],
+          <Object?>[20, 4, 0, 0, 0, 0, 1],
+        ],
+      };
+      final JsonMap? path = recordingPathOf(json);
+      expect(asList(path!['points']), hasLength(2));
+      expect(identical(recordingPathOf(json), path), isTrue);
+    });
+
+    test('test_recordingPathOf_tooShortOrNotAnObject_isNull', () {
+      expect(recordingPathOf(<String, Object?>{'frames': <Object?>[<Object?>[0, 0, 0, 0, 0, 0, 1]]}), isNull);
+      expect(recordingPathOf('market-loop'), isNull);
+    });
+  });
 }

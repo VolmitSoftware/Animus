@@ -10,6 +10,8 @@ import '../gui/gui_json.dart';
 import '../inspect/inspect_schemas.dart';
 import '../inspect/schema_fields.dart';
 import '../select/select_model.dart';
+import 'combat_settings.dart' show combatModule;
+import 'health_settings.dart' show healthModule;
 
 const String attributesField = 'attributes';
 const String attributeNamespace = 'minecraft:';
@@ -45,7 +47,7 @@ class AttributeSpec {
   /// Whether a body of [type] carries it; any body when [type] is unknown.
   bool carriedBy(String? type) => type == null || bodies.contains(type);
 
-  /// `0.0625..16`.
+  /// `0.0625..16`, as the server words it.
   String get range => '${formatAttribute(minimum)}..${formatAttribute(maximum)}';
 
   /// Null when [value] suits the attribute, otherwise why not, worded as the server words it.
@@ -92,6 +94,9 @@ JsonMap bareAttributes(Object? attributes) => <String, Object?>{
       for (final MapEntry<String, Object?> entry in asMap(attributes).entries) bareAttributeId(entry.key): entry.value,
     };
 
+/// The hint beside an attribute: `0.0625 to 16, vanilla 1`.
+String attributeRange(AttributeSpec spec) => '${formatAttribute(spec.minimum)} to ${formatAttribute(spec.maximum)}, vanilla ${formatAttribute(spec.defaultValue)}';
+
 /// The add dropdown's headings, each with its attributes in the order they
 /// matter most to an NPC; attributes only players carry go under
 /// [_playerOnly] whatever their kind.
@@ -101,8 +106,8 @@ const Map<String, List<String>> _attributeGroups = <String, List<String>>{
     'flying_speed', 'water_movement_efficiency', 'movement_efficiency', 'sneaking_speed', 'friction_modifier', 'air_drag_modifier', 'bounciness',
   ],
   'Combat': <String>[
-    'max_health', 'armor', 'armor_toughness', 'attack_damage', 'attack_knockback', 'attack_speed', 'knockback_resistance', //
-    'explosion_knockback_resistance', 'max_absorption', 'burning_time', 'sweeping_damage_ratio',
+    'attack_damage', 'attack_knockback', 'attack_speed', 'knockback_resistance', 'explosion_knockback_resistance', //
+    'max_absorption', 'burning_time', 'sweeping_damage_ratio',
   ],
   'Senses': <String>[
     'follow_range', 'tempt_range', 'entity_interaction_range', 'block_interaction_range', 'camera_distance', 'name_tag_distance', //
@@ -112,13 +117,21 @@ const Map<String, List<String>> _attributeGroups = <String, List<String>>{
 const String _playerOnly = 'Player only';
 const String _other = 'Other';
 
-/// The add dropdown's rows: every attribute, grouped, those already [set]
-/// disabled, each described by its range and vanilla default. For a body of
-/// [bodyType] the attributes it carries come first in each group, and the
-/// rest say they have no effect on it; player-only attributes sink below
-/// Other for every other body.
+/// Attributes the Combat tab's health part is the home of: its Max health
+/// and Armor win over them, so the add dropdown does not offer them. A value
+/// a definition already has stays listed and editable.
+const Set<String> combatHomeAttributes = <String>{'max_health', 'armor', 'armor_toughness'};
+
+/// The add dropdown's rows: every attribute but [combatHomeAttributes],
+/// grouped, those already [set] disabled, each described by its range and
+/// vanilla default. For a body of [bodyType] the attributes it carries come
+/// first in each group, and the rest say they have no effect on it;
+/// player-only attributes sink below Other for every other body.
 List<SelectOption> attributeOptions(List<AttributeSpec> specs, JsonMap set, String? bodyType) {
-  final Map<String, AttributeSpec> table = <String, AttributeSpec>{for (final AttributeSpec spec in specs) spec.id: spec};
+  final Map<String, AttributeSpec> table = <String, AttributeSpec>{
+    for (final AttributeSpec spec in specs)
+      if (!combatHomeAttributes.contains(spec.id)) spec.id: spec,
+  };
   String groupOf(AttributeSpec spec) {
     if (spec.bodies.length == 1 && spec.bodies.single == 'minecraft:player') return _playerOnly;
     for (final MapEntry<String, List<String>> group in _attributeGroups.entries) {
@@ -152,12 +165,12 @@ List<SelectOption> attributeOptions(List<AttributeSpec> specs, JsonMap set, Stri
     for (final AttributeSpec spec in members) {
       options.add(SelectOption(
         value: spec.id,
-        label: spec.id,
+        label: attributeLabel(spec.id),
         group: group,
         disabled: set.containsKey(spec.id),
-        keywords: <String>['$attributeNamespace${spec.id}', ...spec.id.split('_')],
+        keywords: <String>[spec.id, '$attributeNamespace${spec.id}', ...spec.id.split('_')],
         description: <String>[
-          '${spec.range}, vanilla ${formatAttribute(spec.defaultValue)}',
+          attributeRange(spec),
           if (!spec.carriedBy(bodyType)) 'no effect on this body',
         ].join('; '),
       ));
@@ -179,11 +192,81 @@ JsonMap? withAttribute(Object? attributes, String id, num? value) {
   return next.isEmpty ? null : next;
 }
 
+/// What each attribute is called in the editor; its id stays in the tip.
+const Map<String, String> attributeLabels = <String, String>{
+  'air_drag_modifier': 'Air drag',
+  'armor': 'Armor',
+  'armor_toughness': 'Armor toughness',
+  'attack_damage': 'Attack damage',
+  'attack_knockback': 'Attack knockback',
+  'attack_speed': 'Attack speed',
+  'below_name_distance': 'Below-name distance',
+  'block_break_speed': 'Block break speed',
+  'block_interaction_range': 'Block reach',
+  'bounciness': 'Bounciness',
+  'burning_time': 'Burning time',
+  'camera_distance': 'Camera distance',
+  'entity_interaction_range': 'Entity reach',
+  'explosion_knockback_resistance': 'Blast resistance',
+  'fall_damage_multiplier': 'Fall damage',
+  'flying_speed': 'Flying speed',
+  'follow_range': 'Follow range',
+  'friction_modifier': 'Friction',
+  'gravity': 'Gravity',
+  'jump_strength': 'Jump strength',
+  'knockback_resistance': 'Knockback resistance',
+  'luck': 'Luck',
+  'max_absorption': 'Max absorption',
+  'max_health': 'Max health',
+  'mining_efficiency': 'Mining efficiency',
+  'movement_efficiency': 'Movement efficiency',
+  'movement_speed': 'Speed',
+  'name_tag_distance': 'Name tag distance',
+  'oxygen_bonus': 'Oxygen bonus',
+  'safe_fall_distance': 'Safe fall distance',
+  'scale': 'Size',
+  'sneaking_speed': 'Sneaking speed',
+  'spawn_reinforcements': 'Reinforcements',
+  'step_height': 'Step height',
+  'submerged_mining_speed': 'Underwater mining',
+  'sweeping_damage_ratio': 'Sweep damage',
+  'tempt_range': 'Tempt range',
+  'water_movement_efficiency': 'Water movement',
+  'waypoint_receive_range': 'Waypoint receive range',
+  'waypoint_transmit_range': 'Waypoint send range',
+};
+
+/// The label of attribute [id] (bare or namespaced); an unknown id reads as words.
+String attributeLabel(String id) => attributeLabels[bareAttributeId(id)] ?? humanizeKey(bareAttributeId(id));
+
+/// The value of attribute [id] in [attributes] when valid for it, else its
+/// vanilla default; 0 for an attribute the embedded schema does not list.
+double attributeValue(Object? attributes, String id) {
+  final AttributeSpec? spec = attributeTable(InspectSchemas.embedded.npc)[id];
+  if (spec == null) return 0;
+  final Object? value = bareAttributes(attributes)[id];
+  return value is num && spec.problem(value) == null ? value.toDouble() : spec.defaultValue;
+}
+
 /// The body size multiplier of a definition: its valid `scale`, otherwise
 /// the vanilla default.
-double definitionScale(JsonMap definition) {
-  final AttributeSpec? spec = attributeTable(InspectSchemas.embedded.npc)['scale'];
-  final Object? value = bareAttributes(definition[attributesField])['scale'];
-  if (spec == null) return 1;
-  return value is num && spec.problem(value) == null ? value.toDouble() : spec.defaultValue;
+double definitionScale(JsonMap definition) => attributeValue(definition[attributesField], 'scale');
+
+/// Attributes a setting in [modules] replaces, each with the note its row
+/// shows: the health module's max health and armor, the combat module's
+/// melee damage, knockback and cooldown, and its scan range.
+Map<String, String> attributeOverrides(JsonMap modules) {
+  final JsonMap health = asMap(modules[healthModule]);
+  final JsonMap combat = asMap(modules[combatModule]);
+  final JsonMap melee = asMap(combat['melee']);
+  final bool armor = health.containsKey('armor') || health['armorFromEquipment'] == true;
+  return <String, String>{
+    if (health.containsKey('maximumHealth')) 'max_health': 'Not used: Combat sets max health',
+    if (armor) 'armor': 'Not used: Combat sets armor',
+    if (armor) 'armor_toughness': 'Not used: Combat sets armor',
+    if (melee.containsKey('damage') || melee['fromEquipment'] == true) 'attack_damage': 'Not used: Combat sets melee damage',
+    if (melee.containsKey('knockback')) 'attack_knockback': 'Not used: Combat sets knockback',
+    if (melee.containsKey('cooldownTicks')) 'attack_speed': 'Not used: Combat sets the cooldown',
+    if (asMap(combat['targeting']).containsKey('scanRange')) 'follow_range': 'Not used: Combat sets the scan range',
+  };
 }

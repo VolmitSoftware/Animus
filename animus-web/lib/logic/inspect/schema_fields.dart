@@ -61,12 +61,14 @@ class FieldSpec {
   /// A one-line constraint summary such as `1 to 72000` or `required`.
   String get bounds {
     final List<String> parts = <String>[];
-    // A maximum at the edge of a long is no limit a person needs to read.
-    final num? maximum = this.maximum != null && this.maximum!.abs() >= 1e15 ? null : this.maximum;
+    // A bound of a million or more (world coordinates, the edge of a long)
+    // is no limit a person needs to read; [check] still enforces it.
+    final num? minimum = this.minimum != null && this.minimum!.abs() >= _readableBound ? null : this.minimum;
+    final num? maximum = this.maximum != null && this.maximum!.abs() >= _readableBound ? null : this.maximum;
     if (minimum != null && maximum != null) {
-      parts.add('${exclusiveMinimum ? 'above ' : ''}${_number(minimum!)} to ${_number(maximum)}');
+      parts.add('${exclusiveMinimum ? 'above ' : ''}${_number(minimum)} to ${_number(maximum)}');
     } else if (minimum != null) {
-      parts.add('${exclusiveMinimum ? 'above' : 'at least'} ${_number(minimum!)}');
+      parts.add('${exclusiveMinimum ? 'above' : 'at least'} ${_number(minimum)}');
     } else if (maximum != null) {
       parts.add('${exclusiveMaximum ? 'below' : 'at most'} ${_number(maximum)}');
     }
@@ -134,6 +136,9 @@ String patternProblem(String pattern) => switch (pattern) {
       r'^#[0-9a-fA-F]{8}$' => 'Use a colour as #AARRGGBB, such as #FFFF5FA8.',
       _ => 'Wrong format.',
     };
+
+/// Bounds this large are left out of hints.
+const num _readableBound = 1e6;
 
 String _number(num value) => value == value.roundToDouble() && value.abs() < 1e15 ? value.toInt().toString() : value.toString();
 

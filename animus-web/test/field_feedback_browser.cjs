@@ -5,7 +5,7 @@
 // open opaque, with no fade. A capability switch focuses its first
 // required argument and holds that problem, in the header too, until focus
 // leaves the step; a conversation line added with Enter is pending until it
-// is left empty. Tab passing a help tip does not open it, Space does, and a
+// is left empty. Space pins a help tip's (i) open, Escape closes it, and a
 // label click keeps it shut while the pointer stays. A toast lets clicks through to what is under
 // it except on its own button, and an open menu draws above a toast. 1440 px
 // and 390 px, both themes, no console errors. Needs no fake server.
@@ -13,98 +13,112 @@
 //   python3 tool/serve_site.py --port <port>
 //   ANIMUS_WEB_URL=http://127.0.0.1:<port> PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node test/field_feedback_browser.cjs
 const assert = require('node:assert/strict');
+const {blankWorkspace, startAction} = require('./support/shell.cjs');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {choose} = require('./support/select.cjs');
 
 const url = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })()).replace(/\/$/, '');
 const modKey = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-/** Opacity keyframes below 1 on [selector]'s element once it appears after [open]. */
+/** Opacity keyframes below 1 on [selector]'s element and what it holds once it appears after [open]. */
 async function fadeOf(page, selector, open) {
   await page.evaluate((sel) => {
     window.__fade = null;
     const seen = () => {
       const el = document.querySelector(sel);
       if (!el) return false;
-      const frames = el.getAnimations().flatMap(a => a.effect ? a.effect.getKeyframes() : []);
+      const frames = el.getAnimations({subtree: true}).flatMap(a => a.effect ? a.effect.getKeyframes() : []);
       window.__fade = frames.filter(f => f.opacity !== undefined && Number(f.opacity) < 1).map(f => f.opacity);
       return true;
     };
     const watch = new MutationObserver(() => { if (seen()) watch.disconnect(); });
-    watch.observe(document.body, {childList: true, subtree: true});
+    watch.observe(document.body, {childList: true, subtree: true, attributes: true});
   }, selector);
   await open();
   await page.waitForFunction(() => window.__fade !== null);
   return page.evaluate(() => window.__fade);
 }
 
-/** Header diagnostics whose JSON path (the item's title) or text matches [pattern]. */
+/** The header's status badge, a button once there are problems. */
+const headerBadge = page => page.locator('.ui-page-header [aria-controls="ui-doc-problems"]').first();
+
+/** How many problems the header counts ("2 problems"); Valid and Checking are 0. */
+async function headerCount(page) {
+  if (!(await headerBadge(page).count())) return 0;
+  return Number.parseInt(await headerBadge(page).textContent(), 10) || 0;
+}
+
+/** The header's problem lines matching [pattern], opened from its badge (which takes focus). */
 async function headerProblems(page, pattern) {
-  return (await page.locator('.animus-diagnostics li').evaluateAll(items => items.map(li => `${li.title} ${li.textContent}`))).filter(text => pattern.test(text));
+  const badge = headerBadge(page);
+  if ((await badge.getAttribute('aria-expanded')) !== 'true') await badge.click();
+  return (await page.locator('#ui-doc-problems li').allTextContents()).filter(text => pattern.test(text));
 }
 
 /** Pending fields, help tips and toasts in the starter workspace. */
 async function quietFeedback(page, label) {
   await page.goto(url);
-  await page.getByLabel('Workspace name').fill(`Quiet ${label}`);
-  await page.getByRole('button', {name: 'Create with example packs'}).click();
-  await page.getByRole('heading', {name: 'Try it in the browser'}).waitFor();
+  {
+    await startAction(page, 'Open examples');
+  }
+  await page.locator('[data-testid="home-count"]').first().waitFor();
   const workspace = await page.evaluate(() => location.hash.split('/')[2]);
 
   // A capability switch: the new required argument is focused and pending.
   await page.goto(`${url}/#/workspace/${workspace}/behavior/${encodeURIComponent('greeter:greeter')}?view=visual`);
   const capability = page.locator('.animus-capability').first().locator('button[role="combobox"]').first();
   await capability.scrollIntoViewIfNeeded();
+  const counted = await headerCount(page);
   await choose(capability, 'animus:give-item');
   const block = page.locator('.animus-capability', {has: page.locator('[data-argument="item"]')}).first();
   await block.locator('[data-argument="item"]').waitFor();
   await page.waitForFunction(() => document.activeElement && document.activeElement.closest('[data-argument="item"]'), null, {timeout: 2000});
   await page.waitForTimeout(400);
-  assert.deepEqual(await headerProblems(page, /arguments\.item/), [], `${label}: no header problem while Item waits to be filled`);
-  assert.equal(await block.locator('.animus-gui-problem').count(), 0, `${label}: no problem at the step while Item waits`);
+  assert.equal(await headerCount(page), counted, `${label}: no header problem while Item waits to be filled`);
+  assert.equal(await block.locator(':is([data-problem], [data-slot="field-error"])').count(), 0, `${label}: no problem at the step while Item waits`);
   await page.locator('h1').first().click();
-  await page.waitForFunction(() => [...document.querySelectorAll('.animus-diagnostics li')].some(li => /arguments\.item/.test(li.title)), null, {timeout: 2000});
-  assert.ok((await block.locator('.animus-gui-problem').allInnerTexts()).some(text => /item/i.test(text)), `${label}: Item left empty shows its problem`);
+  await page.waitForFunction(([wanted]) => {
+    const badge = document.querySelector('.ui-page-header [aria-controls="ui-doc-problems"]');
+    return badge && (Number.parseInt(badge.textContent, 10) || 0) > wanted;
+  }, [counted], {timeout: 2000});
+  assert.notDeepEqual(await headerProblems(page, /^Item\b/), [], `${label}: the header lists Item once it is left empty`);
+  assert.ok((await block.locator(':is([data-problem], [data-slot="field-error"])').allInnerTexts()).some(text => /item/i.test(text)), `${label}: Item left empty shows its problem`);
 
   // A conversation line added with Enter is pending until it is left empty.
   await page.goto(`${url}/#/workspace/${workspace}/new/conversation`);
-  await page.getByRole('button', {name: 'Create behavior'}).click();
+  await page.getByRole('button', {name: 'Create', exact: true}).click();
   await page.waitForFunction(() => location.hash.includes('view=conversation'));
   const first = page.locator('[data-conv-input]').first();
   await first.waitFor();
   await first.click();
   await page.keyboard.press('End');
   const lines = await page.locator('[data-conv-input]').count();
+  const before = await headerCount(page);
   await page.keyboard.press('Enter');
   await page.waitForFunction(n => document.querySelectorAll('[data-conv-input]').length === n + 1 && document.activeElement && document.activeElement.value === '', lines);
   await page.waitForTimeout(400);
-  assert.deepEqual(await headerProblems(page, /at least 1 characters/), [], `${label}: the new empty line is not an error while focused`);
+  assert.equal(await headerCount(page), before, `${label}: the new empty line is not an error while focused`);
   assert.equal(await page.locator('.animus-conv-step.has-error').count(), 0, `${label}: no step error while the line waits`);
   await page.locator('h1').first().click();
   await page.locator('.animus-conv-step.has-error').first().waitFor({timeout: 2000});
 
-  // Help tips: Tab passes through without opening; Space opens; a label
-  // click keeps it shut and focuses the control.
-  // The conversation's Start label carries one.
-  const tip = page.locator('label[for="conv-start"] .animus-tip-text');
-  await tip.scrollIntoViewIfNeeded();
-  await tip.evaluate(el => {
-    const all = [...document.querySelectorAll('input, button, [tabindex="0"], textarea, a[href]')].filter(e => !e.disabled && e.offsetParent !== null);
-    all[all.indexOf(el) - 1].focus();
-  });
-  await page.keyboard.press('Tab');
-  assert.equal(await tip.evaluate(el => el === document.activeElement), true, `${label}: Tab reaches the tip text`);
-  const pop = tip.locator('xpath=..').locator('.animus-tip-pop');
-  await page.waitForTimeout(300);
-  assert.equal(await pop.evaluate(el => getComputedStyle(el).display), 'none', `${label}: Tab passing through does not open the tip`);
+  // Help tips, the (i) beside a label (focus opens it at once and Tab moves
+  // into its Docs link, see info_tip_browser): Space pins it, Escape closes
+  // it, and a click on the label keeps it shut while the pointer stays. The
+  // conversation's Start label carries one.
+  const startField = page.locator('[data-slot="field"]', {has: page.locator('label[for="conv-start"]')}).first();
+  const info = startField.locator('[data-animus-info]');
+  const tipOpen = () => info.getAttribute('aria-expanded');
+  await info.scrollIntoViewIfNeeded();
+  await info.focus();
   await page.keyboard.press('Space');
-  await page.waitForFunction(el => getComputedStyle(el).display !== 'none', await pop.elementHandle());
+  await page.waitForFunction(el => el.getAttribute('aria-expanded') === 'true', await info.elementHandle());
   await page.keyboard.press('Escape');
-  await page.waitForFunction(el => getComputedStyle(el).display === 'none', await pop.elementHandle());
+  await page.waitForFunction(el => el.getAttribute('aria-expanded') === 'false', await info.elementHandle());
   if (!compactWidth(page)) {
-    await tip.click();
+    await startField.locator('[data-slot="field-label"] label[for="conv-start"]').click();
     await page.waitForTimeout(500);
-    assert.equal(await pop.evaluate(el => getComputedStyle(el).display), 'none', `${label}: a label click keeps the tip shut`);
+    assert.equal(await tipOpen(), 'false', `${label}: a label click keeps the tip shut`);
     // The click opened the Start picker through its label; close it.
     await page.keyboard.press('Escape');
   }
@@ -139,28 +153,37 @@ async function run(browser, {viewport, theme}) {
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
 
   await page.goto(url);
-  await page.getByLabel('Workspace name').fill(`Fields ${label}`);
-  await page.getByRole('button', {name: 'Create blank workspace'}).click();
+  await blankWorkspace(page, `Fields ${label}`);
+  await page.evaluate(() => { location.hash = `${location.hash}/new`; });
   await page.getByRole('heading', {name: 'New document'}).waitFor();
   const workspace = await page.evaluate(() => location.hash.split('/')[2]);
 
   // Number boxes: the wheel scrolls the page, a spin press steps once.
   await page.goto(`${url}/#/workspace/${workspace}/new/npc`);
   await page.getByRole('heading', {name: 'New NPC'}).waitFor();
+  // The place is a rarer field: it sits under More.
+  const more = page.locator('details', {has: page.locator(':scope > summary', {hasText: 'More'})}).first();
+  if (!(await more.evaluate((details) => details.open))) await more.locator(':scope > summary').click();
   const yaw = page.getByLabel('Yaw', {exact: true});
+  // A short window, so the form has room to scroll under the wheel.
+  const size = page.viewportSize();
+  await page.setViewportSize({width: size.width, height: 480});
   await yaw.evaluate(el => el.scrollIntoView({block: 'center'}));
   await yaw.click({position: {x: 12, y: 8}});
   await page.keyboard.press(`${modKey}+a`);
   await page.keyboard.type('90');
   let box = await yaw.boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  const before = await page.evaluate(() => scrollY);
+  // The frame scrolls its page body (main.ui-page), not the window.
+  const pageScroll = () => page.evaluate(() => document.querySelector('main.ui-page')?.scrollTop ?? scrollY);
+  const before = await pageScroll();
   // Toward whichever end the page has room to scroll to.
   const delta = before > 0 ? -120 : 120;
   for (let i = 0; i < 4; i++) await page.mouse.wheel(0, delta);
   await page.waitForTimeout(400);
   assert.equal(await yaw.inputValue(), '90', `${label}: the wheel leaves Yaw alone`);
-  assert.notEqual(await page.evaluate(() => scrollY), before, `${label}: the wheel scrolls the page from ${before}`);
+  assert.notEqual(await pageScroll(), before, `${label}: the wheel scrolls the page from ${before}`);
+  await page.setViewportSize(size);
   if (!compact) {
     await yaw.scrollIntoViewIfNeeded();
     await yaw.focus();
@@ -176,10 +199,13 @@ async function run(browser, {viewport, theme}) {
   }
 
   // A field's problem waits for a pause in typing, then stays after blur.
+  // The id field is Advanced only.
+  await page.evaluate(() => window.localStorage.setItem('animus.mode', 'advanced'));
   await page.goto(`${url}/#/workspace/${workspace}/new/shop`);
+  await page.reload();
   await page.getByRole('heading', {name: 'New shop'}).waitFor();
   const id = page.getByLabel('Id', {exact: true});
-  const problem = page.locator('.animus-field-error');
+  const problem = page.locator(':is([data-problem="error"], [data-slot="field-error"])');
   await id.click();
   await page.keyboard.press(`${modKey}+a`);
   await page.keyboard.press('Backspace');
@@ -196,12 +222,13 @@ async function run(browser, {viewport, theme}) {
   assert.equal(await problem.count(), 1, `${label}: the problem stays after blur`);
 
   // An open menu draws above a toast: the "Created shop" toast is moved over
-  // the open + Add offer menu, and every item still takes the pointer.
+  // the open menu of other offer kinds beside Add offer, and every item still
+  // takes the pointer.
   await id.fill('harbor:goods');
-  await page.getByRole('button', {name: 'Create shop'}).click();
+  await page.getByRole('button', {name: 'Create', exact: true}).click();
   await page.locator('.arcane-toast').first().waitFor();
-  await page.locator('#animus-shop-add').click();
-  const menu = page.locator('#animus-shop-add-menu');
+  await page.locator('#animus-shop-add-more-button').click();
+  const menu = page.locator('#animus-shop-add-more');
   await menu.waitFor();
   const covered = await menu.evaluate(el => {
     const box = el.getBoundingClientRect();
@@ -225,11 +252,11 @@ async function run(browser, {viewport, theme}) {
   await page.goto(`${url}/#/workspace/${workspace}/new/npc`);
   await page.getByRole('heading', {name: 'New NPC'}).waitFor();
   const body = page.getByRole('combobox', {name: 'Body'});
-  assert.deepEqual(await fadeOf(page, '.animus-select-popup', () => body.click()), [], `${label}: the dropdown does not fade in`);
+  assert.deepEqual(await fadeOf(page, `[id="${await body.getAttribute('aria-controls')}"]`, () => body.click()), [], `${label}: the dropdown does not fade in`);
   await page.keyboard.press('Escape');
   if (!compact) {
     await page.locator('body').click({position: {x: 1, y: 1}});
-    assert.deepEqual(await fadeOf(page, '.animus-palette', () => page.keyboard.press(`${modKey}+k`)), [], `${label}: the palette does not fade in`);
+    assert.deepEqual(await fadeOf(page, '[data-arcane-command="ui-search"][data-arcane-state="open"]', () => page.keyboard.press(`${modKey}+k`)), [], `${label}: the palette does not fade in`);
     await page.keyboard.press('Escape');
   }
 

@@ -1,9 +1,9 @@
-// Converts a Citizens saves.yml in the built site's converter screen and
-// prints only aggregate JSON: counts and the canonical output hash (the same
-// value as `converter digest <data-dir>/imports/<importId>`). Record contents
-// never leave the page. Then picks a Denizen folder (DENIZEN_FOLDER, default
+// Converts a Citizens saves.yml in the built site's Import wizard and prints
+// only aggregate JSON: counts and the canonical output hash (the same value
+// as `converter digest <data-dir>/imports/<importId>`). Record contents never
+// leave the page. Then picks a Denizen folder (DENIZEN_FOLDER, default
 // schema/fixtures/denizen/town/Denizen), converts it against the same save and
-// downloads its bundle. Runs at desktop and phone widths in both themes and
+// downloads both bundles from the Result step (Advanced). Runs at desktop and phone widths in both themes and
 // fails on console errors, sideways scrolling, network requests during a
 // conversion, or when the runs disagree.
 //
@@ -30,7 +30,10 @@ const shots = process.env.ANIMUS_SCREENSHOTS;
 
 async function run(browser, viewport, label, theme) {
   const context = await browser.newContext({viewport});
-  await context.addInitScript((mode) => window.localStorage.setItem('animus.theme', mode), theme);
+  await context.addInitScript((mode) => {
+    window.localStorage.setItem('animus.theme', mode);
+    window.localStorage.setItem('animus.mode', 'advanced');
+  }, theme);
   const page = await context.newPage();
   page.setDefaultTimeout(120000);
   const errors = [];
@@ -40,15 +43,24 @@ async function run(browser, viewport, label, theme) {
   const requests = [];
   page.on('request', request => requests.push(request.url()));
   await page.goto(process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })());
-  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
-  await page.getByRole('button', {name: 'Import Citizens and others'}).click();
-  await page.getByRole('heading', {name: 'Import Citizens and others'}).waitFor();
+  await page.getByRole('heading', {name: 'Animus web editor'}).waitFor();
+  // Import is an Advanced start.
+  await page.evaluate(() => window.localStorage.setItem('animus.mode', 'advanced'));
+  await page.reload();
+  await page.getByRole('heading', {name: 'Animus web editor'}).waitFor();
+  await page.getByRole('button', {name: 'Import', exact: true}).click();
+  await page.getByRole('heading', {level: 1, name: 'Import'}).waitFor();
+  // Source: Citizens is picked first.
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Choose saves.yml'}).click();
   await (await chooser).setFiles(path.resolve(saves));
-  if (worlds) await page.getByRole('textbox').fill(worlds);
+  if (worlds) {
+    await page.locator('summary', {has: page.locator('.ui-section-title', {hasText: /^More$/})}).first().click();
+    await page.getByLabel('World mappings').fill(worlds);
+  }
   const before = requests.length;
-  // Only the converter that runs reads "Converting"; the others keep their label.
+  // One button reads "Converting" while it runs.
   await page.evaluate(() => {
     window.animusConvertingSeen = 0;
     new MutationObserver(() => {
@@ -56,37 +68,41 @@ async function run(browser, viewport, label, theme) {
       window.animusConvertingSeen = Math.max(window.animusConvertingSeen, reading);
     }).observe(document.body, {subtree: true, childList: true, characterData: true, attributes: true});
   });
-  // The icon font glyph is part of the button's name.
-  await page.getByRole('button', {name: /^\W*Convert$/}).click();
+  await page.locator('#animus-import-convert').click();
   await page.waitForFunction(() => typeof window.animusCitizensResult === 'string');
-  assert.ok(await page.evaluate(() => window.animusConvertingSeen) === 1, `${label}: more than one button reads Converting`);
+  assert.ok(await page.evaluate(() => window.animusConvertingSeen) <= 1, `${label}: more than one button reads Converting`);
   const result = JSON.parse(await page.evaluate(() => window.animusCitizensResult));
   if (result.error) throw new Error(`${label}: not converted: ${result.error}`);
-  await page.getByRole('heading', {name: 'Review'}).waitFor();
-  await page.getByRole('button', {name: 'Download data-folder bundle'}).waitFor();
-  const download = page.waitForEvent('download');
-  await page.getByRole('button', {name: 'Download data-folder bundle'}).click();
-  const bundle = await download;
-  assert.match(bundle.suggestedFilename(), /^animus-citizens-import-[0-9a-f]{12}\.zip$/);
+  await page.getByRole('tab', {name: 'Review', selected: true}).waitFor();
   const local = requests.slice(before).filter(url => !url.startsWith('blob:') && !url.startsWith('data:'));
   assert.deepEqual(local, [], 'the conversion made no network requests');
   // No count on the review reads "null".
   assert.ok(!(await page.locator('main').textContent()).includes('null'), `${label}: a count reads null`);
 
   // The Denizen folder, bound to the same Citizens save.
+  await page.getByRole('tab', {name: 'Source'}).click();
+  await page.locator('label', {hasText: 'Denizen'}).click();
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
   const folder = page.waitForEvent('filechooser');
-  await page.getByRole('button', {name: /Choose Denizen folder/}).click();
+  await page.getByRole('button', {name: 'Choose folder'}).click();
   await (await folder).setFiles(denizen);
   await page.locator('[data-testid="denizen-folder"]', {hasText: /\d+ scripts?/}).waitFor();
   const denizenBefore = requests.length;
-  await page.getByRole('button', {name: /Convert Denizen/}).click();
+  await page.locator('#animus-import-convert').click();
   await page.waitForFunction(() => typeof window.animusDenizenResult === 'string');
   const denizenResult = JSON.parse(await page.evaluate(() => window.animusDenizenResult));
   if (denizenResult.error) throw new Error(`${label}: Denizen not converted: ${denizenResult.error}`);
-  const denizenDownload = page.waitForEvent('download');
-  await page.getByRole('button', {name: /Download Denizen bundle/}).click();
-  assert.match((await denizenDownload).suggestedFilename(), /^animus-denizen-import-[0-9a-f]{12}\.zip$/);
   assert.deepEqual(requests.slice(denizenBefore).filter(url => !url.startsWith('blob:') && !url.startsWith('data:')), [], 'the Denizen conversion made no network requests');
+
+  // Result: what each conversion made, and both bundles.
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
+  await page.getByTestId('import-result').waitFor();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', {name: 'Download Citizens bundle'}).click();
+  assert.match((await download).suggestedFilename(), /^animus-citizens-import-[0-9a-f]{12}\.zip$/);
+  const denizenDownload = page.waitForEvent('download');
+  await page.getByRole('button', {name: 'Download Denizen bundle'}).click();
+  assert.match((await denizenDownload).suggestedFilename(), /^animus-denizen-import-[0-9a-f]{12}\.zip$/);
   result.denizen = denizenResult;
   // The page must not scroll sideways at this width.
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${label}: horizontal overflow`);

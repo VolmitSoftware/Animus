@@ -25,7 +25,9 @@ mixin TypingPause<T extends StatefulWidget> on State<T> {
   /// Listeners for the row's element; `input` and `focusout` bubble to it.
   late final Map<String, void Function(web.Event)> typingEvents = <String, void Function(web.Event)>{
     'input': (web.Event event) {
-      if (!isTypingTarget(event.target)) return;
+      // The field's own input listener can rebuild the page first and drop
+      // this row (a renamed key re-keys it) before the event bubbles here.
+      if (!mounted || !isTypingTarget(event.target)) return;
       _pause?.cancel();
       _pause = Timer(typingPause, _settle);
       if (!_typing) setState(() => _typing = true);

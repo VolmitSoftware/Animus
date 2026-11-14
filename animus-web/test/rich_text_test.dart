@@ -5,6 +5,8 @@ import 'package:animus_editor/mc/npc/npc_playground.dart';
 import 'package:animus_editor/mc/npc/npc_scene.dart';
 import 'package:test/test.dart';
 
+import 'fixtures.dart';
+
 /// A per-letter `&#RRGGBB` gradient, as Gloss and gradient generators write
 /// NPC names; the first letters are the owner's own name.
 const String gradientName = '&#1d976cT&#259e72h&#2ea577e &#36ac7cC&#3fb382a&#47ba87r&#50c18dt&#58c892o&#61cf97g'
@@ -16,6 +18,22 @@ const List<int> gradientColours = <int>[
 ];
 
 List<McTextRun> lineRuns(String sectionCoded) => guiSectionRuns(sectionCoded);
+
+/// A default colour no code names, so a run left in the display's default
+/// colour reads apart from one coloured white.
+const int _unset = -1;
+
+Map<String, Object?> _runJson(McTextRun run) => <String, Object?>{
+      'text': run.text,
+      'color': run.color == _unset ? null : '#${run.color.toRadixString(16).padLeft(6, '0')}',
+      'bold': run.bold,
+      'italic': run.italic,
+      'underline': run.underlined,
+      'strikethrough': run.strikethrough,
+      'obfuscated': run.obfuscated,
+    };
+
+const int _red = 0xFF5555;
 
 void main() {
   group('shared text formatter', () {
@@ -61,6 +79,32 @@ void main() {
     });
   });
 
+  group('display rows', () {
+    test('should draw every shared vector as the client draws legacy codes', () {
+      final Map<String, Object?> fixture = readFixture(fixtureIndex()['textRows']! as String)! as Map<String, Object?>;
+      final List<Object?> vectors = fixture['vectors']! as List<Object?>;
+      expect(vectors, hasLength(greaterThanOrEqualTo(10)));
+      for (final Object? raw in vectors) {
+        final Map<String, Object?> vector = raw! as Map<String, Object?>;
+        final List<String> lines = <String>[for (final Object? line in vector['lines']! as List<Object?>) line! as String];
+        final List<List<List<McTextRun>>> rows = guiDisplayRows(lines, separate: vector['separate']! as bool, sample: false, defaultColor: _unset);
+        expect(rows, hasLength(lines.length), reason: '${vector['name']}: one entry per line');
+        expect(
+          <Object?>[for (final List<List<McTextRun>> line in rows) for (final List<McTextRun> row in line) <Object?>[for (final McTextRun run in row) _runJson(run)]],
+          vector['rows'],
+          reason: vector['name']! as String,
+        );
+      }
+    });
+
+    test('should give each line its own rows, a newline making another', () {
+      final List<List<List<McTextRun>>> rows = guiDisplayRows(<String>['&cA\nB', 'C']);
+      expect(rows.map((List<List<McTextRun>> line) => line.length), <int>[2, 1]);
+      expect(rows.last.single.single, const McTextRun('C', color: _red));
+      expect(guiDisplayRows(const <String>[]), isEmpty);
+    });
+  });
+
   group('NPC text on the stage', () {
     test('should colour a gradient nameplate instead of showing its codes', () {
       final NpcLook look = NpcLook.fromDefinition(<String, Object?>{'type': 'minecraft:player', 'name': gradientName});
@@ -87,6 +131,39 @@ void main() {
       });
       expect(lineRuns(look.textLines.first).single, const McTextRun('Shop', color: 0xFFAA00));
       expect(lineRuns(look.textLines.last).single, const McTextRun('Guard', color: 0xFF5555));
+    });
+
+    test('should carry styles down the lines of one display and start the name fresh', () {
+      final NpcLook look = NpcLook.fromDefinition(<String, Object?>{
+        'type': 'minecraft:zombie',
+        'name': 'Guard',
+        'hologram': <String, Object?>{'lines': <Object?>['&cA&lB', 'C']},
+      });
+      expect(look.separateRows, isFalse);
+      expect(look.textRows, const <List<McTextRun>>[
+        <McTextRun>[McTextRun('A', color: _red), McTextRun('B', color: _red, bold: true)],
+        <McTextRun>[McTextRun('C', color: _red, bold: true)],
+        <McTextRun>[McTextRun('Guard')],
+      ]);
+      final NpcText text = npcScene(look).texts.single;
+      expect(text.styled, look.textRows, reason: 'the stage draws the rows the look reads');
+    });
+
+    test('should start every row fresh when each line has its own display', () {
+      for (final Map<String, Object?> hologram in <Map<String, Object?>>[
+        <String, Object?>{'lineHeight': 0.3, 'lines': <Object?>['&cA&lB', 'C']},
+        <String, Object?>{'lines': <Object?>['&cA&lB', <String, Object?>{'text': 'C', 'marginTop': 0.1}]},
+      ]) {
+        final NpcLook look = NpcLook.fromDefinition(<String, Object?>{'type': 'minecraft:zombie', 'name': 'Guard', 'hologram': hologram});
+        expect(look.separateRows, isTrue, reason: '$hologram');
+        expect(look.hologram, <String>['&cA&lB', 'C'], reason: 'a line object shows its text');
+        expect(look.textRows, const <List<McTextRun>>[
+          <McTextRun>[McTextRun('A', color: _red), McTextRun('B', color: _red, bold: true)],
+          <McTextRun>[McTextRun('C')],
+          <McTextRun>[McTextRun('Guard')],
+        ], reason: '$hologram');
+      }
+      expect(NpcLook.separateRowsOf(<String, Object?>{'lines': <Object?>[<String, Object?>{'text': 'C', 'marginTop': 0}]}), isFalse, reason: 'a zero margin keeps one display');
     });
 
     test('should colour speech on the stage', () {

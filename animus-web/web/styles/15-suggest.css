@@ -1,22 +1,23 @@
-/* Inline autocomplete: the field, its underline layer and the listbox. */
-
+/* Completion at the caret (AutocompleteInput, SuggestInput): the field, the
+   layer that underlines unknown names and the listbox (its look is in
+   14-select.css). The field carries the library's arcane-text-input or
+   arcane-textarea class, which draws focus, invalid and disabled. */
 .animus-ac {
   position: relative;
   display: grid;
   min-width: 0;
 }
 
-.animus-ac > input,
-.animus-ac > textarea {
-  min-width: 0;
+/* The underline layer of a multi-line field wraps as the textarea does. */
+.animus-ac-mirror.is-area {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 /* The field's text again, invisible, with unknown names underlined. */
 .animus-ac-mirror {
   position: absolute;
-  top: 0;
-  left: 0;
-  box-sizing: border-box;
+  inset: 0 auto auto 0;
   border: 0 solid transparent;
   overflow: hidden;
   white-space: pre;
@@ -24,127 +25,81 @@
   pointer-events: none;
 }
 
-.animus-ac-mirror.is-area {
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-}
-
 .animus-ac-hint {
-  color: transparent;
-  background: none;
-  text-decoration: underline wavy var(--animus-warning);
-  text-decoration-thickness: 1px;
+  text-decoration: underline wavy var(--warning) 1px;
   text-underline-offset: 3px;
 }
 
+/* Under the field, above it near the window's bottom. */
 .animus-suggest-list {
   position: absolute;
-  top: calc(100% + 2px);
+  top: calc(100% + 4px);
   left: 0;
   z-index: 40;
-  box-sizing: border-box;
   width: max(100%, min(28rem, 92vw));
   max-width: min(36rem, 92vw);
   max-height: 16rem;
-  margin: 0;
-  padding: 0;
+  padding: 0.25rem;
   overflow: auto;
   overscroll-behavior: contain;
   list-style: none;
-  border: 1px solid var(--animus-border);
-  border-radius: 0;
-  background: var(--popover, var(--animus-panel));
-  color: var(--foreground);
-  box-shadow: none;
+  font-family: var(--font-sans, sans-serif);
 }
 
-/* Opened above the field when there is room under the top bar. */
 .animus-suggest-list.is-up {
   top: auto;
-  bottom: calc(100% + 2px);
+  bottom: calc(100% + 4px);
 }
 
+/* A row: kind, name, swatch and type, then a one-line detail. */
 .animus-suggest-list li {
   display: grid;
-  grid-template-columns: max-content auto minmax(0, 1fr) auto;
-  grid-template-areas:
-    'kind label label type'
-    'kind detail detail detail';
+  grid-template-columns: max-content minmax(0, 1fr) auto auto;
+  grid-template-areas: 'kind label swatch type' 'kind detail detail detail';
   align-items: center;
   column-gap: 0.5rem;
-  min-height: 2rem;
-  padding: 0.25rem 0.5rem;
-  font-size: var(--animus-text-sm);
-  cursor: pointer;
 }
 
-.animus-suggest-list li.is-active {
-  background: var(--accent);
-  outline: var(--animus-focus-ring);
-  outline-offset: var(--animus-focus-inset);
+.animus-suggest-kind,
+.animus-suggest-type,
+.animus-suggest-detail {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  white-space: nowrap;
 }
 
-.animus-suggest-list li:hover {
-  background: var(--accent);
-}
-
+/* As wide as the longest kind ("placeholder"), so every row lines up. */
 .animus-suggest-kind {
   grid-area: kind;
   align-self: start;
-  padding-top: 0.0625rem;
-  color: var(--animus-muted);
-  font-family: var(--font-mono);
+  min-width: calc(11ch + 0.44em);
+  font-family: var(--font-mono, monospace);
   font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  /* As wide as the longest kind ("placeholder"), so every row lines up. */
-  min-width: calc(11ch + 0.44em);
+}
+
+.animus-suggest-label,
+.animus-suggest-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .animus-suggest-label {
   grid-area: label;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-mono);
 }
 
 .animus-suggest-swatch {
-  grid-area: label;
-  justify-self: end;
-  width: var(--animus-control-icon-sm);
-  height: var(--animus-control-icon-sm);
-  border: 1px solid var(--animus-border);
-  border-radius: 0;
-}
-
-.animus-suggest-list li:has(.animus-suggest-swatch) .animus-suggest-label {
-  padding-right: 1.25rem;
+  grid-area: swatch;
 }
 
 .animus-suggest-type {
   grid-area: type;
-  color: var(--animus-muted);
-  font-size: var(--animus-text-xs);
-  white-space: nowrap;
 }
 
 .animus-suggest-detail {
   grid-area: detail;
-  min-width: 0;
-  color: var(--animus-muted);
-  font-size: var(--animus-text-xs);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The code view places its list at the caret. */
-.animus-suggest-list.is-code {
-  top: auto;
-  width: min(28rem, 100%);
 }
 
 @media (max-width: 640px), (pointer: coarse) {
@@ -155,10 +110,6 @@
 
   .animus-suggest-list li {
     min-height: 2.75rem;
-    grid-template-columns: max-content minmax(0, 1fr) auto;
-    grid-template-areas:
-      'kind label type'
-      'kind detail detail';
   }
 }
 
@@ -170,4 +121,17 @@
   .animus-ac-hint {
     text-decoration-color: CanvasText;
   }
+}
+
+/* A GUI template's formatted sample, on Minecraft's dark chat backdrop. */
+.animus-gui-sample {
+  padding: 0.25rem 0.5rem;
+  background: #1f1f1f;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+/* A window title sits on the window's own grey, as in game. */
+.animus-gui-sample:has(> .animus-gui-window-title) {
+  background: #c6c6c6;
 }

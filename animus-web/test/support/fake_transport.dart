@@ -26,6 +26,9 @@ class FakeTransport implements ServerTransport {
   Future<ApiResponse> send(ApiRequest request) async {
     network.sent.add((path, request));
     if (closed || network.down.contains(path)) throw TransportFailure(path, 'unreachable');
+    if (path == ConnectionPath.relay && !network.serverOnRelay) {
+      return const ApiResponse(503, <String, Object?>{'error': <String, Object?>{'code': 'server-offline', 'message': 'away'}});
+    }
     final Future<void> Function(ConnectionPath path, ApiRequest request)? gate = network.gate;
     if (gate != null) await gate(path, request);
     if (closed || network.down.contains(path)) throw TransportFailure(path, 'unreachable');
@@ -46,6 +49,7 @@ class FakeTransport implements ServerTransport {
   Future<EventSubscription> subscribe(String token) async {
     if (closed || network.down.contains(path)) throw TransportFailure(path, 'unreachable');
     if (network.refuseStream != null) throw StreamRefused(401, network.refuseStream!);
+    if (network.refuseStreamWith != null) throw network.refuseStreamWith!;
     final FakeSubscription subscription = FakeSubscription();
     subscriptions.add(subscription);
     network.streams.add((path, subscription));
@@ -59,6 +63,20 @@ class FakeTransport implements ServerTransport {
       await subscription.cancel();
     }
   }
+}
+
+/// The relay path: it stays open while the server is away from the relay.
+class FakeRelayTransport extends FakeTransport implements RelayLink {
+  FakeRelayTransport(FakeNetwork network) : super(ConnectionPath.relay, network);
+
+  @override
+  bool get serverOnline => network.serverOnRelay && !closed;
+
+  @override
+  bool get isClosed => closed;
+
+  @override
+  Future<void> get serverBack => network._back.future;
 }
 
 class FakeSubscription implements EventSubscription {
@@ -105,13 +123,40 @@ class FakeNetwork {
   final List<FakeTransport> transports = <FakeTransport>[];
   String? refuseStream;
 
+  /// Refuses every event stream with this answer (status, code and hint).
+  StreamRefused? refuseStreamWith;
+
   /// When it matches a request, the path drops after the server handled it.
   bool Function(ApiRequest request)? dropAfter;
+
+  /// The server is connected to the relay.
+  bool serverOnRelay = true;
+  Completer<void> _back = Completer<void>();
+
+  /// The server restarts: the direct path stops answering and the relay
+  /// streams end with `server-left`, while the relay sockets stay open.
+  Future<void> serverLeaves() async {
+    serverOnRelay = false;
+    down.add(ConnectionPath.direct);
+    if (_back.isCompleted) _back = Completer<void>();
+    for (final FakeTransport transport in transports) {
+      for (final FakeSubscription subscription in transport.subscriptions) {
+        await subscription.end(transport.path == ConnectionPath.relay ? 'server-left' : null);
+      }
+    }
+  }
+
+  /// The server is back on both paths.
+  void serverReturns() {
+    serverOnRelay = true;
+    down.remove(ConnectionPath.direct);
+    if (!_back.isCompleted) _back.complete();
+  }
 
   Future<ServerTransport> open(ConnectionPath path, String url) async {
     opened.add(path);
     if (down.contains(path)) throw TransportFailure(path, 'unreachable');
-    final FakeTransport transport = FakeTransport(path, this);
+    final FakeTransport transport = path == ConnectionPath.relay ? FakeRelayTransport(this) : FakeTransport(path, this);
     transports.add(transport);
     return transport;
   }

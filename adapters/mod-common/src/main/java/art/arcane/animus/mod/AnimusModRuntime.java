@@ -29,6 +29,7 @@ import art.arcane.animus.core.command.ProofControl;
 import art.arcane.animus.core.command.BehaviorCommands;
 import art.arcane.animus.core.editor.EditorCommands;
 import art.arcane.animus.core.editor.EditorHost;
+import art.arcane.animus.core.editor.EditorServerName;
 import art.arcane.animus.core.editor.EditorService;
 import art.arcane.animus.core.editor.RuntimeEditorHost;
 import art.arcane.animus.core.config.NpcRuntimeSettings;
@@ -251,7 +252,7 @@ public final class AnimusModRuntime {
             running = next;
             ModHooks.attach(this);
             SplashScreen.Startup health = art.arcane.animus.core.StartupCheck.check(next.runtime, next.living.available(), next.shops.stateProblem(), next.editor, LOGGER::warn);
-            if (next.runtime.splashScreen()) splash(environment.minecraftVersion(), health);
+            if (next.runtime.splashScreen()) splash(environment.minecraftVersion(), health, next.runtime);
             else if (!health.ready()) LOGGER.warn("Startup: {}", health.label());
             LOGGER.info("Enabled {} on {} {} in {}ms | {} NPCs | editor {}", BuildIdentity.VERSION, platform.name().toLowerCase(java.util.Locale.ROOT), environment.minecraftVersion(),
                     (System.nanoTime() - startedAt) / 1_000_000, next.runtime.npcs().all().size(), next.editor == null ? "off" : next.editor.reach());
@@ -260,24 +261,24 @@ public final class AnimusModRuntime {
             // A bad config.toml, an unreadable data folder or a damaged file: the message names it, so no stack trace.
             startupFailure = failure.getMessage();
             LOGGER.error("Animus did not start: {}. Fix it and restart the server.", failure.getMessage());
-            splash(environment.minecraftVersion(), SplashScreen.Startup.FAILED);
+            splash(environment.minecraftVersion(), SplashScreen.Startup.FAILED, next.runtime);
             close(next);
         } catch (RuntimeException | LinkageError failure) {
             startupFailure = failure.getClass().getSimpleName() + ": " + failure.getMessage();
             LOGGER.error("Animus did not start", failure);
-            splash(environment.minecraftVersion(), SplashScreen.Startup.FAILED);
+            splash(environment.minecraftVersion(), SplashScreen.Startup.FAILED, next.runtime);
             close(next);
         }
     }
 
     /** log4j has no Bukkit colour codes, so an interactive terminal gets ANSI escapes and anything else plain text. */
-    private void splash(String minecraftVersion, SplashScreen.Startup startup) {
+    private void splash(String minecraftVersion, SplashScreen.Startup startup, AnimusRuntime runtime) {
         try {
             java.io.Console console = System.console();
             SplashScreen.Colors colors = SplashScreen.Colors.forTerminal(console != null && console.isTerminal(), System.getenv("NO_COLOR"));
             String loader = switch (platform) { case FABRIC -> "Fabric"; case FORGE -> "Forge"; case NEOFORGE -> "NeoForge"; case BUKKIT -> "Bukkit"; };
             String server = loader + " " + minecraftVersion;
-            LOGGER.info(SplashScreen.render(SplashScreen.Details.current(server, startup), colors));
+            LOGGER.info(SplashScreen.render(SplashScreen.Details.current(server, startup, SplashScreen.editorUrl(runtime)), colors));
         } catch (RuntimeException | LinkageError failure) {
             LOGGER.warn("Splash screen failed to render", failure);
         }
@@ -336,7 +337,8 @@ public final class AnimusModRuntime {
                 "libsdisguises", EditorHost.Feature.no("LibsDisguises is a Bukkit plugin"),
                 "mythicmobs", EditorHost.Feature.no("MythicMobs is a Bukkit plugin"));
         EditorService service = new EditorService(next.runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(next.runtime, files, next.living,
-                next.extensions, platform.name().toLowerCase(java.util.Locale.ROOT), "", features, new ModLookups(server)::read,
+                next.extensions, platform.name().toLowerCase(java.util.Locale.ROOT), EditorServerName.fallback(server.getMotd(), server.getServerDirectory()),
+                features, new ModLookups(server)::read,
                 (ServerPlayer player, String node) -> VanillaRuntimeHost.permitted(player.permissions(), node), new ModEditorNotices(server), LOGGER::info,
                 new ModEditorTerrain(server), (java.util.UUID player, String node) -> ModOfflineAdmin.check(server, player, node))), LOGGER::info, LOGGER::warn);
         try {

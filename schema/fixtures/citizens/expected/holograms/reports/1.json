@@ -1,0 +1,22 @@
+{
+  "citizensId": 1,
+  "presentationWarnings": [],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/hologramtrait/lines/0": "CONVERTED",
+    "/traits/hologramtrait/lines/1": "CONVERTED",
+    "/traits/hologramtrait/lines/2": "CONVERTED"
+  },
+  "reasons": {},
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": []
+}

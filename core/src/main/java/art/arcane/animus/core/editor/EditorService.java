@@ -48,7 +48,13 @@ public final class EditorService implements AutoCloseable {
     private final ExecutorService restarts = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().name("Animus-editor-settings").factory());
     private final AutoCloseable settingsListener;
     private static final Duration TASK_FAILURE_REPEAT = Duration.ofMinutes(10);
+    /** How often files changed outside Animus are looked for while a stream is open, and how long the relay may be down before a pairing player hears. */
+    static final Duration SCAN = Duration.ofSeconds(2), RELAY_GRACE = Duration.ofSeconds(15);
     private final EditorTaskFailures taskFailures;
+    private AutoCloseable writes;
+    private final java.util.concurrent.atomic.AtomicBoolean catalogQueued = new java.util.concurrent.atomic.AtomicBoolean();
+    private volatile long lastScan;
+    private java.time.Instant relayDown;
 
     /** {@code log} takes INFO lines; {@code warn} takes failures of the periodic editor tasks, rate limited. */
     public EditorService(AnimusRuntime runtime, EditorHost host, Consumer<String> log, Consumer<String> warn) { this(runtime, host, log, warn, Clock.systemUTC()); }
@@ -83,6 +89,8 @@ public final class EditorService implements AutoCloseable {
         EditorDocuments documents = new EditorDocuments(runtime.documents(), () -> runtime.recordingSettings().maximumFileBytes());
         EditorChanges changes = new EditorChanges(documents, clock, Duration.ofHours(settings.idempotencyHours()));
         EditorEvents events = new EditorEvents();
+        EditorCatalog catalog = new EditorCatalog(documents, events);
+        writes = art.arcane.animus.core.storage.WriteNotices.listen(catalog);
         EditorPreviews previews = new EditorPreviews(clock, (String id, String reason) -> {
             host.previews().ifPresent((EditorHost.PreviewPresenter presenter) -> presenter.end(id));
             com.google.gson.JsonObject event = new com.google.gson.JsonObject();
@@ -93,14 +101,19 @@ public final class EditorService implements AutoCloseable {
         });
         timers = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("Animus-editor-timers").factory());
         EditorNotices notices = new EditorNotices(() -> settings.notices(), host.notices(), log, System::nanoTime, art.arcane.animus.core.AnimusLog.shared()::debug);
-        api = new EditorApi(new EditorApi.Parts(settings, relaySettings.enabled(), host, identity, tokens, audit, documents, changes, previews, events, notices, runtime::npcs, runtime::importHost, timers, clock,
-                runtime.environment().minecraftVersion()));
+        EditorWarnings warnings = new EditorWarnings(warn, clock);
+        api = new EditorApi(new EditorApi.Parts(settings, relaySettings, host, identity, tokens, audit, documents, catalog, changes, previews, events, notices, warnings,
+                runtime::npcs, runtime::importHost, timers, clock, runtime.environment().minecraftVersion()));
         frames = scheduleFrames(events, settings.eventFramesPerSecond());
         EditorApi opened = api;
         timers.scheduleAtFixedRate(guard(() -> {
             try { opened.housekeeping(); }
             catch (IOException failure) { log.accept("Editor token housekeeping failed: " + failure.getMessage()); }
+            relayCheck(opened);
         }), 1, 1, TimeUnit.SECONDS);
+        // Changes are told against the files as they are now, so the index is read once right away.
+        catalogTick(catalog, events);
+        timers.scheduleAtFixedRate(guard(() -> catalogTick(catalog, events)), 250, 250, TimeUnit.MILLISECONDS);
         timers.scheduleAtFixedRate(guard(opened::recheckAdmins), 60, 60, TimeUnit.SECONDS);
         timers.scheduleAtFixedRate(guard(notices::tick), 100, 100, TimeUnit.MILLISECONDS);
         timers.scheduleAtFixedRate(guard(() -> {
@@ -115,6 +128,43 @@ public final class EditorService implements AutoCloseable {
         state = "ready";
         openRelay();
         openListener();
+    }
+
+    /**
+     * On the file lane, one at a time: announces Animus's writes, primes the index once, and while a stream is open looks
+     * for files changed outside Animus every {@link #SCAN}. A full lane skips this round.
+     */
+    private void catalogTick(EditorCatalog catalog, EditorEvents events) {
+        if (!catalogQueued.compareAndSet(false, true)) return;
+        try {
+            host.files().execute(() -> {
+                try {
+                    catalog.flush();
+                    long now = System.nanoTime();
+                    if (events.open() > 0 && now - lastScan >= SCAN.toNanos()) {
+                        lastScan = now;
+                        catalog.scan();
+                    } else catalog.prime();
+                } catch (IOException | RuntimeException failure) { taskFailures.failed(new IllegalStateException("Editor catalog scan failed: " + failure.getMessage(), failure)); }
+                finally { catalogQueued.set(false); }
+            });
+        } catch (RejectedExecutionException full) { catalogQueued.set(false); }
+    }
+
+    /**
+     * Tells the players with an open pairing link once when the relay stayed unreachable for {@link #RELAY_GRACE} and no
+     * listener runs, since their browser then has no way in.
+     */
+    private void relayCheck(EditorApi opened) {
+        EditorRelayClient current;
+        boolean direct;
+        synchronized (this) { current = relay; direct = listener != null; }
+        if (current == null || current.isRegistered() || direct) { relayDown = null; return; }
+        java.time.Instant now = clock.instant();
+        if (relayDown == null) { relayDown = now; return; }
+        if (now.isBefore(relayDown.plus(RELAY_GRACE))) return;
+        for (EditorTokens.Open open : opened.parts().tokens().openPairings())
+            if (opened.parts().warnings().due("relay notice " + open.tokenId(), Duration.ofHours(1))) opened.pairingRefused(open, "the relay " + relaySettings.url() + " is unreachable");
     }
 
     private ScheduledFuture<?> scheduleFrames(EditorEvents events, int framesPerSecond) {
@@ -210,7 +260,7 @@ public final class EditorService implements AutoCloseable {
             open(editor, relayNow);
             return;
         }
-        api.settings(editor, relayNow.enabled());
+        api.settings(editor, relayNow);
         settings = editor;
         relaySettings = relayNow;
         if (current.idempotencyHours() != editor.idempotencyHours()) api.parts().changes().retention(Duration.ofHours(editor.idempotencyHours()));
@@ -266,8 +316,7 @@ public final class EditorService implements AutoCloseable {
         PairingCode code;
         try {
             code = new PairingCode(direct, relay, active.parts().identity().fingerprint(), active.parts().identity().serverKey(), pairing.tokenId(), pairing.secret(),
-                    pairing.expires(), grant.label().isEmpty() ? Optional.empty() : Optional.of(grant.label()),
-                    Optional.ofNullable(host.serverName()).filter((String name) -> !name.isBlank()).map((String name) -> name.length() > 128 ? name.substring(0, 128) : name));
+                    pairing.expires(), grant.label().isEmpty() ? Optional.empty() : Optional.of(grant.label()), Optional.of(active.serverName()));
         } catch (IllegalArgumentException refused) {
             throw new IOException("Cannot build a pairing code: " + refused.getMessage());
         }
@@ -371,6 +420,11 @@ public final class EditorService implements AutoCloseable {
     }
 
     private void shut() {
+        if (writes != null) {
+            try { writes.close(); }
+            catch (Exception ignored) { /* Removing a listener from a list does not fail. */ }
+            writes = null;
+        }
         closeRelay();
         closeListener();
         if (api != null) api.close();

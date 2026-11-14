@@ -2,9 +2,9 @@
 // configuration, the presets document, a menu with named lists and a list
 // component, a chest GUI with an inventory action and a shop) and checks the
 // typed forms that replaced the JSON boxes, at 1440 and 390 px in both
-// themes: combat advanced rules typed from the schema, the return point on
-// the position grid (keyboard nudge and a grid click), the victimDrops
-// switch, a shop entry picked by item search, the ranged potion effect, the
+// themes: the Advanced Combat tab's rare rules typed from the schema, the
+// return point on the position grid (keyboard nudge and a grid click), the
+// Victims drop loot switch, a shop entry picked by item search, the ranged potion effect, the
 // pack module configuration, preset values, the inventory
 // action's arguments, and the call, list and chest GUI pickers. Every edit is
 // read back from the Code view. No console errors, no sideways scrolling, no
@@ -17,7 +17,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const {openFromSidebar} = require('./support/shell.cjs');
+const {openFromSidebar, showView, setMode, showPreview} = require('./support/shell.cjs');
+const {npcTab} = require('./support/npc_tabs.cjs');
 const {chooseAndWait} = require('./support/select.cjs');
 
 const fixture = path.resolve(__dirname, 'fixtures/typed_forms');
@@ -30,15 +31,15 @@ async function shot(page, name) {
 }
 
 async function codeOf(page) {
-  await page.getByRole('tab', {name: 'Code'}).click();
+  await showView(page, 'code');
   const text = await page.locator('.animus-code textarea').inputValue();
-  await page.getByRole('tab', {name: 'Visual'}).click();
+  await showView(page, 'visual');
   return JSON.parse(text);
 }
 
 async function open(page, sidebarText) {
   await openFromSidebar(page, sidebarText);
-  await page.locator('.animus-document-header').waitFor();
+  await page.locator('.ui-page-header').waitFor();
 }
 
 async function settle(page) {
@@ -53,13 +54,6 @@ async function noSideways(page, where) {
 /// No JSON text box is showing: they only appear behind an Advanced toggle.
 async function noJsonBoxes(scope, where) {
   assert.equal(await scope.locator('textarea.animus-kept-json').count(), 0, `${where} shows a raw JSON box`);
-}
-
-/** Opens an NPC inspector part (closed by default on phones) and returns it. */
-async function part(inspector, id) {
-  const details = inspector.locator(`details[data-section="${id}"]`);
-  if (!(await details.evaluate((element) => element.open))) await details.locator('summary').first().click();
-  return details;
 }
 
 /** Types [text] into a suggestion field and picks the option [value]. */
@@ -94,29 +88,29 @@ async function clickGrid(grid, x, z) {
 }
 
 async function combat(page, tag) {
+  await setMode(page, 'advanced');
   await open(page, 'Warden');
-  const inspector = page.getByRole('region', {name: 'NPC inspector'});
-  await inspector.waitFor();
-  // Phones close every inspector part but Identity when the view comes back from Code.
-  const combatEditor = async () => (await part(inspector, 'modules')).locator('.animus-combat-editor').first();
-  let editor = await combatEditor();
-  await editor.scrollIntoViewIfNeeded();
-  await noJsonBoxes(editor, `${tag} combat`);
+  await page.locator('.animus-npc-tabs').waitFor();
+  /** A section of the Advanced Combat tab, opened (closed until it holds a value). */
+  const section = async (id) => {
+    const part = (await npcTab(page, 'Combat')).locator(`[data-combat-section="${id}"]`).first();
+    const details = part.locator('details').first();
+    if (!(await details.evaluate((element) => element.open))) await details.locator(':scope > summary').click();
+    return part;
+  };
+  await noJsonBoxes(await npcTab(page, 'Combat'), `${tag} combat`);
 
-  // Advanced rules are typed from the NPC schema: patterns.names is a list.
-  const lines = editor.getByLabel('Line 1', {exact: true});
-  await lines.first().waitFor();
-  let pattern = null;
-  for (let index = 0; index < (await lines.count()); index++) {
-    if ((await lines.nth(index).inputValue()) === '^Bandit') pattern = lines.nth(index);
-  }
-  assert.ok(pattern, 'patterns.names is a typed list');
+  // Rare rules are typed from the NPC schema under More rules: patterns.names is a list.
+  const targets = await section('targets');
+  const pattern = targets.getByLabel('Mob name patterns 1', {exact: true});
+  if (!(await pattern.isVisible().catch(() => false))) await targets.locator('.ui-more > details > summary').first().click();
+  assert.equal(await pattern.inputValue(), '^Bandit', 'patterns.names is a typed list');
   await pattern.fill('^Thief');
   await settle(page);
 
   // The return point: nudged from the keyboard, then placed by a grid click.
-  const returnGrid = editor.locator('.animus-position-grid').first();
-  const mark = returnGrid.getByRole('button', {name: /^Return point at 0, 64, 0/});
+  let avoidance = await section('avoidance');
+  const mark = avoidance.locator('.animus-position-grid').first().getByRole('button', {name: /^Return point at 0, 64, 0/});
   await mark.focus();
   await page.keyboard.press('Shift+ArrowRight');
   await settle(page);
@@ -124,17 +118,16 @@ async function combat(page, tag) {
   let module = json.modules['animus:combat'];
   assert.equal(module.targets.patterns.names[0], '^Thief');
   assert.deepEqual(module.avoidance.returnPoint, {world: 'world', x: 1, y: 64, z: 0});
-  editor = await combatEditor();
-  await clickGrid(editor.locator('.animus-position-grid').first(), 3, 2);
+  avoidance = await section('avoidance');
+  await clickGrid(avoidance.locator('.animus-position-grid').first(), 3, 2);
   await settle(page);
   json = await codeOf(page);
   assert.deepEqual(json.modules['animus:combat'].avoidance.returnPoint, {world: 'world', x: 3, y: 64, z: 2}, `${tag} grid click`);
 
-  // victimDrops is on by default; turning it off writes false.
-  editor = await combatEditor();
-  await editor.getByRole('checkbox', {name: /^victimDrops/}).click();
+  // Victims drop loot is on by default; turning it off writes false.
+  await (await section('melee')).getByRole('switch', {name: 'Victims drop loot'}).click();
   await settle(page);
-  await editor.getByLabel('ranged.effect.amplifier', {exact: true}).fill('3');
+  await (await section('ranged')).getByLabel('Strength', {exact: true}).fill('3');
   await settle(page);
   await shot(page, `${tag}-combat`);
   await noSideways(page, `${tag} combat`);
@@ -152,9 +145,9 @@ async function pack(page, tag) {
   const config = module.getByRole('group', {name: 'Configuration'});
   await config.getByLabel('currency', {exact: true}).fill('gems');
   await settle(page);
-  await config.getByRole('button', {name: 'Advanced'}).click();
+  await config.getByRole('button', {name: 'Edit as JSON'}).click();
   await config.locator('textarea').waitFor();
-  await config.getByRole('button', {name: 'Advanced'}).click();
+  await config.getByRole('button', {name: 'Edit as JSON'}).click();
   await shot(page, `${tag}-pack`);
   const json = await codeOf(page);
   assert.deepEqual(json.modules.bank, {required: false, configuration: {currency: 'gems', startingBalance: 10}});
@@ -166,18 +159,13 @@ async function presets(page, tag) {
   const editor = page.getByRole('region', {name: 'Presets'});
   await editor.waitFor();
   await noJsonBoxes(editor, `${tag} presets`);
-  await chooseAndWait(editor.getByLabel('Kind', {exact: true}), 'menus');
-  const openSection = async (title) => {
-    const details = editor.locator('details.animus-gui-section').filter({has: page.locator(':scope > summary', {hasText: title})}).first();
-    if (!(await details.evaluate((element) => element.open))) await details.locator(':scope > summary').click();
-  };
-  await openSection(/^wide/);
+  await chooseAndWait(editor.getByLabel('For', {exact: true}), 'menus');
+  await editor.locator('summary', {hasText: /^\s*wide\b/}).click();
   const values = editor.getByRole('group', {name: 'Values of wide'});
   await values.getByLabel('Max distance', {exact: true}).fill('9');
   await settle(page);
-  await chooseAndWait(editor.getByLabel('Kind', {exact: true}), 'inventories');
-  await openSection(/^Defaults for inventories/);
-  const defaults = editor.getByRole('group', {name: 'Defaults for inventories'});
+  await chooseAndWait(editor.getByLabel('For', {exact: true}), 'inventories');
+  const defaults = editor.getByRole('group', {name: 'Defaults'});
   await defaults.getByLabel('Title', {exact: true}).fill('&8Market');
   await settle(page);
   await shot(page, `${tag}-presets`);
@@ -190,13 +178,13 @@ async function presets(page, tag) {
 async function chest(page, tag) {
   await open(page, 'town:board');
   await page.locator('[data-slot="29"]').click();
-  const inspector = page.locator('.animus-gui-inspector');
-  const args = inspector.getByRole('group', {name: 'Args'}).first();
+  const form = page.getByRole('region', {name: 'Chest GUI'});
+  const args = form.getByRole('group', {name: 'Args'}).first();
   await args.waitFor();
-  await noJsonBoxes(inspector, `${tag} chest GUI actions`);
+  await noJsonBoxes(form, `${tag} chest GUI actions`);
   await args.getByLabel('Argument page', {exact: true}).fill('3');
   await settle(page);
-  const target = inspector.getByLabel('ID', {exact: true}).last();
+  const target = form.getByLabel('ID', {exact: true}).last();
   const offered = await suggestions(page, target);
   assert.ok(offered.some((text) => text.includes('town:board')), `chest GUI ids offered: ${offered}`);
   assert.ok(offered.some((text) => text.includes('New chest GUI')), 'the + New row is offered');
@@ -208,14 +196,14 @@ async function chest(page, tag) {
 
 async function menu(page, tag) {
   await open(page, 'town:hub');
-  await page.getByRole('button', {name: /^market \(button\)/}).click();
-  const inspector = page.locator('.animus-gui-inspector');
-  await noJsonBoxes(inspector, `${tag} menu actions`);
-  const call = inspector.getByLabel('Action', {exact: true}).first();
+  const form = page.getByRole('region', {name: 'Menu'});
+  await form.locator('summary', {hasText: /market, Button/}).click();
+  await noJsonBoxes(form, `${tag} menu actions`);
+  const call = form.getByLabel('Action', {exact: true}).first();
   const named = await suggestions(page, call);
   assert.ok(named.some((text) => text.includes('bye')), `named lists offered: ${named}`);
   await suggest(page, call, 'bye', 'bye');
-  const lists = await suggestions(page, inspector.getByLabel('List', {exact: true}).first());
+  const lists = await suggestions(page, form.getByLabel('List', {exact: true}).first());
   assert.ok(lists.some((text) => text.includes('goods')), `list components offered: ${lists}`);
   await shot(page, `${tag}-menu-actions`);
   const json = await codeOf(page);
@@ -225,9 +213,11 @@ async function menu(page, tag) {
 
 async function shop(page, tag) {
   await open(page, 'town:market');
-  await page.locator('.animus-shop-preview [data-slot="10"]').click();
-  await suggest(page, page.locator('.animus-shop-board').getByLabel('Gives item', {exact: true}), 'golden apple', 'minecraft:golden_apple');
-  await page.locator('.animus-item-picker img').first().waitFor();
+  const form = page.getByRole('region', {name: 'Shop'});
+  await showPreview(page);
+  await page.getByRole('region', {name: 'Preview'}).locator('[data-slot="10"]').click();
+  await suggest(page, form.getByLabel('Gives item', {exact: true}), 'golden apple', 'Golden apple');
+  await form.locator('.animus-item-picker img').first().waitFor();
   await shot(page, `${tag}-shop-item`);
   const json = await codeOf(page);
   assert.equal(json.pages[0].buy['10'].item.id, 'minecraft:golden_apple');
@@ -247,7 +237,7 @@ async function run(browser, viewport, theme) {
     if (message.type() === 'error') errors.push(message.text());
   });
   await page.goto(process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to your own served site'); })());
-  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+  await page.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Open folder'}).first().click();
   await (await chooser).setFiles(fixture);

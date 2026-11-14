@@ -13,13 +13,13 @@ import 'services/server/browser_transports.dart';
 import 'services/server/server_profiles.dart';
 import 'state/editor_store.dart';
 import 'state/server_hub.dart';
-import 'state/indexed_db_workspace_repository.dart';
+import 'state/indexed_db_workspace_records.dart';
 import 'state/workspace_repository.dart';
 
 Future<void> main() async {
   Jaspr.initializeApp(options: defaultClientOptions);
-  final IndexedDbWorkspaceRepository? stored = await IndexedDbWorkspaceRepository.open();
-  final WorkspaceRepository repository = stored ?? MemoryWorkspaceRepository();
+  final IndexedDbWorkspaceRecords? stored = await IndexedDbWorkspaceRecords.open();
+  final WorkspaceRepository repository = stored == null ? MemoryWorkspaceRepository() : WorkspaceRepository(stored);
   final EditorStore store = EditorStore(
     repository: repository,
     schemas: SharedSchemas.embedded,
@@ -36,7 +36,7 @@ Future<void> main() async {
     schemas: SharedSchemas.embedded,
     onForget: (String serverId) => store.deleteWorkspace(ServerHub.workspaceIdOf(serverId)),
   );
-  onBrowserWake(hub.probeDirect);
+  onBrowserWake(hub.wake);
   runApp(AnimusApp(store: store, hub: hub));
   web.document.getElementById('loading')?.remove();
 }

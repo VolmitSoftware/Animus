@@ -16,10 +16,18 @@ library;
 
 import 'dart:math' as math;
 
+import '../../model/animus_document.dart';
+import '../../model/display_name.dart';
+import '../../model/document_kind.dart';
+import '../../model/document_summary.dart' show plainName;
 import '../gui/gui_json.dart';
 import '../inspect/behavior_eval.dart';
 import '../inspect/behavior_operands.dart';
 import '../inspect/behavior_summary.dart';
+import '../inspect/behavior_words.dart' show soundName;
+import '../inspect/named_ids.dart' show particleName;
+import '../item_ids.dart';
+import '../inspect/server_behaviors.dart';
 
 enum DryRunOutcome {
   /// Shown in the dry run: speech, prompts, movement, waits, state changes.
@@ -272,10 +280,18 @@ String _ticks(Object? value) {
   return '$ticks ticks (${shown}s)';
 }
 
+/// The one note the Test of [behavior] needs: a server behavior runs only
+/// once the server list names it. Null otherwise.
+String? testPaneNote(AnimusDocument behavior, List<AnimusDocument> workspace) =>
+    asMap(behavior.json)['server'] == true && !listedServerBehaviors(workspace).contains(behavior.id) ? 'Not running on the server yet' : null;
+
 /// Runs [behavior] with [inputs] from the start. An answer that does not
 /// match the open prompt is ignored.
-DryRunSession dryRun(JsonMap behavior, DryRunInputs inputs) {
-  final _Machine machine = _Machine(behavior, inputs.assumptions);
+/// Runs [inputs] against [behavior]. [plain] words the steps for Simple:
+/// flags by whose they are, items and documents by name ([names]),
+/// branches as Yes and No; otherwise the engine's own words.
+DryRunSession dryRun(JsonMap behavior, DryRunInputs inputs, {bool plain = false, DocumentNames names = idDocumentName}) {
+  final _Machine machine = _Machine(behavior, inputs.assumptions, plain: plain, names: names);
   final List<DryRunStart> starts = dryRunStarts(behavior);
   final List<DryRunRun> runs = <DryRunRun>[];
   DryRunStep? open;
@@ -335,7 +351,7 @@ class _Halt extends _Jump {
 }
 
 class _Machine {
-  _Machine(this.behavior, this.assumptions) {
+  _Machine(this.behavior, this.assumptions, {this.plain = false, this.names = idDocumentName}) {
     for (final MapEntry<String, Object?> entry in _declared.entries) {
       final JsonMap declaration = asMap(entry.value);
       if ((asString(declaration['scope']) ?? 'execution') != 'execution') variables[entry.key] = declaration['initial'];
@@ -344,6 +360,10 @@ class _Machine {
 
   final JsonMap behavior;
   final Map<String, bool> assumptions;
+
+  /// Simple's words (see [dryRun]).
+  final bool plain;
+  final DocumentNames names;
   final Map<String, Object?> flags = <String, Object?>{};
   final Map<String, int> quests = <String, int>{};
   final Map<String, Object?> variables = <String, Object?>{};
@@ -401,6 +421,35 @@ class _Machine {
   }
 
   String _key(JsonMap arguments) => '${asString(arguments['name']) ?? '?'} (${asString(arguments['scope']) ?? 'player'})';
+
+  /// A flag or quest in a step's text: its key, or in [plain] words whose
+  /// it is ("met with this NPC").
+  String _named(JsonMap arguments) {
+    if (!plain) return _key(arguments);
+    final String name = asString(arguments['name']) ?? '?';
+    return switch (asString(arguments['scope'])) {
+      'npc' => '$name of the NPC',
+      'global' => '$name for everyone',
+      'relationship' => '$name with this NPC',
+      _ => name,
+    };
+  }
+
+  /// A registry id in a step's text; [plain] drops `minecraft:` and reads
+  /// underscores as spaces.
+  String _item(Object? id) => plain && id is String ? itemName(id).toLowerCase() : '$id';
+
+  /// The [kind] document [id] by name in Simple, by id otherwise.
+  String _document(DocumentKind kind, Object? id) => plain && id is String ? names(kind, id) : '${id ?? '?'}';
+
+  /// A key such as a slot name in [plain] words: `main_hand` reads "main hand".
+  String _word(Object? key) => plain ? '$key'.replaceAll('_', ' ') : '$key';
+
+  /// A value in a step's text; [plain] shows text without codes or quotes.
+  String _value(Object? value) => plain && value is String ? plainName(value) ?? displayValue(value) : displayValue(value);
+
+  /// What runs after a check.
+  String _branch(bool result) => plain ? 'the ${result ? 'Yes' : 'No'} steps run' : '${result ? 'then' : 'else'} runs';
 
   Object? _read(String variable) => _execution.containsKey(variable) ? _execution[variable] : variables[variable];
 
@@ -512,7 +561,7 @@ class _Machine {
         final String item = asString(node['as']) ?? '';
         final String? index = asString(node['index']), key = asString(node['key']);
         if (list is List<Object?>) {
-          _loop(node, path, depth, calls, note: note, passes: list.length, describe: (int round) => 'Item ${round + 1} of ${list.length}: $item is ${displayValue(list[round])}.', before: (int round) {
+          _loop(node, path, depth, calls, note: note, passes: list.length, describe: (int round) => 'Item ${round + 1} of ${list.length}: $item is ${_value(list[round])}.', before: (int round) {
             _write(item, list[round]);
             if (index != null) _write(index, round);
           });
@@ -558,14 +607,14 @@ class _Machine {
           throw const _Return(null);
         }
         final (Object? value, String note) = _operand(node['value'], null, childPath(path, 'value'), depth);
-        _add(DryRunStep(path: path, outcome: DryRunOutcome.previewed, depth: depth, text: 'Returns ${displayValue(value)}.$note'));
+        _add(DryRunStep(path: path, outcome: DryRunOutcome.previewed, depth: depth, text: 'Returns ${_value(value)}.$note'));
         throw _Return(value);
       case 'set':
         final String variable = asString(node['variable']) ?? '?';
         if (!_declared.containsKey(variable)) _fail(path, depth, 'Sets $variable, which is not declared.');
         final (Object? value, String note) = _operand(node['value'], _typeOf(variable), childPath(path, 'value'), depth);
         _write(variable, value);
-        _add(DryRunStep(path: path, outcome: DryRunOutcome.previewed, depth: depth, text: 'Sets $variable to ${displayValue(value)}.$note'));
+        _add(DryRunStep(path: path, outcome: DryRunOutcome.previewed, depth: depth, text: 'Sets $variable to ${_value(value)}.$note'));
       default:
         _add(DryRunStep(path: path, outcome: DryRunOutcome.problem, depth: depth, text: 'Unknown node type ${node['type']}.'));
     }
@@ -620,7 +669,7 @@ class _Machine {
     for (final MapEntry<String, Object?> argument in asMap(node['arguments']).entries) {
       final (Object? value, String _) = _operand(argument.value, _typeOf(argument.key), childPath(childPath(path, 'arguments'), argument.key), depth);
       _write(argument.key, value);
-      assigned.add('${argument.key} = ${displayValue(value)}');
+      assigned.add('${argument.key} = ${_value(value)}');
     }
     _add(DryRunStep(path: path, outcome: DryRunOutcome.previewed, depth: depth, text: 'Calls routine $routine${assigned.isEmpty ? '' : ' with ${assigned.join(', ')}'}.'));
     Object? result;
@@ -634,7 +683,7 @@ class _Machine {
       final (Object? converted, String? problem) = convertForType(result, _typeOf(into));
       if (problem != null) _fail(path, depth, '$routine returned ${displayValue(result)}, which $into cannot hold: $problem.');
       _write(into, converted);
-      _add(DryRunStep(path: path, outcome: DryRunOutcome.previewed, depth: depth, text: 'Stores the result in $into: ${displayValue(converted)}.'));
+      _add(DryRunStep(path: path, outcome: DryRunOutcome.previewed, depth: depth, text: 'Stores the result in $into: ${_value(converted)}.'));
     }
   }
 
@@ -650,12 +699,12 @@ class _Machine {
       }
       if (result is! bool) _fail(childPath(path, 'expression'), depth, '$expression gave ${displayValue(result)}, not true or false. The server fails the run here.');
       if (scope.factsRead.isEmpty) {
-        _add(DryRunStep(path: path, outcome: DryRunOutcome.previewed, depth: depth, text: 'Checks $expression: $result, so ${result ? 'then' : 'else'} runs.'));
+        _add(DryRunStep(path: path, outcome: DryRunOutcome.previewed, depth: depth, text: 'Checks $expression: ${plain ? (result ? 'yes' : 'no') : result}, so ${_branch(result)}.'));
         return result;
       }
       final bool assumed = assumptions[path] ?? result;
       _add(DryRunStep(path: path, outcome: DryRunOutcome.assumed, depth: depth, assumption: assumed,
-          text: 'Checks $expression, which reads ${scope.factsRead.keys.join(', ')} that only a server knows. Assumes $assumed; ${assumed ? 'then' : 'else'} runs.'));
+          text: 'Checks $expression, which reads ${scope.factsRead.keys.join(', ')} that only a server knows. Assumes ${plain ? (assumed ? 'yes' : 'no') : assumed}; ${_branch(assumed)}.'));
       return assumed;
     }
     final String capability = asString(node['capability']) ?? '?';
@@ -667,7 +716,7 @@ class _Machine {
         // An unset flag reads as false, as on the server.
         final bool result = _equal(actual ?? false, expected);
         _add(DryRunStep(path: path, outcome: DryRunOutcome.previewed, depth: depth,
-            text: 'Checks flag ${_key(arguments)} is ${displayValue(expected)}: it is ${actual == null ? 'unset' : displayValue(actual)}, so ${result ? 'then' : 'else'} runs.'));
+            text: 'Checks flag ${_named(arguments)} is ${_value(expected)}: it is ${actual == null ? (plain ? 'not set' : 'unset') : _value(actual)}, so ${_branch(result)}.'));
         return result;
       case 'animus:quest-state':
         final String key = _key(arguments);
@@ -680,14 +729,16 @@ class _Machine {
           if (atMost != null) '<= $atMost',
         ].join(' and ');
         _add(DryRunStep(path: path, outcome: DryRunOutcome.previewed, depth: depth,
-            text: 'Checks quest $key $test: the stage is $stage, so ${result ? 'then' : 'else'} runs.'));
+            text: 'Checks quest ${_named(arguments)} $test: the stage is $stage, so ${_branch(result)}.'));
         return result;
       default:
         final bool assumed = assumptions[path] ?? true;
         final String about = assumedConditions[capability] ?? '${capabilityWords(capability).toLowerCase()} holds';
         final String detail = capability == 'animus:has-permission' ? ' (${arguments['permission']})' : '';
         _add(DryRunStep(path: path, outcome: DryRunOutcome.assumed, depth: depth, assumption: assumed,
-            text: 'Assumes $about$detail is $assumed; only a server can tell. ${assumed ? 'then' : 'else'} runs.'));
+            text: plain
+                ? 'Assumes $about$detail: ${assumed ? 'yes' : 'no'}; only a server can tell. ${_branch(assumed)[0].toUpperCase()}${_branch(assumed).substring(1)}.'
+                : 'Assumes $about$detail is $assumed; only a server can tell. ${assumed ? 'then' : 'else'} runs.'));
         return assumed;
     }
   }
@@ -728,7 +779,7 @@ class _Machine {
         final bool wait = arguments['wait'] == true;
         final double? x = asDouble(arguments['x']), y = asDouble(arguments['y']), z = asDouble(arguments['z']);
         final String mode = asString(arguments['mode']) ?? 'walk';
-        final String where = route != null ? 'follows route $route' : '${mode}s to ${_number(x) ?? '?'}, ${_number(y) ?? '?'}, ${_number(z) ?? '?'}';
+        final String where = route != null ? 'follows route ${_document(DocumentKind.route, route)}' : '${mode}s to ${_number(x) ?? '?'}, ${_number(y) ?? '?'}, ${_number(z) ?? '?'}';
         _add(DryRunStep(
           path: path,
           outcome: DryRunOutcome.previewed,
@@ -743,18 +794,18 @@ class _Machine {
             ? 'Turns to look at the player.'
             : 'Turns to look at ${_number(arguments['x']) ?? '?'}, ${_number(arguments['y']) ?? '?'}, ${_number(arguments['z']) ?? '?'}.'));
       case 'animus:play-sound':
-        _add(step('Plays sound ${arguments['sound']}.'));
+        _add(step('Plays sound ${plain ? soundName('${arguments['sound']}').toLowerCase() : arguments['sound']}.'));
       case 'animus:spawn-particle':
-        _add(step('Shows ${_number(arguments['count']) ?? '1'} ${arguments['particle']} particles.'));
+        _add(step('Shows ${_number(arguments['count']) ?? '1'} ${plain && arguments['particle'] is String ? particleName(arguments['particle']! as String).toLowerCase() : arguments['particle']} particles.'));
       case 'animus:play-animation':
         final String animation = asString(arguments['animation']) ?? '?';
         _add(DryRunStep(path: path, outcome: DryRunOutcome.previewed, depth: depth, animation: animation,
-            text: 'Plays animation $animation on layer ${_number(arguments['layer']) ?? '0'}.'));
+            text: 'Plays animation ${_document(DocumentKind.animation, animation)} on layer ${_number(arguments['layer']) ?? '0'}.'));
       case 'animus:stop-animation':
         _add(step('Stops its animation and returns to idle.'));
       case 'animus:set-equipment':
         final String? item = asString(arguments['item']);
-        _add(step(item == null ? 'Clears its ${arguments['slot']} slot.' : 'Holds $item in its ${arguments['slot']} slot.'));
+        _add(step(item == null ? 'Clears its ${_word(arguments['slot'])} slot.' : 'Holds ${_item(item)} in its ${_word(arguments['slot'])} slot.'));
       case 'animus:set-appearance':
         _add(step(arguments['reset'] == true
             ? 'Returns to its defined name and skin.'
@@ -764,19 +815,19 @@ class _Machine {
       case 'animus:set-flag':
         if (arguments['clear'] != null) {
           flags.remove(_key(arguments));
-          _add(step('Clears flag ${_key(arguments)}.'));
+          _add(step('Clears flag ${_named(arguments)}.'));
         } else {
           final Object? value = arguments.containsKey('value') ? arguments['value'] : true;
           flags[_key(arguments)] = value;
-          _add(step('Sets flag ${_key(arguments)} to ${displayValue(value)}.'));
+          _add(step('Sets flag ${_named(arguments)} to ${_value(value)}.'));
         }
       case 'animus:set-quest-state':
         final String key = _key(arguments);
         final int value = asInt(arguments['value']) ?? 0;
         quests[key] = value;
         _add(step(arguments['random'] != null
-            ? 'Sets quest $key to a random stage below ${arguments['random']}; the dry run uses $value.'
-            : 'Sets quest $key to $value.'));
+            ? 'Sets quest ${_named(arguments)} to a random stage below ${arguments['random']}; the dry run uses $value.'
+            : 'Sets quest ${_named(arguments)} to $value.'));
       case 'animus:advance-quest-state':
         final String key = _key(arguments);
         final int by = asInt(arguments['by']) ?? 1;
@@ -784,11 +835,11 @@ class _Machine {
         int next = (quests[key] ?? 0) + by;
         if (maximum != null && next > maximum) next = maximum;
         quests[key] = next;
-        _add(step('Advances quest $key to $next.'));
+        _add(step('Advances quest ${_named(arguments)} to $next.'));
       case 'animus:open-gui':
-        _add(step('Opens the ${asString(arguments['kind']) ?? 'inventory'} GUI ${arguments['gui']} for the player. Its buttons run on the server.'));
+        _add(step('Opens the ${asString(arguments['kind']) ?? 'inventory'} GUI ${_document(DocumentKind.inventory, arguments['gui'])} for the player. Its buttons run on the server.'));
       case 'animus:open-shop':
-        _add(step('Would open shop ${arguments['shop']}. Buying, selling and trades use the server\'s economy and inventories; not run.',
+        _add(step('Would open shop ${_document(DocumentKind.shop, arguments['shop'])}. Buying, selling and trades use the server\'s economy and inventories; not run.',
             outcome: DryRunOutcome.serverOnly));
       default:
         final String? known = serverOnlyCapabilities[capability];
@@ -796,10 +847,10 @@ class _Machine {
           'animus:command' => ': /${arguments['command']}',
           'animus:combat-control' => ': ${arguments['operation']}${arguments['target'] == null ? '' : ' ${arguments['target']}'}',
           'animus:build' => ': ${arguments['operation']}',
-          'animus:give-item' || 'animus:take-item' => ': ${arguments['amount'] ?? 1} ${arguments['item']}',
+          'animus:give-item' || 'animus:take-item' => ': ${arguments['amount'] ?? 1} ${_item(arguments['item'])}',
           _ => '',
         };
-        _add(step(known != null ? '$known$detail. Server only; not run.' : '${nodeSummary(node)}. A module capability; server only, not run.',
+        _add(step(known != null ? '$known$detail. Server only; not run.' : '${nodeSummary(node, names: names)}. A module capability; server only, not run.',
             outcome: DryRunOutcome.serverOnly));
     }
   }

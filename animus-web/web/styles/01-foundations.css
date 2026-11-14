@@ -1,141 +1,58 @@
-@font-face {
-  font-family: "Geist";
-  src: url("../assets/fonts/geist/Geist-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Geist";
-  src: url("../assets/fonts/geist/Geist-SemiBold.woff2") format("woff2");
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Geist Mono";
-  src: url("../assets/fonts/geist/GeistMono-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "lucide";
-  src: url("../assets/fonts/lucide/lucide.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: block;
-}
-
+/* Foundations: the frame's size tokens, the page before the theme arrives,
+   the boot splash, and the library's focus ring on the editor's own
+   elements. The look is arcane_jaspr's shadcn Midnight. */
 :root {
-  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --animus-gap: 0.75rem;
-  /* The one corner radius. The editor is square-cornered; only things
-     that are round by meaning may set their own. */
-  --animus-radius: 0;
-  --animus-panel: var(--card, #161518);
-  --animus-border: var(--border, #343036);
-  --animus-muted: var(--muted-foreground, #aba5aa);
-
-  /* Text sizes by role: xs captions, badges and hints; sm secondary and
-     dense text and small controls; md body and control text; lg and xl
-     headings; 2xl a document's title. */
-  --animus-text-xs: 0.75rem;
   --animus-text-sm: 0.8125rem;
   --animus-text-md: 0.875rem;
-  --animus-text-lg: 1rem;
-  --animus-text-xl: 1.125rem;
-  --animus-text-2xl: 1.25rem;
-
-  /* Control geometry (lib/config/control_css.dart applies it). Declared on
-     the root so popups and sheets read it too. */
   --animus-control-h: 2.25rem;
-  --animus-control-h-sm: 1.75rem;
-  --animus-control-pad: 0.875rem;
-  --animus-control-pad-sm: 0.625rem;
-  --animus-control-font: var(--animus-text-md);
-  --animus-control-font-sm: var(--animus-text-sm);
-  /* The glyph in a button of either size. */
-  --animus-button-icon: 1.25rem;
-  /* Small marks inside controls: swatches, ticks, checkboxes. */
+  --animus-control-h-sm: 2rem;
   --animus-control-icon-sm: 0.875rem;
-  --animus-control-border: 1px;
-  /* Where a field's text starts, matching arcane's TextInput. */
-  --animus-field-pad: 0.75rem;
-
-  --animus-focus-offset: 2px;
-  /* For a control flush in a clipped container (lists, menus, tabs). */
-  --animus-focus-inset: -2px;
+  --ui-topbar-h: 3rem;
+  --ui-savebar-h: 3rem;
+  --ui-nav-w: 15rem;
+  --ui-rail-w: 3.5rem;
+  --ui-form-max: 47.5rem;
 }
 
-/* --ring differs on :root (the seed palette) and #arcane-root (the brand),
-   so the ring is resolved again on #arcane-root. */
-:root,
-#arcane-root {
-  --animus-focus-ring: 2px solid var(--ring);
-}
-
-@media (max-width: 760px), (pointer: coarse) {
-  :root {
-    --animus-control-h: 2.75rem;
-    --animus-control-h-sm: 2.75rem;
-  }
-}
-
-/* Semantic colours, one set per theme, each at 4.5:1 or better on the
-   theme's background and card. Pink stays the accent; these mean yes, no
-   and caution only. */
-html.dark {
-  --animus-error: #f0616a;
-  --animus-error-foreground: #0d0d0f;
-  --animus-ok: #5dbf6e;
-  --animus-ok-foreground: #0d0d0f;
-  --animus-warning: #e2a336;
-  --animus-warning-foreground: #0d0d0f;
-}
-
-html.light {
-  --animus-error: #b42a32;
-  --animus-error-foreground: #ffffff;
-  --animus-ok: #2a7a38;
-  --animus-ok-foreground: #ffffff;
-  --animus-warning: #8a5a00;
-  --animus-warning-foreground: #ffffff;
-}
-
+/* The fallbacks cover the moment before the theme's tokens arrive. */
 html,
 body {
   margin: 0;
-  padding: 0;
-  min-height: 100vh;
+  height: 100%;
 }
 
 html.dark body {
-  background: #0d0d0f;
-  color: #f3f0f2;
+  background: var(--background, #0a0a0a);
+  color: var(--foreground, #f7f4ec);
 }
 
 html.light body {
-  background: #f5f3f4;
-  color: #141214;
+  background: var(--background, #ffffff);
+  color: var(--foreground, #0a0a0a);
 }
 
 body {
-  font-family: var(--font-sans);
+  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  font-size: var(--animus-text-md);
+  line-height: 1.5;
 }
 
 code,
 pre,
 textarea {
-  font-family: var(--font-mono);
+  font-family: var(--font-mono, ui-monospace, monospace);
 }
 
-/* Boot splash: the mark with a thin pink line that fills once while the
-   bundle loads. bootstrap.js swaps the line for a message if it never does. */
+/* The editor's own focusable elements (rows, links, the stage) take the
+   library's ring: 3 px of the ring token at half strength. */
+:where(#arcane-root) :focus-visible {
+  outline: 3px solid color-mix(in oklab, var(--ring) 50%, transparent);
+  outline-offset: 0;
+}
+
+/* Boot splash: the mark and a line that fills once while the bundle loads;
+   bootstrap.js swaps the line for a message if it never does. The theme is
+   not loaded yet, so the brand pink is written out. */
 .animus-boot {
   position: fixed;
   inset: 0;
@@ -144,10 +61,6 @@ textarea {
   justify-items: center;
   gap: 1.25rem;
   z-index: 999;
-}
-
-.animus-boot-mark {
-  display: block;
 }
 
 .animus-boot-line {

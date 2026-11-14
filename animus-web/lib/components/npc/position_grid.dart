@@ -17,6 +17,7 @@ import '../../config/docs_links.dart';
 import '../../logic/npc/route_model.dart';
 import '../info_tip.dart';
 import '../rig/rig_gizmo.dart' show eventNumber;
+import 'npc_layout.dart';
 
 int _nextPositionGridId = 0;
 
@@ -188,7 +189,7 @@ class _PositionGridState extends State<PositionGrid> {
         },
         events: <String, void Function(web.Event)>{'click': (web.Event event) => _place(event, bounds)},
       ),
-      dom.div(classes: 'animus-route-legend', <Widget>[
+      dom.div(styles: legendStyles, <Widget>[
         dom.span(<Widget>[
           withTip(
             Component.text('x ${bounds.minX.toInt()} to ${bounds.maxX.toInt()}, z ${bounds.minZ.toInt()} to ${bounds.maxZ.toInt()}; north is up; grid every ${step.toInt()} block${step == 1 ? '' : 's'}'),

@@ -1,0 +1,20 @@
+{
+  "name": "Lamplighter",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000701",
+  "traits": {
+    "type": "VILLAGER",
+    "location": {
+      "world": "world",
+      "x": 2.5,
+      "y": 64,
+      "z": 0.5
+    },
+    "hologramtrait": {
+      "lines": {
+        "0": "Lights at dusk",
+        "1": "",
+        "2": "&aLamps"
+      }
+    }
+  }
+}

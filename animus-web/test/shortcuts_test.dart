@@ -13,7 +13,7 @@ void main() {
   });
 
   test('every page-wide shortcut on the sheet is matched by its keys', () {
-    final List<Shortcut> global = shortcutGroups.first.shortcuts;
+    final List<Shortcut> global = <Shortcut>[for (final ShortcutGroup group in pageGroups) ...group.shortcuts];
     expect(global.every((Shortcut shortcut) => shortcut.action != null), isTrue);
     expect(<ShortcutAction>{for (final Shortcut shortcut in global) shortcut.action!}, ShortcutAction.values.toSet());
     for (final Shortcut shortcut in global) {
@@ -30,7 +30,7 @@ void main() {
   });
 
   test('no two page-wide shortcuts share keys', () {
-    final List<String> keys = <String>[for (final Shortcut shortcut in shortcutGroups.first.shortcuts) ...shortcut.keys];
+    final List<String> keys = <String>[for (final ShortcutGroup group in pageGroups) for (final Shortcut shortcut in group.shortcuts) ...shortcut.keys];
     expect(keys.toSet().length, keys.length);
   });
 
@@ -40,6 +40,11 @@ void main() {
     expect(matchShortcut(key: 'x', mod: false, shift: false, alt: false), isNull);
     expect(matchShortcut(key: 'N', mod: false, shift: true, alt: false), isNull);
     expect(matchShortcut(key: 'Z', mod: true, shift: true, alt: false), ShortcutAction.redo);
+  });
+
+  test('only saving runs while typing', () {
+    expect(<ShortcutAction>[for (final ShortcutAction action in ShortcutAction.values) if (firesWhileTyping(action)) action], <ShortcutAction>[ShortcutAction.save]);
+    expect(matchShortcut(key: 's', mod: true, shift: false, alt: false), ShortcutAction.save);
   });
 
   test('every group says where its keys work and lists some', () {

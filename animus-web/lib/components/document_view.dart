@@ -1,71 +1,108 @@
+/// The document frame: the page header (breadcrumb, title that renames on a
+/// click, a Valid or "N problems" badge that opens the problem list, and the
+/// actions menu), then the kind's form with its preview beside it. The
+/// preview sits right of the form from 1100 px, in a band above it that
+/// folds away from 761 px, and behind the header's Preview button on
+/// phones. Advanced adds the Form, Code and Split switch. The per-kind forms
+/// are the kinds' own editors.
+library;
+
 import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
+import 'package:web/web.dart' as web;
 
+import '../config/docs_links.dart';
 import '../logic/conversation/conversation_json.dart';
 import '../logic/diagnostic_text.dart';
 import '../logic/gui/gui_json.dart';
-import '../logic/gui/gui_text.dart';
 import '../logic/gui/gui_presets.dart';
+import '../logic/gui/gui_text.dart';
 import '../logic/gui/text_animation.dart';
 import '../logic/inspect/inspect_schemas.dart';
 import '../logic/inspect/json_completion.dart';
 import '../logic/inspect/schema_fields.dart';
 import '../logic/inspect/server_behaviors.dart';
-import '../logic/suggest/completion_sources.dart';
 import '../logic/npc/group_model.dart';
 import '../logic/npc/npc_catalog.dart';
 import '../logic/npc/route_model.dart';
+import '../logic/npc/route_usage.dart';
 import '../logic/npc/skin_edits.dart';
 import '../logic/offline/document_fixes.dart';
-import '../model/animus_document.dart';
-import '../model/document_kind.dart';
-import '../services/browser.dart';
-import '../state/workspace_route.dart';
-import 'gui/gui_fields.dart';
-import 'gui/gui_targets.dart';
-import 'tab_strip.dart';
-import 'offline/dry_run_panel.dart';
-import 'offline/offline_fields.dart';
-import 'recording/recording_view.dart';
+import '../logic/offline/new_documents.dart' show idHint, newDocumentPath, validDocumentId;
 import '../logic/recording/recording_edit.dart' show recordingProblems, recordingTags;
 import '../logic/recording/recording_model.dart' show Recording;
 import '../logic/recording/recording_route.dart';
-import '../logic/offline/new_documents.dart' show idHint, newDocumentPath, validDocumentId;
+import '../logic/suggest/completion_sources.dart';
+import '../logic/npc/npc_tabs.dart' show NpcTab;
+import '../model/animus_document.dart';
+import '../model/display_name.dart';
+import '../model/document_kind.dart';
+import '../model/document_summary.dart' show summarizeDocument;
+import 'gui/gui_split.dart' show PreviewToggle;
+import '../services/browser.dart';
+import '../state/library.dart';
 import '../state/editor_store.dart' show DocumentChange;
+import '../state/workspace_route.dart';
+import '../ui/action_row.dart';
+import '../ui/alert.dart';
+import '../ui/badge.dart';
+import '../ui/library_rows.dart' show npcLine;
+import '../ui/confirm_dialog.dart';
+import '../ui/dialog.dart';
+import '../ui/field.dart';
+import '../ui/info_tip.dart';
+import '../ui/menu.dart';
+import '../ui/mode.dart';
+import '../ui/page_header.dart';
+import '../ui/stack.dart';
+import '../ui/stage_frame.dart';
+import '../ui/toggle_choice.dart';
+import '../ui/tone.dart';
+import 'conversation/conversation_attach.dart';
+import 'conversation/conversation_view.dart';
 import 'gui/gui_data_editors.dart';
+import 'gui/gui_fields.dart';
+import 'gui/gui_targets.dart';
 import 'gui/hologram_editor.dart';
 import 'gui/inventory_editor.dart';
 import 'gui/menu_editor.dart';
 import 'gui/shop_editor.dart';
-import 'gui/shop_previews.dart';
-import 'quest/quest_editor.dart';
-import 'quest/quest_fields.dart' show QuestNpcs;
-import 'quest/quest_preview.dart';
-import 'conversation/conversation_attach.dart';
-import 'conversation/conversation_view.dart';
 import 'inspect/behavior_editor.dart';
-import 'inspect/json_code_editor.dart';
+import 'inspect/code_view.dart';
 import 'inspect/inspect_fields.dart';
 import 'inspect/npc_inspector.dart';
-import 'inspect/typed_values_editor.dart';
 import 'inspect/server_behaviors_editor.dart';
+import 'inspect/typed_values_editor.dart';
+import 'list_page.dart' show listNoun;
 import 'npc/pack_editor.dart';
 import 'npc/route_editor.dart';
 import 'npc/skin_summary.dart';
 import 'npc_preview.dart';
+import 'offline/dry_run_panel.dart';
 import 'pending_field.dart';
-import 'info_tip.dart';
+import 'quest/quest_editor.dart';
+import 'recording/recording_view.dart';
+import 'shell_sidebar.dart' show jobOfKind, jobRoute, kindCrumb;
 import 'suggest/suggest_sources.dart';
-import '../config/docs_links.dart';
 
-/// Kinds with a visual editor and a painted or 3D preview.
-const Set<DocumentKind> guiEditorKinds = <DocumentKind>{DocumentKind.inventory, DocumentKind.shop, DocumentKind.menu, DocumentKind.hologram};
+/// Kinds whose title is a `name` field the header renames in place.
+/// Kinds whose heading is a field of the document, and that field: Rename
+/// edits it. Other kinds go by their id (or words of it), which Rename changes.
+const Map<DocumentKind, String> nameFields = <DocumentKind, String>{
+  DocumentKind.npc: 'name',
+  DocumentKind.pack: 'name',
+  DocumentKind.shop: 'title',
+  DocumentKind.inventory: 'title',
+  DocumentKind.quest: 'title',
+};
 
-/// One document with its Visual, Preview, Code and Split views.
+/// Where the preview goes at the current width.
+enum PreviewPlace { side, band, button }
+
 class DocumentPane extends StatefulWidget {
   const DocumentPane({
     required this.document,
@@ -73,6 +110,9 @@ class DocumentPane extends StatefulWidget {
     required this.onView,
     required this.onSource,
     required this.onJson,
+    required this.workspaceId,
+    required this.workspaceName,
+    this.name,
     this.onRename,
     this.onDelete,
     this.onDuplicate,
@@ -85,15 +125,29 @@ class DocumentPane extends StatefulWidget {
     this.workspaceDocuments = const <AnimusDocument>[],
     this.onOpen,
     this.onCommit,
-    this.onServerPreview,
-    this.newConversationHref,
+    this.library,
+    this.load,
     this.skinEditing,
     this.serverBehaviors = const <String>[],
     this.serverPlugins = const <String>{},
+    this.npcLibrary,
+    this.skinTexture,
     this.codeDraft,
     this.onCodeDraft,
+    this.tab,
     super.key,
   });
+
+  final String workspaceId;
+
+  /// The form tab the page opens on, from its address.
+  final String? tab;
+
+  /// For the breadcrumb.
+  final String workspaceName;
+
+  /// What the document's list row calls it; the heading says the same.
+  final String? name;
 
   /// Code text typed earlier and not applied yet, kept by the store while
   /// the user looks at other documents.
@@ -106,11 +160,12 @@ class DocumentPane extends StatefulWidget {
   /// conversation to NPCs); null hides that list.
   final ConversationCommit? onCommit;
 
-  /// Starts the paired server's preview; null offline.
-  final void Function()? onServerPreview;
+  /// The workspace library (every catalog entry, read or not), for pickers
+  /// that list a whole kind.
+  final LibraryOf? library;
 
-  /// Where a new conversation is made.
-  final String? newConversationHref;
+  /// Reads documents of a server workspace that are not here yet.
+  final LoadDocuments? load;
 
   /// Skin edits that write several documents and the kept PNGs.
   final SkinEditing? skinEditing;
@@ -122,28 +177,32 @@ class DocumentPane extends StatefulWidget {
   /// editor offers their modules and fields only then.
   final Set<String> serverPlugins;
 
+  /// A server workspace's NPCs from the catalog, for the other NPCs the
+  /// preview draws around this one; null in a local workspace.
+  final List<LibraryEntry>? npcLibrary;
+
+  /// The texture address of a skin from the catalog, for those NPCs' skins.
+  final String? Function(String skinId)? skinTexture;
+
   /// Opens another document of the workspace (a behavior, route or shop an
   /// NPC names).
   final void Function(DocumentKind kind, String id)? onOpen;
 
-  /// Every document of the workspace, for completing references (an NPC's
-  /// behaviors and skin).
+  /// Every document of the workspace, for completing references.
   final List<AnimusDocument> workspaceDocuments;
 
-  /// Diagnostics the connected server returned for this document's draft
-  /// (validate, preview or apply), shown beside the browser's own.
+  /// Diagnostics the connected server returned for this document's draft.
   final List<Diagnostic> serverDiagnostics;
 
-  /// The connected server's `GET /v1/schemas` map (schema name to schema),
-  /// which includes loaded modules; null offline, where the embedded
-  /// generated schemas apply.
+  /// The connected server's `GET /v1/schemas` map; null offline, where the
+  /// embedded generated schemas apply.
   final Map<String, Object?>? liveSchemas;
 
   /// The connected server's registries, commands and PlaceholderAPI
   /// identifiers for completion; null offline.
   final ServerLookups? liveLookups;
 
-  /// Visual editor edits.
+  /// Form edits.
   final JsonEdit onJson;
 
   /// Moves the document to a new id; returns a problem to show, or null.
@@ -158,8 +217,7 @@ class DocumentPane extends StatefulWidget {
   /// Workspace resources: rig textures and the PNGs of local skins.
   final Map<String, Uint8List> resources;
 
-  /// A structured editor (the rig editor) shown as Visual and Preview, and
-  /// beside the code in Split.
+  /// A structured editor (the rig editor) shown as the form.
   final Widget? editor;
 
   final AnimusDocument document;
@@ -180,42 +238,32 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   /// The first RecordingDocument rule a recording's Code draft breaks.
   String? _recordingRefusal;
-  String? _renaming;
-  String? _renameProblem;
 
-  /// True when the id field copies instead of moving.
-  bool _copying = false;
-  bool _confirmDelete = false;
+  /// The id dialog: a copy (Duplicate) or a move (Change id).
+  bool? _idCopy;
+  String _idValue = '';
+  String? _idProblem;
+  bool _problemsOpen = false;
+  bool _previewShown = false;
+  PreviewPlace _place = PreviewPlace.side;
+  bool _wide = true;
+  final List<void Function()> _stops = <void Function()>[];
 
-  static const String _panelId = 'animus-view-panel';
-  static const String _tabPrefix = 'animus-view-tab';
-  static const String _renameInputId = 'animus-rename-input';
-
-  static const List<TabOption<ViewMode>> _views = <TabOption<ViewMode>>[
-    TabOption<ViewMode>(ViewMode.visual, 'Visual'),
-    TabOption<ViewMode>(ViewMode.preview, 'Preview'),
-    TabOption<ViewMode>(ViewMode.code, 'Code'),
-    TabOption<ViewMode>(ViewMode.split, 'Split'),
-  ];
-
-  static const List<TabOption<ViewMode>> _behaviorViews = <TabOption<ViewMode>>[
-    TabOption<ViewMode>(ViewMode.conversation, 'Conversation'),
-    ..._views,
-  ];
-
-  List<TabOption<ViewMode>> get _tabs => component.document.kind == DocumentKind.behavior ? _behaviorViews : _views;
-
-  /// The view to show: the Conversation tab exists for behaviors only.
-  ViewMode get _view => component.view == ViewMode.conversation && component.document.kind != DocumentKind.behavior ? ViewMode.visual : component.view;
+  static const String _problemsId = 'ui-doc-problems';
+  static const String _idInputId = 'ui-doc-id-input';
 
   @override
   void initState() {
     super.initState();
-    // A Code draft left on another document comes back where it was.
     final String? kept = component.codeDraft;
     if (kept != null) _check(kept);
     pendingProblems.addListener(_pendingChanged);
-    // A behavior shaped like a conversation opens on its Conversation tab.
+    final (bool phone, void Function() stopPhone) = watchMedia('(max-width: 760px)', (bool _) => _measure());
+    final (bool band, void Function() stopBand) = watchMedia('(max-width: 1099px)', (bool _) => _measure());
+    _place = phone ? PreviewPlace.button : (band ? PreviewPlace.band : PreviewPlace.side);
+    _wide = !band;
+    _stops.addAll(<void Function()>[stopPhone, stopBand]);
+    // A behavior shaped like a conversation opens on its Conversation view.
     if (component.document.kind == DocumentKind.behavior && component.view == ViewMode.visual && conversationOf(component.document.json) != null) {
       Future<void>.microtask(() {
         if (mounted) component.onView(ViewMode.conversation);
@@ -225,8 +273,21 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   @override
   void dispose() {
+    for (final void Function() stop in _stops) {
+      stop();
+    }
     pendingProblems.removeListener(_pendingChanged);
     super.dispose();
+  }
+
+  void _measure() {
+    if (!mounted) return;
+    final bool phone = web.window.matchMedia('(max-width: 760px)').matches;
+    final bool band = web.window.matchMedia('(max-width: 1099px)').matches;
+    setState(() {
+      _place = phone ? PreviewPlace.button : (band ? PreviewPlace.band : PreviewPlace.side);
+      _wide = !band;
+    });
   }
 
   void _pendingChanged() {
@@ -235,36 +296,6 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   /// The document's diagnostics less those of a field the user is filling.
   List<Diagnostic> _shown(AnimusDocument document) => pendingProblems.visible(document.diagnostics);
-
-  void _startRename({required bool copy}) {
-    setState(() {
-      _renaming = copy ? '${component.document.id}-copy' : component.document.id;
-      _copying = copy;
-      _renameProblem = null;
-    });
-    focusWhenShown(_renameInputId);
-  }
-
-  void _cancelRename() {
-    final bool copying = _copying;
-    setState(() {
-      _renaming = null;
-      _renameProblem = null;
-    });
-    focusWhenShown(copying ? 'animus-doc-duplicate' : 'animus-doc-rename');
-  }
-
-  Future<void> _submitRename() async {
-    final String? renaming = _renaming;
-    if (renaming == null) return;
-    final String? problem = await (_copying ? component.onDuplicate! : component.onRename!)(renaming.trim());
-    if (!mounted) return;
-    setState(() {
-      _renameProblem = problem;
-      if (problem == null) _renaming = null;
-    });
-    if (problem != null) focusById(_renameInputId);
-  }
 
   void _edit(String value) {
     setState(() => _check(value));
@@ -303,168 +334,264 @@ class _DocumentPaneState extends State<DocumentPane> {
     });
   }
 
+  /// The views the switch offers, all in Advanced: Conversation (for a
+  /// behavior that reads as one) and Steps for behaviors (Form for other
+  /// kinds), Code and (from 1100 px) Split.
+  List<ChoiceOption<ViewMode>> _views(AnimusDocument document, bool advanced) => <ChoiceOption<ViewMode>>[
+        if (advanced && document.kind == DocumentKind.behavior && conversationOf(document.json) != null) const ChoiceOption<ViewMode>(ViewMode.conversation, 'Conversation'),
+        if (advanced) ChoiceOption<ViewMode>(ViewMode.visual, document.kind == DocumentKind.behavior ? 'Steps' : 'Form'),
+        if (advanced) const ChoiceOption<ViewMode>(ViewMode.code, 'Code'),
+        if (advanced && _wide) const ChoiceOption<ViewMode>(ViewMode.split, 'Split'),
+      ];
+
+  /// The view to show: Code and Split are Advanced, Split needs 1100 px,
+  /// Conversation is for behaviors, and Preview is the form with its preview.
+  /// Simple shows a behavior as its conversation when it is one, else as
+  /// steps.
+  ViewMode _viewFor(AnimusDocument document, bool advanced) {
+    final ViewMode view = component.view;
+    if (!advanced && document.kind == DocumentKind.behavior) return conversationOf(document.json) != null ? ViewMode.conversation : ViewMode.visual;
+    if (view == ViewMode.conversation) return document.kind == DocumentKind.behavior ? view : ViewMode.visual;
+    if (view == ViewMode.preview) return ViewMode.visual;
+    if (!advanced && (view == ViewMode.code || view == ViewMode.split)) return ViewMode.visual;
+    if (view == ViewMode.split && !_wide) return ViewMode.code;
+    return view;
+  }
+
+  /// Renames the title: the `name` of an NPC or pack, otherwise the id.
+  Future<String?> _rename(String value) => component.onRename!(value);
+
+  void _startId({required bool copy}) {
+    setState(() {
+      _idCopy = copy;
+      _idValue = copy ? '${component.document.id}-copy' : component.document.id;
+      _idProblem = null;
+    });
+    focusWhenShown(_idInputId);
+  }
+
+  Future<void> _submitId() async {
+    final bool? copy = _idCopy;
+    if (copy == null) return;
+    final String? problem = await (copy ? component.onDuplicate! : component.onRename!)(_idValue.trim());
+    if (!mounted) return;
+    setState(() {
+      _idProblem = problem;
+      if (problem == null) _idCopy = null;
+    });
+  }
+
+  Future<void> _delete() async {
+    final AnimusDocument document = component.document;
+    final bool yes = await askToConfirm(
+      title: 'Delete $_displayName?',
+      message: document.kind == DocumentKind.skin ? skinDeleteWarning(component.workspaceDocuments, document.id) : 'Undo brings it back.',
+      confirmLabel: 'Delete ${listNoun(document.kind)}',
+      destructive: true,
+    );
+    if (yes) await component.onDelete!();
+  }
+
+  /// The name the document's list row shows; its plain title, else its id.
+  String get _displayName {
+    final String plain = guiPlainText(component.document.title).trim();
+    return component.name ?? (plain.isEmpty ? component.document.id : plain);
+  }
+
+  bool _hasPreview(AnimusDocument document) =>
+      component.editor == null && document.json is Map<String, Object?> && (document.kind == DocumentKind.npc || document.kind == DocumentKind.behavior);
+
+  /// Kinds whose editor puts its preview beside the form ([GuiSplit]); on
+  /// phones the header's Preview button shows it. A chest GUI's window is
+  /// the editor itself, so it has no button.
+  bool _splitPreview(AnimusDocument document, ViewMode view) =>
+      component.editor == null &&
+      view == ViewMode.visual &&
+      const <DocumentKind>{DocumentKind.shop, DocumentKind.quest, DocumentKind.textAnimation, DocumentKind.hologram, DocumentKind.menu}.contains(document.kind);
+
   @override
   Widget build(BuildContext context) {
     final AnimusDocument document = component.document;
-    final ViewMode view = _view;
-    final int selectedTab = _tabs.indexWhere((TabOption<ViewMode> option) => option.value == view);
-    return dom.div(classes: 'animus-document', <Widget>[
-      dom.header(classes: 'animus-document-header', <Widget>[
-        dom.div(classes: 'animus-document-title', <Widget>[
-          dom.span(classes: 'animus-eyebrow', <Widget>[Component.text(document.kind.label)]),
-          dom.h1(id: mainHeadingId, attributes: const <String, String>{'tabindex': '-1'}, <Widget>[Component.text(guiPlainText(document.title))]),
-          dom.code(classes: 'animus-muted animus-document-path', <Widget>[Component.text(document.path)]),
-        ]),
-        if (component.onRename != null || component.onDelete != null || component.onDuplicate != null) _manage(document) else ?_revision(document),
-        TabStrip<ViewMode>(
-          idPrefix: _tabPrefix,
-          label: 'View',
-          options: _tabs,
-          selected: view,
-          panelId: _panelId,
-          onSelect: component.onView,
-        ),
-      ]),
-      _diagnostics(document),
+    final bool advanced = ModeScope.advanced(context);
+    final ViewMode view = _viewFor(document, advanced);
+    final List<ChoiceOption<ViewMode>> views = _views(document, advanced);
+    final List<Diagnostic> shown = _shown(document);
+    final List<Diagnostic> problems = groupRepeats(withoutRepeats(<Diagnostic>[
+      for (final Diagnostic d in shown) if (d.code != 'no-schema') d,
+      ...serverOnly(shown, component.serverDiagnostics),
+    ]));
+    final DocumentCheck check = documentCheck(all: document.diagnostics, shown: shown, problems: problems);
+    final int errors = problems.where((Diagnostic d) => d.severity == DiagnosticSeverity.error).length;
+    final bool preview = _hasPreview(document) && (view == ViewMode.visual || view == ViewMode.conversation);
+    final String? nameField = nameFields[document.kind];
+    // A kind named by a form field (an NPC's Name) is renamed there only;
+    // the header's Rename moves the id of the others.
+    final bool canRename = nameField == null && component.onRename != null;
+    final String title = _displayName;
+    return dom.div(classes: 'ui-doc', <Widget>[
+      PageHeader(
+        title: title,
+        // Advanced names the file; Simple tells an unnamed NPC apart by where it stands.
+        detail: advanced
+            ? (title != document.id ? document.id : null)
+            : needsPath(document.kind, title)
+                ? npcLine(summarizeDocument(document.kind, document.id, document.json), place: true)
+                : null,
+        renameValue: document.id,
+        renameLabel: 'Id',
+        onRename: canRename ? _rename : null,
+        crumbs: <Crumb>[
+          Crumb(component.workspaceName, href: WorkspaceRoute(component.workspaceId).format()),
+          Crumb(jobOfKind(document.kind).label, href: jobRoute(jobOfKind(document.kind), component.workspaceId).format()),
+          // A job with several kinds (Rigs: rigs, animations, skins) names
+          // the tab too, as Search and the list do.
+          if (kindCrumb(document.kind) case final String tab) Crumb(tab, href: KindListRoute(component.workspaceId, document.kind).format()),
+        ],
+        status: _draftError != null
+            ? const StatusBadge('Code not used', tone: BadgeTone.warning)
+            : check != DocumentCheck.problems
+                ? (check == DocumentCheck.valid ? const StatusBadge('Valid', tone: BadgeTone.ok) : const StatusBadge('Checking', tone: BadgeTone.neutral))
+                : BadgeButton(
+                    errors == 0 ? '${problems.length} ${problems.length == 1 ? 'warning' : 'warnings'}' : '$errors ${errors == 1 ? 'problem' : 'problems'}',
+                    tone: errors == 0 ? BadgeTone.warning : BadgeTone.error,
+                    expanded: _problemsOpen,
+                    controls: _problemsId,
+                    onPressed: () => setState(() => _problemsOpen = !_problemsOpen),
+                  ),
+        actions: <AppMenuEntry>[
+          if (component.onDuplicate != null) AppMenuEntry('Duplicate', () => _startId(copy: true)),
+          if (advanced && nameField != null && component.onRename != null) AppMenuEntry('Change id', () => _startId(copy: false)),
+          if (component.onDelete != null) ...<AppMenuEntry>[const AppMenuEntry.separator(), AppMenuEntry('Delete', _delete, destructive: true)],
+        ],
+        viewSwitch: views.length > 1
+            ? ToggleChoice<ViewMode>(label: 'View', options: views, value: view, onChanged: component.onView)
+            : null,
+        secondary: <RowAction>[
+          if (_place == PreviewPlace.button && (preview || _splitPreview(document, view)))
+            // Only phones have this button: an icon, so the title keeps the line.
+            RowAction(
+              document.kind == DocumentKind.behavior ? 'Test' : 'Preview',
+              () => setState(() => _previewShown = !_previewShown),
+              icon: ArcaneIcon.eye(),
+              iconOnly: true,
+              pressed: _previewShown,
+              attributes: const <String, String>{'aria-controls': 'ui-doc-preview'},
+            ),
+        ],
+      ),
+      if (_problemsOpen && problems.isNotEmpty) dom.div(id: _problemsId, classes: 'ui-doc-problems', <Widget>[_diagnostics(document, problems)]),
       if (_draft != null && view != ViewMode.code && view != ViewMode.split)
-        dom.div(classes: 'animus-row animus-code-draft-note', attributes: const <String, String>{'role': 'status', 'data-testid': 'code-draft-note'}, <Widget>[
-          const dom.span(<Widget>[Component.text('Code draft not applied. This view shows the document without it.')]),
-          Button.secondary(label: 'Open Code', size: ButtonSize.small, onPressed: () => component.onView(ViewMode.code)),
+        dom.div(classes: 'ui-doc-note', attributes: const <String, String>{'role': 'status', 'data-testid': 'code-draft-note'}, <Widget>[
+          const dom.span(<Widget>[Component.text('Code not used yet. This view shows the document without it.')]),
+          Button.outline(label: 'Open Code', size: ButtonSize.sm, onPressed: () => component.onView(ViewMode.code)),
         ]),
       SuggestSources(
         documents: component.workspaceDocuments,
         catalog: _schemas.catalog,
         lookups: component.liveLookups,
-        child: dom.div(
-        id: _panelId,
-        classes: 'animus-views is-${view.name}${component.editor != null ? ' has-editor' : ''}',
-        attributes: <String, String>{'role': 'tabpanel', 'aria-labelledby': TabStrip.tabId(_tabPrefix, selectedTab)},
-        <Widget>[
-        if (view == ViewMode.conversation)
-          DocsScope(link: Docs.forKind(document.kind), child: _conversation(document))
-        else if (component.editor != null && view != ViewMode.code)
-          DocsScope(link: Docs.forKind(document.kind), child: component.editor!)
-        else if (view == ViewMode.visual || (view == ViewMode.split && !_staged(document)))
-          DocsScope(link: Docs.forKind(document.kind), child: _visual(document)),
-        if (component.editor == null && (view == ViewMode.preview || (view == ViewMode.split && _staged(document)))) _preview(document),
-        if (view == ViewMode.code || view == ViewMode.split) _code(document),
-      ]),
+        child: PreviewToggle(shown: _previewShown, child: _body(document, view, preview)),
       ),
+      if (_idCopy != null) _idDialog(document),
     ]);
   }
 
-  Widget _manage(AnimusDocument document) {
-    final String? renaming = _renaming;
-    if (_confirmDelete && component.onDelete != null) {
-      return ConfirmRow(
-        question: 'Delete ${document.id}?',
-        detail: document.kind == DocumentKind.skin ? skinDeleteWarning(component.workspaceDocuments, document.id) : 'Undo brings it back.',
-        confirmLabel: 'Delete ${document.kind == DocumentKind.npc ? 'NPC' : 'document'}',
-        onConfirm: () {
-          setState(() => _confirmDelete = false);
-          component.onDelete!();
-        },
-        onCancel: () {
-          setState(() => _confirmDelete = false);
-          focusWhenShown('animus-doc-delete');
-        },
-      );
-    }
-    if (renaming == null) {
-      return dom.div(classes: 'animus-row', attributes: const <String, String>{'role': 'group', 'aria-label': 'Manage document'}, <Widget>[
-        ?_revision(document),
-        if (component.onRename != null)
-          Button.ghost(id: 'animus-doc-rename', label: 'Rename', onPressed: () => _startRename(copy: false)),
-        if (component.onDuplicate != null)
-          Button.ghost(id: 'animus-doc-duplicate', label: 'Duplicate', onPressed: () => _startRename(copy: true)),
-        if (component.onDelete != null)
-          Button.ghost(id: 'animus-doc-delete', label: 'Delete', onPressed: () => setState(() => _confirmDelete = true)),
+  Widget _body(AnimusDocument document, ViewMode view, bool preview) {
+    final Widget docs = DocsScope(link: Docs.forKind(document.kind), child: _editor(document, view));
+    if (view == ViewMode.code) return dom.div(classes: 'ui-doc-body is-code', <Widget>[_code(document)]);
+    if (view == ViewMode.split) {
+      return dom.div(classes: 'ui-doc-body is-split', <Widget>[
+        dom.div(classes: 'ui-doc-form', <Widget>[docs]),
+        dom.div(classes: 'ui-doc-side', <Widget>[_code(document)]),
       ]);
     }
-    return dom.div(classes: 'animus-row animus-rename', <Widget>[
-      OfflineTextField(
-        id: _renameInputId,
-        label: _copying ? 'Id of the copy' : 'New id',
-        value: renaming,
-        error: _renameProblem,
-        onChanged: (String value) => setState(() {
-          _renaming = value;
-          _renameProblem = null;
-        }),
-        onSubmit: _submitRename,
-        onCancel: _cancelRename,
-      ),
-      Button.primary(label: _copying ? 'Copy' : 'Move', onPressed: _submitRename),
-      Button.ghost(label: 'Cancel', onPressed: _cancelRename),
-    ]);
+    if (!preview) return dom.div(classes: 'ui-doc-body${component.editor != null || _fullWidth(document) ? '' : ' is-plain'}', <Widget>[docs]);
+    final Widget stage = dom.div(id: 'ui-doc-preview', classes: 'ui-doc-preview', <Widget>[_preview(document)]);
+    return switch (_place) {
+      PreviewPlace.side => dom.div(classes: 'ui-doc-body has-preview', <Widget>[
+          dom.div(classes: 'ui-doc-form', <Widget>[docs]),
+          StageSide(child: stage),
+        ]),
+      PreviewPlace.band => dom.div(classes: 'ui-doc-body is-band', <Widget>[
+          stage,
+          dom.div(classes: 'ui-doc-form', <Widget>[docs]),
+        ]),
+      PreviewPlace.button => dom.div(classes: 'ui-doc-body is-stacked', <Widget>[
+          if (_previewShown) stage,
+          dom.div(classes: 'ui-doc-form', <Widget>[docs]),
+        ]),
+    };
   }
 
-  /// The document's revision, read only: the server raises it on every
-  /// apply, so nobody edits it by hand.
-  Widget? _revision(AnimusDocument document) {
-    final Object? json = document.json;
-    final Object? revision = json is Map<String, Object?> ? json['revision'] : null;
-    if (revision is! int) return null;
-    return dom.span(
-      classes: 'animus-muted animus-document-revision',
-      attributes: const <String, String>{'title': 'The server raises it on every apply.'},
-      <Widget>[Component.text('revision $revision')],
+  /// Editors that draw their own window or stage take the whole width.
+  bool _fullWidth(AnimusDocument document) => const <DocumentKind>{
+        DocumentKind.inventory,
+        DocumentKind.shop,
+        DocumentKind.menu,
+        DocumentKind.hologram,
+        DocumentKind.quest,
+        DocumentKind.recording,
+        DocumentKind.route,
+        DocumentKind.textAnimation,
+        DocumentKind.presets,
+      }.contains(document.kind);
+
+  Widget _editor(AnimusDocument document, ViewMode view) {
+    if (view == ViewMode.conversation) return _conversation(document);
+    if (component.editor != null) return component.editor!;
+    return _visual(document);
+  }
+
+  Widget _idDialog(AnimusDocument document) {
+    final bool copy = _idCopy!;
+    return AppDialog(
+      open: true,
+      title: copy ? 'Duplicate $_displayName' : 'Change id',
+      onClose: () => setState(() => _idCopy = null),
+      footer: DialogFooter(
+        cancel: RowAction('Cancel', () => setState(() => _idCopy = null)),
+        primary: RowAction(copy ? 'Duplicate' : 'Change id', _submitId),
+      ),
+      children: <Widget>[
+        Field(
+          label: copy ? 'Id of the copy' : 'New id',
+          forId: _idInputId,
+          tip: 'Use ${idHint(document.kind)}. References move with it.',
+          error: _idProblem,
+          child: TextInput(
+            id: _idInputId,
+            value: _idValue,
+            onChanged: (String value) => setState(() {
+              _idValue = value;
+              _idProblem = null;
+            }),
+            onSubmitted: (String _) => _submitId(),
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _diagnostics(AnimusDocument document) {
-    final List<Diagnostic> server = component.serverDiagnostics;
-    final List<Diagnostic> shown = _shown(document);
-    if (_draftError != null) {
-      return const dom.p(classes: 'animus-draft-error', attributes: <String, String>{'role': 'status'}, <Widget>[
-        Component.text('The Code draft has a JSON error and is not applied.'),
-      ]);
-    }
-    if (shown.isEmpty && server.isEmpty) {
-      if (document.diagnostics.isNotEmpty) return const dom.p(classes: 'animus-muted', attributes: <String, String>{'role': 'status'}, <Widget>[Component.text('Checked once you leave the new field.')]);
-      return const dom.p(classes: 'animus-ok', <Widget>[Component.text('Valid against the shared schema.')]);
-    }
-    // A kind without a shared schema gets one plain note, not a diagnostic
-    // with a "$" path.
-    final List<Diagnostic> noSchema = <Diagnostic>[for (final Diagnostic d in shown) if (d.code == 'no-schema') d];
-    if (noSchema.length == shown.length && server.isEmpty) {
-      return dom.p(classes: 'animus-muted animus-schema-note', <Widget>[Component.text(noSchema.first.message)]);
-    }
+  /// The problem list the status badge opens, with the fixes the editor
+  /// knows.
+  Widget _diagnostics(AnimusDocument document, List<Diagnostic> problems) {
     final List<DocumentFix> fixes = fixesFor(document);
-    final Widget list = _diagnosticList(shown, server);
-    if (fixes.isEmpty) return list;
     Future<void> apply(Object? json) => component.onSource(prettyJson(json));
-    return dom.div(classes: 'animus-diagnostics-block', <Widget>[
-      list,
-      dom.div(classes: 'animus-fixes', attributes: const <String, String>{'role': 'group', 'aria-label': 'Fixes'}, <Widget>[
-        const dom.span(classes: 'animus-muted', <Widget>[Component.text('Fixes:')]),
-        for (final DocumentFix fix in fixes.take(8))
-          Button.secondary(
-            label: fix.label,
-            size: ButtonSize.small,
-            attributes: <String, String>{'title': fix.path},
-            onPressed: () => apply(fix.apply(document.json)),
-          ),
-        if (fixes.length > 1)
-          Button.primary(label: 'Fix all ${fixes.length}', size: ButtonSize.small, onPressed: () => apply(applyFixes(document.json, fixes))),
-      ]),
+    return dom.div(classes: 'ui-problem-list', <Widget>[
+      _diagnosticList(problems),
+      if (fixes.isNotEmpty)
+        ActionRow(
+          dense: true,
+          label: 'Fixes',
+          secondary: <RowAction>[for (final DocumentFix fix in fixes.take(8)) RowAction(fix.label, () => apply(fix.apply(document.json)))],
+          primary: fixes.length > 1 ? RowAction('Fix all ${fixes.length}', () => apply(applyFixes(document.json, fixes))) : null,
+        ),
     ]);
   }
 
-  Widget _diagnosticList(List<Diagnostic> shown, List<Diagnostic> server) {
-    final List<Diagnostic> local = withoutRepeats(<Diagnostic>[for (final Diagnostic d in shown) if (d.code != 'no-schema') d]);
-    return dom.ul(classes: 'animus-diagnostics', <Widget>[
-      for (final Diagnostic diagnostic in local.take(50))
-        dom.li(classes: 'is-${diagnostic.severity.name}', attributes: <String, String>{'title': diagnostic.path}, <Widget>[
-          Component.text(diagnosticSentence(diagnostic)),
-        ]),
-      for (final Diagnostic diagnostic in withoutRepeats(serverOnly(local, server)).take(50))
-        dom.li(classes: 'is-${diagnostic.severity.name} is-server', attributes: <String, String>{'title': diagnostic.path}, <Widget>[
-          const dom.span(classes: 'animus-tag is-server', <Widget>[Component.text('server')]),
-          Component.text(' ${diagnosticSentence(diagnostic)}'),
-        ]),
-    ]);
-  }
+  Widget _diagnosticList(List<Diagnostic> problems) => dom.ul(classes: 'ui-problems', <Widget>[
+        for (final Diagnostic diagnostic in problems.take(50))
+          dom.li(classes: 'is-${diagnostic.severity.name}', <Widget>[Component.text(diagnosticSentence(diagnostic))]),
+      ]);
 
   InspectSchemas get _schemas => InspectSchemas.from(component.liveSchemas);
 
@@ -487,20 +614,38 @@ class _DocumentPaneState extends State<DocumentPane> {
     return null;
   }
 
+  /// A route document on the world of the first NPC that walks it, so the
+  /// map draws that NPC and its terrain and 3D can show; a short line names
+  /// who uses it.
+  Widget _route(AnimusDocument document, JsonMap json, List<AnimusDocument> workspace) {
+    final List<AnimusDocument> users = routeUsers(workspace, document.id);
+    final RouteUserPlace? place = users.isEmpty ? null : routeUserPlace(users.first.json);
+    final String? usedBy = usedByLine(<String>[for (final AnimusDocument user in users) guiPlainText(user.title)]);
+    return dom.div(classes: 'animus-route-document', <Widget>[
+      if (usedBy != null) dom.p(attributes: const <String, String>{'data-testid': 'route-used-by'}, <Widget>[Text(usedBy, size: FontSize.sm, color: TextColor.muted)]),
+      RouteEditor(
+        value: json,
+        path: r'$',
+        world: place?.world,
+        origin: place?.origin,
+        diagnostics: _allDiagnostics(document),
+        recordings: routeRecordings(workspace),
+        onChanged: (JsonMap value, JsonMap from) => component.onJson(writeAt(from, const <JsonStep>[], value), coalesce: 'route'),
+      ),
+    ]);
+  }
+
   Widget _visual(AnimusDocument document) {
     final Object? json = document.json;
     final JsonEdit onJson = component.onJson;
     if (json is! Map<String, Object?>) {
-      return const dom.section(classes: 'animus-panel', <Widget>[
-        Component.text('Not a JSON object. Fix it in Code.'),
-      ]);
+      return const AppAlert(tone: AlertTone.warning, message: 'Not a JSON object. Fix it in Code.');
     }
     if (document.kind == DocumentKind.recording) {
       return RecordingView(
         key: ValueKey<String>('recording:${document.id}'),
         document: document,
         onJson: onJson,
-        onRename: component.onRename,
         onMakeRoute: component.onCommit == null ? null : (String id) => _makeRoute(document, id),
         knownTags: recordingTags(component.workspaceDocuments),
       );
@@ -515,10 +660,10 @@ class _DocumentPaneState extends State<DocumentPane> {
       );
     }
     final List<AnimusDocument> workspace = component.workspaceDocuments;
-    return GuiTargets(documents: workspace, kind: document.kind, child: switch (document.kind) {
-      DocumentKind.npc => dom.div(classes: 'animus-npc-visual', <Widget>[
-          NpcInspector(
+    return GuiTargets(documents: workspace, kind: document.kind, library: component.library, child: switch (document.kind) {
+      DocumentKind.npc => NpcInspector(
             document: document,
+            tab: NpcTab.values.where((NpcTab each) => each.slug == component.tab).firstOrNull,
             onJson: onJson,
             schemas: _schemas,
             diagnostics: _allDiagnostics(document),
@@ -530,24 +675,13 @@ class _DocumentPaneState extends State<DocumentPane> {
             serverBehaviors: component.serverBehaviors,
             serverPlugins: component.serverPlugins,
           ),
-          _preview(document),
-        ]),
       DocumentKind.behavior => BehaviorEditor(
           document: document,
           onJson: onJson,
           schemas: _schemas,
           diagnostics: _allDiagnostics(document),
-          onConversation: () => component.onView(ViewMode.conversation),
         ),
-      DocumentKind.route => dom.section(classes: 'animus-panel animus-inspector', attributes: const <String, String>{'aria-label': 'Route'}, <Widget>[
-          RouteEditor(
-            value: json,
-            path: r'$',
-            diagnostics: _allDiagnostics(document),
-            recordings: routeRecordings(workspace),
-            onChanged: (JsonMap value, JsonMap from) => onJson(writeAt(from, const <JsonStep>[], value), coalesce: 'route'),
-          ),
-        ]),
+      DocumentKind.route => _route(document, json, workspace),
       DocumentKind.group => NpcInspector.forGroup(
           document: document,
           onJson: onJson,
@@ -570,7 +704,7 @@ class _DocumentPaneState extends State<DocumentPane> {
         ),
       DocumentKind.inventory => InventoryEditor(document: document, onJson: onJson, presets: workspacePresets(workspace)),
       DocumentKind.shop => ShopEditor(document: document, onJson: onJson, workspaceDocuments: workspace, onCommit: component.onCommit, onOpen: component.onOpen),
-      DocumentKind.quest => QuestEditor(document: document, onJson: onJson, workspaceDocuments: workspace),
+      DocumentKind.quest => QuestEditor(document: document, onJson: onJson, workspaceDocuments: workspace, npcLibrary: component.library?.call(DocumentKind.npc) ?? const <LibraryEntry>[]),
       DocumentKind.menu => MenuEditor(document: document, onJson: onJson, animations: workspaceAnimations(workspace)),
       DocumentKind.hologram => HologramEditor(document: document, onJson: onJson, animations: workspaceAnimations(workspace), presets: workspacePresets(workspace)),
       DocumentKind.textAnimation || DocumentKind.presets => guiDataEditor(document, onJson, workspace) ?? _form(document, json),
@@ -581,7 +715,7 @@ class _DocumentPaneState extends State<DocumentPane> {
   Widget _conversation(AnimusDocument document) {
     final JsonEdit onJson = component.onJson;
     if (document.json is! Map<String, Object?>) {
-      return const dom.section(classes: 'animus-panel', <Widget>[Component.text('Not a JSON object. Fix it in Code.')]);
+      return const AppAlert(tone: AlertTone.warning, message: 'Not a JSON object. Fix it in Code.');
     }
     return ConversationView(
       key: ValueKey<String>('conversation:${document.id}'),
@@ -589,10 +723,9 @@ class _DocumentPaneState extends State<DocumentPane> {
       onJson: onJson,
       catalog: _schemas.catalog,
       workspaceDocuments: component.workspaceDocuments,
+      library: component.library,
+      load: component.load,
       onCommit: component.onCommit,
-      onServerPreview: component.onServerPreview,
-      onOpenVisual: () => component.onView(ViewMode.visual),
-      newHref: component.newConversationHref,
     );
   }
 
@@ -604,17 +737,19 @@ class _DocumentPaneState extends State<DocumentPane> {
     void put(JsonMap next) => component.onJson(writeAt(json, const <JsonStep>[], next), coalesce: 'form');
     final String? missingRig = document.kind == DocumentKind.animation ? asString(json['rig']) : null;
     return dom.section(
-      classes: 'animus-panel animus-inspector animus-document-form',
+      classes: 'animus-document-form',
       attributes: <String, String>{'aria-label': '${document.kind.label} fields', 'data-form': document.kind.wireName},
       <Widget>[
-        if (missingRig != null)
-          dom.p(classes: 'animus-muted animus-form-note', attributes: const <String, String>{'data-form': 'rig-missing'}, <Widget>[
-            withTip(Component.text('Rig $missingRig is not in this workspace.'), 'The timeline needs the rig. Add or import it, and this animation opens in the rig editor.'),
-          ]),
-        if (schema != null)
-          InspectObject(schema: schema, node: schema.root, value: json, path: r'$', diagnostics: _allDiagnostics(document), skip: const <String>{'revision'}, onChanged: put)
-        else
-          KeyValueEditor(value: json, label: '${document.kind.label} fields', onChanged: put),
+        stack(spacing: 12, <Widget>[
+          if (missingRig != null)
+            dom.p(attributes: const <String, String>{'data-form': 'rig-missing'}, <Widget>[
+              TipLabel(label: Component.text('Rig $missingRig is not in this workspace.'), tip: 'The timeline needs the rig. Add or import it, and this animation opens in the rig editor.'),
+            ]),
+          if (schema != null)
+            InspectObject(schema: schema, node: schema.root, value: json, path: r'$', diagnostics: _allDiagnostics(document), skip: const <String>{'revision'}, onChanged: put)
+          else
+            KeyValueEditor(value: json, label: '${document.kind.label} fields', onChanged: put),
+        ]),
       ],
     );
   }
@@ -624,6 +759,13 @@ class _DocumentPaneState extends State<DocumentPane> {
   JsonMap? _routeOf(AnimusDocument document) {
     final JsonMap navigation = asMap(asMap(asMap(document.json)['modules'])[navigationModule]);
     if (navigation.isEmpty) return null;
+    // An NPC playing a recording walks the recorded path.
+    if (asString(navigation['recording']) case final String recording) {
+      for (final AnimusDocument other in component.workspaceDocuments) {
+        if (other.kind == DocumentKind.recording && other.id == recording) return recordingPathOf(other.json);
+      }
+      return null;
+    }
     final String? reference = asString(navigation['route']);
     if (reference == null) return navigation;
     for (final AnimusDocument other in component.workspaceDocuments) {
@@ -642,9 +784,6 @@ class _DocumentPaneState extends State<DocumentPane> {
     return null;
   }
 
-  /// Kinds whose Preview is the 3D stage, which Split shows beside the code.
-  bool _staged(AnimusDocument document) => document.kind == DocumentKind.npc && document.json is Map<String, Object?>;
-
   /// The rig an NPC's `rig` names, with that rig's animations.
   (AnimusDocument?, List<AnimusDocument>) _rigOf(AnimusDocument document) {
     final String? id = asString(asMap(asMap(document.json)['rig'])['id']);
@@ -658,155 +797,55 @@ class _DocumentPaneState extends State<DocumentPane> {
     return (rig, animations);
   }
 
+  /// The pane beside the form: the NPC on the 3D stage, or a behavior's
+  /// Test (a dry run in the browser).
   Widget _preview(AnimusDocument document) {
-    if (_staged(document)) {
-      // The stage shows what the server runs: the NPC over its groups.
-      final NpcEffective? effective = effectiveNpc(asMap(document.json), workspaceGroups(component.workspaceDocuments));
-      final AnimusDocument staged = effective == null ? document : document.copyWith(json: effective.json, source: prettyJson(effective.json));
-      final (AnimusDocument? rig, List<AnimusDocument> animations) = _rigOf(staged);
-      return NpcPreview(
-        key: ValueKey<String>('npc-preview:${document.id}'),
-        document: staged,
-        skinDocument: _skinFor(staged) ?? component.skinDocument,
-        route: _routeOf(staged),
-        rig: rig,
-        animations: animations,
-        resources: component.resources,
-      );
-    }
-    if (document.kind == DocumentKind.behavior && document.json is Map<String, Object?>) {
+    if (document.kind == DocumentKind.behavior) {
       return DryRunPanel(
         key: ValueKey<String>('dry-run:${document.id}'),
         document: document,
         workspaceDocuments: component.workspaceDocuments,
         resources: component.resources,
         onOpen: component.onOpen,
+        band: _place == PreviewPlace.band,
       );
     }
-    if (document.kind == DocumentKind.recording) {
-      return RecordingView(key: ValueKey<String>('recording-preview:${document.id}'), document: document, facts: false);
-    }
-    final Object? json = document.json;
-    if (json is Map<String, Object?> && document.kind == DocumentKind.quest) {
-      return QuestPreview(key: ValueKey<String>('quest-preview:${document.id}'), document: document, npcs: QuestNpcs(component.workspaceDocuments));
-    }
-    if (json is Map<String, Object?> && guiEditorKinds.contains(document.kind)) {
-      return switch (document.kind) {
-        DocumentKind.inventory => InventoryPreview(document: document),
-        DocumentKind.shop => ShopPreview(document: document, layouts: workspaceLayouts(component.workspaceDocuments)),
-        DocumentKind.menu => MenuPreview(document: document, animations: workspaceAnimations(component.workspaceDocuments)),
-        _ => HologramPreview(document: document, animations: workspaceAnimations(component.workspaceDocuments)),
-      };
-    }
-    final Map<String, Object?> object = json is Map<String, Object?> ? json : const <String, Object?>{};
-    final List<(String, String)> facts = previewFacts(document.kind, object);
-    return dom.section(classes: 'animus-panel animus-preview', <Widget>[
-      dom.dl(<Widget>[
-        for (final (String label, String value) in facts) ...<Widget>[
-          dom.dt(<Widget>[Component.text(label)]),
-          dom.dd(<Widget>[Component.text(value)]),
-        ],
-      ]),
-    ]);
+    // The stage shows what the server runs: the NPC over its groups.
+    final NpcEffective? effective = effectiveNpc(asMap(document.json), workspaceGroups(component.workspaceDocuments));
+    final AnimusDocument staged = effective == null ? document : document.copyWith(json: effective.json, source: prettyJson(effective.json));
+    final (AnimusDocument? rig, List<AnimusDocument> animations) = _rigOf(staged);
+    return NpcPreview(
+      key: ValueKey<String>('npc-preview:${document.id}'),
+      document: staged,
+      skinDocument: _skinFor(staged) ?? component.skinDocument,
+      route: _routeOf(staged),
+      rig: rig,
+      animations: animations,
+      resources: component.resources,
+      neighbours: component.npcLibrary,
+      skinTexture: component.skinTexture,
+      collapsible: _place == PreviewPlace.band,
+    );
   }
 
   Widget _code(AnimusDocument document) {
-    final String text = _draft ?? document.source;
     final InspectSchemas schemas = _schemas;
     final ValueHints? hints = switch (document.kind) {
       DocumentKind.behavior => behaviorHints(guiIds: <DocumentKind, List<String>>{for (final DocumentKind kind in <DocumentKind>[DocumentKind.inventory, DocumentKind.menu, DocumentKind.shop]) kind: _ids(kind)}),
       DocumentKind.npc => npcHints(behaviorIds: npcBehaviorIds(component.workspaceDocuments), skinIds: _ids(DocumentKind.skin)),
       _ => null,
     };
-    return dom.section(classes: 'animus-panel animus-code', <Widget>[
-      JsonCodeEditor(
-        text: text,
-        onChanged: _edit,
-        schema: schemas.forKind(document.kind),
-        catalog: document.kind == DocumentKind.behavior ? schemas.catalog : null,
-        hints: hints,
-        diagnostics: document.diagnostics,
-        serverDiagnostics: component.serverDiagnostics,
-      ),
-      dom.div(classes: 'animus-row', <Widget>[
-        Button.primary(
-          label: 'Apply to draft',
-          size: ButtonSize.small,
-          disabled: _draft == null || _draftError != null || _recordingRefusal != null,
-          onPressed: _apply,
-        ),
-        if (_draft != null)
-          Button.ghost(
-            label: 'Discard',
-            size: ButtonSize.small,
-            onPressed: _discard,
-          ),
-        if (_recordingRefusal != null && _draftError == null)
-          dom.span(classes: 'animus-error', attributes: const <String, String>{'data-recording': 'code-refusal', 'role': 'alert'}, <Widget>[
-            Component.text('Not applied: $_recordingRefusal'),
-          ]),
-        if (_draftError != null)
-          dom.span(classes: 'animus-error', <Widget>[
-            Component.text('Not valid JSON: $_draftError. Fix it or Discard.'),
-          ]),
-      ]),
-    ]);
-  }
-}
-
-/// A one-line description of a JSON value for the Visual table.
-String summarize(Object? value) {
-  if (value is Map<String, Object?>) {
-    return value.isEmpty ? '{}' : '{ ${value.keys.take(6).join(', ')}${value.length > 6 ? ', ...' : ''} }';
-  }
-  if (value is List<Object?>) return '${value.length} item${value.length == 1 ? '' : 's'}';
-  if (value is String) return value;
-  return '$value';
-}
-
-/// Labelled facts the Preview shows for a kind, until the 3D stage renders it.
-List<(String, String)> previewFacts(DocumentKind kind, Map<String, Object?> json) {
-  String text(Object? value) => value == null ? '-' : summarize(value);
-  int count(Object? value) => value is Map<String, Object?> ? value.length : (value is List<Object?> ? value.length : 0);
-  switch (kind) {
-    case DocumentKind.npc:
-      final Object? position = json['position'];
-      final Map<String, Object?> at = position is Map<String, Object?> ? position : const <String, Object?>{};
-      return <(String, String)>[
-        ('Name', json['name'] is String ? guiPlainText(json['name']! as String) : text(json['name'])),
-        ('Type', text(json['type'])),
-        ('Spawned', text(json['spawned'])),
-        ('Position', '${text(at['world'])} ${text(at['x'])}, ${text(at['y'])}, ${text(at['z'])}'),
-        ('Behaviors', json['behaviors'] is List<Object?> ? (json['behaviors']! as List<Object?>).join(', ') : '-'),
-        ('Modules', json['modules'] is Map<String, Object?> ? (json['modules']! as Map<String, Object?>).keys.join(', ') : '-'),
-      ];
-    case DocumentKind.behavior:
-      return <(String, String)>[
-        ('Entry', text(json['entry'])),
-        ('Routines', '${count(json['routines'])}'),
-        ('Triggers', '${count(json['triggers'])}'),
-        ('Variables', '${count(json['variables'])}'),
-      ];
-    case DocumentKind.serverBehaviors:
-      final List<Object?> listed = json['behaviors'] is List<Object?> ? json['behaviors']! as List<Object?> : const <Object?>[];
-      return <(String, String)>[
-        ('Runs', listed.isEmpty ? 'nothing (empty list)' : '${listed.length} server behavior${listed.length == 1 ? '' : 's'}'),
-        ('Order', listed.isEmpty ? '-' : listed.join(', ')),
-      ];
-    case DocumentKind.rig:
-      return <(String, String)>[
-        ('Body', text(json['body'] ?? 'hidden')),
-        ('Bones', '${count(json['bones'])}'),
-        ('Animations', json['animations'] is Map<String, Object?> ? (json['animations']! as Map<String, Object?>).keys.join(', ') : '-'),
-      ];
-    case DocumentKind.animation:
-      return <(String, String)>[
-        ('Rig', text(json['rig'])),
-        ('Duration', '${text(json['durationTicks'])} ticks'),
-        ('Loop', text(json['loop'] ?? 'once')),
-        ('Tracks', '${count(json['tracks'])}'),
-      ];
-    default:
-      return <(String, String)>[for (final MapEntry<String, Object?> field in json.entries.take(8)) (field.key, text(field.value))];
+    return CodeView(
+      text: _draft ?? document.source,
+      onChanged: _edit,
+      onUse: _draft == null || _draftError != null || _recordingRefusal != null ? null : _apply,
+      onDiscard: _draft == null ? null : _discard,
+      schema: schemas.forKind(document.kind),
+      catalog: document.kind == DocumentKind.behavior ? schemas.catalog : null,
+      hints: hints,
+      diagnostics: document.diagnostics,
+      serverDiagnostics: component.serverDiagnostics,
+      refusal: _draftError == null ? _recordingRefusal : null,
+    );
   }
 }

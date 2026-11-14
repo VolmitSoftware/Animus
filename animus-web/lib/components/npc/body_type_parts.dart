@@ -6,15 +6,19 @@ library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
+import '../../logic/inspect/named_ids.dart' show bodiesInWords;
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/npc/npc_appearance.dart';
 import '../../model/animus_document.dart';
+import '../../ui/action_row.dart';
+import '../../ui/field.dart';
 import '../gui/gui_fields.dart';
 import '../inspect/inspect_fields.dart';
-import 'npc_section.dart';
+import 'npc_parts.dart';
+import '../../ui/stack.dart';
+import '../../ui/problem_text.dart';
 
 /// Headings for each body type's own settings; the rest use the body's name.
 const Map<String, String> _titles = <String, String>{
@@ -41,7 +45,7 @@ String _title(String field) => _titles[field] ?? '${field[0].toUpperCase()}${fie
 /// The settings field of [type], edited with the schema's typed fields;
 /// nothing for bodies without settings.
 class BodySettingsEditor extends StatelessWidget {
-  const BodySettingsEditor({required this.type, required this.doc, required this.schema, required this.onChanged, this.diagnostics = const <Diagnostic>[], super.key});
+  const BodySettingsEditor({required this.type, required this.doc, required this.schema, required this.onChanged, this.diagnostics = const <Diagnostic>[], this.heading = true, super.key});
 
   final String type;
 
@@ -53,6 +57,9 @@ class BodySettingsEditor extends StatelessWidget {
   final void Function(String field, Object? value) onChanged;
   final List<Diagnostic> diagnostics;
 
+  /// Whether the settings sit under their own heading ("Villager").
+  final bool heading;
+
   @override
   Widget build(BuildContext context) {
     final String? field = bodySettingsField(type);
@@ -62,7 +69,7 @@ class BodySettingsEditor extends StatelessWidget {
     if (node.isEmpty) return const dom.div(<Widget>[]);
     final String title = _title(field);
     return dom.div(attributes: <String, String>{'role': 'group', 'aria-label': '$title settings', 'data-settings': field}, <Widget>[
-      NpcSubhead(title, help: asString(node['description'])),
+      if (heading) NpcHeading(title, tip: switch (asString(node['description'])) { final String tip => bodiesInWords(tip), null => null }),
       InspectObject(
         schema: schema,
         node: node,
@@ -83,11 +90,11 @@ class NoSkinNote extends StatelessWidget {
   final List<Diagnostic> diagnostics;
 
   @override
-  Widget build(BuildContext context) => dom.div(<Widget>[
-        const dom.p(classes: 'animus-gui-help', <Widget>[Component.text('Only player bodies wear skins.')]),
-        for (final Diagnostic problem in diagnosticsAt(diagnostics, r'$.skin'))
-          dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
-      ]);
+  Widget build(BuildContext context) => Field(
+        label: 'Skin',
+        problems: diagnosticsAt(diagnostics, r'$.skin'),
+        child: mutedText('Only player bodies wear skins.'),
+      );
 }
 
 /// Fields left from another body type, each with a way to drop it, so a type
@@ -105,14 +112,15 @@ class MisplacedFields extends StatelessWidget {
         attributes: const <String, String>{'role': 'group', 'aria-label': 'Fields this body cannot show'},
         <Widget>[
           for (final MisplacedField field in fields)
-            dom.div(key: ValueKey<String>('misplaced:${field.field}'), classes: 'animus-row', <Widget>[
-              dom.span(classes: 'animus-gui-problem is-error', <Widget>[
-                dom.code(<Widget>[Component.text(field.field)]),
-                Component.text(' ${field.reason}'),
-              ]),
-              Button.ghost(label: 'Remove ${field.field}', size: ButtonSize.small, onPressed: () => onRemove(field.field)),
-            ]),
-          if (fields.length > 1) Button.ghost(label: 'Remove all ${fields.length}', size: ButtonSize.small, onPressed: onRemoveAll),
+            ActionRow(
+              key: ValueKey<String>('misplaced:${field.field}'),
+              label: 'Left over ${field.field}',
+              leading: <Widget>[
+                problemText(field.reason),
+              ],
+              secondary: <RowAction>[RowAction('Remove ${field.field}', () => onRemove(field.field))],
+            ),
+          if (fields.length > 1) ActionRow(label: 'Left over fields', secondary: <RowAction>[RowAction('Remove all ${fields.length}', onRemoveAll)]),
         ],
       );
 }

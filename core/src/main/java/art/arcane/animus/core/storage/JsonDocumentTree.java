@@ -10,6 +10,8 @@ public final class JsonDocumentTree {
     public static List<Path> files(Path directory) throws IOException { return files(directory, 250_000, 100_000, 8); }
     /** Generated trees mirror behavior identifiers, which nest deeper than definition directories. */
     public static List<Path> files(Path directory, int depthLimit) throws IOException { return files(directory, 250_000, 100_000, depthLimit); }
+    /** As {@link #files(Path, int)}, naming each skipped entry to {@code skipped} instead of the log. */
+    public static List<Path> files(Path directory, int depthLimit, java.util.function.Consumer<String> skipped) throws IOException { return files(directory, 250_000, 100_000, depthLimit, skipped); }
 
     /**
      * As {@link #files(Path, int)}, but a symlink or a too-deep entry refuses the whole tree. Imports use it: they install

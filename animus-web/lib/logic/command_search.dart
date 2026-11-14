@@ -15,16 +15,33 @@ class PaletteCommand {
 }
 
 /// The commands matching [query]: every word must appear in the label, the
-/// hint or a keyword, ignoring case. Order is kept.
+/// hint or a keyword, ignoring case. Best matches first, otherwise in order:
+/// a label, keyword or id part (`world/citizens-60` has the parts
+/// `world` and `citizens-60`) equal to the query, then one starting with it,
+/// then a word of the label starting with it, then the rest.
 List<PaletteCommand> filterCommands(List<PaletteCommand> commands, String query) {
-  final List<String> words = query.toLowerCase().split(RegExp(r'\s+')).where((String word) => word.isNotEmpty).toList();
+  final String whole = query.trim().toLowerCase();
+  final List<String> words = whole.split(RegExp(r'\s+')).where((String word) => word.isNotEmpty).toList();
   if (words.isEmpty) return commands;
-  return <PaletteCommand>[
-    for (final PaletteCommand command in commands)
+  final List<(int, int, PaletteCommand)> matched = <(int, int, PaletteCommand)>[
+    for (int at = 0; at < commands.length; at++)
       if (words.every((String word) =>
-          command.label.toLowerCase().contains(word) ||
-          (command.hint?.toLowerCase().contains(word) ?? false) ||
-          command.keywords.any((String keyword) => keyword.toLowerCase().contains(word))))
-        command,
+          commands[at].label.toLowerCase().contains(word) ||
+          (commands[at].hint?.toLowerCase().contains(word) ?? false) ||
+          commands[at].keywords.any((String keyword) => keyword.toLowerCase().contains(word))))
+        (_rank(commands[at], whole), at, commands[at]),
+  ]..sort(((int, int, PaletteCommand) a, (int, int, PaletteCommand) b) => a.$1 != b.$1 ? a.$1.compareTo(b.$1) : a.$2.compareTo(b.$2));
+  return <PaletteCommand>[for (final (int, int, PaletteCommand) each in matched) each.$3];
+}
+
+int _rank(PaletteCommand command, String query) {
+  final String label = command.label.toLowerCase();
+  final List<String> names = <String>[
+    label,
+    for (final String keyword in command.keywords) ...<String>[keyword.toLowerCase(), ...keyword.toLowerCase().split(RegExp('[/:]'))],
   ];
+  if (names.contains(query)) return 0;
+  if (names.any((String name) => name.startsWith(query))) return 1;
+  if (label.split(RegExp(r'\s+')).any((String word) => word.startsWith(query))) return 2;
+  return 3;
 }

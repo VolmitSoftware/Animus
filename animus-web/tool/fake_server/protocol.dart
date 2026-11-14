@@ -78,14 +78,26 @@ class FakeResponse {
       FakeResponse(status, body: body, headers: <String, String>{...headers, ...extra});
 }
 
+/// Error codes whose answers always carry `retryAfterMillis` and `Retry-After`.
+const Set<String> retryCodes = <String>{'rate-limited', 'busy'};
+
 /// A refused request: an `error-code` and the status `errorStatus` gives it.
 class ApiError implements Exception {
-  ApiError(this.code, this.message, {this.diagnostics, this.retryAfterMillis});
+  ApiError(this.code, this.message, {this.diagnostics, this.retryAfterMillis, this.scope}) {
+    if (retryAfterMillis == null && retryCodes.contains(code)) throw ArgumentError('A $code answer needs retryAfterMillis.');
+    if (scope != null && code != 'scope-missing') throw ArgumentError('Only scope-missing names a scope.');
+  }
+
+  /// A `scope-missing` refusal for [scope], named in the error as the server does.
+  ApiError.scope(String this.scope, this.message) : code = 'scope-missing', diagnostics = null, retryAfterMillis = null;
 
   final String code;
   final String message;
   final List<Map<String, Object?>>? diagnostics;
   final int? retryAfterMillis;
+
+  /// The scope a `scope-missing` refusal lacks.
+  final String? scope;
 
   int get status => errorStatus(code);
 
@@ -95,6 +107,7 @@ class ApiError implements Exception {
           'message': message.length > 2048 ? message.substring(0, 2048) : message,
           if (diagnostics != null) 'diagnostics': diagnostics,
           if (retryAfterMillis != null) 'retryAfterMillis': retryAfterMillis,
+          'scope': ?scope,
         },
       };
 
@@ -200,27 +213,33 @@ Object? copyJson(Object? value) {
   return value;
 }
 
-/// The object's `revision` as a non-negative integer, or 0.
-int revisionOf(String? content) {
-  if (content == null) return 0;
+/// [content] parsed as one JSON object, or why it is not one.
+({Map<String, Object?>? json, String? problem}) parseObject(String content) {
   try {
     final Object? json = jsonDecode(content);
-    if (json is! Map<String, Object?>) return 0;
-    final Object? revision = json['revision'];
-    if (revision is int) return max(0, revision);
-    if (revision is double && revision == revision.roundToDouble()) return max(0, revision.toInt());
-    return 0;
-  } on FormatException {
-    return 0;
+    return json is Map<String, Object?> ? (json: json, problem: null) : (json: null, problem: 'not an object');
+  } on FormatException catch (unreadable) {
+    return (json: null, problem: unreadable.message);
   }
 }
 
-/// The stored document parsed, or an empty object when it is not one JSON object.
-Map<String, Object?> sourceOf(String content) {
+/// The object's `revision` as a non-negative integer, or 0.
+int revisionIn(Map<String, Object?>? json) {
+  final Object? revision = json?['revision'];
+  if (revision is int) return max(0, revision);
+  if (revision is double && revision == revision.roundToDouble()) return max(0, revision.toInt());
+  return 0;
+}
+
+int revisionOf(String? content) => content == null ? 0 : revisionIn(parseObject(content).json);
+
+/// One percent-encoded path segment, decoded.
+String decodePathSegment(String segment) {
   try {
-    final Object? json = jsonDecode(content);
-    return json is Map<String, Object?> ? json : <String, Object?>{};
+    return Uri.decodeComponent(segment);
+  } on ArgumentError {
+    throw invalid('The path is not URL encoded.');
   } on FormatException {
-    return <String, Object?>{};
+    throw invalid('The path is not URL encoded.');
   }
 }

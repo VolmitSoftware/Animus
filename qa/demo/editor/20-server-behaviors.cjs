@@ -1,45 +1,49 @@
-// The Server behavior switch: town:bells becomes server-wide and its trigger
-// list changes to player and server events; then server-behaviors.json is
-// created from the New page with every server behavior in the workspace.
+// The Server behavior switch (Advanced): town:bells becomes server-wide and its
+// trigger events change from NPC events to player and server events; then the
+// server behaviors list is made from New document with every server behavior.
 // Offline: no fake server needed. fixture: fixtures/harbor-server (opened as a
 // data folder before filming).
 const path = require('node:path');
 
 module.exports = async (L) => {
   const f = await L.session({id: '20-server-behaviors'});
+  await f.context.addInitScript(() => { try { localStorage.setItem('animus.mode', 'advanced'); } catch (e) {} });
   await f.setup.goto(`${L.SITE}/#/`);
-  const chooser = f.setup.waitForEvent('filechooser');
-  await f.setup.getByRole('button', {name: 'Open folder'}).click();
+  const chooser = f.setup.waitForEvent('filechooser', {timeout: 20000});
+  await L.shell.startAction(f.setup, 'Open folder');
   await (await chooser).setFiles(path.join(__dirname, 'fixtures', 'harbor-server'));
-  await f.setup.waitForFunction(() => location.hash.startsWith('#/workspace/'));
-  const ws = f.setup.url().split('#')[1].split('/').slice(0, 3).join('/');
-  const page = await f.start(`${L.SITE}/#${ws}/behavior/town%3Abells`);
+  await L.shell.workspaceOpen(f.setup);
+  const ws = await L.workspaceHash(f.setup);
+  await f.setup.waitForTimeout(1200);
+  const page = await f.start(`${L.SITE}/${ws}/behavior/town%3Abells`);
   const h = L.human(f);
-  await page.getByRole('tab', {name: 'Visual'}).click();
-  await page.getByRole('region', {name: 'Behavior editor'}).waitFor();
-  // Section headers are <summary> elements with no accessible name. Closing
-  // Routines before filming keeps the switch and the triggers on one screen.
-  await page.locator('summary', {hasText: /^Routines/}).click();
-  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.getByRole('heading', {name: 'Bells', level: 1}).waitFor();
+  await L.clearToasts(page);
+  // Parts is a native disclosure (details); closing it before filming keeps the switch and the triggers on one screen.
+  await page.getByRole('group').filter({hasText: /^Parts/}).locator('summary').first().click();
+  await page.mouse.move(f.pos.x, f.pos.y);
   await page.waitForTimeout(1500);
-  const trigger = page.getByRole('combobox', {name: 'Add a trigger'});
+  const event = page.getByRole('combobox', {name: 'Event of trigger 1'});
   f.mark();
-  await h.click(trigger, {after: 900});
-  await h.result(1600);
-  await page.keyboard.press('Escape');
-  await h.pause(400);
-  const server = page.getByRole('checkbox', {name: 'Run on the server with no NPC'});
+  await h.click(event, {after: 900});
+  await h.hover(L.optionLabelled(page, 'On click'), 900);
+  await h.result(1500);
+  await h.key('Escape', 500);
+  const server = page.getByRole('switch', {name: 'Run on the server'});
   await h.hover(server, 900);
   await h.click(server, {after: 1000});
-  await h.click(trigger, {after: 900});
-  await h.hover(page.getByRole('option', {name: 'player_join', exact: true}), 600);
+  await h.click(event, {after: 900});
+  await h.hover(L.optionLabelled(page, 'Player joins'), 900);
   await h.result(1800);
-  await page.keyboard.press('Escape');
-  await h.pause(400);
-  await h.click(page.getByRole('link', {name: 'New document'}), {after: 900});
-  await h.click(page.getByRole('link', {name: /^Server behaviors list/}), {after: 900});
-  await h.hover(page.getByText(/^Creates server-behaviors\.json with/), 1500);
-  await h.click(page.getByRole('button', {name: 'Create server behaviors list'}), {after: 1200});
+  await h.key('Escape', 500);
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await h.key('n', 900);
+  await h.pick(page.getByRole('combobox', {name: 'Kind'}), 'server-behaviors', {after: 900});
+  await h.hover(page.getByText(/^Starts with \d+ server behaviors/), 1500);
+  await h.click(page.getByRole('main').getByRole('button', {name: 'Create', exact: true}), {after: 1200});
+  const listed = page.getByRole('list', {name: 'Listed server behaviors'});
+  await listed.waitFor();
+  await h.moveTo(listed.getByText('town:bells'), {ox: 1.4});
   await h.result(2400);
   return L.finish(f, {closing: 'town:bells runs server-wide and is listed in server-behaviors.json'});
 };

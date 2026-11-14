@@ -1,6 +1,7 @@
 import 'package:animus_editor/logic/rig_edit.dart';
 import 'package:animus_editor/logic/rig_gizmo_edit.dart';
 import 'package:animus_editor/logic/rig_sampler.dart';
+import 'package:animus_editor/logic/rig_view.dart';
 import 'package:animus_editor/mc/npc/mc_text.dart';
 import 'package:animus_editor/mc/npc/npc_look.dart';
 import 'package:animus_editor/mc/npc/npc_playground.dart';
@@ -102,9 +103,10 @@ void main() {
         'body': <String, Object?>{'id': 'minecraft:white_carpet'},
       });
       final String notes = scene.notes.join('\n');
-      expect(notes, contains('chest: minecraft:elytra is worn on the back'));
-      expect(notes, contains('head: minecraft:player_head is worn on the head'));
-      expect(notes, contains('body: minecraft:white_carpet is not drawn: players do not show the body slot'));
+      expect(notes, contains('Elytra is worn on the back'));
+      expect(notes, contains('Player head is worn on the head'));
+      expect(notes, contains('White carpet is not drawn: players do not show the body slot'));
+      expect(notes, isNot(contains('minecraft:')));
       expect(scene.scene.byKey['equipment:head'], isNull);
     });
 
@@ -113,9 +115,97 @@ void main() {
       expect(player(const <String, Object?>{}).texts.single.dim, isFalse);
     });
 
-    test('should list the body types when the type is not one', () {
+    test('should name a type that is not a body and point at the body list', () {
       final NpcScene scene = npcScene(NpcLook.fromDefinition(<String, Object?>{'type': 'minecraft:marker'}));
-      expect(scene.notes.single, allOf(contains('minecraft:marker is not a body type'), contains('minecraft:armor_stand'), contains('minecraft:ender_dragon')));
+      expect(scene.notes.single, 'Marker is not a body Animus shows. Pick a body from the list.');
+    });
+  });
+
+  group('rig editor view', () {
+    test('should open an animation on the Timeline tab and a rig on Bones', () {
+      expect(initialRigPane(animation: true), RigPane.timeline);
+      expect(initialRigPane(animation: false), RigPane.bones);
+      expect(<String>[for (final RigPane pane in RigPane.values) pane.label], <String>['Bones', 'Inspector', 'Timeline']);
+    });
+
+    test('should commit a bone name only when it changed', () {
+      expect(boneRenameTarget('arm', ' arm '), isNull);
+      expect(boneRenameTarget('arm', '   '), isNull);
+      expect(boneRenameTarget('arm', ' right-arm '), 'right-arm');
+    });
+
+    test('should count the tracks a bone keys across animations', () {
+      expect(boneTracks(<JsonMap>[walk(), walk()], 'arm'), (tracks: 4, animations: 2));
+      expect(boneTracks(<JsonMap>[walk()], 'ghost'), (tracks: 0, animations: 0));
+    });
+
+    test('should say what deleting a bone takes with it', () {
+      expect(
+        deleteBoneMessage(parent: 'torso', children: 0, tracks: 2, animations: 1),
+        'Its 2 tracks in 1 animation go too. Undo brings it back.',
+      );
+      expect(
+        deleteBoneMessage(parent: null, children: 2, tracks: 1, animations: 1),
+        'Its 1 track in 1 animation goes too. Its 2 child bones move to the rig origin. Undo brings it back.',
+      );
+      expect(deleteBoneMessage(parent: 'torso', children: 1, tracks: 0, animations: 0), 'Its child bone moves to torso. Undo brings it back.');
+    });
+
+    test('should show seconds beside ticks', () {
+      expect(secondsLabel(20), '1 s');
+      expect(secondsLabel(30), '1.5 s');
+      expect(secondsLabel(7.5), '0.38 s');
+      expect(playheadReadout(7.5, 20), '7.5 / 20 ticks · 0.38 s');
+    });
+
+    test('should name a track by its bone, channel and a blend other than replace', () {
+      expect(trackLabel(<String, Object?>{'bone': 'torso', 'target': 'rotation'}), 'torso rotation');
+      expect(trackLabel(<String, Object?>{'bone': 'head', 'target': 'translation', 'blend': 'add'}), 'head position · add');
+    });
+  });
+
+  group('gizmo handles on screen', () {
+    test('should hide the handles while the bone is off the stage', () {
+      expect(placeHandles(-10, 50, <(double, double)?>[(30, 50), (-10, 10), null], 400, 300), isEmpty);
+    });
+
+    test('should pull a handle that would leave the stage back inside the safe area', () {
+      final List<HandleSpot> spots = placeHandles(100, 100, <(double, double)?>[null, (100, -200), null], 400, 300);
+      expect(spots.single.axis, 1);
+      expect(spots.single.x, closeTo(100, 1e-9));
+      expect(spots.single.y, closeTo(gizmoSafeInset, 1e-9));
+    });
+
+    test('should give an arm seen end on a length that can be grabbed', () {
+      final HandleSpot spot = placeHandles(200, 150, <(double, double)?>[(203, 150), null, null], 400, 300).single;
+      expect(spot.x - 200, closeTo(gizmoMinArm, 1e-9));
+      expect(spot.y, closeTo(150, 1e-9));
+    });
+
+    test('should spread handles that land on each other', () {
+      final List<HandleSpot> spots = placeHandles(200, 150, <(double, double)?>[(240, 150), (240, 151), (200, 150)], 400, 300);
+      expect(spots, hasLength(3));
+      for (int a = 0; a < spots.length; a++) {
+        expect(spots[a].x, inInclusiveRange(gizmoSafeInset, 400 - gizmoSafeInset));
+        expect(spots[a].y, inInclusiveRange(gizmoSafeInset, 300 - gizmoSafeInset));
+        for (int b = a + 1; b < spots.length; b++) {
+          final double dx = spots[a].x - spots[b].x, dy = spots[a].y - spots[b].y;
+          expect(dx * dx + dy * dy, greaterThanOrEqualTo(gizmoHandleGap * gizmoHandleGap - 1e-6), reason: 'handles $a and $b overlap');
+        }
+      }
+    });
+
+    test('should keep 44 px touch handles apart', () {
+      final List<HandleSpot> spots = placeHandles(200, 150, <(double, double)?>[(240, 150), (200, 120), (190, 160)], 400, 300, gap: gizmoTouchGap, minArm: gizmoTouchArm);
+      expect(spots, hasLength(3));
+      for (int a = 0; a < spots.length; a++) {
+        final double ox = spots[a].x - 200, oy = spots[a].y - 150;
+        expect(ox * ox + oy * oy, greaterThanOrEqualTo(gizmoTouchArm * gizmoTouchArm - 1e-6), reason: 'handle $a sits on the bone');
+        for (int b = a + 1; b < spots.length; b++) {
+          final double dx = spots[a].x - spots[b].x, dy = spots[a].y - spots[b].y;
+          expect(dx * dx + dy * dy, greaterThanOrEqualTo(gizmoTouchGap * gizmoTouchGap - 1e-6), reason: 'handles $a and $b overlap');
+        }
+      }
     });
   });
 

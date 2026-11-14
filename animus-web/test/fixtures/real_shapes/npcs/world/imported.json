@@ -1,0 +1,218 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "6b1f0c52-3e0a-4c8d-9a51-0d2b7c6e001f",
+  "id": "imported",
+  "group": "world",
+  "name": "Imported",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 62.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "citizens:review": {
+      "scoreboardtrait": {
+        "tags": [],
+        "color": "WHITE"
+      },
+      "lookclose": {
+        "enabled": true,
+        "range": 5,
+        "realisticLooking": false
+      },
+      "equipment": {
+        "hand": null,
+        "helmet": null
+      },
+      "location": {
+        "world": "world",
+        "x": 1,
+        "y": 64,
+        "z": 1,
+        "yaw": 0,
+        "pitch": 0
+      },
+      "inventory": {
+        "contents": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      "waypoints": {
+        "provider": "linear",
+        "points": [
+          {
+            "x": 0,
+            "y": 64,
+            "z": 0
+          },
+          {
+            "x": 1,
+            "y": 64,
+            "z": 0
+          },
+          {
+            "x": 2,
+            "y": 64,
+            "z": 0
+          },
+          {
+            "x": 3,
+            "y": 64,
+            "z": 0
+          },
+          {
+            "x": 4,
+            "y": 64,
+            "z": 0
+          },
+          {
+            "x": 5,
+            "y": 64,
+            "z": 0
+          },
+          {
+            "x": 6,
+            "y": 64,
+            "z": 0
+          },
+          {
+            "x": 7,
+            "y": 64,
+            "z": 0
+          }
+        ]
+      },
+      "trait0": {
+        "value": 0,
+        "enabled": true
+      },
+      "trait1": {
+        "value": 1,
+        "enabled": false
+      },
+      "trait2": {
+        "value": 2,
+        "enabled": true
+      },
+      "trait3": {
+        "value": 3,
+        "enabled": false
+      },
+      "trait4": {
+        "value": 4,
+        "enabled": true
+      },
+      "trait5": {
+        "value": 5,
+        "enabled": false
+      },
+      "trait6": {
+        "value": 6,
+        "enabled": true
+      },
+      "trait7": {
+        "value": 7,
+        "enabled": false
+      },
+      "trait8": {
+        "value": 8,
+        "enabled": true
+      },
+      "trait9": {
+        "value": 9,
+        "enabled": false
+      },
+      "trait10": {
+        "value": 10,
+        "enabled": true
+      },
+      "trait11": {
+        "value": 11,
+        "enabled": false
+      },
+      "trait12": {
+        "value": 12,
+        "enabled": true
+      },
+      "trait13": {
+        "value": 13,
+        "enabled": false
+      },
+      "trait14": {
+        "value": 14,
+        "enabled": true
+      },
+      "trait15": {
+        "value": 15,
+        "enabled": false
+      },
+      "trait16": {
+        "value": 16,
+        "enabled": true
+      },
+      "trait17": {
+        "value": 17,
+        "enabled": false
+      },
+      "trait18": {
+        "value": 18,
+        "enabled": true
+      },
+      "trait19": {
+        "value": 19,
+        "enabled": false
+      },
+      "trait20": {
+        "value": 20,
+        "enabled": true
+      },
+      "trait21": {
+        "value": 21,
+        "enabled": false
+      },
+      "trait22": {
+        "value": 22,
+        "enabled": true
+      },
+      "trait23": {
+        "value": 23,
+        "enabled": false
+      },
+      "trait24": {
+        "value": 24,
+        "enabled": true
+      },
+      "trait25": {
+        "value": 25,
+        "enabled": false
+      },
+      "trait26": {
+        "value": 26,
+        "enabled": true
+      },
+      "trait27": {
+        "value": 27,
+        "enabled": false
+      },
+      "trait28": {
+        "value": 28,
+        "enabled": true
+      },
+      "trait29": {
+        "value": 29,
+        "enabled": false
+      }
+    }
+  }
+}

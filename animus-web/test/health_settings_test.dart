@@ -2,6 +2,7 @@ import 'package:animus_editor/logic/citizens/definition_validation.dart';
 import 'package:animus_editor/logic/gui/gui_json.dart';
 import 'package:animus_editor/logic/inspect/inspect_schemas.dart';
 import 'package:animus_editor/logic/inspect/schema_fields.dart';
+import 'package:animus_editor/logic/npc/combat_forms.dart';
 import 'package:animus_editor/logic/npc/health_settings.dart';
 import 'package:test/test.dart';
 
@@ -12,24 +13,25 @@ void main() {
         'killable': true,
         'death': <String, Object?>{'experience': 5},
       };
-      expect(withHealthField(module, const <JsonStep>['death', 'experience'], null), <String, Object?>{'killable': true});
-      expect(withHealthField(module, const <JsonStep>['maximumHealth'], 40), <String, Object?>{...module, 'maximumHealth': 40});
-      expect(withHealthField(module, const <JsonStep>['respawn', 'points'], <Object?>[]), module);
+      expect(withModuleField(module, const <JsonStep>['death', 'experience'], null), <String, Object?>{'killable': true});
+      expect(withModuleField(module, const <JsonStep>['maximumHealth'], 40), <String, Object?>{...module, 'maximumHealth': 40});
+      expect(withModuleField(module, const <JsonStep>['respawn', 'points'], <Object?>[]), module);
     });
 
     test('should treat missing sources as every attack and drop the key when exactly those are on again', () {
-      final JsonMap off = withHealthSource(const <String, Object?>{'killable': true}, 'mobs', false);
+      final JsonMap off = withHealthSources(const <String, Object?>{'killable': true}, <String>{'players', 'npcs', 'projectiles'});
       expect(off['sources'], <String>['players', 'npcs', 'projectiles']);
       expect(healthSourcesOn(off), <String>{'players', 'npcs', 'projectiles'});
       expect(healthSourcesOn(const <String, Object?>{}), healthAttackSources.toSet());
-      expect(withHealthSource(off, 'mobs', true), <String, Object?>{'killable': true});
+      expect(withHealthSources(off, healthAttackSources.toSet()), <String, Object?>{'killable': true});
     });
 
-    test('should keep environmental sources listed beside every attack', () {
-      final JsonMap burning = withHealthSource(const <String, Object?>{'killable': true}, 'lava', true);
+    test('should keep environmental sources listed beside every attack, in the schema order', () {
+      final JsonMap burning = withHealthSources(const <String, Object?>{'killable': true}, <String>{'lava', ...healthAttackSources});
       expect(burning['sources'], <String>['players', 'mobs', 'npcs', 'projectiles', 'lava']);
       expect(healthSources, containsAll(<String>['fire', 'lava', 'fall']));
-      expect(withHealthSource(burning, 'lava', false), <String, Object?>{'killable': true});
+      expect(withHealthSources(burning, healthAttackSources.toSet()), <String, Object?>{'killable': true});
+      expect(withHealthSources(const <String, Object?>{}, const <String>{}), <String, Object?>{'sources': <String>[]}, reason: 'nothing hurts it');
     });
 
     test('should keep count and components when a drop item changes', () {

@@ -314,3 +314,24 @@ SelectState searchChanged(SelectState state, List<SelectOption> all, String quer
       value: value == fallback ? null : value,
       options: <String>[for (final String option in options) if (option != fallback) option],
     );
+
+/// Whether two option lists show the same thing.
+bool sameOptions(List<SelectOption> a, List<SelectOption> b) {
+  if (identical(a, b)) return true;
+  if (a.length != b.length) return false;
+  for (int index = 0; index < a.length; index++) {
+    final SelectOption x = a[index];
+    final SelectOption y = b[index];
+    if (x.value != y.value ||
+        x.label != y.label ||
+        x.group != y.group ||
+        x.description != y.description ||
+        x.disabled != y.disabled ||
+        x.swatch != y.swatch ||
+        x.skinFace != y.skinFace ||
+        x.keywords.length != y.keywords.length) {
+      return false;
+    }
+  }
+  return true;
+}

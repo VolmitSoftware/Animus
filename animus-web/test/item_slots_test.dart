@@ -7,6 +7,20 @@ const JsonMap _bread = <String, Object?>{'id': 'minecraft:bread', 'count': 5};
 const JsonMap _arrow = <String, Object?>{'id': 'minecraft:arrow'};
 
 void main() {
+  group('equipment lines', () {
+    test('should name the body, never its id', () {
+      expect(noEquipmentLine('minecraft:cat'), 'Cat bodies show no equipment.');
+      expect(unshownSlotsLine('minecraft:player', <NpcSlot>[NpcSlot.body, NpcSlot.saddle]), 'Player bodies do not show body, saddle. Clear them or change the body type.');
+      expect(unshownSlotLine('mymod:dragon'), 'Dragon (mymod) bodies do not show this slot. Clear it or change the body type.');
+    });
+
+    test('should describe every slot without engine keys', () {
+      for (final String help in slotHelp.values) {
+        expect(help, isNot(matches(RegExp(r'[a-z]+\.[a-zA-Z]+'))), reason: help);
+      }
+    });
+  });
+
   group('counts', () {
     test('should clamp a count to 1..99', () {
       expect(clampCount(0), 1);
@@ -93,7 +107,7 @@ void main() {
       expect(unsupportedEquipmentSlots('minecraft:player', equipment), isEmpty);
     });
 
-    test('should place armor in a column and the hands on its last row', () {
+    test('should place armor in a column and the hands beside its first rows', () {
       final Map<NpcSlot, (int, int)> places = <NpcSlot, (int, int)>{
         for (final SlotPlace place in equipmentPlaces(shownEquipmentSlots('minecraft:player', const <String, Object?>{}))) place.slot: (place.column, place.row),
       };
@@ -102,9 +116,11 @@ void main() {
         NpcSlot.chest: (0, 1),
         NpcSlot.legs: (0, 2),
         NpcSlot.feet: (0, 3),
-        NpcSlot.offHand: (1, 3),
-        NpcSlot.mainHand: (2, 3),
+        NpcSlot.mainHand: (1, 0),
+        NpcSlot.offHand: (1, 1),
       });
+      expect(<NpcSlot>[for (final SlotPlace place in equipmentPlaces(shownEquipmentSlots('minecraft:player', const <String, Object?>{}))) place.slot],
+          <NpcSlot>[NpcSlot.head, NpcSlot.chest, NpcSlot.legs, NpcSlot.feet, NpcSlot.mainHand, NpcSlot.offHand], reason: 'read column by column');
     });
 
     test('should close up empty columns and rows', () {

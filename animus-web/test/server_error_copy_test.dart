@@ -1,6 +1,7 @@
-import 'package:animus_editor/components/server/connection_pill.dart';
+import 'package:animus_editor/components/server/connection_words.dart';
+import 'package:animus_editor/services/server/connection_status.dart';
 import 'package:animus_editor/services/server/error_copy.dart';
-import 'package:animus_editor/services/server/server_connection.dart';
+import 'package:animus_editor/services/server/transport.dart';
 import 'package:test/test.dart';
 
 import 'fixtures.dart';
@@ -64,9 +65,47 @@ void main() {
     }
   });
 
+  test('should name the missing permission and the pair command that keeps the token\'s own', () {
+    final ErrorCopy copy = scopeMissingCopy('apply:commands', held: const <String>['read', 'apply:gui', 'spawn']);
+    expect(copy.cause, 'This pairing lacks the Run commands permission.');
+    expect(copy.next, 'Run /animus editor pair scopes=read,apply:gui,spawn,apply:commands and open the new link.');
+    _sound('scope-missing', copy);
+  });
+
+  test('should suggest no scopes when the server does not name the missing one', () {
+    final ErrorCopy copy = scopeMissingCopy(null, held: const <String>['read', 'import', 'spawn']);
+    expect(copy.text, serverErrorCopy['scope-missing']!.text);
+    expect(copy.text, isNot(contains('scopes=')));
+    expect(copy.text, isNot(contains('import')));
+  });
+
+  test('should name the scope without a command when the token\'s scopes are not known', () {
+    final ErrorCopy copy = scopeMissingCopy('terrain');
+    expect(copy.cause, 'This pairing lacks the See terrain permission.');
+    expect(copy.text, isNot(contains('scopes=')));
+  });
+
+  test('should read the missing scope from a refusal\'s error detail', () {
+    const ApiResponse named = ApiResponse(403, <String, Object?>{
+      'error': <String, Object?>{'code': 'scope-missing', 'message': 'needs apply:commands', 'scope': 'apply:commands'},
+    });
+    const ApiResponse older = ApiResponse(403, <String, Object?>{'error': <String, Object?>{'code': 'scope-missing', 'message': 'no'}});
+    expect(named.missingScope, 'apply:commands');
+    expect(named.problem.cause, 'This pairing lacks the Run commands permission.');
+    expect(older.missingScope, isNull);
+    expect(older.problem.text, serverErrorCopy['scope-missing']!.text);
+  });
+
   test('should keep the offline hint short where a Connect button sits beside it', () {
     const ConnectionStatus offline = ConnectionStatus(ConnectionPhase.offline);
-    expect(phaseHint(offline, hasToken: true), 'Not connected. Use Connect on the server page.');
+    expect(phaseHint(offline, hasToken: true), 'Not connected. Press Reconnect in the bar below.');
     expect(phaseHint(offline, hasToken: true, connectHere: true), 'Not connected.');
+  });
+
+  test('should name a server platform as its makers spell it', () {
+    expect(platformName('paper'), 'Paper');
+    expect(platformName('neoforge'), 'NeoForge');
+    expect(platformName('Fabric'), 'Fabric');
+    expect(platformName('custom'), 'Custom');
   });
 }

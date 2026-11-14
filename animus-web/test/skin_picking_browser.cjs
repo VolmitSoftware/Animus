@@ -1,19 +1,18 @@
-// Picking skins in the NPC inspector, at 1440x900 dark and 390x844 light.
-// Writes its own data folder (no fake server): three unsigned skins with
-// their PNGs kept (solid red classic, solid blue slim, solid magenta
+// Picking skins on an NPC's Basics tab, at 1440x900 dark and 390x844
+// light. Writes its own data folder (no fake server): three unsigned skins
+// with their PNGs kept (solid red classic, solid blue slim, solid magenta
 // classic) and two player NPCs, one wearing the red skin. Then, on Anna:
-//   1. the skin dropdown's faces are the skins' own PNG faces;
+//   1. Change lists the saved skins with each skin's own PNG face;
 //   2. picking blue, then magenta, then red writes `skin` each time, the
-//      stage draws that colour (and not the last one), and the trigger face
-//      follows;
-//   3. the Arms switch writes a slim copy and the stage says slim;
-//   4. a built-in skin (Guard) makes a skin document labelled Guard, wears
-//      it, and its card shows as worn; the built-in faces are served PNGs;
-//   5. From address with a PNG URL and From PNG file both make and wear a
-//      new skin, and the stage draws the PNG;
+//      stage draws that colour (and not the last one; desktop, where the
+//      preview sits beside the form), and the field's face follows;
+//   3. the Arms switch (Look, Skin layers, Advanced) writes a slim copy;
+//   4. a built-in skin (Guard) makes a skin document labelled Guard and
+//      wears it; the built-in faces are served PNGs;
+//   5. a PNG address (Advanced) and Upload PNG both make and wear a new
+//      skin, and the stage draws the PNG;
 //   6. a reload keeps the stored skin and the stage still draws it.
-// Bert (no skin) shows the placeholder and says so. No console errors, no
-// sideways scrolling.
+// Bert (no skin) reads Default. No console errors, no sideways scrolling.
 //
 //   python3 tool/serve_site.py --port <WEB_PORT> --directory <site> &
 //   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
@@ -26,7 +25,8 @@ const os = require('node:os');
 const path = require('node:path');
 const zlib = require('node:zlib');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const {choose, valueOf} = require('./support/select.cjs');
+const {showView, setMode} = require('./support/shell.cjs');
+const {npcTab} = require('./support/npc_tabs.cjs');
 
 const site = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })()).replace(/\/$/, '');
 const shots = process.env.ANIMUS_SCREENSHOTS;
@@ -101,17 +101,25 @@ async function shot(page, name) {
 }
 
 async function codeOf(page) {
-  await page.getByRole('tab', {name: 'Code'}).click();
+  await showView(page, 'code');
   const text = await page.locator('.animus-code textarea').inputValue();
-  await page.getByRole('tab', {name: 'Visual'}).click();
+  await showView(page, 'visual');
   return JSON.parse(text);
 }
 
-async function appearance(page) {
-  const details = page.locator('details[data-section="appearance"]');
-  await details.waitFor();
-  if (!(await details.evaluate((element) => element.open))) await details.locator('summary').first().click();
-  return details;
+/** The skin field on Basics. */
+async function skinField(page) {
+  const field = (await npcTab(page, 'Basics')).locator('[data-skin="field"]');
+  await field.scrollIntoViewIfNeeded();
+  return field;
+}
+
+/** Opens Change and returns the chooser dialog. */
+async function chooseSkin(page) {
+  await (await skinField(page)).locator('[data-skin="change"]').click();
+  const dialog = page.getByRole('dialog', {name: 'Choose a skin'});
+  await dialog.waitFor();
+  return dialog;
 }
 
 async function openNpc(page, workspace, id) {
@@ -194,102 +202,115 @@ async function run(browser, folder, viewport, theme, tag) {
   page.on('console', (message) => { if (message.type() === 'error' && !/404|Failed to load resource/.test(message.text())) errors.push(message.text()); });
 
   await page.goto(`${site}/`);
-  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+  await page.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Open folder'}).first().click();
   await (await chooser).setFiles(folder);
   await page.waitForFunction(() => /#\/workspace\/[^/?]+/.test(location.hash));
   const workspace = /#\/workspace\/([^/?]+)/.exec(page.url())[1];
 
-  // Bert has no skin: the stage wears a placeholder and says so.
+  // The stage sits beside the form on desktop; on a phone it is behind Preview.
+  const staged = viewport.width > 1100;
+
+  // Bert has no skin.
   await openNpc(page, workspace, 'town/bert');
-  await page.locator('[data-testid="npc-skin-state"]').getByText(/none; preview shows the placeholder \w+ skin/).waitFor();
+  assert.equal((await (await skinField(page)).locator('[data-skin="name"]').innerText()).trim(), 'Default (Steve or Alex)');
 
   await openNpc(page, workspace, 'town/anna');
-  let look = await appearance(page);
-  const pick = look.locator('#animus-skin-pick');
-  await pick.scrollIntoViewIfNeeded();
-  await drawnAfter(page, 0);
-  await stageWears(page, 'red', `${tag} opened`);
+  if (staged) {
+    await drawnAfter(page, 0);
+    await stageWears(page, 'red', `${tag} opened`);
+  }
 
-  // 1. The faces in the dropdown are each skin's own face.
-  await pick.click();
-  const listbox = page.locator(`[id="${await pick.getAttribute('aria-controls')}"]`);
+  // 1. The faces in the chooser are each skin's own face.
+  let dialog = await chooseSkin(page);
   for (const [skin, rgb] of [[red, RED], [blue, BLUE], [magenta, MAGENTA]]) {
-    const face = await faceColour(listbox.locator(`[role="option"][data-value="${skin.id}"] .animus-select-thumb`));
+    const face = await faceColour(dialog.locator(`.ui-library-row[data-key="${skin.id}"] .animus-skin-face`));
     assert.deepEqual(face.size, [64, 64], `${tag}: face of ${skin.id.slice(0, 8)} is a 64x64 skin`);
     assert.deepEqual(face.rgb, rgb, `${tag}: face of ${skin.id.slice(0, 8)}`);
   }
-  await shot(page, `${tag}-01-dropdown`);
+  await shot(page, `${tag}-01-chooser`);
   await page.keyboard.press('Escape');
+  await dialog.waitFor({state: 'hidden'});
 
-  // 2. Each pick is stored and drawn, and the trigger face follows.
-  for (const [skin, colour, rgb, slim] of [[blue, 'blue', BLUE, true], [magenta, 'magenta', MAGENTA, false], [red, 'red', RED, false]]) {
-    const before = await frames(page);
-    await choose(pick, skin.id);
-    await drawnAfter(page, before);
-    await stageWears(page, colour, `${tag} picked ${colour}`);
-    assert.equal(await valueOf(pick), skin.id);
-    assert.deepEqual((await faceColour(pick.locator('.animus-select-thumb'))).rgb, rgb, `${tag}: trigger face for ${colour}`);
-    await page.locator('[data-testid="npc-skin-state"]').getByText(`(${slim ? 'slim' : 'classic'})`, {exact: false}).waitFor();
+  // 2. Each pick is stored and drawn, and the field's face follows.
+  for (const [skin, colour, rgb] of [[blue, 'blue', BLUE], [magenta, 'magenta', MAGENTA], [red, 'red', RED]]) {
+    const before = staged ? await frames(page) : 0;
+    dialog = await chooseSkin(page);
+    await dialog.locator(`.ui-library-row[data-key="${skin.id}"]`).click();
+    await dialog.waitFor({state: 'hidden'});
+    if (staged) {
+      await drawnAfter(page, before);
+      await stageWears(page, colour, `${tag} picked ${colour}`);
+    }
+    assert.deepEqual((await faceColour((await skinField(page)).locator('.animus-skin-face'))).rgb, rgb, `${tag}: field face for ${colour}`);
     assert.equal((await codeOf(page)).skin, skin.id, `${tag}: ${colour} is stored`);
-    look = await appearance(page);
   }
   await shot(page, `${tag}-02-picked`);
 
-  // 3. Arms: a slim copy of the red skin, worn here.
-  await look.getByRole('checkbox', {name: 'Slim arms (Alex)'}).click();
-  await page.locator('[data-testid="npc-skin-state"]').getByText('(slim)', {exact: false}).waitFor();
+  // 3. Arms (Advanced): a slim copy of the red skin, worn here, then back.
+  await setMode(page, 'advanced');
+  await openNpc(page, workspace, 'town/anna');
+  const arms = async () => {
+    const look = await npcTab(page, 'Look');
+    const layers = look.locator('[data-npc="skin-layers"] > details');
+    if (!(await layers.evaluate((details) => details.open))) await layers.locator(':scope > summary').click();
+    return look.getByRole('switch', {name: 'Slim arms (Alex)'});
+  };
+  await (await arms()).click();
+  await page.waitForTimeout(300);
   const slimRed = (await codeOf(page)).skin;
   assert.match(slimRed, /^[a-f0-9]{64}$/);
   assert.notEqual(slimRed, red.id);
-  await stageWears(page, 'red', `${tag} slim red`);
-  look = await appearance(page);
-  await look.getByRole('checkbox', {name: 'Slim arms (Alex)'}).click();
-  await page.locator('[data-testid="npc-skin-state"]').getByText('(classic)', {exact: false}).waitFor();
+  if (staged) await stageWears(page, 'red', `${tag} slim red`);
+  await (await arms()).click();
+  await page.waitForTimeout(300);
+  assert.notEqual((await codeOf(page)).skin, slimRed, `${tag}: classic again`);
 
   // 4. A built-in skin becomes a labelled skin document and is worn.
-  const builtIn = look.getByRole('group', {name: 'Built-in skins'});
-  const faces = builtIn.locator('.animus-skin-face');
+  if (staged) await stageWears(page, 'red', `${tag} before the built-in skin`);
+  const solid = staged ? await stageColours(page) : null;
+  dialog = await chooseSkin(page);
+  await dialog.getByText(/^Built-in$/).click();
+  const faces = dialog.locator('.ui-library-row .animus-skin-face');
+  await faces.first().waitFor();
   assert.equal(await faces.count(), 8);
   for (let index = 0; index < 8; index++) {
     assert.deepEqual((await faceColour(faces.nth(index))).size, [64, 64], `${tag}: built-in faces are served skins`);
   }
-  const solid = await stageColours(page);
-  const guard = builtIn.getByRole('button', {name: 'Wear the built-in Guard skin'});
-  await guard.scrollIntoViewIfNeeded();
-  await guard.click();
-  await page.waitForFunction(() => document.querySelector('[aria-label="Wear the built-in Guard skin"]')?.getAttribute('aria-pressed') === 'true');
-  await page.locator('[data-testid="npc-skin-state"]').getByText('the built-in Guard skin (classic)').waitFor();
-  let counts = await stageColours(page);
-  for (let attempt = 0; attempt < 20 && counts.red * 4 > solid.red; attempt++) {
-    await page.waitForTimeout(150);
-    counts = await stageColours(page);
+  await dialog.locator('.ui-library-row', {hasText: 'Guard'}).click();
+  await dialog.waitFor({state: 'hidden'});
+  await (await skinField(page)).locator('[data-skin="name"]', {hasText: /^Guard$/}).waitFor();
+  if (staged) {
+    let counts = await stageColours(page);
+    for (let attempt = 0; attempt < 20 && counts.red * 4 > solid.red; attempt++) {
+      await page.waitForTimeout(150);
+      counts = await stageColours(page);
+    }
+    assert.ok(counts.red * 4 <= solid.red, `${tag}: the stage dropped the solid red skin: ${JSON.stringify(counts)} after ${JSON.stringify(solid)}`);
   }
-  assert.ok(counts.red * 4 <= solid.red, `${tag}: the stage dropped the solid red skin: ${JSON.stringify(counts)} after ${JSON.stringify(solid)}`);
   const guardSkin = (await codeOf(page)).skin;
   assert.match(guardSkin, /^[a-f0-9]{64}$/);
-  look = await appearance(page);
-  assert.match(await look.locator('#animus-skin-pick .animus-select-value').innerText(), /^Guard$/, `${tag}: the dropdown names it Guard`);
   await shot(page, `${tag}-03-built-in`);
 
-  // 5. From address and From PNG file.
-  await look.getByLabel('Skin PNG address', {exact: true}).fill(`${site}/editor-test-skin.png`);
+  // 5. A PNG address and Upload PNG.
   await page.route('**/editor-test-skin.png', (route) => route.fulfill({status: 200, contentType: 'image/png', body: png(BLUE)}));
-  await look.getByRole('button', {name: 'From address'}).click();
-  await page.locator('[data-testid="npc-skin-state"]').getByText('editor-test-skin.png', {exact: false}).waitFor();
-  await stageWears(page, 'blue', `${tag} from address`);
+  dialog = await chooseSkin(page);
+  await dialog.getByLabel('Skin PNG address', {exact: true}).fill(`${site}/editor-test-skin.png`);
+  await dialog.getByRole('button', {name: 'Load', exact: true}).click();
+  await dialog.waitFor({state: 'hidden'});
+  if (staged) await stageWears(page, 'blue', `${tag} from address`);
   const fromAddress = (await codeOf(page)).skin;
   assert.notEqual(fromAddress, guardSkin);
-  look = await appearance(page);
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'animus-skin-picking-'));
   const file = path.join(scratch, 'magenta.png');
   fs.writeFileSync(file, png(MAGENTA));
+  dialog = await chooseSkin(page);
   const files = page.waitForEvent('filechooser');
-  await look.getByRole('button', {name: 'From PNG file'}).click();
+  await dialog.getByRole('button', {name: 'Upload PNG'}).click();
   await (await files).setFiles(file);
-  await page.locator('[data-testid="npc-skin-state"]').getByText('magenta.png', {exact: false}).waitFor();
-  await stageWears(page, 'magenta', `${tag} from file`);
+  await dialog.waitFor({state: 'hidden'});
+  if (staged) await stageWears(page, 'magenta', `${tag} from file`);
   const fromFile = (await codeOf(page)).skin;
   assert.match(fromFile, /^[a-f0-9]{64}$/);
   assert.notEqual(fromFile, fromAddress);
@@ -299,9 +320,10 @@ async function run(browser, folder, viewport, theme, tag) {
   await page.reload();
   await page.locator('#animus-main h1').waitFor();
   assert.equal((await codeOf(page)).skin, fromFile, `${tag}: kept across a reload`);
-  await appearance(page);
-  await drawnAfter(page, 0);
-  await stageWears(page, 'magenta', `${tag} after reload`);
+  if (staged) {
+    await drawnAfter(page, 0);
+    await stageWears(page, 'magenta', `${tag} after reload`);
+  }
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   assert.ok(overflow <= 1, `${tag}: the page scrolls sideways by ${overflow}px`);
   await shot(page, `${tag}-04-reloaded`);

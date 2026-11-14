@@ -1,6 +1,7 @@
-/// The typed editor for an NPC's `modules["animus:health"]`: whether it can
-/// be hurt and killed, how it takes damage, what it drops and how it comes
-/// back. A permadeath NPC the server marked dead gets a Revive button.
+/// The Advanced part of `animus:health` in the Combat tab: how hits land
+/// (Damage), what it drops (Death) and whether and where it comes back
+/// (Respawn). Each section is closed until it holds a value. Max health and
+/// "Can be hurt" sit above them, in the part Simple shows too.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -9,15 +10,24 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
-import '../../logic/select/select_model.dart' show withDefault;
-import '../../logic/inspect/typed_values.dart';
+import '../../logic/npc/combat_labels.dart';
 import '../../logic/npc/health_settings.dart';
 import '../../model/animus_document.dart';
-import '../gui/gui_fields.dart';
+import '../../ui/action_row.dart';
+import '../../ui/field.dart';
+import '../../ui/icon_button.dart';
 import '../inspect/typed_values_editor.dart';
 import '../mc/item_picker.dart';
+import 'combat_fields.dart';
 import 'combat_locations.dart';
-import 'npc_section.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../suggest/autocomplete_input.dart';
+import '../../ui/number_input.dart';
+import 'npc_layout.dart';
+import '../gui/gui_stack.dart';
+
+/// The health part of the combat docs.
+const DocLink healthDocs = DocLink('08-combat', 'health-and-death');
 
 const List<String> _dropItems = <String>[
   'minecraft:iron_ingot',
@@ -30,342 +40,292 @@ const List<String> _dropItems = <String>[
   'minecraft:arrow',
 ];
 
-const Map<String, String> _orderLabels = <String, String>{'in_order': 'in order', 'random': 'random', 'nearest': 'nearest'};
+/// The most drops a module may list.
+const int _maxDrops = 32;
 
-class HealthEditor extends StatelessWidget {
-  const HealthEditor({
-    required this.value,
-    required this.onChanged,
-    this.diagnostics = const <Diagnostic>[],
-    this.origin,
-    super.key,
-  });
+/// Root keys the Damage section edits.
+const Set<String> healthDamageKeys = <String>{
+  'armor',
+  'armorFromEquipment',
+  'invulnerableTicks',
+  'knockback',
+  'regenerate',
+  'regenerateTicks',
+  'sources',
+  'attackerPermission',
+  'showHealth',
+  'protectFromRange',
+  'protectedFromIgnored',
+};
 
-  /// The module object, or null.
-  final Object? value;
+/// Damage, Death and Respawn of the health module in [form].
+class HealthSettingsPart extends StatelessWidget {
+  const HealthSettingsPart({required this.form, this.origin, super.key});
 
-  /// The whole new module; null removes it.
-  final void Function(Object? value) onChanged;
-
-  final List<Diagnostic> diagnostics;
+  final ModuleForm form;
 
   /// The NPC's x, y and z, drawn on the respawn grid.
   final (double, double, double)? origin;
 
-  static final String _root = childPath(r'$.modules', healthModule);
-
-  JsonMap get _module => asMap(value);
-
-  void _put(List<JsonStep> steps, Object? next) => onChanged(withHealthField(_module, steps, next));
-
-  List<Diagnostic> _at(List<JsonStep> steps, {bool nested = false}) => diagnosticsAt(diagnostics, formatPath(<JsonStep>['modules', healthModule, ...steps]), nested: nested);
-
   @override
-  Widget build(BuildContext context) => dom.div(classes: 'animus-npc-module', attributes: const <String, String>{'data-module': healthModule}, <Widget>[
-    NpcSubhead(
-      'Health and death',
-      help: value == null ? 'Off: cannot be hurt.' : null,
-      tip: 'Lets players, mobs and NPCs hurt and kill it: health, drops and respawn. A combat NPC without it cannot be hurt.',
-      docs: Docs.combat,
-    ),
-    _body(),
-  ]);
-
-  Widget _body() {
-    if (value == null) {
-      return dom.div(classes: 'animus-row', <Widget>[
-        Button.secondary(label: 'Make killable', size: ButtonSize.small, onPressed: () => onChanged(<String, Object?>{'killable': true})),
-      ]);
-    }
-    if (value is! Map<String, Object?>) {
-      return GuiRow(
-        label: 'Health',
-        help: 'Must be an object.',
-        problems: diagnosticsAt(diagnostics, _root, nested: true),
-        child: TypedValueEditor(value: value, label: healthModule, onChanged: onChanged),
-      );
-    }
-    final JsonMap module = _module;
-    final bool killable = module['killable'] == true;
-    return dom.section(classes: 'animus-health-editor', attributes: const <String, String>{'aria-label': 'Health editor'}, <Widget>[
-      if (module['dead'] == true)
-        dom.div(classes: 'animus-health-notice', attributes: const <String, String>{'role': 'status'}, <Widget>[
-          const dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('Dead. Stays gone until revived.')]),
-          Button.secondary(label: 'Revive', size: ButtonSize.small, onPressed: () => onChanged(revivedHealth(module))),
-        ]),
-      _problems(diagnosticsAt(diagnostics, _root)),
-      dom.div(classes: 'animus-combat-switches', <Widget>[
-        _switch(const <JsonStep>['killable'], 'Killable', 'Can be hurt and killed.', fallback: false),
-      ]),
-      if (!killable)
-        const dom.p(classes: 'animus-gui-help', <Widget>[Component.text('Cannot be hurt. Settings below are kept.')])
-      else ...<Widget>[
-        _damage(module),
-        _death(module),
-        _respawn(module),
-      ],
-      if (unknownEntries(module, healthKeys.toSet()) case final JsonMap unknown when unknown.isNotEmpty)
-        GuiRow(
-          label: 'Other fields',
-          tip: 'Not health settings. The server refuses them.',
-          child: KeyValueEditor(value: unknown, label: 'Other health fields', onChanged: (JsonMap next) => onChanged(withUnknownEntries(module, healthKeys.toSet(), next))),
-        ),
-      dom.div(classes: 'animus-row', <Widget>[Button.ghost(label: 'Remove health', size: ButtonSize.small, onPressed: () => onChanged(null))]),
+  Widget build(BuildContext context) {
+    final JsonMap module = form.map;
+    final int damage = module.keys.where(healthDamageKeys.contains).length;
+    return Component.fragment(<Widget>[
+      CombatSection(
+        key: const ValueKey<String>('health:damage'),
+        title: 'Damage',
+        tip: 'How hits land: armor, cooldown, healing and who can hurt it.',
+        docs: healthDocs,
+        count: damage == 0 ? null : damage,
+        open: <Diagnostic>[for (final String key in healthDamageKeys) ...form.problems(<JsonStep>[key], nested: true)].isNotEmpty,
+        part: 'damage',
+        children: <Widget>[
+          _number('armor', fallback: 0, minimum: 0, maximum: 1),
+          switchField(form, const <JsonStep>['armorFromEquipment'], healthWords('armorFromEquipment'), fallback: false),
+          _number('invulnerableTicks', fallback: 10, minimum: 0, maximum: 100, integer: true, ticks: true),
+          switchField(form, const <JsonStep>['knockback'], healthWords('knockback'), fallback: true),
+          switchField(form, const <JsonStep>['regenerate'], healthWords('regenerate'), fallback: false),
+          if (module['regenerate'] == true || module.containsKey('regenerateTicks'))
+            _number('regenerateTicks', fallback: 100, minimum: 1, maximum: 72000, integer: true, ticks: true),
+          _number('protectFromRange', fallback: 0, minimum: 0, maximum: 256),
+          ..._sources(module),
+          switchField(form, const <JsonStep>['protectedFromIgnored'], healthWords('protectedFromIgnored'), fallback: false),
+          switchField(form, const <JsonStep>['showHealth'], healthWords('showHealth'), fallback: false),
+          textField(form, const <JsonStep>['attackerPermission'], healthWords('attackerPermission')),
+        ],
+      ),
+      _death(),
+      _respawn(),
     ]);
   }
 
-  Widget _damage(JsonMap module) {
+  Widget _number(String key, {required num fallback, required num minimum, required num maximum, bool integer = false, bool ticks = false, List<JsonStep>? steps}) =>
+      numberField(
+        form,
+        steps ?? <JsonStep>[key],
+        healthWords(steps == null ? key : steps.join('.')),
+        fallback: fallback,
+        minimum: minimum,
+        maximum: maximum,
+        integer: integer,
+        ticks: ticks,
+      );
+
+  /// "Hurt by" (attacks, all on while `sources` is unset) and "Also hurt
+  /// by" (fire, lava, falls, only when listed): one key, two rows.
+  List<Widget> _sources(JsonMap module) {
+    const List<JsonStep> at = <JsonStep>['sources'];
     final Set<String> on = healthSourcesOn(module);
-    return GuiSection(
-      key: const ValueKey<String>('health:damage'),
-      title: 'Damage',
-      tip: 'How much it takes before it dies, and who can hurt it.',
-      children: <Widget>[
-        _number(const <JsonStep>['maximumHealth'], 'Max health', 'Left out: the max_health attribute, else 20.', placeholder: '20', integer: false),
-        _number(const <JsonStep>['armor'], 'Armor', 'Share of each hit absorbed, 0-1. Left out: the armor attributes.', placeholder: '0', integer: false),
-        _number(const <JsonStep>['invulnerableTicks'], 'Hit cooldown', 'Ticks repeat hits are ignored, 0-100.', placeholder: '10'),
-        if (module['regenerate'] == true) _number(const <JsonStep>['regenerateTicks'], 'Regen ticks', 'Ticks per 1 health healed, 1-72000.', placeholder: '100'),
-        _number(const <JsonStep>['protectFromRange'], 'Hit range', 'Only attackers this close can hurt it, 0-256 blocks. 0: any distance.', placeholder: '0', integer: false),
-        dom.div(classes: 'animus-combat-switches', <Widget>[
-          _switch(const <JsonStep>['knockback'], 'Knockback', 'Hits push it back.', fallback: true),
-          _switch(const <JsonStep>['regenerate'], 'Regenerate', 'Heals over time.', fallback: false),
-          _switch(const <JsonStep>['armorFromEquipment'], 'Armor from equipment', 'Worn pieces set armor.', fallback: false),
-          _switch(const <JsonStep>['showHealth'], 'Show health', "On the attacker's action bar.", fallback: false),
-          _switch(const <JsonStep>['protectedFromIgnored'], 'Safe from ignored', 'What combat ignores cannot hurt it.', fallback: false),
-        ]),
-        GuiRow(
-          label: 'Hurt by',
-          tip: 'What can damage it: melee, any shot, and fire, lava or falls when picked. Attacks only by default.',
-          problems: _at(const <JsonStep>['sources'], nested: true),
-          child: dom.div(classes: 'animus-combat-chips', attributes: const <String, String>{'role': 'group', 'aria-label': 'Hurt by'}, <Widget>[
-            for (final String source in healthSources)
-              Button.ghost(
-                label: source,
-                size: ButtonSize.small,
-                attributes: <String, String>{'aria-pressed': '${on.contains(source)}'},
-                onPressed: () => onChanged(withHealthSource(module, source, !on.contains(source))),
-              ),
-          ]),
-        ),
-        GuiRow(
-          label: 'Permission',
-          forId: 'animus-health-permission',
-          tip: 'Players need this node to hurt it.',
-          problems: _at(const <JsonStep>['attackerPermission']),
-          child: GuiTextInput(
-            id: 'animus-health-permission',
-            value: asString(module['attackerPermission']) ?? '',
-            label: 'health.attackerPermission',
-            placeholder: 'town.hit.guard',
-            onChanged: (String next) => _put(const <JsonStep>['attackerPermission'], next.trim().isEmpty ? null : next.trim()),
-          ),
-        ),
-      ],
+    Widget row(String? label, Iterable<String> sources, {String extra = ''}) {
+      final Set<String> mine = sources.toSet();
+      return checksField(
+        form,
+        at,
+        healthWords('sources'),
+        label: label,
+        extraTip: extra,
+        options: <String, String>{for (final String source in mine) source: healthSourceLabels[source] ?? source},
+        unset: on,
+        showProblems: label == null,
+        write: (Set<String> next) => form.onChanged(withHealthSources(form.map, <String>{...on.difference(mine), ...next.intersection(mine)})),
+      );
+    }
+
+    return <Widget>[
+      row(null, healthAttackSources),
+      row('Also hurt by', healthSources.where((String source) => !healthAttackSources.contains(source)), extra: 'Off unless picked.'),
+    ];
+  }
+
+  Widget _death() {
+    final Object? value = form.read(const <JsonStep>['death']);
+    final int set = asMap(value).length;
+    return CombatSection(
+      key: const ValueKey<String>('health:death'),
+      title: healthWords('death').label,
+      tip: healthWords('death').tip,
+      docs: healthDocs,
+      count: set == 0 ? null : set,
+      open: form.problems(const <JsonStep>['death'], nested: true).isNotEmpty,
+      part: 'death',
+      children: value != null && value is! Map<String, Object?>
+          ? <Widget>[keptField(form, const <JsonStep>['death'], healthWords('death'))]
+          : <Widget>[
+              problemLines(form.problems(const <JsonStep>['death'])),
+              _HealthDrops(form: form),
+              _number('experience', fallback: 0, minimum: 0, maximum: 10000, integer: true, steps: const <JsonStep>['death', 'experience']),
+              switchField(form, const <JsonStep>['death', 'dropEquipment'], healthWords('death.dropEquipment'), fallback: false),
+              otherFields(form, const <JsonStep>['death'], const <String>{'drops', 'experience', 'dropEquipment'}),
+            ],
     );
   }
 
-  Widget _death(JsonMap module) {
-    const List<JsonStep> at = <JsonStep>['death', 'drops'];
-    final Object? raw = readIn(module, at);
+  Widget _respawn() {
+    const List<JsonStep> points = <JsonStep>['respawn', 'points'];
+    final Object? value = form.read(const <JsonStep>['respawn']);
+    final String? after = asString(form.read(const <JsonStep>['respawn', 'afterDeath']));
+    final bool comesBack = after != 'permadeath' && after != 'delete';
+    final Object? raw = form.read(points);
+    final int set = asMap(value).length;
+    return CombatSection(
+      key: const ValueKey<String>('health:respawn'),
+      title: healthWords('respawn').label,
+      tip: healthWords('respawn').tip,
+      docs: healthDocs,
+      count: set == 0 ? null : set,
+      open: form.problems(const <JsonStep>['respawn'], nested: true).isNotEmpty,
+      part: 'respawn',
+      children: value != null && value is! Map<String, Object?>
+          ? <Widget>[keptField(form, const <JsonStep>['respawn'], healthWords('respawn'))]
+          : <Widget>[
+              problemLines(form.problems(const <JsonStep>['respawn'])),
+              choiceField(
+                form,
+                const <JsonStep>['respawn', 'afterDeath'],
+                healthWords('respawn.afterDeath'),
+                options: healthAfterDeath,
+                labels: healthAfterDeathLabels,
+                fallback: 'respawn',
+              ),
+              if (comesBack) ...<Widget>[
+                _number('delayTicks', fallback: 100, minimum: 0, maximum: 72000, integer: true, ticks: true, steps: const <JsonStep>['respawn', 'delayTicks']),
+                choiceField(
+                  form,
+                  const <JsonStep>['respawn', 'order'],
+                  healthWords('respawn.order'),
+                  options: healthOrders,
+                  labels: healthOrderLabels,
+                  fallback: 'in_order',
+                ),
+                if (raw != null && raw is! List<Object?>)
+                  keptField(form, points, healthWords('respawn.points'))
+                else
+                  CombatLocationsEditor(
+                    key: const ValueKey<String>('health:points'),
+                    points: asList(raw),
+                    label: healthWords('respawn.points').label,
+                    tip: fieldTip(healthWords('respawn.points'), points, 'Up to 16.'),
+                    noun: 'Point',
+                    origin: origin,
+                    problems: (int index) => form.problems(<JsonStep>[...points, index], nested: true),
+                    onChanged: (List<Object?> next) => form.put(points, next),
+                  ),
+              ],
+              otherFields(form, const <JsonStep>['respawn'], const <String>{'afterDeath', 'delayTicks', 'points', 'order'}),
+            ],
+    );
+  }
+}
+
+/// `death.drops`: an item, its count, most and chance per drop.
+class _HealthDrops extends StatelessWidget {
+  const _HealthDrops({required this.form});
+
+  final ModuleForm form;
+
+  static const List<JsonStep> _at = <JsonStep>['death', 'drops'];
+
+  @override
+  Widget build(BuildContext context) {
+    final KeyWords words = healthWords('death.drops');
+    final Object? raw = form.read(_at);
+    if (raw != null && raw is! List<Object?>) return keptField(form, _at, words);
     final List<Object?> drops = asList(raw);
-    return GuiSection(
-      key: const ValueKey<String>('health:death'),
-      title: 'Death',
-      tip: 'What it drops when it dies. Each drop rolls its own chance.',
-      count: drops.isEmpty ? null : drops.length,
-      children: <Widget>[
-        GuiRow(
-          label: 'Drops',
-          tip: 'Count is the fewest that drop, max count the most. Chance 0-1. Up to 32.',
-          problems: _at(at),
-          child: raw != null && raw is! List<Object?>
-              ? TypedValueEditor(value: raw, label: 'health.death.drops', onChanged: (Object? next) => _put(at, next))
-              : dom.div(classes: 'animus-combat-list', <Widget>[
-                  for (int index = 0; index < drops.length; index++) _drop(drops, index),
-                  dom.div(classes: 'animus-row', <Widget>[
-                    Button.ghost(
-                      label: 'Add drop',
-                      size: ButtonSize.small,
-                      disabled: drops.length >= 32,
-                      onPressed: () => _put(at, <Object?>[...drops, newHealthDrop()]),
-                    ),
-                  ]),
-                ]),
-        ),
-        _number(const <JsonStep>['death', 'experience'], 'Experience', 'Orbs dropped, 0-10000.', placeholder: '0'),
-        dom.div(classes: 'animus-combat-switches', <Widget>[
-          _switch(const <JsonStep>['death', 'dropEquipment'], 'Drop equipment', 'Worn and held items drop too.', fallback: false),
-        ]),
-      ],
+    return Field(
+      label: words.label,
+      tip: fieldTip(words, _at, 'Up to $_maxDrops.'),
+      problems: form.problems(_at),
+      child: dom.div(styles: stackStyles(), attributes: const <String, String>{'data-drops': ''}, <Widget>[
+        for (int index = 0; index < drops.length; index++) _drop(drops, index),
+        if (drops.length < _maxDrops)
+          ActionRow(label: words.label, secondary: <RowAction>[RowAction('Add drop', () => form.put(_at, <Object?>[...drops, newHealthDrop()]), icon: ArcaneIcon.plus())]),
+      ]),
     );
   }
 
   Widget _drop(List<Object?> drops, int index) {
-    const List<JsonStep> at = <JsonStep>['death', 'drops'];
     final String name = 'Drop ${index + 1}';
+    final String id = '${fieldId(form, _at)}-$index';
     final Object? raw = drops[index];
-    void write(List<Object?> next) => _put(at, next);
+    void write(List<Object?> next) => form.put(_at, next);
+    Widget cell(String key, Widget control) => namedAbove(healthWords('drop.$key').label, control, forId: '$id-$key');
     return dom.div(
-      key: ValueKey<String>('health-drop-$index'),
-      classes: 'animus-combat-item',
+      key: ValueKey<String>('drop:$index'),
+      styles: stackStyles(),
       attributes: <String, String>{'role': 'group', 'aria-label': name},
       <Widget>[
         if (raw case final Map<String, Object?> drop) ...<Widget>[
-          dom.div(classes: 'animus-combat-fields', <Widget>[
-            ItemPicker(
-              value: asString(asMap(drop['item'])['id']) ?? '',
-              label: '$name item',
-              placeholder: 'minecraft:iron_ingot',
-              preferred: _dropItems,
-              onChanged: (String next) => write(withHealthDropItem(drops, index, 'id', next.trim())),
+          // The item with its number and Remove, then count, most and
+          // chance, then components, each under the item.
+          Row(gapSize: Gap.sm, crossAxisAlignment: CrossAxisAlignment.end, children: <Widget>[
+            pointNumber(index + 1),
+            Expanded(
+              child: cell(
+                'item',
+                ItemPicker(
+                  id: '$id-item',
+                  value: asString(asMap(drop['item'])['id']) ?? '',
+                  label: '$name item',
+                  placeholder: 'minecraft:iron_ingot',
+                  preferred: _dropItems,
+                  onChanged: (String next) => write(withHealthDropItem(drops, index, 'id', next.trim())),
+                ),
+              ),
             ),
-            GuiIconButton(
-              icon: ArcaneIcon.x(size: IconSize.sm),
-              label: 'Remove ${name.toLowerCase()}',
-              onPressed: () => write(<Object?>[...drops]..removeAt(index)),
-            ),
+            AppIconButton(icon: ArcaneIcon.x(), label: 'Remove ${name.toLowerCase()}', onPressed: () => write(<Object?>[...drops]..removeAt(index))),
           ]),
-          dom.div(classes: 'animus-combat-fields', <Widget>[
-            GuiNumberInput(
-              value: asInt(asMap(drop['item'])['count']),
-              label: '$name count',
-              placeholder: 'count 1',
-              onChanged: (num? next) => write(withHealthDropItem(drops, index, 'count', next?.toInt())),
-            ),
-            GuiNumberInput(
-              value: asInt(drop['maxCount']),
-              label: '$name max count',
-              placeholder: 'max = count',
-              onChanged: (num? next) => _put(<JsonStep>[...at, index, 'maxCount'], next?.toInt()),
-            ),
-            GuiNumberInput(
-              value: asDouble(drop['chance']),
-              integer: false,
-              label: '$name chance',
-              placeholder: 'chance 1',
-              onChanged: (num? next) => _put(<JsonStep>[...at, index, 'chance'], next),
-            ),
-            GuiTextInput(
-              value: asString(asMap(drop['item'])['components']) ?? '',
-              label: '$name components',
-              placeholder: '[enchantment_glint_override=true]',
-              onChanged: (String next) => write(withHealthDropItem(drops, index, 'components', next.trim())),
-            ),
+          dom.div(styles: const dom.Styles(raw: <String, String>{'padding-left': '1.75rem'}), <Widget>[
+            fieldStack(<Widget>[
+              equalLine(<Widget>[
+                cell(
+                  'count',
+                  NumberInput(
+                    id: '$id-count',
+                    value: asInt(asMap(drop['item'])['count']),
+                    label: '$name count',
+                    placeholder: '1',
+                    onChanged: (num? next) => write(withHealthDropItem(drops, index, 'count', next?.toInt())),
+                  ),
+                ),
+                cell(
+                  'maxCount',
+                  NumberInput(
+                    id: '$id-maxCount',
+                    value: asInt(drop['maxCount']),
+                    label: '$name max count',
+                    placeholder: 'Same',
+                    onChanged: (num? next) => form.put(<JsonStep>[..._at, index, 'maxCount'], next?.toInt()),
+                  ),
+                ),
+                cell(
+                  'chance',
+                  NumberInput(
+                    id: '$id-chance',
+                    value: asDouble(drop['chance']),
+                    integer: false,
+                    label: '$name chance',
+                    placeholder: '1',
+                    onChanged: (num? next) => form.put(<JsonStep>[..._at, index, 'chance'], next),
+                  ),
+                ),
+              ]),
+              cell(
+                'components',
+                AutocompleteInput(
+                  id: '$id-components',
+                  value: asString(asMap(drop['item'])['components']) ?? '',
+                  label: '$name components',
+                  profile: FieldProfile.none,
+                  onChanged: (String next) => write(withHealthDropItem(drops, index, 'components', next.trim())),
+                ),
+              ),
+            ]),
           ]),
         ] else
-          TypedValueEditor(value: raw, label: name, onChanged: (Object? next) => _put(<JsonStep>[...at, index], next)),
-        _problems(_at(<JsonStep>[...at, index], nested: true)),
+          TypedValueEditor(value: raw, label: name, onChanged: (Object? next) => form.put(<JsonStep>[..._at, index], next)),
+        problemLines(form.problems(<JsonStep>[..._at, index], nested: true)),
       ],
     );
   }
-
-  Widget _respawn(JsonMap module) {
-    const List<JsonStep> at = <JsonStep>['respawn', 'points'];
-    final Object? raw = readIn(module, at);
-    final String? after = asString(readIn(module, const <JsonStep>['respawn', 'afterDeath']));
-    final bool comesBack = after != 'permadeath' && after != 'delete';
-    return GuiSection(
-      key: const ValueKey<String>('health:respawn'),
-      title: 'Respawn',
-      tip: 'Whether it comes back after death, after how long, and where.',
-      children: <Widget>[
-        GuiRow(
-          label: 'After death',
-          tip: 'permadeath keeps it dead until revived here or in game. delete removes its definition.',
-          problems: _at(const <JsonStep>['respawn', 'afterDeath']),
-          child: GuiSelect(
-            value: withDefault(after, healthAfterDeath, 'respawn').value,
-            options: withDefault(after, healthAfterDeath, 'respawn').options,
-            allowNone: true,
-            noneLabel: 'respawn (default)',
-            hiddenLabel: 'health.respawn.afterDeath',
-            onChanged: (String? next) => _put(const <JsonStep>['respawn', 'afterDeath'], next),
-          ),
-        ),
-        if (comesBack) ...<Widget>[
-          _number(const <JsonStep>['respawn', 'delayTicks'], 'Delay', 'Ticks before it comes back, 0-72000.', placeholder: '100'),
-          GuiRow(
-            label: 'Order',
-            tip: 'How the next point is picked.',
-            problems: _at(const <JsonStep>['respawn', 'order']),
-            child: GuiSelect(
-              value: withDefault(asString(readIn(module, const <JsonStep>['respawn', 'order'])), healthOrders, 'in_order').value,
-              options: withDefault(asString(readIn(module, const <JsonStep>['respawn', 'order'])), healthOrders, 'in_order').options,
-              labels: _orderLabels,
-              allowNone: true,
-              noneLabel: 'in order (default)',
-              hiddenLabel: 'health.respawn.order',
-              onChanged: (String? next) => _put(const <JsonStep>['respawn', 'order'], next),
-            ),
-          ),
-          GuiRow(
-            label: 'Points',
-            tip: 'Where it comes back. None: its own position. Up to 16.',
-            problems: _at(at),
-            child: raw != null && raw is! List<Object?>
-                ? TypedValueEditor(value: raw, label: 'health.respawn.points', onChanged: (Object? next) => _put(at, next))
-                : CombatLocationsEditor(
-                    points: asList(raw),
-                    label: 'Respawn points',
-                    noun: 'Point',
-                    path: formatPath(const <JsonStep>['modules', healthModule, ...at]),
-                    origin: origin,
-                    diagnostics: diagnostics,
-                    onChanged: (List<Object?> next) => _put(at, next),
-                  ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _number(List<JsonStep> steps, String label, String tip, {required String placeholder, bool integer = true}) {
-    final Object? current = readIn(_module, steps);
-    final String id = 'animus-health-${steps.join('-')}';
-    return GuiRow(
-      key: ValueKey<String>('health:${steps.join('.')}'),
-      label: label,
-      forId: current == null || current is num ? id : null,
-      tip: tip,
-      problems: _at(steps),
-      child: current != null && current is! num
-          ? TypedValueEditor(value: current, label: 'health.${steps.join('.')}', onChanged: (Object? next) => _put(steps, next))
-          : GuiNumberInput(
-              id: id,
-              value: current as num?,
-              integer: integer,
-              label: 'health.${steps.join('.')}',
-              placeholder: placeholder,
-              onChanged: (num? next) => _put(steps, next),
-            ),
-    );
-  }
-
-  /// A boolean field; a non-boolean value is kept and edited by kind.
-  Widget _switch(List<JsonStep> steps, String label, String description, {required bool fallback}) {
-    final Object? current = readIn(_module, steps);
-    if (current != null && current is! bool) {
-      return GuiRow(label: label, problems: _at(steps), child: TypedValueEditor(value: current, label: label, onChanged: (Object? next) => _put(steps, next)));
-    }
-    return dom.div(key: ValueKey<String>('health-switch:${steps.join('.')}'), classes: 'animus-combat-switch', <Widget>[
-      ArcaneCheckbox(
-        checked: (current as bool?) ?? fallback,
-        label: label,
-        description: '$description Default ${fallback ? 'on' : 'off'}.',
-        size: ComponentSize.sm,
-        onChanged: (bool next) => _put(steps, next),
-      ),
-      _problems(_at(steps)),
-    ]);
-  }
-
-  Widget _problems(List<Diagnostic> problems) => problems.isEmpty
-      ? const dom.span(<Widget>[])
-      : dom.div(classes: 'animus-combat-problems', <Widget>[
-          for (final Diagnostic problem in problems)
-            dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', attributes: const <String, String>{'role': 'note'}, <Widget>[
-              dom.code(<Widget>[Component.text(problem.path)]),
-              Component.text(' ${problem.message}'),
-            ]),
-        ]);
 }

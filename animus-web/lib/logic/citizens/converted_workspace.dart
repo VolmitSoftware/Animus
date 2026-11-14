@@ -28,26 +28,3 @@ String convertedWorkspaceName({required bool citizens, required bool shops, requ
   final List<String> parts = <String>[if (citizens) 'Citizens', if (shops) 'Shopkeepers', if (denizen) 'Denizen'];
   return parts.isEmpty ? 'Converted' : '${parts.join(', ')} import';
 }
-
-/// The Citizens screen's one main next step, the button shown as primary.
-enum ConverterStep { applyImport, convertCitizens, convertShops, convertDenizen, openWorkspace, none }
-
-/// What the screen should push next: a staged server import waits for
-/// Apply first, then any chosen input not yet converted (Citizens, then
-/// Shopkeepers, then Denizen), then opening the output as a workspace.
-ConverterStep converterNextStep({
-  required bool citizensChosen,
-  required bool citizensConverted,
-  required bool shopsChosen,
-  required bool shopsConverted,
-  required bool denizenChosen,
-  required bool denizenConverted,
-  String? importState,
-}) {
-  if (importState == 'staged' || importState == 'rolled-back') return ConverterStep.applyImport;
-  if (citizensChosen && !citizensConverted) return ConverterStep.convertCitizens;
-  if (shopsChosen && !shopsConverted) return ConverterStep.convertShops;
-  if (denizenChosen && !denizenConverted) return ConverterStep.convertDenizen;
-  if (citizensConverted || shopsConverted || denizenConverted) return ConverterStep.openWorkspace;
-  return ConverterStep.none;
-}

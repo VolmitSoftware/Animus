@@ -10,6 +10,7 @@ import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_layout.dart';
 import '../../logic/gui/gui_text.dart';
 import '../../logic/gui/text_animation.dart';
+import '../../logic/npc/npc_appearance.dart' show bodyLabel;
 import '../assets/mc_display_pose.dart';
 import '../npc/mc_text.dart';
 import '../npc/npc_scene.dart';
@@ -45,7 +46,7 @@ final class GuiScene {
   final List<GuiSceneTarget> targets;
 }
 
-List<List<McTextRun>> _styled(String text) => guiTextLines(guiTextRuns(text));
+List<List<McTextRun>> _styled(String text) => guiDisplayRows(<String>[text]).single;
 
 /// The text animations a preview plays: `|animation.<id>|` tokens in text
 /// show the frame each animation shows at [nowMs], ids resolved from the
@@ -71,6 +72,50 @@ NpcText _shownText(McVec3 at, String raw, GuiAnimationClock clock, Set<String> m
   missing.addAll(clock.missing(raw));
   final String text = clock.apply(raw);
   return NpcText(anchor: at, lines: text.split('\n'), nameplate: false, styled: _styled(text));
+}
+
+/// Blocks per em of world text: 8 font pixels of 1/40 block.
+const double _blocksPerEm = 0.2;
+
+/// A menu text display for [raw] as the server places it (MenuSession):
+/// its rows in one display centred on [at], with [style] over Gloss's menu
+/// defaults (no wrap, clear background). Also the box it covers, at least
+/// 0.3 wide like the server's click plane and grown up by wrapped rows.
+(NpcText, McBounds) _menuText(McVec3 at, String raw, JsonMap style, GuiAnimationClock clock, Set<String> missing) {
+  missing.addAll(clock.missing(raw));
+  final String text = clock.apply(raw);
+  final HologramTextStyle look = HologramTextStyle.of(style);
+  final List<String> lines = text.split('\n');
+  final double row = guiTextRowBlocks * look.scaleY;
+  final McVec3 anchor = at - McVec3(0, row * lines.length / 2, 0);
+  final double wrap = look.lineWidth * _blocksPerEm / 8 * look.scaleX;
+  double widest = 0;
+  int wrapped = 0;
+  for (final String line in guiColorize(renderTemplate(text)).split('\n')) {
+    final double width = mcTextLineWidthPx(line, _blocksPerEm) * look.scaleX;
+    widest = math.max(widest, math.min(width, wrap));
+    wrapped += math.max(1, (width / wrap - 1e-9).ceil());
+  }
+  final double half = math.max(0.3, widest) / 2;
+  return (
+    NpcText(
+      anchor: anchor,
+      lines: lines,
+      nameplate: false,
+      styled: _styled(text),
+      lineWidth: look.lineWidth,
+      background: look.background,
+      shadow: look.shadow,
+      alignment: look.alignment,
+      opacity: look.opacity,
+      scaleX: look.scaleX,
+      scaleY: look.scaleY,
+      brightness: look.brightness,
+      // A menu's components stand where the menu puts them.
+      placed: true,
+    ),
+    McBounds(anchor - McVec3(half, 0, 0), anchor + McVec3(half, row * wrapped, 0)),
+  );
 }
 
 void _missingNotes(Set<String> missing, List<String> notes) {
@@ -148,6 +193,18 @@ GuiScene hologramScene(JsonMap doc, {int? page, int? variant, GuiAnimationClock 
   const double base = 1.2;
   final double total = rows.length * rowHeight;
   final McMat4 turn = McMat4.rotationY(-(asDouble(doc['yaw']) ?? 0)).multiply(McMat4.rotationX(asDouble(doc['pitch']) ?? 0));
+  final List<List<McTextRun>> styled = <List<McTextRun>>[for (final List<List<McTextRun>> line in guiDisplayRows(coloured, sample: false)) ...line];
+  // The text block's real size: its widest row (formatting carried from the
+  // rows above it, codes taking no room) up to the wrap width, and the rows
+  // that wrapping adds.
+  final double wrap = style.lineWidth * _blocksPerEm / 8 * style.scaleX;
+  double widest = 0;
+  int drawnRows = 0;
+  for (final List<McTextRun> row in styled) {
+    final double width = _rowBlocks(row) * style.scaleX;
+    widest = math.max(widest, math.min(width, wrap));
+    drawnRows += math.max(1, (width / wrap - 1e-9).ceil());
+  }
   if (rows.isNotEmpty) {
     McVec3 anchor = const McVec3(0, base, 0);
     if (style.tilts) {
@@ -158,7 +215,7 @@ GuiScene hologramScene(JsonMap doc, {int? page, int? variant, GuiAnimationClock 
       anchor: anchor,
       lines: rows,
       nameplate: false,
-      styled: guiTextLines(guiSectionRuns(guiColorize(coloured.join('\n')))),
+      styled: styled,
       lineWidth: style.lineWidth,
       background: style.background,
       shadow: style.shadow,
@@ -191,17 +248,37 @@ GuiScene hologramScene(JsonMap doc, {int? page, int? variant, GuiAnimationClock 
     } else if (line['entity'] is String) {
       final String entity = line['entity']! as String;
       nodes.add(McItemNode(key: 'line-${object.index}', itemId: 'glass', pose: McDisplayPose.none, transform: at(centre, 0.45 * scale)));
-      texts.add(_shownText(centre + const McVec3(0, -0.05, 0), '&7${entity.contains(':') ? entity : 'minecraft:$entity'}', clock, missing));
+      texts.add(_shownText(centre + const McVec3(0, -0.05, 0), '&7${bodyLabel(entity)}', clock, missing));
       notes.add('Row $row: entity drawn as a labelled box.');
     }
   }
   notes.addAll(style.notes);
   _missingNotes(missing, notes);
+  // Two blocks across at least; a wider block is framed with room for the
+  // text layer's font steps, which can draw it up to a sixth wider than its
+  // world size.
+  final double half = math.max(1, widest * _fontStepSlack / 2);
+  final double tall = math.max(total, drawnRows * rowHeight);
   return GuiScene(
-    scene: McScene(nodes, frame: _corners(McBounds(const McVec3(-1, 0.8, -0.5), McVec3(1, 1.4 + total, 0.5)))),
+    scene: McScene(nodes, frame: _corners(McBounds(McVec3(-half, 0.8, -0.5), McVec3(half, 1.4 + tall, 0.5)))),
     texts: texts,
     notes: notes,
   );
+}
+
+/// How much wider than its world size the text layer may draw a row: its
+/// font goes in 8 px steps from 16 px, so a row framed at 12 to 20 px is
+/// drawn at the next step.
+const double _fontStepSlack = 1.16;
+
+/// Blocks [row] takes at world size: each glyph advances 6 font pixels, 7
+/// when bold, 8 to the em.
+double _rowBlocks(List<McTextRun> row) {
+  double units = 0;
+  for (final McTextRun run in row) {
+    units += run.text.length * (run.bold ? 7 : 6);
+  }
+  return units / 8 * _blocksPerEm;
 }
 
 /// The style a hologram draws with: its own, with a shown variant's
@@ -229,10 +306,19 @@ GuiScene menuScene(JsonMap doc, {String? selected, GuiAnimationClock clock = Gui
   );
   McBounds? bounds;
   McBounds? componentBounds;
-  void place(String key, JsonMap data, McVec3 at, String label, {GuiSampleScope? scope}) {
-    final McBounds here = McBounds(at - const McVec3(0.3, 0.3, 0.3), at + const McVec3(0.3, 0.3, 0.3));
+  void grow(McBounds here) {
     bounds = bounds == null ? here : bounds!.union(here);
     componentBounds = componentBounds == null ? here : componentBounds!.union(here);
+  }
+
+  void addText(McVec3 at, String text, Object? style) {
+    final (NpcText shown, McBounds box) = _menuText(at, text, asMap(style), clock, missing);
+    texts.add(shown);
+    grow(box);
+  }
+
+  void place(String key, JsonMap data, McVec3 at, String label, {GuiSampleScope? scope}) {
+    final McBounds around = McBounds(at - const McVec3(0.3, 0.3, 0.3), at + const McVec3(0.3, 0.3, 0.3));
     final String type = asString(data['type']) ?? '';
     if (type == 'list') {
       final JsonMap flow = asMap(data['flow']);
@@ -249,12 +335,12 @@ GuiScene menuScene(JsonMap doc, {String? selected, GuiAnimationClock clock = Gui
         place('$key-$index', asMap(data['template']), cell, '$label entry ${index + 1}',
             scope: GuiSampleScope(extra: <String, Object?>{if (entry != null) variable: entry is num ? entry.toDouble() : entry}));
       }
+      if (count == 0) grow(around);
       if (source is! List<Object?>) notes.add('$label: list source resolves on the server; showing three samples.');
       return;
     }
     if (type == 'slider') {
-      final String text = renderTemplate(asString(data['label']) ?? '${asString(data['var']) ?? 'value'}: ?', scope: scope);
-      texts.add(_shownText(at, text, clock, missing));
+      addText(at, renderTemplate(asString(data['label']) ?? '${asString(data['var']) ?? 'value'}: ?', scope: scope), data['style']);
       return;
     }
     if (type == 'tabs') {
@@ -263,15 +349,17 @@ GuiScene menuScene(JsonMap doc, {String? selected, GuiAnimationClock clock = Gui
       for (int index = 0; index < tabs.length; index++) {
         final JsonMap tab = asMap(tabs[index]);
         final String text = asString(tab['label']) ?? asString(tab['id']) ?? '';
-        texts.add(_shownText(at + McVec3((index - (tabs.length - 1) / 2) * spacing, 0, 0), text, clock, missing));
+        addText(at + McVec3((index - (tabs.length - 1) / 2) * spacing, 0, 0), text, data['style']);
       }
       return;
     }
     final JsonMap icon = componentIcon(data, scope: scope);
+    if (asString(icon['type']) == 'text') {
+      addText(at, renderTemplate(asString(icon['text']) ?? '', scope: scope), icon['style']);
+      return;
+    }
+    grow(around);
     switch (asString(icon['type'])) {
-      case 'text':
-        final String text = renderTemplate(asString(icon['text']) ?? '', scope: scope);
-        texts.add(_shownText(at, text, clock, missing));
       case 'item':
         final String? item = _bareItem(asString(icon['item']));
         if (item == null) {
@@ -300,7 +388,7 @@ GuiScene menuScene(JsonMap doc, {String? selected, GuiAnimationClock clock = Gui
         final double width = asDouble(icon['width']) ?? 1;
         final double height = asDouble(icon['height']) ?? 1;
         nodes.add(McItemNode(key: key, itemId: 'glass', pose: McDisplayPose.none, transform: McMat4.translation(at.x, at.y, at.z).multiply(McMat4.scale(width * 0.5, height * 0.5, width * 0.5))));
-        texts.add(_shownText(at, '&7${asString(icon['entity']) ?? 'minecraft:pig'}', clock, missing));
+        texts.add(_shownText(at, '&7${bodyLabel(asString(icon['entity']) ?? 'minecraft:pig')}', clock, missing));
         notes.add('$label: entity drawn as a labelled box.');
       default:
         break;
@@ -324,7 +412,8 @@ GuiScene menuScene(JsonMap doc, {String? selected, GuiAnimationClock clock = Gui
   }
   _missingNotes(missing, notes);
   return GuiScene(
-    scene: McScene(nodes, frame: _corners(bounds ?? const McBounds(McVec3(-1, 0.5, -0.5), McVec3(1, 2.5, 0.5)))),
+    // A menu floats in front of the viewer: no grass patch under it.
+    scene: McScene(nodes, frame: _corners(bounds ?? const McBounds(McVec3(-1, 0.5, -0.5), McVec3(1, 2.5, 0.5))), ground: false),
     texts: texts,
     notes: notes,
     targets: targets,

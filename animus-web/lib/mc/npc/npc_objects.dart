@@ -15,6 +15,7 @@ import '../scene/mc_scene.dart';
 import 'npc_look.dart';
 import 'npc_scene.dart';
 import '../../logic/gui/gui_text.dart';
+import '../../logic/inspect/named_ids.dart' show paintingName;
 
 /// The object body types [npcObject] draws.
 const List<String> mcObjectBodyTypes = <String>[
@@ -87,7 +88,7 @@ NpcObject? npcObject(NpcLook look) {
         nodes: <McSceneNode>[if (state != null) McBlockNode(key: 'body', blockKey: _blockKey(state), state: _bare(state), transform: at)],
         texts: const <NpcText>[],
         frame: _cube(at),
-        notes: <String>[if (state == null) 'blockDisplay.block: a block display without a block shows nothing.', ..._billboard('blockDisplay', settings)],
+        notes: <String>[if (state == null) 'A block display without a block shows nothing.', ..._billboard(settings)],
       );
     case 'minecraft:item_display':
       final NpcItem? item = NpcItem.parse(settings['item']);
@@ -121,7 +122,7 @@ NpcObject? npcObject(NpcLook look) {
         ],
         texts: const <NpcText>[],
         frame: const McBounds(McVec3(-0.5, -0.5, -0.5), McVec3(0.5, 0.5, 0.5)).corners.map(at.transformPoint).toList(),
-        notes: <String>[if (item == null) 'itemDisplay.item: an item display without an item shows nothing.', ..._billboard('itemDisplay', settings)],
+        notes: <String>[if (item == null) 'An item display without an item shows nothing.', ..._billboard(settings)],
       );
     case 'minecraft:text_display':
       final String text = settings['text'] is String ? settings['text']! as String : '';
@@ -149,8 +150,8 @@ NpcObject? npcObject(NpcLook look) {
         ],
         frame: <McVec3>[const McVec3(-1, 0, -0.2), McVec3(1, 0.3 * lines.length * look.scale, 0.2)],
         notes: <String>[
-          if (text.isEmpty) 'textDisplay.text: a text display without text shows nothing.',
-          if (billboard != 'center') 'textDisplay.billboard: $billboard turns with the display in game; the preview draws text facing the view.',
+          if (text.isEmpty) 'A text display without text shows nothing.',
+          if (billboard != 'center') 'The text turns with the display in game; the preview draws it facing the view.',
         ],
       );
     case 'minecraft:item':
@@ -162,7 +163,7 @@ NpcObject? npcObject(NpcLook look) {
         nodes: <McSceneNode>[if (item != null) McItemNode(key: 'body', itemId: item.modelKey, pose: McDisplayPose.ground, transform: at, glint: item.glint)],
         texts: const <NpcText>[],
         frame: const McBounds(McVec3(-0.5, 0, -0.5), McVec3(0.5, 0.75, 0.5)).corners.map(place.transformPoint).toList(),
-        notes: <String>[if (item == null) 'droppedItem.item: a dropped item without an item shows nothing.'],
+        notes: <String>[if (item == null) 'A dropped item without an item shows nothing.'],
       );
   }
   return null;
@@ -176,9 +177,9 @@ String _blockKey(String state) {
 
 String _bare(String state) => state.startsWith('minecraft:') ? state.substring(10) : state;
 
-List<String> _billboard(String field, Map<String, Object?> settings) {
+List<String> _billboard(Map<String, Object?> settings) {
   final String billboard = _choice(settings, 'billboard', const <String>['fixed', 'vertical', 'horizontal', 'center']);
-  return <String>[if (billboard != 'fixed') '$field.billboard: $billboard turns the display toward each viewer in game; the preview draws it fixed.'];
+  return <String>[if (billboard != 'fixed') 'The display turns toward each viewer in game; the preview draws it fixed.'];
 }
 
 List<McVec3> _cube(McMat4 at) => const McBounds(McVec3.zero, McVec3(1, 1, 1)).corners.map(at.transformPoint).toList();
@@ -192,7 +193,7 @@ NpcObject _painting(Map<String, Object?> settings, McMat4 place) {
   final (int, int)? size = mcPaintings[id];
   final String facing = _choice(settings, 'facing', const <String>['south', 'north', 'west', 'east']);
   if (size == null) {
-    return (nodes: const <McSceneNode>[], texts: const <NpcText>[], frame: const <McVec3>[], notes: <String>['painting.variant: $raw is not a vanilla painting; the preview cannot draw it.']);
+    return (nodes: const <McSceneNode>[], texts: const <NpcText>[], frame: const <McVec3>[], notes: <String>['${paintingName(raw)} is not a vanilla painting; the preview cannot draw it.']);
   }
   final (int w, int h) = size;
   final double x = w * 16.0, y = h * 16.0;

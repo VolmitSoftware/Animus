@@ -21,6 +21,7 @@ public final class EditorReplies {
         detail.addProperty("code", error.code().wireName());
         String message = error.getMessage().isBlank() ? error.code().wireName() : error.getMessage();
         detail.addProperty("message", message.length() > 2048 ? message.substring(0, 2048) : message);
+        error.scope().ifPresent((EditorScope scope) -> detail.addProperty("scope", scope.wireName()));
         if (error.diagnostics() != null) detail.add("diagnostics", error.diagnostics());
         if (error.retryAfterMillis() >= 0) detail.addProperty("retryAfterMillis", error.retryAfterMillis());
         body.add("error", detail);

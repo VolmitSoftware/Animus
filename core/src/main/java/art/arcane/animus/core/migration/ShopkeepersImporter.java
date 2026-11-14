@@ -624,6 +624,16 @@ public final class ShopkeepersImporter {
         return apply(store, id, installed, UUID.randomUUID().toString());
     }
 
+    /** The shop and NPC files {@link #apply} installs, by path, read from the staged preview; nothing is installed. */
+    public Map<String, String> documents(DocumentStore store, String id) throws IOException {
+        if (!id.matches("[a-f0-9]{64}")) throw new IOException("Invalid import ID");
+        Path staged = store.resolve(IMPORTS + "/" + id);
+        Map<String, String> documents = new TreeMap<>();
+        for (String relative : read(staged, id).summary().getAsJsonObject("documents").keySet())
+            if (relative.matches(SHOP_PATH) || relative.matches(NPC_PATH)) documents.put(relative, JsonDocuments.read(staged.resolve(relative)));
+        return documents;
+    }
+
     /**
      * {@link #apply} under {@code transaction}. When the import is already installed, returns what its receipt recorded:
      * the transaction that installed it and the bindings it left waiting, so a retried apply records the real id.

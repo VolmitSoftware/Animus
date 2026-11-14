@@ -38,8 +38,10 @@ import java.util.function.Supplier;
 /**
  * {@code GET /v1/terrain/surface} and {@code GET /v1/terrain/blocks}: loaded terrain where the NPCs a token may see stand,
  * walk or go ({@link TerrainReaches}), plus where each spawned one is now. A chunk farther than {@code [editor] terrainRadius}
- * from all of that in its world is {@code forbidden} and never read; a chunk the server does not hold is {@code unloaded}. Reads run on the owning thread through {@link EditorTerrain}; encoding and
- * hashing run after, off that thread. Every answer carries its content hash as an ETag and fits the relay frame.
+ * from all of that in its world is {@code forbidden} and never read; a chunk the server does not hold, since no player is
+ * near, is {@code unloaded} and never loaded for the editor; a world the server has not loaded answers {@code world-unloaded}.
+ * Reads run on the owning thread through {@link EditorTerrain}; encoding and hashing run after, off that thread. Every
+ * answer carries its content hash as an ETag and fits the relay frame.
  */
 final class EditorTerrainReads {
     /** The most bytes one terrain body may serialize to: a 1 MiB relay frame less base64 and frame overhead. */
@@ -112,7 +114,7 @@ final class EditorTerrainReads {
 
     private static EditorTerrain.World world(EditorTerrain source, String reference) throws EditorError {
         if (reference == null || reference.isBlank() || reference.length() > 256) throw EditorMessages.invalid("world: a world name is required.");
-        return source.world(reference).orElseThrow(() -> new EditorError(EditorError.Code.NOT_FOUND, "No loaded world " + reference + "."));
+        return source.world(reference).orElseThrow(() -> new EditorError(EditorError.Code.WORLD_UNLOADED, "World " + reference + " is not loaded on the server."));
     }
 
     private static Map<String, String> query(EditorRequest request, Set<String> fields) throws EditorError {

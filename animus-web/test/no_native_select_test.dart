@@ -1,6 +1,7 @@
-// The editor draws its own dropdowns (lib/components/select). This scans
-// lib/ so a native select, datalist or arcane_jaspr's native select cannot
-// come back.
+// Dropdowns are arcane_jaspr's shadcn combobox (through AnimusSelect).
+// This scans lib/ so a native select, a datalist or the
+// library's native-select variant cannot come back where the combobox
+// renders the shadcn look.
 import 'dart:io';
 
 import 'package:test/test.dart';
@@ -29,7 +30,7 @@ void main() {
         });
       }
     }
-    expect(found, isEmpty, reason: 'Use AnimusSelect, GuiSelect or SuggestInput from lib/components/select instead.');
+    expect(found, isEmpty, reason: 'Use ArcaneCombobox through AnimusSelect, or SuggestInput for free text with suggestions.');
   });
 
   test('the scan catches what it looks for', () {

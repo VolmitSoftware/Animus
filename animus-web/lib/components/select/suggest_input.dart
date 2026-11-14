@@ -17,6 +17,7 @@ import '../../state/document_return.dart';
 import '../suggest/autocomplete_input.dart';
 import 'picker_scope.dart';
 import 'select_popup.dart';
+import '../../ui/density.dart';
 
 int _nextSuggestId = 0;
 
@@ -113,7 +114,7 @@ class _SuggestInputState extends State<SuggestInput> {
   void _show(SelectState next) {
     if (next.open && !_state.open) {
       final SelectRows rows = _rows;
-      final double wanted = popupHeight(options: rows.options.length, groups: 0, actions: rows.actionCount, search: false);
+      final double wanted = popupHeight(options: rows.options.length, actions: rows.actionCount);
       _placement = placePopup(_baseId, wanted, sheet: false);
       _stopWatching = watchOutside(
         _rootId,
@@ -194,10 +195,11 @@ class _SuggestInputState extends State<SuggestInput> {
     final SelectRows rows = _rows;
     final bool open = _state.open && rows.length > 0;
     final String activeId = open && _state.active >= 0 ? rowId(_baseId, _state.active) : '';
-    return dom.div(id: _rootId, classes: 'animus-suggest animus-gui-text', <Widget>[
+    return dom.div(id: _rootId, <Widget>[
       dom.input(
         id: _baseId,
-        classes: 'animus-gui-input',
+        classes: 'arcane-text-input',
+        styles: rowControlHeight,
         value: _typed ?? component.value,
         attributes: <String, String>{
           'type': 'text',
@@ -263,24 +265,22 @@ class _SuggestInputState extends State<SuggestInput> {
       ...component.profile.options,
       for (final FieldOption option in component.suggestions) ValueOption(option.label, detail: option.description ?? ''),
     ]);
-    return dom.div(classes: 'animus-gui-text', <Widget>[
-      AutocompleteInput(
-        id: _baseId,
-        value: component.value,
-        profile: profile,
-        label: component.label,
-        placeholder: component.placeholder,
-        onChanged: component.onChanged,
-        // Enter with the list closed submits, as in the plain field.
-        onKey: component.onSubmit == null
-            ? null
-            : (web.KeyboardEvent key) {
-                if (key.key != 'Enter') return false;
-                component.onSubmit!();
-                return true;
-              },
-      ),
-    ]);
+    return AutocompleteInput(
+      id: _baseId,
+      value: component.value,
+      profile: profile,
+      label: component.label,
+      placeholder: component.placeholder,
+      onChanged: component.onChanged,
+      // Enter with the list closed submits, as in the plain field.
+      onKey: component.onSubmit == null
+          ? null
+          : (web.KeyboardEvent key) {
+              if (key.key != 'Enter') return false;
+              component.onSubmit!();
+              return true;
+            },
+    );
   }
 
   /// Takes the id made by this field's "+ New" trip, once.

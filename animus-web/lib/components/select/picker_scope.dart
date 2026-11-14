@@ -6,18 +6,30 @@ library;
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 
 import '../../logic/select/select_model.dart';
+import '../../model/display_name.dart';
 import '../../model/document_kind.dart';
 import '../../state/document_return.dart';
 import '../../state/workspace_route.dart';
 
 class PickerScope extends InheritedWidget {
-  const PickerScope({required this.workspaceId, required this.route, required this.onNavigate, required super.child, super.key});
+  const PickerScope({required this.workspaceId, required this.route, required this.onNavigate, required super.child, this.nameOf, super.key});
 
   final String workspaceId;
   final EditorRoute route;
   final void Function(EditorRoute route) onNavigate;
 
+  /// The name a document's list row shows, or null when the workspace does
+  /// not list it; a dropdown that picks documents shows this, not the id.
+  final String? Function(DocumentKind kind, String id)? nameOf;
+
   static PickerScope? of(BuildContext context) => context.dependOnInheritedComponentOfExactType<PickerScope>();
+
+  /// How a page names the [kind] document [id] it refers to: its list
+  /// name, else its id in words. A chest GUI id may name a menu.
+  static String nameIn(BuildContext context, DocumentKind kind, String id) {
+    final String? Function(DocumentKind kind, String id)? nameOf = of(context)?.nameOf;
+    return nameOf?.call(kind, id) ?? (kind == DocumentKind.inventory ? nameOf?.call(DocumentKind.menu, id) : null) ?? displayName(kind, id, null);
+  }
 
   @override
   bool updateShouldNotify(PickerScope oldComponent) => oldComponent.workspaceId != workspaceId || oldComponent.route != route;
@@ -55,7 +67,7 @@ String kindNoun(DocumentKind kind) => switch (kind) {
       DocumentKind.menu => 'menu',
       DocumentKind.textAnimation => 'text animation',
       DocumentKind.serverBehaviors => 'server behaviors list',
-      DocumentKind.presets => 'presets',
+      DocumentKind.presets => 'preset',
       _ => kind.label.substring(0, kind.label.length - 1).toLowerCase(),
     };
 

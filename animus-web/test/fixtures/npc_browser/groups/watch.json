@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "id": "watch",
+  "description": "Night watch",
+  "values": {
+    "tags": [
+      "watch"
+    ]
+  }
+}

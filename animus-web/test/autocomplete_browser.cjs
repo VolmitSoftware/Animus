@@ -2,9 +2,10 @@
 // keyboard alone at 1440 px and 390 px in both themes: a behavior variable
 // in a condition, an item id in an action argument with an unknown id
 // underlined, a MiniMessage colour in say text, a placeholder hole in a
-// hologram line, and key completion in the JSON code view. The input is an
-// ARIA combobox, rows are at least 44 px on phones, and the list is square
-// and flat.
+// hologram line, and key completion in the JSON code view (Advanced mode:
+// Simple shows a behavior read only). The input is an ARIA combobox, rows
+// are at least 44 px on phones, and the list is flat with the theme's
+// rounded corners.
 //
 //   python3 tool/serve_site.py --port <port>
 //   ANIMUS_WEB_URL=http://127.0.0.1:<port> PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node test/autocomplete_browser.cjs
@@ -12,7 +13,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {assertNothingCut} = require('./support/cut_text.cjs');
-const {openFromSidebar} = require('./support/shell.cjs');
+const {openFromSidebar, showView} = require('./support/shell.cjs');
 
 const url = process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })();
 const fixture = path.resolve(__dirname, 'fixtures/autocomplete');
@@ -41,13 +42,24 @@ async function listOf(page, field, where, phone) {
   const active = await field.getAttribute('aria-activedescendant');
   assert.ok(active, `${where}: an active row`);
   assert.equal(await page.locator(`[id="${active}"]`).getAttribute('aria-selected'), 'true');
-  const look = await list.evaluate(el => ({radius: getComputedStyle(el).borderRadius, shadow: getComputedStyle(el).boxShadow}));
-  assert.deepEqual(look, {radius: '0px', shadow: 'none'}, `${where}: square and flat`);
+  const look = await list.evaluate(el => ({radius: parseFloat(getComputedStyle(el).borderTopLeftRadius), shadow: getComputedStyle(el).boxShadow}));
+  assert.equal(look.shadow, 'none', `${where}: flat`);
+  assert.ok(look.radius > 0, `${where}: the theme's rounded corners, got ${look.radius}px`);
   if (phone) {
     const height = await list.getByRole('option').first().evaluate(el => el.getBoundingClientRect().height);
     assert.ok(height >= 44, `${where}: phone rows are 44 px, got ${height}`);
   }
   return list;
+}
+
+/** The behavior's Steps view (the node editor). A conversation-shaped
+ * behavior opens on its Conversation view, so the view is named. */
+async function stepsView(page) {
+  await page.evaluate(() => {
+    const [route] = location.hash.split('?');
+    location.hash = `${route}?view=visual`;
+  });
+  await page.locator('.animus-behavior-editor').waitFor();
 }
 
 async function closed(page, field) {
@@ -58,22 +70,27 @@ async function run(browser, viewport, theme) {
   const where = `${viewport.width}px ${theme}`;
   const phone = viewport.width < 520;
   const context = await browser.newContext({viewport, hasTouch: phone, colorScheme: theme});
-  await context.addInitScript(mode => window.localStorage.setItem('animus.theme', mode), theme);
+  // Behaviors are edited in Advanced; Simple shows them read only.
+  await context.addInitScript(mode => {
+    window.localStorage.setItem('animus.theme', mode);
+    window.localStorage.setItem('animus.mode', 'advanced');
+  }, theme);
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto(url);
-  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+  await page.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Open folder'}).first().click();
   await (await chooser).setFiles(fixture);
 
   await openFromSidebar(page, 'town:crier');
-  await page.getByRole('tab', {name: 'Visual'}).click();
+  // It is shaped like a conversation, so it opens there first.
+  await page.locator('#animus-main .animus-conv').waitFor();
+  await stepsView(page);
   const editor = page.locator('.animus-behavior-editor');
-  await editor.waitFor();
 
   // A declared variable in a condition, with its type and scope.
   const condition = editor.locator('textarea.animus-expr-input').first();
@@ -118,11 +135,11 @@ async function run(browser, viewport, theme) {
   for (const [key, typed] of [['Escape', 'minecraft:golden_sword'], ['Tab', 'minecraft:diamond_sword']]) {
     await retype(item, typed);
     await page.keyboard.press(key);
-    await page.getByRole('tab', {name: 'Code'}).click();
-    const action = JSON.parse(await page.locator('.animus-code textarea').inputValue()).routines.main.steps
+    await showView(page, 'code');
+    const action = JSON.parse(await page.locator('[data-testid="code-view"] textarea').inputValue()).routines.main.steps
       .find(step => step.capability === 'animus:give-item');
     assert.deepEqual(action.arguments, {item: typed, amount: 1}, `${where}: ${key} keeps the typed item`);
-    await page.getByRole('tab', {name: 'Visual'}).click();
+    await stepsView(page);
   }
 
   // Near the window's bottom edge the list still opens whole on screen and
@@ -136,7 +153,7 @@ async function run(browser, viewport, theme) {
       const placed = await list.evaluate(element => ({
         top: element.getBoundingClientRect().top,
         bottom: element.getBoundingClientRect().bottom,
-        bar: document.querySelector('.animus-topbar').getBoundingClientRect().bottom,
+        bar: document.querySelector('.ui-topbar').getBoundingClientRect().bottom,
         height: window.innerHeight,
       }));
       assert.ok(placed.top >= placed.bar && placed.bottom <= placed.height, `${where}: item list at ${offset} is on screen below the top bar, got ${JSON.stringify(placed)}`);
@@ -172,8 +189,8 @@ async function run(browser, viewport, theme) {
   await noSideways(page, `${where} behavior editor`);
 
   // JSON key completion from the capability's arguments.
-  await page.getByRole('tab', {name: 'Code'}).click();
-  const area = page.locator('.animus-code textarea');
+  await showView(page, 'code');
+  const area = page.locator('[data-testid="code-view"] textarea');
   await area.evaluate(element => {
     const at = element.value.indexOf('"amount": 1') + '"amount": 1'.length;
     element.focus();
@@ -185,12 +202,12 @@ async function run(browser, viewport, theme) {
   await page.keyboard.press('Enter');
   assert.match(await area.inputValue(), /"amount": 1, "player": /);
   await page.keyboard.press('Escape');
-  await page.getByRole('button', {name: 'Discard'}).click();
+  await page.locator('[data-testid="code-view"]').getByRole('button', {name: 'Discard'}).click();
 
   // A placeholder hole in a hologram line.
   await openFromSidebar(page, 'town:sign');
-  await page.getByRole('tab', {name: 'Visual'}).click();
-  const line = page.getByLabel('Row 1 text', {exact: true});
+  await showView(page, 'visual');
+  const line = page.getByLabel('Line 1', {exact: true});
   await line.focus();
   await line.press('End');
   await line.pressSequentially(' {vie');

@@ -25,13 +25,10 @@ Brightness loadBrightness() {
     if (stored == 'light') return Brightness.light;
     if (stored == 'dark') return Brightness.dark;
   } on Object {
-    // Private mode: fall through to the system preference.
+    // Private mode: the default.
   }
-  try {
-    return web.window.matchMedia('(prefers-color-scheme: light)').matches ? Brightness.light : Brightness.dark;
-  } on Object {
-    return Brightness.dark;
-  }
+  // Midnight (dark) until the light theme is picked.
+  return Brightness.dark;
 }
 
 void saveBrightness(Brightness brightness) {

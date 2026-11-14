@@ -1,7 +1,8 @@
-/// The JSON Code view: a monospace text area with a line gutter that marks
-/// lines holding diagnostics, a list of diagnostics that jump to their line
-/// (server ones marked), and completion of keys and values at the caret
-/// from the schema layer (Ctrl+Space, or as you type in a string).
+/// The JSON text of the Code view: a monospace text area with a line gutter
+/// that marks lines holding problems, one list of those problems (a JSON
+/// syntax error first) that jump to their line, and completion of keys and
+/// values at the caret from the schema layer (Ctrl+Space, or as you type in
+/// a string).
 library;
 
 import 'dart:async';
@@ -21,6 +22,9 @@ import '../../logic/suggest/completion_item.dart';
 import '../../model/animus_document.dart';
 import '../suggest/suggest_list.dart';
 import '../suggest/suggest_scope.dart';
+import '../../ui/badge.dart';
+import '../../ui/density.dart';
+import '../../ui/problem_text.dart';
 
 int _nextEditorId = 0;
 
@@ -268,7 +272,7 @@ class _JsonCodeEditorState extends State<JsonCodeEditor> {
       if (entry.line != null) byLine.putIfAbsent(entry.line!, () => <LocatedDiagnostic>[]).add(entry);
     }
     final bool open = _suggestions.isNotEmpty;
-    return dom.div(classes: 'animus-code-editor', <Widget>[
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, gapSize: Gap.sm, children: <Widget>[
       dom.div(classes: 'animus-code-frame', <Widget>[
         dom.div(
           id: '$_id-gutter',
@@ -294,7 +298,6 @@ class _JsonCodeEditorState extends State<JsonCodeEditor> {
           dom.textarea(
             id: _id,
             classes: 'animus-code-area',
-            rows: 28,
             attributes: <String, String>{
               'spellcheck': 'false',
               'autocomplete': 'off',
@@ -337,40 +340,33 @@ class _JsonCodeEditorState extends State<JsonCodeEditor> {
           if (open)
             SuggestList(
               id: '$_id-list',
-              classes: 'is-code',
               title: 'JSON completion',
               items: <CompletionItem>[for (final JsonSuggestion suggestion in _suggestions) suggestion.item],
               active: _active,
               styles: dom.Styles(raw: <String, String>{
                 'top': 'calc(${_listTop}px + 0.5rem)',
                 'left': 'max(0px, min(calc(${_caretColumn}ch + 0.75rem), calc(100% - 28rem)))',
+                'width': 'min(28rem, 100%)',
               }),
               onPick: (int index) => _apply(_suggestions[index]),
               onHover: (int index) => setState(() => _active = index),
             ),
         ]),
       ]),
-      if (syntax != null)
-        dom.div(classes: 'animus-code-syntax', attributes: const <String, String>{'role': 'alert'}, <Widget>[
-          Button.secondary(label: 'Go to line ${syntax.line}', size: ButtonSize.small, onPressed: () => _jump(syntax.line)),
-          dom.span(<Widget>[Component.text('${syntax.text}. Not saved until it parses.')]),
-        ]),
-      dom.div(classes: 'animus-code-status animus-muted', <Widget>[
-        Component.text('Line $_caretLine, column ${_caretColumn + 1}. Ctrl+Space to complete.'),
-      ]),
+      noteLine('Line $_caretLine, column ${_caretColumn + 1}. Ctrl+Space completes.'),
       if (located.isNotEmpty)
-        dom.ul(classes: 'animus-code-problems', attributes: const <String, String>{'aria-label': 'Diagnostics by line'}, <Widget>[
+        DenseBox(attributes: const <String, String>{'role': 'list', 'aria-label': 'Problems by line'}, children: <Widget>[
           for (final LocatedDiagnostic entry in located.take(100))
-            dom.li(classes: 'is-${entry.diagnostic.severity.name}', <Widget>[
+            dom.div(classes: 'animus-code-problem is-${entry.diagnostic.severity.name}', attributes: <String, String>{'role': 'listitem', if (entry.diagnostic.code == 'json') 'data-testid': 'code-syntax'}, <Widget>[
               Button.ghost(
                 label: entry.line == null ? 'No line' : 'Line ${entry.line}',
-                size: ButtonSize.small,
+                size: ButtonSize.sm,
                 disabled: entry.line == null,
                 onPressed: () => _jump(entry.line!),
               ),
-              if (entry.server) const dom.span(classes: 'animus-tag is-server', <Widget>[Component.text('server')]),
-              dom.code(<Widget>[Component.text(entry.diagnostic.path)]),
-              dom.span(<Widget>[Component.text(entry.diagnostic.message)]),
+              problemText(entry.diagnostic.code == 'json' ? '${entry.diagnostic.message}. Fix it to use this code.' : entry.diagnostic.message, severity: entry.diagnostic.severity),
+              if (entry.server) const StatusBadge('Server'),
+              if (entry.diagnostic.path != r'$') Text(entry.diagnostic.path, size: FontSize.sm, color: TextColor.muted, family: FontFamily.mono, element: 'code'),
             ]),
         ]),
     ]);

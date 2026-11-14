@@ -66,9 +66,11 @@ class FakeServer {
 
   static bool _until(DateTime? until) => until != null && now().isBefore(until);
 
-  /// Mints a pairing secret and its code and link.
-  Map<String, Object?> pair([PairPaths paths = PairPaths.both, List<String> extraScopes = const <String>[], num? tokenDays]) {
-    final Pairing pairing = api.tokens.pair(extraScopes, tokenDays);
+  /// Mints a pairing secret and its code and link; the token gets [scopes],
+  /// the pairing defaults unless given, and reaches only the NPC [folders]
+  /// when any are given.
+  Map<String, Object?> pair([PairPaths paths = PairPaths.both, List<String>? scopes, num? tokenDays, List<String> folders = const <String>[]]) {
+    final Pairing pairing = api.tokens.pair(scopes, tokenDays, folders);
     final String code = pairingCode(
       directUrl: paths == PairPaths.relay ? null : directUrl,
       relayUrl: paths == PairPaths.direct ? null : relayUrl,
@@ -78,7 +80,7 @@ class FakeServer {
       secret: pairing.secret,
       expiresAt: pairing.expires,
       label: 'fake',
-      serverName: settings.serverName,
+      serverName: api.serverName,
     );
     final String origin = settings.allowedOrigins.isEmpty ? 'http://127.0.0.1:8098' : settings.allowedOrigins.first;
     return <String, Object?>{'code': code, 'link': '$origin/#/pair/$code'};
@@ -99,8 +101,10 @@ class FakeServer {
     }
   }
 
-  /// Keeps the relay up while the server is gone from it for [duration].
+  /// A server restart lasting [duration]: the relay stays up but reports the
+  /// server gone, and the direct path is unreachable.
   void goOffline(Duration duration) {
+    drop('direct', duration);
     _offlineUntil = now().add(duration);
     _announcedOffline = true;
     api.events.dropWhere((EventStream stream) => stream.path == StreamPath.relay);
@@ -149,6 +153,9 @@ class FakeServer {
           'relay': api.events.openFor(StreamPath.relay),
         },
         'relayConnections': relay.connections,
+        'rateLimited': api.rates.refused,
+        'rateLimitedTotal': api.rates.refusedTotal,
+        'inFlight': api.rates.inFlight,
         'controls': api.testControls,
         'documents': <Object?>[for (final StoredDocument document in api.documents.list()) document.version],
       };

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "6b1f0c52-3e0a-4c8d-9a51-0d2b7c6e0001",
+  "id": "walker-2",
+  "group": "walkers",
+  "name": "Walker 2",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 2.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "animus:navigation": {
+      "enabled": true,
+      "points": [
+        {
+          "x": 2,
+          "y": 64,
+          "z": -4
+        },
+        {
+          "x": 2,
+          "y": 64,
+          "z": 4
+        }
+      ]
+    }
+  }
+}

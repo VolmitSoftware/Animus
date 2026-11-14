@@ -1,8 +1,7 @@
-/// The Conversation tab of a behavior document: the start, the tree of
-/// lines, questions, conditions and actions, a playthrough, and the NPCs
-/// that run it. Every edit rewrites the behavior's routines and triggers
-/// through [writeConversation]; a behavior that does not fit shows why and
-/// stays in the Visual editor.
+/// A behavior as a conversation: how it starts, the NPCs that run it, and
+/// its steps as cards. Every edit rewrites the behavior's routines and
+/// triggers through [writeConversation]. The frame shows it for behaviors
+/// that fit; reached in Advanced for one that does not, it says why.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -18,15 +17,22 @@ import '../../logic/gui/gui_text.dart';
 import '../../logic/inspect/completion_catalog.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
+import '../../model/document_summary.dart';
+import '../../state/library.dart';
+import '../../ui/alert.dart';
+import '../../ui/density.dart';
+import '../../ui/field.dart';
+import '../../ui/info_tip.dart';
+import '../../ui/mode.dart';
 import '../gui/gui_fields.dart';
-import '../info_tip.dart';
 import '../pending_field.dart';
 import 'conversation_attach.dart';
 import 'conversation_fields.dart';
 import 'conversation_input.dart';
 import 'conversation_picker.dart';
-import 'conversation_preview.dart';
 import 'conversation_tree.dart';
+import '../../ui/number_input.dart';
+import '../../ui/stack.dart';
 
 class ConversationView extends StatefulWidget {
   const ConversationView({
@@ -34,10 +40,9 @@ class ConversationView extends StatefulWidget {
     required this.onJson,
     required this.catalog,
     this.workspaceDocuments = const <AnimusDocument>[],
+    this.library,
+    this.load,
     this.onCommit,
-    this.onServerPreview,
-    this.onOpenVisual,
-    this.newHref,
     super.key,
   });
 
@@ -46,17 +51,14 @@ class ConversationView extends StatefulWidget {
   final CompletionCatalog catalog;
   final List<AnimusDocument> workspaceDocuments;
 
-  /// Writes several documents as one change; null hides the NPC list.
+  /// The workspace library, for the NPC picker; null lists the documents read.
+  final LibraryOf? library;
+
+  /// Reads a picked NPC that is not here yet.
+  final LoadDocuments? load;
+
+  /// Writes several documents as one change; null hides the NPC picker.
   final ConversationCommit? onCommit;
-
-  /// Starts the paired server's preview; null when there is none.
-  final void Function()? onServerPreview;
-
-  /// Switches to the Visual tab.
-  final void Function()? onOpenVisual;
-
-  /// Where "New conversation" leads.
-  final String? newHref;
 
   @override
   State<ConversationView> createState() => _ConversationViewState();
@@ -80,6 +82,12 @@ class _ConversationViewState extends State<ConversationView> {
 
   void _toggle(String key) => setState(() => _expanded.contains(key) ? _expanded.remove(key) : _expanded.add(key));
 
+  /// Entries for the documents read, when the frame gives no library.
+  List<LibraryEntry> _libraryOfRead(DocumentKind kind) => <LibraryEntry>[
+        for (final AnimusDocument document in _of(kind))
+          LibraryEntry(kind: kind, id: document.id, path: document.path, name: guiPlainText(document.title).trim(), summary: DocumentSummary.empty),
+      ];
+
   String get _namespace => component.document.id.split(':').first;
 
   List<AnimusDocument> _of(DocumentKind kind) => <AnimusDocument>[
@@ -87,40 +95,23 @@ class _ConversationViewState extends State<ConversationView> {
           if (document.kind == kind) document,
       ];
 
-  /// The name of the first NPC that lists this behavior, for the preview.
-  String get _npcName {
-    for (final AnimusDocument npc in _of(DocumentKind.npc)) {
-      if (listedBehaviors(npc).contains(component.document.id)) return guiPlainText(asString(asMap(npc.json)['name']) ?? npc.id);
-    }
-    return 'NPC';
-  }
-
   @override
   Widget build(BuildContext context) {
+    final bool advanced = ModeScope.advanced(context);
     final ConversationRead read = readConversation(asMap(component.document.json));
-    return dom.section(classes: 'animus-panel animus-conv', attributes: const <String, String>{'aria-label': 'Conversation'}, <Widget>[
+    return dom.div(classes: 'animus-conv', attributes: const <String, String>{'aria-label': 'Conversation'}, <Widget>[
       switch (read) {
-        ConversationMisfit(:final String path, :final String reason) => _misfit(path, reason),
-        ConversationFits(:final Conversation conversation) => _editor(conversation),
+        ConversationMisfit(:final String path, :final String reason) => AppAlert(
+            tone: AlertTone.warning,
+            title: 'Not a conversation',
+            message: advanced ? '$reason ($path) Edit it in Steps.' : '$reason Edit it in Advanced.',
+          ),
+        ConversationFits(:final Conversation conversation) => _editor(conversation, advanced),
       },
     ]);
   }
 
-  Widget _misfit(String path, String reason) => dom.div(classes: 'animus-conv-misfit', attributes: const <String, String>{'role': 'note'}, <Widget>[
-        conversationKeysTip('Conversation'),
-        dom.p(<Widget>[
-          const Component.text('Not a conversation: '),
-          Component.text(reason),
-          const Component.text(' '),
-          dom.code(<Widget>[Component.text(path)]),
-        ]),
-        dom.div(classes: 'animus-row', <Widget>[
-          if (component.onOpenVisual != null) Button.secondary(label: 'Edit in Visual', size: ButtonSize.small, onPressed: component.onOpenVisual),
-          if (component.newHref != null) Button.ghost(label: 'New conversation', size: ButtonSize.small, href: component.newHref),
-        ]),
-      ]);
-
-  Widget _editor(Conversation conversation) {
+  Widget _editor(Conversation conversation, bool advanced) {
     final List<Object?> namespace = <Object?>[
       for (final AnimusDocument behavior in _of(DocumentKind.behavior))
         if (behavior.id.split(':').first == _namespace) behavior.json,
@@ -137,36 +128,28 @@ class _ConversationViewState extends State<ConversationView> {
       edit: _edit,
       expanded: _expanded,
       toggle: _toggle,
-      suggestions: ConversationSuggestions(
-        animations: <String>[for (final AnimusDocument animation in _of(DocumentKind.animation)) animation.id],
-        shops: <String>[for (final AnimusDocument shop in _of(DocumentKind.shop)) shop.id],
-      ),
+      advanced: advanced,
     );
-    final int errors = issues.where((ConversationIssue issue) => issue.error).length;
-    return dom.div(classes: 'animus-conv-layout', <Widget>[
-      dom.div(classes: 'animus-conv-main', <Widget>[
-        dom.div(classes: 'animus-conv-toolbar', <Widget>[
-          conversationKeysTip('Conversation'),
-          if (errors > 0) dom.span(classes: 'animus-conv-errors', attributes: <String, String>{'title': 'Problems', 'data-conv-errors': '$errors'}, <Widget>[Component.text('$errors')]),
-          if (component.newHref != null)
-            Button.ghost(label: 'New conversation', icon: ArcaneIcon.plus(size: IconSize.sm), size: ButtonSize.small, href: component.newHref),
-        ]),
-        _start(conversation),
-        for (final ConversationIssue issue in issues)
-          if (issue.at == null && issue.block == null)
-            dom.p(classes: 'animus-gui-problem is-${issue.error ? 'error' : 'warning'}', attributes: const <String, String>{'role': 'note'}, <Widget>[Component.text(issue.message)]),
-        ConversationTree(scope: scope),
+    final List<ConversationIssue> general = <ConversationIssue>[
+      for (final ConversationIssue issue in issues)
+        if (issue.at == null && issue.block == null) issue,
+    ];
+    return stack(spacing: 16, <Widget>[
+      for (final ConversationIssue issue in general) AppAlert(tone: issue.error ? AlertTone.error : AlertTone.warning, message: issue.message),
+      ..._start(conversation, advanced),
+      if (component.onCommit != null)
+        ConversationAttach(
+          behavior: component.document.id,
+          documents: component.workspaceDocuments,
+          library: component.library ?? _libraryOfRead,
+          load: component.load,
+          onCommit: component.onCommit!,
+          advanced: advanced,
+        ),
+      dom.h2(<Widget>[
+        TipLabel(label: const Component.text('Steps'), tip: conversationKeys(), docs: conversationDocs),
       ]),
-      dom.div(classes: 'animus-conv-side', <Widget>[
-        ConversationPreview(key: ValueKey<String>('conv-preview:${component.document.id}'), conversation: conversation, npcName: _npcName, onServerPreview: component.onServerPreview),
-        if (component.onCommit != null)
-          ConversationAttach(
-            key: ValueKey<String>('conv-attach:${component.document.id}'),
-            behavior: component.document.id,
-            documents: component.workspaceDocuments,
-            onCommit: component.onCommit!,
-          ),
-      ]),
+      DenseBox(children: <Widget>[ConversationTree(scope: scope)]),
     ]);
   }
 
@@ -178,38 +161,40 @@ class _ConversationViewState extends State<ConversationView> {
     return option == null ? pending == lineId(at) || pending == promptId(at) : pending == optionId(at, option);
   }
 
-  Widget _start(Conversation conversation) {
+  List<Widget> _start(Conversation conversation, bool advanced) {
     final ConversationStart start = conversation.start;
-    const String startId = 'conv-start';
-    return dom.div(classes: 'animus-conv-start', <Widget>[
-      dom.label(classes: 'animus-gui-label', attributes: const <String, String>{'for': startId}, <Widget>[
-        withTip(
-          const Component.text('Start'),
-          'What starts it for the NPCs below. Command means /animus behaviors run <npc> <behavior>, which needs animus.admin.',
-          docs: conversationDocs,
+    return <Widget>[
+      Field(
+        label: 'Starts',
+        forId: 'conv-start',
+        tip: 'What a player does to start it with the NPCs below.',
+        docs: conversationDocs,
+        hint: advanced && start.kind == ConversationStartKind.manual ? '/animus behaviors run <npc> ${component.document.id}' : null,
+        child: ConversationPicker(
+          id: 'conv-start',
+          label: 'Starts',
+          value: start.kind.name,
+          options: <PickOption>[for (final ConversationStartKind kind in ConversationStartKind.values) PickOption(kind.name, kind.label, hint: kind.line)],
+          onPick: (String value) => _edit((Conversation c) => setStart(c, ConversationStartKind.values.byName(value))),
         ),
-      ]),
-      ConversationPicker(
-        id: startId,
-        label: 'Start',
-        value: start.kind.name,
-        options: <PickOption>[for (final ConversationStartKind kind in ConversationStartKind.values) PickOption(kind.name, kind.label)],
-        onPick: (String value) => _edit((Conversation c) => setStart(c, ConversationStartKind.values.byName(value))),
       ),
       if (start.kind == ConversationStartKind.proximity)
-        GuiNumberInput(
-          id: 'conv-radius',
-          value: start.radius,
-          integer: false,
-          label: 'Radius in blocks',
-          digits: 5,
-          onChanged: (num? value) {
-            if (value != null) _edit((Conversation c) => c.start.radius = value, coalesce: 'radius');
-          },
+        Field(
+          label: 'Radius',
+          forId: 'conv-radius',
+          hint: advanced ? 'Blocks, 1 to 64' : 'Blocks',
+          tip: 'How near a player comes before it starts: 1 to 64 blocks.',
+          child: NumberInput(
+            id: 'conv-radius',
+            value: start.radius,
+            integer: false,
+            label: 'Radius in blocks',
+            digits: 5,
+            onChanged: (num? value) {
+              if (value != null) _edit((Conversation c) => c.start.radius = value, coalesce: 'radius');
+            },
+          ),
         ),
-      if (start.kind == ConversationStartKind.proximity) const dom.span(classes: 'animus-muted', <Widget>[Component.text('blocks, 1 to 64')]),
-      if (start.kind == ConversationStartKind.manual)
-        dom.code(classes: 'animus-muted', <Widget>[Component.text('/animus behaviors run <npc> ${component.document.id}')]),
-    ]);
+    ];
   }
 }

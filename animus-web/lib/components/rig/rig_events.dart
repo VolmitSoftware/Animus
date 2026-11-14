@@ -8,11 +8,19 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component, ValueKey;
 
 import '../../config/docs_links.dart';
+import '../../logic/gui/gui_json.dart' show humanizeKey;
 import '../../logic/inspect/inspect_schemas.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/rig_edit.dart';
-import '../gui/gui_fields.dart';
-import '../info_tip.dart';
+import '../../logic/rig_view.dart';
+import '../../ui/action_row.dart';
+import '../../ui/confirm_dialog.dart';
+import '../../ui/field.dart';
+import '../../ui/info_tip.dart';
+import '../../ui/menu.dart';
+import 'rig_inputs.dart';
+import '../select/animus_select.dart';
+import '../npc/npc_layout.dart';
 
 /// Arguments the event form leaves out: events always play to nearby players.
 const Set<String> playerArguments = <String>{'audience', 'at', 'player'};
@@ -29,10 +37,10 @@ String eventSummary(JsonMap event) {
   final String capability = '${event['capability']}';
   final Object? arguments = event['arguments'];
   final Object? what = arguments is JsonMap ? arguments[requiredArgument(capability)] : null;
-  return '${capabilityLabel(capability)} ${what ?? '(not set)'}';
+  return '${capabilityLabel(capability)} ${what ?? 'not set'}';
 }
 
-class RigEventEditor extends StatefulWidget {
+class RigEventEditor extends StatelessWidget {
   const RigEventEditor({
     required this.event,
     required this.index,
@@ -48,19 +56,11 @@ class RigEventEditor extends StatefulWidget {
   final void Function(int tick, String capability, JsonMap arguments) onUpdate;
   final void Function() onRemove;
 
-  @override
-  State<RigEventEditor> createState() => _RigEventEditorState();
-}
+  String get _capability => '${event['capability']}';
 
-class _RigEventEditorState extends State<RigEventEditor> {
-  final Map<String, String> _drafts = <String, String>{};
-  final Map<String, String> _errors = <String, String>{};
+  JsonMap get _arguments => event['arguments'] is JsonMap ? event['arguments']! as JsonMap : const <String, Object?>{};
 
-  String get _capability => '${component.event['capability']}';
-
-  JsonMap get _arguments => component.event['arguments'] is JsonMap ? component.event['arguments']! as JsonMap : const <String, Object?>{};
-
-  int get _tick => component.event['tick'] is num ? (component.event['tick']! as num).round() : 0;
+  int get _tick => event['tick'] is num ? (event['tick']! as num).round() : 0;
 
   /// The capability's arguments, minus those that pick a triggering player:
   /// an animation has none, so the server refuses them.
@@ -68,30 +68,14 @@ class _RigEventEditorState extends State<RigEventEditor> {
       .where((FieldSpec field) => !playerArguments.contains(field.key))
       .toList();
 
-  @override
-  void didUpdateWidget(RigEventEditor oldComponent) {
-    super.didUpdateWidget(oldComponent);
-    if (oldComponent.index != component.index) {
-      _drafts.clear();
-      _errors.clear();
-    }
+  String? _commitTick(String draft) {
+    final int? tick = int.tryParse(draft.trim());
+    if (tick == null || tick < 0 || tick > duration) return 'Use a whole tick from 0 to $duration.';
+    if (tick != _tick) onUpdate(tick, _capability, _arguments);
+    return null;
   }
 
-  void _commitTick() {
-    final String? draft = _drafts.remove('tick');
-    final int? tick = draft == null ? null : int.tryParse(draft.trim());
-    if (draft != null && (tick == null || tick < 0 || tick > component.duration)) {
-      setState(() => _errors['tick'] = 'Use a whole tick from 0 to ${component.duration}.');
-      return;
-    }
-    _errors.remove('tick');
-    if (tick != null && tick != _tick) component.onUpdate(tick, _capability, _arguments);
-    setState(() {});
-  }
-
-  void _commitField(FieldSpec field) {
-    final String? draft = _drafts.remove(field.key);
-    if (draft == null) return;
+  String? _commitField(FieldSpec field, String draft) {
     final String text = draft.trim();
     final Object? value = text.isEmpty
         ? null
@@ -101,12 +85,9 @@ class _RigEventEditorState extends State<RigEventEditor> {
             _ => text,
           };
     final String? problem = text.isNotEmpty && value == null ? 'Use a number.' : field.check(value);
-    if (problem != null) {
-      setState(() => _errors[field.key] = problem);
-      return;
-    }
-    _errors.remove(field.key);
+    if (problem != null) return problem;
     _set(field.key, value);
+    return null;
   }
 
   void _set(String key, Object? value) {
@@ -116,76 +97,86 @@ class _RigEventEditorState extends State<RigEventEditor> {
     } else {
       next[key] = value is double && value == value.roundToDouble() ? value.round() : value;
     }
-    component.onUpdate(_tick, _capability, next);
-    setState(() {});
+    onUpdate(_tick, _capability, next);
+  }
+
+  Future<void> _remove() async {
+    final bool yes = await askToConfirm(
+      title: 'Delete this event?',
+      message: '${eventSummary(event)} at tick $_tick. Undo brings it back.',
+      confirmLabel: 'Delete event',
+      destructive: true,
+    );
+    if (yes) onRemove();
   }
 
   @override
   Widget build(BuildContext context) {
     final List<FieldSpec> fields = _fields;
-    return dom.div(classes: 'animus-rig-keyframe animus-rig-event-editor', attributes: <String, String>{'aria-label': 'Event at tick $_tick'}, <Widget>[
-      dom.strong(<Widget>[
-        InfoTip(
-          tip: 'Plays at the NPC for nearby players each time the clip reaches this tick.',
-          docs: Docs.animationEvents,
-          child: Component.text('Event at tick $_tick'),
-        ),
-      ]),
-      _input('Tick', 'tick', '$_tick', _commitTick, number: true),
-      dom.label(key: ValueKey<String>('runs:${component.index}:$_capability'), classes: 'animus-rig-field is-inline', <Widget>[
-        const dom.span(<Widget>[Component.text('Runs')]),
-        GuiSelect(
+    return dom.section(classes: 'animus-rig-event-editor', styles: stackStyles(gap: Gap.xs), attributes: <String, String>{'aria-label': 'Event at tick $_tick'}, <Widget>[
+      ActionRow(
+        dense: true,
+        label: 'Event',
+        leading: <Widget>[
+          dom.h4(styles: groupHeadingStyles, <Widget>[
+            TipLabel(
+              label: Component.text('Event at tick $_tick'),
+              tip: 'Plays at the NPC for nearby players each time the animation reaches this tick.',
+              docs: Docs.animationEvents,
+            ),
+          ]),
+        ],
+        more: <AppMenuEntry>[AppMenuEntry('Delete event', _remove, destructive: true)],
+      ),
+      CommitField(
+        key: ValueKey<String>('event-tick:$index:$_tick'),
+        label: 'Tick',
+        id: 'rig-event-tick',
+        number: true,
+        hint: secondsLabel(_tick.toDouble()),
+        value: '$_tick',
+        onCommit: _commitTick,
+      ),
+      Field(
+        key: ValueKey<String>('runs:$index:$_capability'),
+        label: 'Plays',
+        forId: 'rig-event-plays',
+        child: AnimusSelect.values(
+          id: 'rig-event-plays',
           value: _capability,
-          options: eventCapabilities,
+          values: eventCapabilities,
           labels: <String, String>{for (final String capability in eventCapabilities) capability: capabilityLabel(capability)},
-          hiddenLabel: 'Runs',
           onChanged: (String? value) {
-            if (value != null && value != _capability) component.onUpdate(_tick, value, starterArguments(value));
+            if (value != null && value != _capability) onUpdate(_tick, value, starterArguments(value));
           },
         ),
-      ]),
+      ),
       for (final FieldSpec field in fields)
         if (field.kind == FieldKind.choice)
-          dom.label(classes: 'animus-rig-field is-inline', <Widget>[
-            dom.span(<Widget>[Component.text(field.key)]),
-            GuiSelect(
+          Field(
+            key: ValueKey<String>('arg:$index:$_capability:${field.key}'),
+            label: humanizeKey(field.key),
+            forId: 'rig-event-${field.key}',
+            child: AnimusSelect.values(
+              id: 'rig-event-${field.key}',
               value: _arguments[field.key] == null ? '' : '${_arguments[field.key]}',
-              options: <String>[for (final FieldOption option in field.options) option.label],
+              values: <String>[for (final FieldOption option in field.options) option.label],
               allowNone: true,
-              noneLabel: '(default)',
-              hiddenLabel: field.key,
+              noneLabel: 'Default',
               onChanged: (String? value) => _set(field.key, value),
             ),
-          ])
+          )
         else
-          _input(
-            '${field.key}${field.required ? '' : ' (optional)'}',
-            field.key,
-            _arguments[field.key] == null ? '' : '${_arguments[field.key]}',
-            () => _commitField(field),
+          CommitField(
+            key: ValueKey<String>('arg:$index:$_capability:${field.key}'),
+            label: humanizeKey(field.key),
+            id: 'rig-event-${field.key}',
+            required: field.required,
             number: field.kind == FieldKind.integer || field.kind == FieldKind.number,
-            help: field.bounds,
+            hint: field.bounds,
+            value: _arguments[field.key] == null ? '' : '${_arguments[field.key]}',
+            onCommit: (String draft) => _commitField(field, draft),
           ),
-      Button.ghost(label: 'Delete event', onPressed: component.onRemove),
-    ]);
-  }
-
-  Widget _input(String label, String key, String value, void Function() commit, {bool number = false, String help = ''}) {
-    final String? error = _errors[key];
-    return dom.label(classes: 'animus-rig-field', <Widget>[
-      dom.span(<Widget>[Component.text(label)]),
-      TextInput(
-        type: number ? TextInputType.number : TextInputType.text,
-        value: _drafts[key] ?? value,
-        attributes: <String, String>{'aria-label': 'Event $label', 'step': 'any', if (error != null) 'aria-invalid': 'true'},
-        onChanged: (String next) => _drafts[key] = next,
-        onSubmitted: (String _) => commit(),
-        onBlur: commit,
-      ),
-      if (error != null)
-        dom.span(classes: 'animus-field-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(error)])
-      else if (help.isNotEmpty)
-        dom.span(classes: 'animus-muted', <Widget>[Component.text(help)]),
     ]);
   }
 }

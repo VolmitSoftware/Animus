@@ -6,6 +6,7 @@ library;
 
 import '../gui/gui_json.dart';
 import 'behavior_language.dart';
+import 'behavior_summary.dart' show capabilityWords;
 import 'schema_fields.dart';
 
 /// One action or condition capability.
@@ -50,14 +51,19 @@ class CapabilitySpec {
 /// The reason the embedded catalog gives every capability it cannot check.
 const String offlineCatalogReason = 'platform-unavailable: offline validation has no server';
 
-/// A capability as a picker option: its id, then whether it is unavailable
-/// (offline, or not on this server) and privileged.
+/// A capability as a picker option: its name in words, the module that
+/// adds it when that is not Animus, then whether it is unavailable (offline,
+/// or not on this server) and privileged. The id itself is in the field's tip.
 String capabilityChoiceLabel(CapabilitySpec spec) {
+  final int colon = spec.id.indexOf(':');
+  final String namespace = colon < 0 ? '' : spec.id.substring(0, colon);
   final List<String> notes = <String>[
+    if (namespace.isNotEmpty && namespace != 'animus') namespace,
     if (!spec.available) spec.reason == offlineCatalogReason ? 'unavailable offline' : 'not on this server',
     if (spec.privileged) 'privileged',
   ];
-  return notes.isEmpty ? spec.id : '${spec.id} (${notes.join('; ')})';
+  final String words = capabilityWords(spec.id);
+  return notes.isEmpty ? words : '$words (${notes.join('; ')})';
 }
 
 /// One trigger event and its fields.

@@ -1,18 +1,18 @@
 // Walks every page of the built site at 1440x900 and 390x844 in dark and
-// light and fails on a shape the editor does not use: a non-zero
-// border-radius outside the round-by-meaning exceptions below, any inset or
-// offset box-shadow (only flat, zero-offset rings are allowed), a border on
-// one side only in the pink accent, and an accent gradient. ::before and
-// ::after are checked too, and one control of each kind again with :hover,
-// :focus-visible and :active forced on it. It also checks that buttons share the heights of
-// the button system and that phone controls keep a 44 px target.
+// light and fails on a crescent: an inset box-shadow (an inner highlight), a
+// border on one side only in the pink accent, or an accent gradient. Corners
+// and outer shadows are shadcn's own. ::before and ::after are checked too,
+// and one control of each kind again with :hover, :focus-visible and :active
+// forced on it. Button sizes are button_uniformity_browser.cjs's.
 // Pages: home, the example-packs workspace and every document kind in it
 // with each view, the gui_editors, rig_editor and groups_recordings fixtures
 // (that one also with its NPC list and group form, and its recordings
 // list), New document,
 // Send to a server, the NPC list, the converter, a pairing link, the command
 // palette, the top bar menus and a delete confirmation.
-// ANIMUS_SCREENSHOTS (optional, outside the repository) receives a shot of
+// ANIMUS_SHAPE_SCREENS (optional, a regular expression) checks only the
+// pages whose name matches. ANIMUS_SCREENSHOTS (optional, outside the
+// repository) receives a shot of
 // every page per width and theme.
 //
 //   python3 tool/serve_site.py --port <port>
@@ -21,16 +21,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const {isCompact} = require('./support/shell.cjs');
+const {documentHrefs, isCompact, startAction} = require('./support/shell.cjs');
 
 const url = process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })();
 const shots = process.env.ANIMUS_SCREENSHOTS;
+const screens = process.env.ANIMUS_SHAPE_SCREENS ? new RegExp(process.env.ANIMUS_SHAPE_SCREENS) : null;
 const folders = ['fixtures/gui_editors', 'fixtures/rig_editor', 'fixtures/groups_recordings'].map(folder => path.resolve(__dirname, folder));
-
-// Round by meaning, and the only places a border-radius is allowed. Empty:
-// the rig gizmo's handles are round, but they are SVG circles on the 3D
-// stage, not CSS boxes.
-const roundExceptions = [];
 
 // One control of each kind is also checked with :hover, :focus-visible and
 // :active forced on it, so a state cannot bring back an underline or a ring.
@@ -41,14 +37,15 @@ const stateTargets = [
   ".arcane-button[data-variant='ghost']",
   ".arcane-button[data-variant='destructive']",
   ".arcane-button[data-size^='icon']",
-  '.animus-tab',
-  '.animus-tab[aria-selected="true"]',
-  '.animus-menu-item',
-  '.animus-tree-item',
-  '.animus-side-link',
+  '[role="tab"]',
+  '[role="tab"][aria-selected="true"]',
+  '.arcane-toggle-group-item',
+  '.ui-nav-item',
+  '.ui-library-row',
+  '.animus-info [data-animus-info]',
   'input[type="text"], input:not([type])',
   'input[type="checkbox"]',
-  'input[type="range"]',
+  '[role="slider"]',
   'button[role="combobox"]',
   'input[role="combobox"]',
   'textarea',
@@ -56,12 +53,9 @@ const stateTargets = [
   '.arcane-toast-close',
 ];
 
-// Button heights in px: small and default, plus the 44 px phone target.
-const buttonHeights = {desktop: [28, 36], phone: [44]};
-
 /** Every shape violation on the page, as readable strings. */
 async function scan(page, only = null) {
-  return page.evaluate(({exceptions, only}) => {
+  return page.evaluate(({only}) => {
     const pinks = ['rgb(255, 95, 168)', 'rgb(224, 64, 140)', 'rgb(255, 179, 214)', 'rgb(194, 24, 91)', 'rgb(160, 18, 74)'];
     const describe = el => {
       const id = el.id ? `#${el.id}` : '';
@@ -73,17 +67,14 @@ async function scan(page, only = null) {
       // Split on commas outside parentheses.
       const parts = value.split(/,(?![^(]*\))/);
       return parts.some(part => {
-        if (/\binset\b/.test(part)) return true;
-        const lengths = part.replace(/rgba?\([^)]*\)/g, '').match(/-?[\d.]+px/g) || [];
-        const [x = '0px', y = '0px', blur = '0px'] = lengths;
-        return parseFloat(x) !== 0 || parseFloat(y) !== 0 || parseFloat(blur) !== 0;
+        // An inner highlight is a crescent; outer shadows are shadcn's elevation.
+        if (!/\binset\b/.test(part)) return false;
+        const lengths = part.replace(/(rgba?|oklab|color|color-mix)\([^)]*\)/g, '').match(/-?[\d.]+px/g) || [];
+        return lengths.some(length => parseFloat(length) !== 0);
       });
     };
     const out = [];
     const check = (el, style, label) => {
-      const radius = ['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius']
-          .map(key => style[key]).filter(value => value && !/^0px( 0px)?$/.test(value));
-      if (radius.length && !exceptions.some(selector => el.matches(selector))) out.push(`${label} radius ${radius[0]}`);
       if (shadowFails(style.boxShadow)) out.push(`${label} box-shadow ${style.boxShadow}`);
       const sides = ['Top', 'Right', 'Bottom', 'Left'].map(side => ({
         width: parseFloat(style[`border${side}Width`]) || 0,
@@ -108,7 +99,7 @@ async function scan(page, only = null) {
       }
     }
     return [...new Set(out)];
-  }, {exceptions: roundExceptions, only});
+  }, {only});
 }
 
 /** The first of each [stateTargets] with each interaction state forced on it. */
@@ -144,27 +135,6 @@ async function scanStates(page, cdp) {
   return out;
 }
 
-/** Buttons whose height is outside the system, and phone targets under 44 px. */
-async function sizes(page, compact) {
-  return page.evaluate(({allowed, compact}) => {
-    const out = [];
-    for (const el of document.querySelectorAll('button, .arcane-button, [role="button"], [role="tab"], [role="combobox"], input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not([type="color"])')) {
-      const box = el.getBoundingClientRect();
-      if (!box.width || !box.height || getComputedStyle(el).visibility === 'hidden') continue;
-      // Chest slots, stage tools and tree rows are sized by their grid, not the button system.
-      if (el.closest('.animus-chest, .animus-chest-screen, .animus-mc-stage canvas, [data-size-exempt]')) continue;
-      const height = Math.round(box.height);
-      const label = `${el.tagName.toLowerCase()}${el.className && typeof el.className === 'string' ? `.${el.className.trim().split(/\s+/).slice(0, 2).join('.')}` : ''} "${(el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 24)}"`;
-      if (compact) {
-        if (height < 44 && el.matches('button, .arcane-button, [role="button"], [role="tab"], [role="combobox"], input')) out.push(`${label} ${height}px`);
-      } else if (el.matches('button.arcane-button, a.arcane-button, button.arcane-cycle-button') && !allowed.includes(height)) {
-        out.push(`${label} ${height}px`);
-      }
-    }
-    return [...new Set(out)];
-  }, {allowed: buttonHeights.desktop, compact});
-}
-
 async function settle(page) {
   await page.waitForTimeout(150);
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -182,11 +152,11 @@ async function run(browser, viewport, width, theme, failures) {
   page.on('console', message => { if (message.type() === 'error' && !/404|Failed to load resource/.test(message.text())) errors.push(message.text()); });
   let count = 0;
   const visit = async name => {
+    if (screens && !screens.test(name)) return;
     await settle(page);
     const where = `${width} ${theme} ${name}`;
     for (const problem of await scan(page)) failures.push(`${where}: ${problem}`);
     for (const problem of await scanStates(page, cdp)) failures.push(`${where}: ${problem}`);
-    for (const problem of await sizes(page, width === 'phone')) failures.push(`${where}: size ${problem}`);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     if (overflow > 0) failures.push(`${where}: scrolls sideways by ${overflow}px`);
     if (shots) {
@@ -200,18 +170,18 @@ async function run(browser, viewport, width, theme, failures) {
   };
 
   await page.goto(url);
-  await page.evaluate(mode => window.localStorage.setItem('animus.theme', mode), theme);
+  await page.evaluate(mode => { window.localStorage.setItem('animus.theme', mode); window.localStorage.setItem('animus.mode', 'advanced'); }, theme);
   await page.reload();
-  await page.getByRole('heading', {name: 'Start a workspace'}).waitFor();
+  await page.getByRole('heading', {name: 'Animus web editor'}).waitFor();
   await visit('home');
 
-  await page.getByRole('button', {name: 'Create with example packs'}).click();
-  await page.getByRole('heading', {name: 'Try it in the browser'}).waitFor();
+  await page.getByRole('button', {name: 'Open examples'}).click();
+  await page.locator('[data-testid="home-count"]').first().waitFor();
   const workspace = /#\/workspace\/([^/?]+)/.exec(page.url())[1];
   await visit('workspace');
 
   const walk = async label => {
-    const hrefs = await page.locator('#animus-sidebar a[href*="/workspace/"]').evaluateAll(links => links.map(link => link.getAttribute('href')));
+    const hrefs = await documentHrefs(page);
     const byKind = new Map();
     for (const href of hrefs) {
       const match = /#\/workspace\/[^/]+\/([^/?]+)\/[^?]+$/.exec(href);
@@ -219,10 +189,25 @@ async function run(browser, viewport, width, theme, failures) {
     }
     for (const [kind, href] of byKind) {
       for (const view of ['visual', 'preview', 'code', 'split']) {
-        await hash(`${href}?view=${view}`);
+        // A view a kind does not have settles on one it has (a conversation
+        // opens as its Conversation view).
+        await page.evaluate(next => { location.hash = next; }, `${href}?view=${view}`);
+        await page.waitForFunction(next => location.hash.split('?')[0] === next, href);
         await page.locator('#animus-main').waitFor();
         await page.waitForTimeout(view === 'preview' || view === 'split' ? 400 : 100);
         await visit(`${label} ${kind} ${view}`);
+        // An NPC or trait group form is cut into tabs: every tab is a screen.
+        if (view === 'visual' && (kind === 'npc' || kind === 'group')) {
+          const tabs = page.locator('.animus-npc-tabs [role="tab"]');
+          const first = await tabs.evaluateAll(all => all.findIndex(tab => tab.getAttribute('aria-selected') === 'true'));
+          for (let index = 0; index < await tabs.count(); index++) {
+            if (index === first) continue;
+            const name = (await tabs.nth(index).innerText()).trim();
+            await tabs.nth(index).click();
+            await page.locator(`[data-npc-tab="${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}"]`).waitFor();
+            await visit(`${label} ${kind} ${view} tab ${name}`);
+          }
+        }
       }
     }
   };
@@ -234,6 +219,10 @@ async function run(browser, viewport, width, theme, failures) {
   await visit('new npc');
   await hash(`#/workspace/${workspace}/npcs`);
   await visit('npc list');
+  await hash(`#/workspace/${workspace}/list/shop`);
+  await visit('list shops');
+  await hash(`#/workspace/${workspace}/list/route`);
+  await visit('list movement');
   await hash(`#/workspace/${workspace}/sync`);
   await visit('sync');
   await hash('#/citizens');
@@ -244,50 +233,50 @@ async function run(browser, viewport, width, theme, failures) {
 
   // Menus, the palette and a confirmation.
   await hash(`#/workspace/${workspace}`);
-  await page.getByRole('heading', {name: 'Try it in the browser'}).waitFor();
+  await page.locator('[data-testid="home-count"]').first().waitFor();
+  await page.locator('#ui-overflow-button').click();
+  await page.locator('[role="menu"]:visible').first().waitFor();
+  await visit('overflow menu');
+  await page.keyboard.press('Escape');
+  await page.locator('#ui-context-button').click();
+  await page.locator('.ui-context-list').waitFor();
+  await visit('switcher');
+  await page.keyboard.press('Escape');
   if (await isCompact(page)) {
-    await page.locator('#animus-menu-more').click();
-    await visit('more menu');
-    await page.keyboard.press('Escape');
-    await page.locator('#animus-documents-button').click();
-    await page.locator('#animus-sidebar.is-open').waitFor();
+    await page.locator('#ui-nav-button').click();
+    await page.locator('#ui-nav-drawer .arcane-sidebar').waitFor();
     await visit('drawer');
     await page.keyboard.press('Escape');
-  } else {
-    for (const menu of ['open', 'import', 'export']) {
-      await page.locator(`#animus-menu-${menu}`).click();
-      await visit(`${menu} menu`);
-      await page.keyboard.press('Escape');
-    }
   }
   await page.locator('body').click({position: {x: 1, y: viewport.height - 1}});
   await page.keyboard.press('Control+k');
-  await page.locator('.animus-palette').waitFor();
+  await page.locator('[data-arcane-command-input="ui-search"]').waitFor();
   await visit('command palette');
   await page.keyboard.press('Escape');
   await page.goto(url);
-  await page.getByRole('heading', {name: 'Start a workspace'}).waitFor();
-  await page.locator('[aria-label^="Delete "]').first().click();
-  await page.getByRole('alertdialog').waitFor();
+  await page.getByRole('heading', {name: 'Continue'}).waitFor();
+  await page.locator('.ui-continue-row').first().getByRole('button', {name: 'More actions'}).click();
+  await page.getByRole('menuitem', {name: 'Delete workspace'}).click();
+  await page.locator('[role="alertdialog"]:visible, [role="dialog"]:visible').first().waitFor();
   await visit('delete confirm');
   await page.keyboard.press('Escape');
 
   for (const folder of folders) {
     await page.goto(url);
-    await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+    await page.getByRole('heading', {name: 'Continue'}).waitFor();
     const chooser = page.waitForEvent('filechooser');
-    await page.getByRole('button', {name: 'Open folder'}).first().click();
+    await startAction(page, 'Open folder');
     await (await chooser).setFiles(folder);
     await page.waitForFunction(() => /#\/workspace\//.test(location.hash));
-    await page.locator('#animus-sidebar a[href*="/workspace/"]').first().waitFor({state: 'attached'});
+    await page.locator('.ui-save-bar').waitFor();
     await walk(path.basename(folder));
     if (path.basename(folder) === 'groups_recordings') {
       const opened = /#\/workspace\/([^/?]+)/.exec(page.url())[1];
       await hash(`#/workspace/${opened}/npcs`);
-      await page.locator('[data-npc="group-assign"]').waitFor();
+      await page.locator('#npc-list .ui-library-row').first().waitFor();
       await visit('groups_recordings npc list');
       await hash(`#/workspace/${opened}/recordings`);
-      await page.locator('[data-recording="list"]').waitFor();
+      await page.locator('#movement-list').waitFor();
       await visit('groups_recordings recordings list');
     }
   }

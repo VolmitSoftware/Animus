@@ -5,15 +5,21 @@ library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/npc/pack_model.dart';
 import '../../model/animus_document.dart';
+import '../../ui/action_row.dart';
+import '../../ui/field.dart';
+import '../../ui/section.dart';
 import '../gui/gui_fields.dart';
 import '../inspect/inspect_fields.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../suggest/autocomplete_input.dart';
+import 'npc_layout.dart';
+import '../../ui/problem_text.dart';
 
 class PackEditor extends StatefulWidget {
   const PackEditor({required this.document, required this.schema, required this.onJson, this.diagnostics = const <Diagnostic>[], super.key});
@@ -45,50 +51,41 @@ class _PackEditorState extends State<PackEditor> {
     final JsonMap modules = asMap(pack['modules']);
     final String? addProblem = _adding.isEmpty ? null : packModuleNameProblem(_adding, modules.keys.toList());
     return dom.section(
-      classes: 'animus-panel animus-inspector animus-pack-editor',
+      styles: stackStyles(gap: Gap.md),
       attributes: const <String, String>{'aria-label': 'Pack'},
       <Widget>[
-        GuiSection(
-          title: 'Pack',
-          tip: 'A pack bundles behaviors and lists the Java modules they need. These are its own fields.',
-          docs: Docs.packs,
-          children: <Widget>[
-            InspectObject(
-              schema: component.schema,
-              node: component.schema.root,
-              value: pack,
-              path: r'$',
-              diagnostics: component.diagnostics,
-              skip: const <String>{'modules'},
-              onChanged: (JsonMap next) => _write(next, 'fields'),
-            ),
-          ],
+        InspectObject(
+          schema: component.schema,
+          node: component.schema.root,
+          value: pack,
+          path: r'$',
+          diagnostics: component.diagnostics,
+          skip: const <String>{'modules'},
+          onChanged: (JsonMap next) => _write(next, 'fields'),
         ),
-        GuiSection(
+        AppSection(
           title: 'Modules',
-          tip: "A missing required module disables the pack's behaviors. A missing optional one only switches off what needs it.",
+          tip: "Java modules the pack's behaviors use. A missing required one disables the pack's behaviors; a missing optional one only switches off what needs it.",
           docs: Docs.packs,
           count: modules.length,
           children: <Widget>[
-            const dom.p(classes: 'animus-gui-help', <Widget>[Component.text("Java modules the pack's behaviors use.")]),
-            if (modules.isEmpty)
-              const dom.p(classes: 'animus-muted', <Widget>[
-                Component.text('No modules.'),
-              ]),
+            if (modules.isEmpty) mutedLine('No modules.'),
             for (final MapEntry<String, Object?> entry in modules.entries) _module(pack, entry.key, asMap(entry.value)),
-            dom.div(classes: 'animus-gui-line', <Widget>[
-              GuiTextInput(value: _adding, label: 'New module name', placeholder: 'economy', onChanged: (String text) => setState(() => _adding = text.trim())),
-              Button.secondary(
-                label: 'Add module',
-                size: ButtonSize.small,
-                disabled: _adding.isEmpty || addProblem != null,
-                onPressed: () {
-                  _write(putPackModule(pack, _adding, const <String, Object?>{}), 'modules');
-                  setState(() => _adding = '');
-                },
-              ),
-            ]),
-            if (addProblem != null) dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text(addProblem)]),
+            ActionRow(
+              label: 'Add module',
+              leading: <Widget>[
+                wrapItem('1 1 16rem', AutocompleteInput(value: _adding, label: 'New module name', onChanged: (String text) => setState(() => _adding = text.trim()), profile: FieldProfile.none)),
+              ],
+              secondary: <RowAction>[
+                RowAction('Add module', _adding.isEmpty || addProblem != null
+                    ? null
+                    : () {
+                        _write(putPackModule(pack, _adding, const <String, Object?>{}), 'modules');
+                        setState(() => _adding = '');
+                      }),
+              ],
+            ),
+            if (addProblem != null) problemText(addProblem, severity: DiagnosticSeverity.warning),
           ],
         ),
       ],
@@ -107,11 +104,11 @@ class _PackEditorState extends State<PackEditor> {
     void put(JsonMap next) => _write(putPackModule(pack, name, next), 'module:$name');
     return dom.div(
       key: ValueKey<String>('pack-module:$name'),
-      classes: 'animus-inspect-item animus-pack-module',
+      styles: stackStyles(),
       attributes: <String, String>{'data-module': name},
       <Widget>[
-        dom.div(classes: 'animus-gui-line', <Widget>[
-          GuiTextInput(
+        ActionRow(label: 'Module $name', leading: <Widget>[
+          wrapItem('1 1 16rem', AutocompleteInput(
             value: typed,
             label: 'Module $name name',
             onChanged: (String text) {
@@ -127,28 +124,27 @@ class _PackEditorState extends State<PackEditor> {
                 setState(() => _renaming[name] = next);
               }
             },
-          ),
-          GuiIconButton(
-            icon: ArcaneIcon.x(size: IconSize.sm),
-            label: 'Remove module $name',
-            onPressed: () => _write(putPackModule(pack, name, null), 'modules'),
-          ),
+            profile: FieldProfile.none,
+          )),
+        ], secondary: <RowAction>[
+          RowAction('Remove module $name', () => _write(putPackModule(pack, name, null), 'modules'), icon: ArcaneIcon.x(), iconOnly: true),
         ]),
         if (renameProblem != null)
-          dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('$renameProblem The name stays $name until then.')]),
-        GuiSwitch(
-          value: module['required'] != false,
+          problemText('$renameProblem The name stays $name until then.', severity: DiagnosticSeverity.warning),
+        Field(
           label: 'Required',
-          onChanged: (bool required) =>
-              put(<String, Object?>{...module, 'required': required}..removeWhere((String key, Object? value) => key == 'required' && value == true)),
+          child: ArcaneToggleSwitch(
+            value: module['required'] != false,
+            label: 'Required',
+            onChanged: (bool required) =>
+                put(<String, Object?>{...module, 'required': required}..removeWhere((String key, Object? value) => key == 'required' && value == true)),
+                size: ComponentSize.sm,
+          ),
         ),
         _configuration(pack, name, module, path),
         for (final Diagnostic problem in diagnosticsAt(component.diagnostics, path, nested: true))
           if (!problem.path.startsWith('$path.configuration'))
-            dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[
-              dom.code(<Widget>[Component.text(problem.path)]),
-              Component.text(' ${problem.message}'),
-            ]),
+            problemText(problem.message, severity: problem.severity),
       ],
     );
   }
@@ -160,7 +156,7 @@ class _PackEditorState extends State<PackEditor> {
     final FieldSpec field = packModuleConfiguration(component.schema, pack, name);
     final Object? value = module['configuration'];
     final bool schemed = field.schema.containsKey('properties');
-    return GuiRow(
+    return Field(
       label: 'Configuration',
       tip: schemed ? "Fields from the module's schema. Keys it does not name are kept." : 'The module publishes no schema here; its keys are kept as written.',
       problems: diagnosticsAt(component.diagnostics, at, nested: true),

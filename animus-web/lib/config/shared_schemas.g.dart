@@ -79,7 +79,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   "schema": "editor-v1.schema.json",
   "headers": {
     "authorization": "Authorization: Bearer <token> on every request except hello and pair.",
-    "counter": "X-Animus-Counter: a strictly increasing integer per token on every mutating request (POST and DELETE except pair). A value at or below the last accepted one is refused with counter-replayed.",
+    "counter": "X-Animus-Counter: a strictly increasing integer per token on every mutating request (POST and DELETE except pair, documents/read, which only reads, and DELETE /v1/token). A value at or below the last accepted one is refused with counter-replayed.",
+    "retry": "A rate-limited (429) or busy (503) answer carries error.retryAfterMillis and Retry-After in whole seconds, on the direct path and in the relay response frame alike. Wait that long and send the same request again.",
     "origin": "Origin must equal one of [editor] allowedOrigins exactly, or the request is refused with origin-not-allowed."
   },
   "changeSets": {
@@ -95,10 +96,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {"method": "GET", "path": "/v1/lookups", "scope": "read", "request": null, "responses": {"200": "lookups-response"}},
     {"method": "GET", "path": "/v1/catalog", "scope": "read", "query": {"kind": "kind", "after": "string"}, "request": null, "responses": {"200": "catalog-response"}},
     {"method": "GET", "path": "/v1/documents/{kind}/{id}", "scope": "read", "request": null, "responses": {"200": "document-response", "404": "error-response"}},
+    {"method": "POST", "path": "/v1/documents/read", "scope": "read", "counter": false, "request": "documents-read-request", "responses": {"200": "documents-read-response", "400": "error-response"}},
     {"method": "GET", "path": "/v1/skins/{hash}/texture.png", "scope": "read", "request": null, "responses": {"200": "image/png", "404": "error-response"}},
     {"method": "POST", "path": "/v1/validate", "scope": "validate", "request": "validate-request", "responses": {"200": "validate-response"}},
     {"method": "POST", "path": "/v1/previews", "scope": "preview", "request": "preview-request", "responses": {"200": "preview-response", "409": "error-response", "422": "error-response"}},
     {"method": "DELETE", "path": "/v1/previews/{previewId}", "scope": "preview", "request": null, "responses": {"204": null, "404": "error-response"}},
+    {"method": "DELETE", "path": "/v1/token", "scope": null, "counter": false, "description": "The bearer token revokes itself: its event streams close and its previews end. Not rate limited; a token already revoked answers 204 again.", "request": null, "responses": {"204": null, "401": "error-response"}},
     {"method": "POST", "path": "/v1/changes", "scope": "apply:*", "request": "change-set", "responses": {"200": "change-applied", "409": "change-conflict", "422": "change-invalid"}},
     {"method": "GET", "path": "/v1/changes/{idempotencyKey}", "scope": "read", "request": null, "responses": {"200": "change-status-response"}},
     {"method": "POST", "path": "/v1/changes/{changeId}/undo", "scope": "apply:*", "request": "undo-request", "responses": {"200": "change-applied", "409": "change-conflict"}},
@@ -119,7 +122,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "scope-missing": 403, "group-denied": 403, "origin-not-allowed": 403, "counter-replayed": 409,
     "not-found": 404, "invalid-request": 400, "too-large": 413, "rate-limited": 429, "busy": 503,
     "conflict": 409, "preview-refused": 422, "player-offline": 409, "gloss-unavailable": 422,
-    "unsupported-protocol": 400, "server-offline": 503, "timeout": 504, "internal": 500
+    "unsupported-protocol": 400, "server-offline": 503, "timeout": 504, "internal": 500, "world-unloaded": 404
   },
   "kinds": {
     "npc": {"folder": "npcs", "applyScope": "apply:npcs", "schema": "generated/npc.schema.json"},
@@ -145,7 +148,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "linkTemplate": "https://animus.volmitsoftware.com/#/pair/{code}",
     "secretMinutes": 10,
     "defaultTokenDays": 7,
-    "defaultScopes": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "terrain"],
+    "slidingExpiry": "A token expires defaultTokenDays (or its expires= lifetime) after its last use; each use moves expiresAt forward.",
+    "defaultScopes": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "import", "spawn", "terrain"],
     "tokenRecheckSeconds": 60
   },
   "limits": {
@@ -153,6 +157,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "importBodyBytes": 16777216,
     "changeSetDocuments": 512,
     "catalogPageSize": 1000,
+    "catalogPageBytes": 524288,
+    "documentsReadRefs": 200,
+    "documentsReadBytes": 524288,
+    "catalogEventFrameBytes": 49152,
     "concurrentRequestsPerToken": 8,
     "openConnections": 64,
     "eventFramesPerSecond": 20,
@@ -220,7 +228,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "documentRef": {
       "type": "object",
       "required": ["kind", "id"],
-      "properties": {"kind": {"$ref": "#/$defs/kind"}, "id": {"$ref": "#/$defs/documentId"}}
+      "properties": {"kind": {"$ref": "#/$defs/kind"}, "id": {"$ref": "#/$defs/documentId"}, "source": {"$ref": "#/$defs/changeSource"}}
     },
     "documentVersion": {
       "type": "object",
@@ -231,7 +239,44 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {"$ref": "#/$defs/documentId"},
         "path": {"type": "string", "minLength": 1, "maxLength": 1024, "description": "Path under the plugin data folder, with / separators."},
         "revision": {"$ref": "#/$defs/revision"},
-        "hash": {"$ref": "#/$defs/hash"}
+        "hash": {"$ref": "#/$defs/hash"},
+        "summary": {"$ref": "#/$defs/documentSummary"},
+        "source": {"$ref": "#/$defs/changeSource", "description": "Catalog events only: who made this version."}
+      }
+    },
+    "changeSource": {
+      "enum": ["editor", "server", "file"],
+      "description": "Who changed a document. editor: the editor API (apply, undo, import steps, spawn, despawn). server: Animus itself (commands such as animus edit, the in-game tools, imports run in game, schema upgrades on reload or hotload). file: the file changed on disk outside Animus, reported whether or not hotload or /animus reload loaded it yet."
+    },
+    "documentSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What a list shows before the document is read, from the stored file only; values a trait group gives an NPC are not merged in. A field is present only when the document has it. Text is plain, at most 64 characters. Show the id when name is absent.",
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 64, "description": "The display name: NPC name, shop, chest GUI and quest title, first hologram line, pack name, recording description."},
+        "type": {"type": "string", "maxLength": 64, "description": "NPC: the entity type as written."},
+        "world": {"type": "string", "maxLength": 64, "description": "NPC position, hologram anchor or recording world."},
+        "x": {"type": "number"}, "y": {"type": "number"}, "z": {"type": "number"},
+        "spawned": {"type": "boolean"},
+        "folder": {"type": "string", "maxLength": 512, "description": "NPC: its folder under npcs/, empty for npcs/ itself."},
+        "tags": {"type": "array", "maxItems": 16, "items": {"type": "string", "maxLength": 64}},
+        "features": {"type": "array", "items": {"enum": ["route", "recording", "schedule", "combat", "shop", "behavior", "rig", "hologram", "mount"]}, "description": "NPC: what it has, in this order."},
+        "skin": {"type": "string", "pattern": "^[a-f0-9]{64}$", "description": "NPC: the id of its skin document."},
+        "texture": {"type": "string", "pattern": "^https://textures\\.minecraft\\.net/texture/[0-9a-f]{1,128}$", "description": "Skin: its texture URL."},
+        "slim": {"type": "boolean", "description": "Skin: the slim arm model."},
+        "offers": {"type": "integer", "minimum": 0, "description": "Shop: offers on all pages and modes."},
+        "pages": {"type": "integer", "minimum": 0},
+        "rows": {"type": "integer", "minimum": 0, "description": "Chest GUI rows."},
+        "lines": {"type": "integer", "minimum": 0, "description": "Hologram lines, or the first page's."},
+        "frames": {"type": "integer", "minimum": 0, "description": "Text animation frames."},
+        "triggers": {"type": "array", "maxItems": 8, "items": {"type": "string", "maxLength": 64}, "description": "Behavior: distinct trigger events in order."},
+        "behaviors": {"type": "integer", "minimum": 0, "description": "Server behaviors: how many the list runs."},
+        "version": {"type": "string", "maxLength": 64, "description": "Pack version."},
+        "points": {"type": "integer", "minimum": 0, "description": "Route points. NPC: the points of its own route, present only when its animus:navigation has points and names no route or recording."},
+        "seconds": {"type": "number", "minimum": 0, "description": "Recording or animation length."},
+        "fields": {"type": "integer", "minimum": 0, "description": "Trait group: how many NPC fields it sets."},
+        "stages": {"type": "integer", "minimum": 0, "description": "Quest stages."},
+        "bones": {"type": "integer", "minimum": 0, "description": "Rig bones."}
       }
     },
     "documentDiagnostics": {
@@ -245,7 +290,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     },
     "error-code": {
-      "enum": ["unauthorized", "token-expired", "token-revoked", "scope-missing", "group-denied", "origin-not-allowed", "counter-replayed", "pairing-invalid", "pairing-expired", "not-found", "invalid-request", "too-large", "rate-limited", "busy", "conflict", "preview-refused", "player-offline", "gloss-unavailable", "unsupported-protocol", "server-offline", "timeout", "internal"]
+      "enum": ["unauthorized", "token-expired", "token-revoked", "scope-missing", "group-denied", "origin-not-allowed", "counter-replayed", "pairing-invalid", "pairing-expired", "not-found", "invalid-request", "too-large", "rate-limited", "busy", "conflict", "preview-refused", "player-offline", "gloss-unavailable", "unsupported-protocol", "server-offline", "timeout", "internal", "world-unloaded"]
     },
     "error-response": {
       "type": "object",
@@ -260,7 +305,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "code": {"$ref": "#/$defs/error-code"},
             "message": {"type": "string", "minLength": 1, "maxLength": 2048},
             "diagnostics": {"type": "array", "items": {"$ref": "#/$defs/diagnostic"}},
-            "retryAfterMillis": {"type": "integer", "minimum": 0}
+            "retryAfterMillis": {"type": "integer", "minimum": 0},
+            "scope": {"$ref": "#/$defs/scope", "description": "On scope-missing: the scope the request needs and the token lacks."}
           }
         }
       }
@@ -275,7 +321,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "animus": {"type": "string", "minLength": 1, "maxLength": 64},
         "platform": {"enum": ["paper", "folia", "spigot", "purpur", "fabric", "forge", "neoforge", "other"]},
         "minecraft": {"type": "string", "pattern": "^\\d+\\.\\d+(\\.\\d+)?$"},
-        "serverName": {"type": "string", "maxLength": 128}
+        "serverName": {"type": "string", "minLength": 1, "maxLength": 128, "description": "[editor] serverName, else the MOTD without colour codes, else the server folder's name."}
       }
     },
     "pairing-payload": {
@@ -314,11 +360,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "token": {"type": "string", "pattern": "^anm_[A-Za-z0-9_-]{8,64}\\.[A-Za-z0-9_-]{43}$", "description": "anm_<tokenId>.<32 random bytes base64url>. The server stores only its SHA-256."},
         "tokenId": {"$ref": "#/$defs/tokenId"},
         "scopes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/scope"}},
-        "groups": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"}, "description": "NPC groups the token may touch; absent means all."},
+        "groups": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}(/[a-z0-9][a-z0-9_-]{0,63}){0,7}$"}, "description": "NPC folders under npcs/ the token may touch, nested ones as town/market; absent means all."},
         "expiresAt": {"$ref": "#/$defs/instant"},
         "fingerprint": {"$ref": "#/$defs/fingerprint"},
         "counter": {"type": "integer", "minimum": 0, "description": "The last X-Animus-Counter value accepted for this token."},
-        "admin": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "description": "The UUID of the player who issued the pairing; absent when it came from the console. The editor makes it the owner of NPCs it creates."}
+        "admin": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "description": "The UUID of the player who issued the pairing; absent when it came from the console. The editor makes it the owner of NPCs it creates."},
+        "serverName": {"type": "string", "minLength": 1, "maxLength": 128, "description": "As hello-response."}
       }
     },
     "capabilities-response": {
@@ -430,6 +477,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "type": "object",
       "additionalProperties": false,
       "required": ["documents"],
+      "description": "A page ends at 1000 entries or 512 KiB of entries, on the relay at most its frame limit less 16 KiB. Every entry carries summary.",
       "properties": {
         "documents": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/documentVersion"}},
         "next": {"type": ["string", "null"], "description": "Pass as after= for the next page; null on the last page."}
@@ -446,7 +494,41 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "revision": {"$ref": "#/$defs/revision"},
         "hash": {"$ref": "#/$defs/hash"},
         "source": {"type": "object", "description": "The stored document, parsed."},
+        "summary": {"$ref": "#/$defs/documentSummary"},
         "diagnostics": {"type": "array", "items": {"$ref": "#/$defs/diagnostic"}}
+      }
+    },
+    "documents-read-request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["refs"],
+      "description": "POST /v1/documents/read. Reads only, so it takes no X-Animus-Counter. Each ref at most once.",
+      "properties": {
+        "refs": {"type": "array", "minItems": 1, "maxItems": 200, "items": {
+          "type": "object", "additionalProperties": false, "required": ["kind", "id"],
+          "properties": {"kind": {"type": "string", "minLength": 1, "maxLength": 512}, "id": {"type": "string", "minLength": 1, "maxLength": 512}}
+        }}
+      }
+    },
+    "documents-read-response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["documents", "errors", "remaining"],
+      "description": "Documents in request order, together at most 512 KiB (on the relay its frame limit less 16 KiB); one larger document comes alone. Send remaining again.",
+      "properties": {
+        "documents": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/document-response"}},
+        "errors": {"type": "array", "maxItems": 200, "items": {
+          "type": "object", "additionalProperties": false, "required": ["kind", "id", "code", "message"],
+          "properties": {
+            "kind": {"type": "string", "minLength": 1, "maxLength": 512}, "id": {"type": "string", "minLength": 1, "maxLength": 512},
+            "code": {"enum": ["not-found", "group-denied", "invalid-request", "too-large"]},
+            "message": {"type": "string", "minLength": 1, "maxLength": 2048}
+          }
+        }},
+        "remaining": {"type": "array", "maxItems": 200, "items": {
+          "type": "object", "additionalProperties": false, "required": ["kind", "id"],
+          "properties": {"kind": {"type": "string", "minLength": 1, "maxLength": 512}, "id": {"type": "string", "minLength": 1, "maxLength": 512}}
+        }}
       }
     },
     "change": {
@@ -680,7 +762,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "The first frame a browser sends on WS /v1/events, within 10 seconds."
     },
     "event": {
-      "description": "Frames the server sends on WS /v1/events. At most 20 frames per second per connection; catalog changes coalesce.",
+      "description": "Frames the server sends on WS /v1/events. At most 20 frames per second per connection. A catalog frame goes out for every created, changed or deleted document, whatever changed it; changes to one document coalesce, and one frame carries at most 48 KiB of entries.",
       "oneOf": [
         {
           "type": "object", "additionalProperties": false, "required": ["type", "documents"],

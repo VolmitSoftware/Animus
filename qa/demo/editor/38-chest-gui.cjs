@@ -1,33 +1,36 @@
-// The chest GUI editor: a slot in the window drawn as in game becomes a clock button with a message.
-// Fake server data: --data=test/fixtures/gui_editors
+// The chest GUI editor, opened from GUIs in Advanced: slot 4 of the window
+// drawn as in game becomes its own slot, a clock button with a message.
+// Fake server data: --data=test/fixtures/gui_editors (from animus-web/).
 module.exports = async (L) => {
-  const {film: f, page} = await L.pairedSession('38-chest-gui');
-  const h = L.panelHuman(f);
-  await page.getByText('town:board', {exact: true}).first().click();
-  await page.getByRole('group', {name: 'Chest window town:board'}).waitFor();
-  await L.dismiss(page);
-  await L.dismiss(page);
-  await page.waitForTimeout(2500);
-  await page.evaluate(() => window.scrollTo(0, 0));
+  const {film: f, page, h} = await L.pairedSession('38-chest-gui', {mode: 'advanced'});
+  await page.waitForTimeout(1200);
   f.mark();
-  const visual = page.getByRole('tabpanel', {name: 'Visual'});
-  const window = page.getByRole('group', {name: 'Chest window town:board'});
-  await h.hover(window, 900);
-  await h.click(page.getByRole('button', {name: /^Slot 4,/}), {after: 900});
-  await h.hover(visual.getByText(/^Drawn by mask key #/), 1100);
-  await h.click(page.getByRole('button', {name: 'Make explicit slot'}), {after: 900});
-  await h.click(visual.getByRole('combobox', {name: 'Type'}), {after: 600});
-  await h.click(L.option(page, 'button'), {after: 900, noReveal: true});
-  await h.type(visual.getByRole('combobox', {name: 'Item'}), 'clock', {clear: true, after: 600});
-  await h.click(page.getByRole('listbox').getByText('minecraft:clock').first(), {after: 900, noReveal: true});
-  await h.type(visual.getByRole('combobox', {name: 'Name'}), '&eDaily reward', {clear: true});
+  await h.pause(300);
+  await h.job('GUIs');
+  await h.click(page.getByRole('listbox', {name: 'Chest GUIs'}).getByRole('option', {name: /^Town board/}), {after: 1500});
+  const gui = page.getByRole('region', {name: 'Chest GUI'});
+  const slot4 = page.getByRole('button', {name: /^Slot 4,/});
+  await h.hover(page.getByRole('region', {name: 'Preview'}), 900);
+  await h.click(slot4, {after: 900});
+  await h.moveTo(gui.getByText(/^Key #: every # slot shows this/), {ox: 0.5});
+  await h.pause(1100);
+  await h.click(gui.getByRole('button', {name: 'Use own slot'}), {after: 900});
+  await h.pick(gui.getByRole('combobox', {name: 'Type'}), 'button', {after: 900});
+  const item = gui.getByRole('combobox', {name: 'Item'});
+  await h.type(item, 'clock', {clear: true, after: 600});
+  await h.click(page.getByRole('listbox', {name: 'Items for Item'}).getByRole('option').first(), {after: 900, noReveal: true});
+  await h.type(gui.getByRole('combobox', {name: 'Name'}), '&eDaily reward', {clear: true});
   await h.key('Escape', 400);
-  const add = visual.getByRole('combobox', {name: 'Add an action'});
+  const add = gui.getByRole('combobox', {name: 'Add action'});
   await h.click(add, {after: 700});
-  await h.click((await L.listboxOf(add)).getByRole('option', {name: 'Send a message'}), {after: 900, noReveal: true});
-  await h.type(visual.getByRole('combobox', {name: 'Message'}), '&aCome back tomorrow.', {clear: true});
+  await page.keyboard.type('message', {delay: L.slow(90)});
+  await h.pause(600);
+  await h.click(L.option(page, 'message'), {after: 900, noReveal: true});
+  await h.type(gui.getByRole('combobox', {name: 'Message'}), '&aCome back tomorrow.', {clear: true});
   await h.key('Escape', 400);
-  await h.hover(page.getByRole('button', {name: /^Slot 4,/}), 600);
+  // Resting on slot 4 shows its tooltip, the name players read.
+  await h.moveTo(slot4, {ox: 0.85, oy: 0.85});
+  await h.pause(600);
   await h.result(1900);
   return L.finish(f, {closing: 'Slot 4 is now a clock button that sends a message'});
 };

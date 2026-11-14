@@ -1,6 +1,8 @@
 /// A hologram's Gloss display style as its one text display draws it, with
 /// Animus's hologram defaults (facing the viewer, seen through blocks, no
-/// background), and what of it the preview cannot draw.
+/// background), and what of it the preview cannot draw. Menu text reads its
+/// style here too: Gloss's menu defaults differ only in billboard and
+/// seeThrough, which a menu preview does not use.
 library;
 
 import 'dart:math' as math;
@@ -44,7 +46,7 @@ final class HologramTextStyle {
       brightness: block == null || sky == null ? null : mcLightBrightness(math.max(block, sky)),
       notes: <String>[
         if (billboard != 'center') 'Preview ignores billboard $billboard and faces the camera.',
-        if (!seeThrough) 'Preview draws text over blocks; seeThrough is off in game.',
+        if (!seeThrough) 'Not see-through in game.',
         if (unshown.isNotEmpty) 'Preview does not draw style ${unshown.join(', ')}.',
       ],
     );

@@ -1,73 +1,14 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
+import 'connection_status.dart';
 import 'error_copy.dart';
-import 'pairing.dart';
+import 'event_overlap.dart';
+import 'page_activity.dart';
+import 'request_pacer.dart';
+import 'server_pairing.dart';
 import 'server_profiles.dart';
-import 'server_proof.dart';
 import 'transport.dart';
-
-enum ConnectionPhase {
-  /// Not connected and not trying.
-  offline,
-
-  /// Trying a path.
-  connecting,
-
-  /// Requests and the event stream work.
-  online,
-
-  /// Lost or never reached; waiting to try again.
-  reconnecting,
-
-  /// The token is missing, expired or revoked: pair again.
-  needsPairing,
-
-  /// A path answered with another server's fingerprint. Nothing more is
-  /// tried until the user acts.
-  refused,
-}
-
-class ConnectionStatus {
-  const ConnectionStatus(this.phase, {this.path, this.attempt = 0, this.retryAt, this.problem, this.hello});
-
-  final ConnectionPhase phase;
-  final ConnectionPath? path;
-
-  /// Failed attempts since the last time the connection was online.
-  final int attempt;
-  final DateTime? retryAt;
-
-  /// Why the connection is not online, in plain words.
-  final ErrorCopy? problem;
-
-  String? get message => problem?.text;
-
-  /// The last `hello-response` from the server.
-  final Map<String, Object?>? hello;
-
-  bool get online => phase == ConnectionPhase.online;
-
-  String get label => switch (phase) {
-        ConnectionPhase.offline => 'Offline',
-        ConnectionPhase.connecting => 'Connecting${path == null ? '' : ' (${path!.label.toLowerCase()})'}',
-        ConnectionPhase.online => 'Online (${path!.label.toLowerCase()})',
-        ConnectionPhase.reconnecting => 'Reconnecting',
-        ConnectionPhase.needsPairing => 'Pair again',
-        ConnectionPhase.refused => 'Refused',
-      };
-}
-
-/// The request needs a connection that is not online.
-class NotConnected implements Exception {
-  const NotConnected(this.status);
-
-  final ConnectionStatus status;
-
-  @override
-  String toString() => 'Not connected: ${status.message ?? status.label}';
-}
 
 typedef Delay = Future<void> Function(Duration duration);
 
@@ -76,11 +17,32 @@ Future<void> realDelay(Duration duration) => Future<void>.delayed(duration);
 /// Error codes after which the token is no use.
 const Set<String> tokenErrorCodes = <String>{'unauthorized', 'token-expired', 'token-revoked'};
 
-/// Wait before retry [attempt] (1-based): 1 s doubling to [maximum].
-Duration reconnectDelay(int attempt, {Duration maximum = const Duration(seconds: 30)}) {
-  final int seconds = math.min(maximum.inSeconds, 1 << math.min(attempt - 1, 16));
-  return Duration(seconds: math.max(1, seconds));
+/// Wait before retry [attempt] (1-based) when the server has been gone for
+/// [away]: 1 to 5 s through the first minute, so a restart is caught within
+/// seconds, then doubling from 5 s to 30 s. While the page is [visible] the
+/// late waits stay at 5 s, so a server back after a long outage shows within
+/// seconds to someone looking.
+Duration reconnectDelay(int attempt, {Duration away = Duration.zero, bool visible = false}) {
+  const List<int> early = <int>[1, 1, 2, 2, 3, 3, 4, 5];
+  if (away < const Duration(minutes: 1)) return Duration(seconds: early[math.min(attempt, early.length) - 1]);
+  final int late = (away.inSeconds - 60) ~/ 30;
+  return Duration(seconds: math.min(visible ? 5 : 30, 5 << math.min(late + 1, 3)));
 }
+
+/// The tab is in front, by [PageActivity].
+bool pageVisible() => !PageActivity.hidden;
+
+/// How many times a `rate-limited` or `busy` answer is retried.
+const int retryLimit = 5;
+
+/// Authorized requests one connection keeps in flight. The server allows 8
+/// per token (`[editor] concurrentRequestsPerToken`) and answers the ninth
+/// `429`; the rest of the 8 stay free for the direct-path probe.
+const int maxRequestsInFlight = 6;
+
+/// Background requests (terrain) one connection keeps in flight, so two of
+/// [maxRequestsInFlight] stay free for the rest.
+const int maxBackgroundInFlight = 4;
 
 /// Waits between direct-path probes while on the relay: the last one repeats.
 const List<Duration> defaultProbeIntervals = <Duration>[Duration(seconds: 15), Duration(seconds: 30), Duration(seconds: 60)];
@@ -96,6 +58,8 @@ class ServerConnection {
     required this.open,
     this.token,
     this.delay = realDelay,
+    this.handshakeTimeout = const Duration(seconds: 5),
+    this.visible = pageVisible,
     this.probeIntervals = defaultProbeIntervals,
     this.overlap = const Duration(seconds: 2),
     DateTime Function()? now,
@@ -104,6 +68,13 @@ class ServerConnection {
 
   final TransportFactory open;
   final Delay delay;
+
+  /// How long one path gets to open, answer hello and capabilities and open
+  /// the event stream before it is closed and the next path tried.
+  final Duration handshakeTimeout;
+
+  /// Whether the page is in front, read before each reconnect wait.
+  final bool Function() visible;
 
   /// Waits before each direct-path probe while on the relay; the last repeats.
   final List<Duration> probeIntervals;
@@ -126,11 +97,38 @@ class ServerConnection {
   ConnectionPath? _lostPath;
   int _counter = 0;
 
+  /// The relay path kept open while the server is away from it, so the
+  /// reconnect starts the moment the relay says it is back.
+  ServerTransport? _parked;
+
+  /// When the connection was last online; null before it ever was.
+  DateTime? _lastOnline;
+
+  /// Paces authorized requests to the server's per-token rate.
+  final RequestPacer _pacer = RequestPacer();
+
+  /// Keeps at most [maxRequestsInFlight] authorized requests in flight.
+  final RequestSlots _slots = RequestSlots(maxRequestsInFlight);
+
+  /// Keeps at most [maxBackgroundInFlight] of them background requests.
+  final RequestSlots _backgroundSlots = RequestSlots(maxBackgroundInFlight);
+
+  /// The server closed the stream it had just opened (4000 + status): a
+  /// refusal, so the next attempt waits instead of going at once.
+  bool _streamRefused = false;
+
+  /// Set by [revoke]: the server is being forgotten, so nothing more is said
+  /// on [statuses], [events] or [profileChanges].
+  bool _silent = false;
+
+  /// The server's wait from a refused event stream, used for the next retry.
+  Duration? _refusedWait;
+
   /// Bumped whenever the online path changes or is lost; a probe that sees
   /// another value than it started with gives up.
   int _session = 0;
   Completer<void>? _probeWake;
-  _EventOverlap? _overlap;
+  EventOverlap? _overlap;
 
   /// Requests still waiting for an answer, per transport.
   final Map<ServerTransport, int> _inFlight = <ServerTransport, int>{};
@@ -161,7 +159,7 @@ class ServerConnection {
 
   void _emit(ConnectionStatus status) {
     _status = status;
-    _statuses.add(status);
+    if (!_silent) _statuses.add(status);
   }
 
   /// Starts connecting; returns once the first attempt round ended.
@@ -214,13 +212,17 @@ class ServerConnection {
 
   Future<void> disconnect() async {
     _running = false;
+    _lastOnline = null;
     retryNow();
     final Completer<void>? lost = _lost;
     if (lost != null && !lost.isCompleted) lost.complete();
     await _drop();
+    await _unpark();
     _emit(const ConnectionStatus(ConnectionPhase.offline));
   }
 
+  /// Ends the online session. A relay path whose server just left stays
+  /// open, parked for the reconnect.
   Future<void> _drop() async {
     final EventSubscription? subscription = _subscription;
     final ServerTransport? transport = _transport;
@@ -228,11 +230,43 @@ class ServerConnection {
     _transport = null;
     _endSession();
     await subscription?.cancel();
+    if (transport is RelayLink && !(transport as RelayLink).isClosed && !(transport as RelayLink).serverOnline && _running) {
+      await _unpark();
+      _parked = transport;
+      return;
+    }
     await transport?.close();
+  }
+
+  Future<void> _unpark() async {
+    final ServerTransport? parked = _parked;
+    _parked = null;
+    await parked?.close();
+  }
+
+  /// The parked relay path when it is still open, taken for an attempt.
+  ServerTransport? _takeParked(ConnectionPath path) {
+    final ServerTransport? parked = _parked;
+    if (parked == null || parked.path != path) return null;
+    _parked = null;
+    if ((parked as RelayLink).isClosed) {
+      unawaited(parked.close());
+      return null;
+    }
+    return parked;
+  }
+
+  /// The words for a path no server answered on: once the connection has
+  /// been online, the first minute of silence is a restart.
+  ErrorCopy _silence(ErrorCopy problem) {
+    final DateTime? online = _lastOnline;
+    if (online == null || _now().difference(online) >= const Duration(minutes: 1)) return problem;
+    return transportCopy('restarting');
   }
 
   Future<void> _loop(Completer<void> firstRound) async {
     int attempt = 0;
+    final DateTime started = _now();
     while (_running) {
       ErrorCopy? problem;
       bool wasOnline = false;
@@ -243,10 +277,17 @@ class ServerConnection {
         _emit(ConnectionStatus(ConnectionPhase.connecting, path: path, attempt: attempt, hello: _hello));
         final ErrorCopy? result = await _attempt(path, url);
         if (result == null) {
-          wasOnline = true;
-          attempt = 0;
           if (!firstRound.isCompleted) firstRound.complete();
           await _lost!.future;
+          if (_streamRefused) {
+            // Refused right after opening: count it as a failed attempt.
+            _streamRefused = false;
+            problem = _status.problem;
+            tried++;
+          } else {
+            wasOnline = true;
+            attempt = 0;
+          }
           break;
         }
         tried++;
@@ -255,23 +296,29 @@ class ServerConnection {
       }
       // Both paths silent points at the server, not at either path.
       if (tried > 1 && unanswered == tried) problem = transportCopy('no-answer');
+      if (problem != null && unanswered == tried) problem = _silence(problem);
       if (!firstRound.isCompleted) firstRound.complete();
       if (!_running) break;
       // Lost while online: fail over at once, the other path first.
       if (wasOnline) continue;
       attempt++;
-      final Duration wait = reconnectDelay(attempt);
+      final Duration backoff = reconnectDelay(attempt, away: _now().difference(_lastOnline ?? started), visible: visible());
+      final Duration? hinted = _refusedWait;
+      _refusedWait = null;
+      final Duration wait = hinted != null && hinted > backoff ? hinted : backoff;
       _emit(ConnectionStatus(ConnectionPhase.reconnecting, attempt: attempt, retryAt: _now().add(wait), problem: problem, hello: _hello));
       final Completer<void> wake = Completer<void>();
       _wake = wake;
-      await Future.any(<Future<void>>[delay(wait), wake.future]);
+      final ServerTransport? parked = _parked;
+      await Future.any(<Future<void>>[delay(wait), wake.future, if (parked != null) (parked as RelayLink).serverBack]);
       _wake = null;
     }
     _running = false;
+    await _unpark();
   }
 
   /// Path failures that mean nothing answered at all.
-  static const List<String> _noAnswer = <String>['unreachable', 'timeout', 'relay-unreachable', 'server-offline'];
+  static const List<String> _noAnswer = <String>['unreachable', 'timeout', 'relay-unreachable', 'server-offline', 'server-left', 'restarting'];
 
   /// Paths to try: after a loss, the other path first.
   List<(ConnectionPath, String)> _order() {
@@ -283,78 +330,120 @@ class ServerConnection {
   }
 
   /// One attempt on one path. Returns null once online, else the problem.
-  /// Any failure, not only a [TransportFailure], ends as a problem.
+  /// Opening the path, hello, capabilities and the event stream share
+  /// [handshakeTimeout]; a path still busy after it is closed and reported
+  /// as silent, so the other path gets its turn within seconds.
   Future<ErrorCopy?> _attempt(ConnectionPath path, String url) async {
+    final _Handshake shake = _Handshake(path);
+    final ErrorCopy? result = await Future.any(<Future<ErrorCopy?>>[
+      _handshake(shake, url),
+      delay(handshakeTimeout).then((void _) => shake.expire()),
+    ]);
+    return shake.expired ?? result;
+  }
+
+  /// [_attempt] without its budget. Once [shake] expired, a path that opens
+  /// late is closed and nothing heard after is acted on. Any failure, not
+  /// only a [TransportFailure], ends as a problem.
+  Future<ErrorCopy?> _handshake(_Handshake shake, String url) async {
+    final ConnectionPath path = shake.path;
     ServerTransport? transport;
     try {
-      transport = await open(path, url);
-      final (ApiResponse hello, bool proven) = await _greet(transport, _profile.fingerprint);
-      final Object? body = hello.body;
-      if (!hello.ok || body is! Map<String, Object?>) {
-        await transport.close();
-        return hello.problem;
+      final ServerTransport opened = _takeParked(path) ?? await open(path, url);
+      if (shake.late) {
+        await opened.close();
+        return shake.expired;
       }
+      transport = opened;
+      shake.transport = opened;
+      if (opened is RelayLink && !(opened as RelayLink).serverOnline) {
+        // The relay is up and the server is not on it: keep the relay open
+        // and hear the moment it comes back.
+        shake.settled = true;
+        transport = null;
+        await _unpark();
+        _parked = opened;
+        return transportCopy('server-offline');
+      }
+      final (ApiResponse hello, bool proven) = await greetServer(opened, _profile.fingerprint);
+      if (shake.late) return shake.expired;
+      final Object? body = hello.body;
+      if (!hello.ok || body is! Map<String, Object?>) return await _failed(shake, opened, hello.problem);
       if (body['fingerprint'] != _profile.fingerprint || !proven) {
-        await transport.close();
         _running = false;
         final ErrorCopy wrong = transportCopy('wrong-server');
         _emit(ConnectionStatus(ConnectionPhase.refused, path: path, problem: wrong));
-        return wrong;
+        return await _failed(shake, opened, wrong);
       }
       if (!speaksProtocol(body)) {
-        await transport.close();
         _running = false;
         final ErrorCopy protocol = serverCopy('unsupported-protocol');
         _emit(ConnectionStatus(ConnectionPhase.refused, path: path, problem: protocol));
-        return protocol;
+        return await _failed(shake, opened, protocol);
       }
       _hello = body;
-      final ApiResponse capabilities = await transport.send(_authorized(const ApiRequest('GET', '/v1/capabilities')));
-      if (_tokenRefused(capabilities) || !capabilities.ok) {
-        await transport.close();
-        return capabilities.problem;
-      }
+      final ApiResponse capabilities = await opened.send(_authorized(const ApiRequest('GET', '/v1/capabilities')));
+      if (shake.late) return shake.expired;
+      if (_tokenRefused(capabilities) || !capabilities.ok) return await _failed(shake, opened, capabilities.problem);
+      // Disconnected or forgotten meanwhile: open no stream.
+      if (!_running) return await _failed(shake, opened, transportCopy('closed'));
       _capabilities = capabilities.body is Map<String, Object?> ? capabilities.body! as Map<String, Object?> : null;
       final EventSubscription subscription;
       try {
-        subscription = await transport.subscribe(token!.token);
+        subscription = await opened.subscribe(token!.token);
       } on StreamRefused catch (refused) {
-        await transport.close();
+        if (shake.late) return shake.expired;
         final ErrorCopy problem = serverCopy(refused.code, status: refused.status);
         if (tokenErrorCodes.contains(refused.code)) _needsPairing(problem);
-        return problem;
+        _refusedWait = refused.retryAfter;
+        return await _failed(shake, opened, problem);
       }
-      _transport = transport;
+      if (shake.late || !_running) {
+        await subscription.cancel();
+        return await _failed(shake, opened, transportCopy('closed'));
+      }
+      shake.settled = true;
+      _transport = opened;
       _subscription = subscription;
       _lost = Completer<void>();
       _session++;
       subscription.events.listen(
         (Map<String, Object?> event) => _deliver(path, event),
         onError: (Object _) {},
-        onDone: () => _streamEnded(transport!, subscription),
+        onDone: () => _streamEnded(opened, subscription),
       );
       _rememberPath(path);
+      _lastOnline = _now();
+      await _unpark();
       _emit(ConnectionStatus(ConnectionPhase.online, path: path, hello: _hello));
       if (path == ConnectionPath.relay && _profile.directUrl != null) unawaited(_probeLoop(_session, _profile.directUrl!));
       return null;
     } on TransportFailure catch (failure) {
-      await transport?.close();
-      return failure.copy;
+      return await _failed(shake, transport, failure.copy);
     } on Object {
       // A malformed answer or a bug: reported like a dropped path, then retried.
-      await transport?.close();
-      return transportCopy('dropped');
+      return await _failed(shake, transport, transportCopy('dropped'));
     }
+  }
+
+  /// Ends a handshake that failed: its budget stops, its path closes, and
+  /// the budget's word stands when it ran out first.
+  Future<ErrorCopy> _failed(_Handshake shake, ServerTransport? transport, ErrorCopy problem) async {
+    final ErrorCopy outcome = shake.expired ?? problem;
+    shake.settled = true;
+    await transport?.close();
+    return outcome;
   }
 
   void _rememberPath(ConnectionPath path) {
     if (_profile.lastPath == path) return;
     _profile = _profile.copyWith(lastPath: path);
-    _profiles.add(_profile);
+    if (!_silent) _profiles.add(_profile);
   }
 
   void _deliver(ConnectionPath from, Map<String, Object?> event) {
-    final _EventOverlap? overlap = _overlap;
+    if (_silent) return;
+    final EventOverlap? overlap = _overlap;
     if (overlap != null && !overlap.accept(from, event)) return;
     _events.add(event);
   }
@@ -402,7 +491,7 @@ class ServerConnection {
       if (stale()) return false;
       final ServerTransport opened = direct;
       final EventSubscription subscription = stream;
-      final _EventOverlap overlapping = _EventOverlap();
+      final EventOverlap overlapping = EventOverlap();
       _overlap = overlapping;
       subscription.events.listen(
         (Map<String, Object?> event) => _deliver(ConnectionPath.direct, event),
@@ -441,7 +530,7 @@ class ServerConnection {
   }
 
   void _commit(ServerTransport direct, EventSubscription stream, Map<String, Object?> hello, ApiResponse capabilities,
-      _EventOverlap overlapping) {
+      EventOverlap overlapping) {
     final ServerTransport? relay = _transport;
     final EventSubscription? relayStream = _subscription;
     _transport = direct;
@@ -471,15 +560,25 @@ class ServerConnection {
   void _streamEnded(ServerTransport transport, EventSubscription subscription) {
     if (!identical(_subscription, subscription)) return;
     final String? reason = subscription.closeReason;
-    final String? tokenCode = reason == null ? null : tokenErrorCodes.where(reason.contains).firstOrNull;
+    // A reason is a code, or a status and a code ("429 rate-limited"): match whole words,
+    // so "rate-limited" is not read as the closing reason "limit".
+    final List<String> words = reason == null ? const <String>[] : reason.split(' ');
+    final String? tokenCode = tokenErrorCodes.where(words.contains).firstOrNull;
     if (tokenCode != null) {
       _needsPairing(serverCopy(tokenCode));
       return;
     }
-    final String? closing = reason == null ? null : closingCopy.keys.where(reason.contains).firstOrNull;
+    final String? closing = closingCopy.keys.where(words.contains).firstOrNull;
+    // A direct stream closed with 4000 + status carries a server error code;
+    // the relay closes with its own codes.
+    final ErrorCopy? refused = closing == null && transport.path == ConnectionPath.direct ? serverErrorCopy[reason] : null;
     final ErrorCopy? path = transportErrorCopy[reason] ?? relayErrorCopy[reason];
-    _connectionLost(transport.path, closing != null ? closingCopy[closing]! : path ?? transportCopy('stream-closed'));
+    if (refused != null || (closing == null && _relayRefusals.contains(reason))) _streamRefused = true;
+    _connectionLost(transport.path, closing != null ? closingCopy[closing]! : refused ?? path ?? transportCopy('stream-closed'));
   }
+
+  /// Relay close reasons that refuse the stream rather than lose the path.
+  static const Set<String> _relayRefusals = <String>{'rate-limited', 'capacity'};
 
   void _needsPairing(ErrorCopy problem) {
     _running = false;
@@ -493,6 +592,7 @@ class ServerConnection {
   void _connectionLost(ConnectionPath path, ErrorCopy problem) {
     if (_transport == null || _transport!.path != path) return;
     _lostPath = path;
+    _lastOnline = _now();
     unawaited(_drop());
     _emit(ConnectionStatus(ConnectionPhase.reconnecting, path: path, problem: problem, hello: _hello));
     final Completer<void>? lost = _lost;
@@ -507,7 +607,7 @@ class ServerConnection {
 
   ApiRequest _authorized(ApiRequest request) {
     final Map<String, String> headers = <String, String>{'Authorization': 'Bearer ${token!.token}'};
-    if (request.method != 'GET') {
+    if (request.method != 'GET' && request.counted) {
       _counter = math.max(_counter + 1, _now().millisecondsSinceEpoch);
       headers['X-Animus-Counter'] = '$_counter';
     }
@@ -515,14 +615,33 @@ class ServerConnection {
   }
 
   /// Sends an authorized request on the open path. A path failure starts a
-  /// reconnect (to the other path first) and is rethrown.
+  /// reconnect (to the other path first) and is rethrown. A
+  /// [ApiRequest.background] request lets every other request go first.
   Future<ApiResponse> request(ApiRequest request) async {
+    if (_transport == null || _status.phase != ConnectionPhase.online || token == null) throw NotConnected(_status);
+    final RequestSlots? lane = request.background ? _backgroundSlots : null;
+    await lane?.take();
+    try {
+      await _slots.take();
+      try {
+        await _pacer.take(background: request.background);
+        return await _send(request);
+      } finally {
+        _slots.release();
+      }
+    } finally {
+      lane?.release();
+    }
+  }
+
+  Future<ApiResponse> _send(ApiRequest request) async {
     final ServerTransport? transport = _transport;
     if (transport == null || _status.phase != ConnectionPhase.online || token == null) throw NotConnected(_status);
     _inFlight[transport] = (_inFlight[transport] ?? 0) + 1;
     try {
       final ApiResponse response = await transport.send(_authorized(request));
       _tokenRefused(response);
+      if (response.errorCode == 'rate-limited') _pacer.hold(response.retryAfter ?? const Duration(seconds: 1));
       return response;
     } on TransportFailure catch (failure) {
       if (identical(_transport, transport)) _connectionLost(transport.path, failure.copy);
@@ -538,65 +657,37 @@ class ServerConnection {
     }
   }
 
-  /// Exchanges a pairing code's secret for a token over the first path that
-  /// answers as the pinned server. A path that fails or refuses does not stop
-  /// the next one; when every path fails, the server's own refusal is
-  /// reported ahead of a path that could not be reached.
-  static Future<(ServerToken, ConnectionPath)> pair(PairingPayload payload, TransportFactory open, {String? client}) async {
-    PairingRefused? refusal;
-    ErrorCopy? problem;
-    for (final (ConnectionPath path, String url) in <(ConnectionPath, String)>[
-      if (payload.directUrl != null) (ConnectionPath.direct, payload.directUrl!),
-      if (payload.relayUrl != null) (ConnectionPath.relay, payload.relayUrl!),
-    ]) {
-      ServerTransport? transport;
-      try {
-        transport = await open(path, url);
-        final (ApiResponse hello, bool proven) = await _greet(transport, payload.fingerprint);
-        final Object? body = hello.body;
-        if (!hello.ok || body is! Map<String, Object?>) {
-          problem ??= hello.problem;
-          continue;
-        }
-        if (body['fingerprint'] != payload.fingerprint || !proven) {
-          problem = transportCopy('wrong-server');
-          continue;
-        }
-        final ApiResponse response = await transport.send(ApiRequest('POST', '/v1/pair', body: <String, Object?>{
-          'tokenId': payload.tokenId,
-          'secret': payload.secret,
-          if (client != null && client.isNotEmpty) 'client': client.length > 128 ? client.substring(0, 128) : client,
-        }));
-        final Object? answer = response.body;
-        if (!response.ok) {
-          refusal ??= PairingRefused(response.errorCode ?? codeForStatus(response.status), response.problem);
-          continue;
-        }
-        final ServerToken? token = answer is Map<String, Object?> && answer['fingerprint'] == payload.fingerprint ? ServerToken.fromJson(answer) : null;
-        if (token == null) {
-          problem = transportCopy('wrong-server');
-          continue;
-        }
-        return (token, path);
-      } on TransportFailure catch (failure) {
-        problem ??= failure.copy;
-      } on Object {
-        problem ??= transportCopy('dropped');
-      } finally {
-        await transport?.close();
-      }
+  /// [request], sent again after the server's hint while it answers
+  /// `rate-limited` or `busy` with one, at most [retries] times. The last
+  /// answer comes back either way, so nothing is dropped unsaid. Only for
+  /// requests that are safe to repeat: reads, and the batch read.
+  Future<ApiResponse> requestRetrying(ApiRequest request, {int retries = retryLimit, math.Random? jitter}) async {
+    final math.Random random = jitter ?? math.Random();
+    for (int attempt = 0;; attempt++) {
+      final ApiResponse response = await this.request(request);
+      final Duration? wait = response.retryAfter;
+      if (wait == null || attempt >= retries || !(response.errorCode == 'rate-limited' || response.errorCode == 'busy')) return response;
+      await delay(wait + Duration(milliseconds: 10 + random.nextInt(40) + attempt * 25));
+      if (_status.phase != ConnectionPhase.online) throw NotConnected(_status);
     }
-    throw refusal ?? PairingRefused('unreachable', problem ?? transportCopy('no-path'));
   }
 
-  /// Sends `GET /v1/hello` and says whether the answer proves the server
-  /// pinned by [fingerprint]. A relay can echo any fingerprint, so there the
-  /// server must sign a fresh challenge; the direct path needs no proof.
-  static Future<(ApiResponse, bool)> _greet(ServerTransport transport, String fingerprint) async {
-    if (transport.path == ConnectionPath.direct) return (await transport.send(const ApiRequest('GET', '/v1/hello')), true);
-    final String challenge = newChallenge();
-    final ApiResponse hello = await transport.send(ApiRequest('GET', '/v1/hello', headers: <String, String>{challengeHeader: challenge}));
-    return (hello, hello.ok && await verifyServerProof(hello.headers, challenge: challenge, fingerprint: fingerprint));
+  /// Ends the pairing of a server being forgotten. Stops reconnecting and
+  /// says nothing more, so the event stream the server then closes is not
+  /// news. When online it asks the server to revoke the token
+  /// (`DELETE /v1/token`) and waits at most [timeout]. Returns whether the
+  /// server no longer accepts the token: it answered, or closed the stream
+  /// as revoked. An older server (404), a failure or no answer is false.
+  /// Dispose after.
+  Future<bool> revoke({Duration timeout = const Duration(seconds: 3)}) async {
+    _silent = true;
+    _running = false;
+    retryNow();
+    if (!_status.online || token == null) return false;
+    final Future<bool> asked = request(const ApiRequest('DELETE', '/v1/token', counted: false))
+        .then((ApiResponse response) => response.ok, onError: (Object _) => false);
+    final bool answered = await Future.any(<Future<bool>>[asked, delay(timeout).then((void _) => false)]);
+    return answered || (_status.phase == ConnectionPhase.needsPairing && identical(_status.problem, serverCopy('token-revoked')));
   }
 
   Future<void> dispose() async {
@@ -607,62 +698,29 @@ class ServerConnection {
   }
 }
 
-/// Pairing did not produce a token: [code] is the server's `error-code`, or
-/// `unreachable` when no path answered as the paired server.
-class PairingRefused implements Exception {
-  const PairingRefused(this.code, this.copy);
+/// One attempt's handshake: the path it opened and whether its budget ran
+/// out before it finished.
+class _Handshake {
+  _Handshake(this.path);
 
-  final String code;
-  final ErrorCopy copy;
+  final ConnectionPath path;
+  ServerTransport? transport;
 
-  String get message => copy.text;
+  /// The attempt finished, online or not; the budget no longer applies.
+  bool settled = false;
 
-  @override
-  String toString() => message;
-}
+  /// What the attempt reports when the budget ran out first.
+  ErrorCopy? expired;
 
-/// Whether a `hello-response` offers editor protocol 1.
-bool speaksProtocol(Map<String, Object?> hello) {
-  final Object? protocols = hello['protocols'];
-  return hello['protocol'] == 1 || (protocols is List<Object?> && protocols.contains(1));
-}
+  bool get late => expired != null;
 
-/// De-duplicates events while the relay and direct streams both run.
-///
-/// Event frames carry no sequence number or cursor (schema `event`), so the
-/// two copies of one event are matched by content: an event is delivered
-/// from whichever stream brings it first, and the other stream's identical
-/// copy is dropped when it arrives. Nothing is lost, because an event only
-/// one stream carries (published before the direct stream was registered) is
-/// delivered as it comes. The events are state notices (catalog versions,
-/// diagnostics, preview states, applied changes), so dropping a genuinely
-/// repeated identical one within the overlap changes nothing for listeners.
-class _EventOverlap {
-  static const int _limit = 256;
-
-  final Map<ConnectionPath, List<String>> _unmatched = <ConnectionPath, List<String>>{
-    ConnectionPath.direct: <String>[],
-    ConnectionPath.relay: <String>[],
-  };
-
-  /// Whether [event] from [from] is new to listeners.
-  bool accept(ConnectionPath from, Map<String, Object?> event) {
-    final String key = jsonEncode(_canonical(event));
-    final ConnectionPath other = from == ConnectionPath.direct ? ConnectionPath.relay : ConnectionPath.direct;
-    if (_unmatched[other]!.remove(key)) return false;
-    final List<String> mine = _unmatched[from]!;
-    mine.add(key);
-    if (mine.length > _limit) mine.removeAt(0);
-    return true;
-  }
-
-  /// [value] with object keys sorted, so key order does not matter.
-  static Object? _canonical(Object? value) {
-    if (value is Map<String, Object?>) {
-      final List<String> keys = value.keys.toList()..sort();
-      return <String, Object?>{for (final String key in keys) key: _canonical(value[key])};
-    }
-    if (value is List<Object?>) return <Object?>[for (final Object? item in value) _canonical(item)];
-    return value;
+  /// The budget ran out: closes the path and says which side was silent.
+  Future<ErrorCopy?> expire() async {
+    if (settled) return null;
+    // A relay socket that never opened is the relay's fault; a silent hello is the server's.
+    final ErrorCopy problem = transportCopy(path == ConnectionPath.relay && transport == null ? 'relay-unreachable' : 'timeout');
+    expired = problem;
+    await transport?.close();
+    return problem;
   }
 }

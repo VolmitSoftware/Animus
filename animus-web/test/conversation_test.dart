@@ -1,10 +1,11 @@
 import 'dart:convert';
 
+import 'package:animus_editor/config/starter_packs.g.dart';
 import 'package:animus_editor/logic/conversation/conversation_check.dart';
 import 'package:animus_editor/logic/conversation/conversation_edit.dart';
 import 'package:animus_editor/logic/conversation/conversation_json.dart';
 import 'package:animus_editor/logic/conversation/conversation_model.dart';
-import 'package:animus_editor/logic/conversation/conversation_play.dart';
+import 'package:animus_editor/logic/conversation/conversation_words.dart';
 import 'package:animus_editor/logic/data_folder.dart';
 import 'package:animus_editor/logic/gui/gui_json.dart';
 import 'package:animus_editor/logic/offline/new_documents.dart';
@@ -75,12 +76,38 @@ void main() {
       expect((conversation.blocks['cross']!.steps.single as ConversationLine).text, 'Climb aboard. We leave at dusk.');
     });
 
+    test('should open every shipped example that asks questions as a conversation', () {
+      final List<String> asking = <String>[
+        for (final MapEntry<String, String> file in starterPackFiles.entries)
+          if (file.key.contains('/behaviors/') && file.value.contains('"dialogue_choice"')) file.key,
+      ];
+      expect(asking, contains('packs/dialogue/behaviors/dialogue/innkeeper.json'));
+      for (final String path in asking) {
+        final JsonMap behavior = _json(starterPackFiles[path]!);
+        final ConversationRead read = readConversation(behavior);
+        expect(read, isA<ConversationFits>(), reason: read is ConversationMisfit ? '$path: ${read.path} ${read.reason}' : path);
+        expect(writeConversation(_read(behavior), behavior), behavior, reason: '$path writes back unchanged');
+      }
+    });
+
     test('should write a hand-written conversation back unchanged', () {
       expect(writeConversation(_read(_ferry), _ferry), _ferry);
       for (final BehaviorTemplate template in <BehaviorTemplate>[BehaviorTemplate.dialogue, BehaviorTemplate.quest, BehaviorTemplate.conversation]) {
         final JsonMap behavior = behaviorFromTemplate(template, 'town:${template.name}');
         expect(writeConversation(_read(behavior), behavior), behavior, reason: template.name);
       }
+    });
+
+    test('should keep every key the conversation does not show when a line is edited', () {
+      final JsonMap behavior = _json(jsonEncode(_ferry));
+      behavior['description'] = 'Hand notes';
+      behavior['variables'] = <String, Object?>{'visits': <String, Object?>{'type': 'integer', 'initial': 0}};
+      (asList(behavior['triggers']).first! as JsonMap)['permission'] = 'town.ferry';
+      final JsonMap edited = _edit(behavior, (Conversation c) => (c.blocks['cross']!.steps.single as ConversationLine).text = 'All aboard.');
+      expect(asMap(asMap(asMap(edited['routines'])['cross'])['arguments'])['text'], 'All aboard.');
+      final JsonMap rest = _json(jsonEncode(edited))..remove('routines');
+      final JsonMap before = _json(jsonEncode(behavior))..remove('routines');
+      expect(jsonEncode(rest), jsonEncode(before));
     });
 
     test('should fold a wait, a sound and an animation into the line they surround', () {
@@ -280,30 +307,30 @@ void main() {
     });
   });
 
-  group('preview', () {
-    test('should play to the question and follow the branch the author picked', () {
-      final Conversation conversation = _read(newConversationBehavior('town:talk'));
-      conversation.blocks['main']!.steps.insert(1, ConversationBranch(
-        capability: 'animus:flag-state',
-        arguments: <String, Object?>{'name': 'met'},
-        then: StepList(<ConversationStep>[ConversationLine('Back again, {npc.name} remembers.')]),
-        otherwise: StepList(<ConversationStep>[ConversationAction('animus:set-flag', arguments: <String, Object?>{'name': 'met'})]),
-      ));
-      List<PlayEntry> play(bool met) => playFrom(conversation, 'main', branch: (StepAt _) => met, npc: 'Ada');
-      final List<PlayEntry> yes = play(true);
-      expect((yes[0] as PlayLine).text, 'Hello, Steve.');
-      expect((yes[1] as PlayCondition).label, 'flag met');
-      expect((yes[2] as PlayLine).text, 'Back again, Ada remembers.');
-      expect(yes[3], isA<PlayQuestion>());
-      expect((play(false)[2] as PlayEffect).text, 'Sets flag met');
-      final List<PlayEntry> answer = playFrom(conversation, 'goodbye', branch: (StepAt _) => true);
-      expect((answer.single as PlayLine).text, 'Safe travels.');
+  group('words', () {
+    test('should name parts and steps in words, never by id', () {
+      final Conversation conversation = _read(_ferry);
+      expect(blockTitle(conversation, 'main'), 'Start');
+      expect(blockTitle(conversation, 'cross'), startsWith('After "'));
+      final Conversation bare = _read(newConversationBehavior('town:talk'))..blocks['side-quest'] = StepList(<ConversationStep>[ConversationLine('Psst')]);
+      expect(blockTitle(bare, 'side-quest'), 'Side quest');
+      final List<ConversationStep> main = conversation.blocks['main']!.steps;
+      expect(stepKind(main[1]), 'Ask');
+      expect(stepLine(conversation, main[1]), '2 answers');
+      expect(stepLine(conversation, ConversationLine('Hi')..delayTicks = 30), 'after 1.5 s');
+      expect(stepLine(conversation, ConversationBranch(capability: 'animus:flag-state', arguments: <String, Object?>{'name': 'met'})), 'Player has flag met');
+      expect(stepLine(conversation, ConversationBranch(capability: 'animus:flag-state', arguments: <String, Object?>{'name': 'met', 'scope': 'relationship'})), 'Flag met is set with this NPC');
+      expect(stepLine(conversation, ConversationAction('animus:give-item', arguments: <String, Object?>{'item': 'minecraft:bread', 'amount': 2})), 'Gives 2 bread');
+      expect(actionLabel('animus:give-item', <String, Object?>{'item': 'mymod:ruby'}), 'Gives 1 ruby');
+      expect(actionLabel('animus:open-shop', <String, Object?>{'shop': 'town:bakery'}), 'Opens shop Bakery');
+      expect(actionLabel('animus:open-gui', <String, Object?>{'gui': 'shop:counter'}), 'Opens Counter');
+      expect(actionLabel('animus:play-animation', <String, Object?>{'animation': 'rigs:wave'}, names: (DocumentKind kind, String id) => 'the ${kind.wireName}'), 'Plays the animation');
     });
 
-    test('should stop a loop with no question', () {
-      final Conversation conversation = _read(newConversationBehavior('town:talk'));
-      conversation.blocks['goodbye']!.steps.add(ConversationGoto('goodbye'));
-      expect(playFrom(conversation, 'goodbye', branch: (StepAt _) => true).last, isA<PlayStop>());
+    test('should print text values without colour codes', () {
+      expect(actionLabel('animus:set-flag', <String, Object?>{'name': 'hud', 'value': '&#5FD3FFClick an option above'}), 'Sets flag hud to Click an option above');
+      expect(actionLabel('animus:set-flag', <String, Object?>{'name': 'tries', 'value': 3}), 'Sets flag tries to 3');
+      expect(conditionLabel(ConversationBranch(capability: 'animus:flag-state', arguments: <String, Object?>{'name': 'hud', 'value': '&aready'})), 'Player flag hud is ready');
     });
   });
 }

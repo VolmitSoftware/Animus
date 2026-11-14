@@ -73,7 +73,7 @@ class SuggestList extends StatelessWidget {
         dom.span(classes: 'animus-suggest-kind is-${item.kind.name}', <Widget>[Component.text(item.kind.short)]),
         if (item.swatch != null)
           dom.span(
-            classes: 'animus-suggest-swatch',
+            classes: 'animus-select-swatch animus-suggest-swatch',
             styles: dom.Styles(raw: <String, String>{'background': item.swatch!}),
             attributes: const <String, String>{'aria-hidden': 'true'},
             const <Widget>[],

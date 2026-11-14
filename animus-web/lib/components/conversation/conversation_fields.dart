@@ -1,40 +1,39 @@
-/// The fields inside conversation rows: what a condition checks, which
+/// The fields inside conversation step cards: what a condition checks, which
 /// action runs and its arguments (from the capability catalog), a line's
 /// delay, sound and animation, and an answer's colour, hover and target.
+/// Each sits under its label, so a nested card never lays fields side by
+/// side.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../config/docs_links.dart';
 import '../../logic/conversation/conversation_edit.dart';
 import '../../logic/conversation/conversation_model.dart';
-import '../../logic/conversation/conversation_play.dart';
+import '../../logic/conversation/conversation_words.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/completion_catalog.dart';
+import '../../logic/inspect/behavior_summary.dart' show capabilityWords;
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/suggest/completion_sources.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../logic/suggest/field_profiles.dart';
+import '../../logic/suggest/minimessage_tags.dart' show miniMessageColors;
 import '../../model/document_kind.dart';
-import '../gui/gui_fields.dart';
-import '../info_tip.dart';
+import '../../ui/field.dart';
+import '../../ui/mode.dart';
+import '../inspect/behavior_inputs.dart' show JsonValueEditor;
 import '../inspect/inspect_fields.dart' show KeptJsonEditor;
+import '../select/named_value_picker.dart';
 import 'conversation_input.dart';
 import 'conversation_picker.dart';
 import 'conversation_tree.dart';
+import 'sound_picker.dart';
+import '../../ui/number_input.dart';
 
 /// The wiki section on conversations.
 const DocLink conversationDocs = DocLink('14-web-editor', 'conversations');
-
-/// Workspace ids the fields offer while typing.
-class ConversationSuggestions {
-  const ConversationSuggestions({this.animations = const <String>[], this.shops = const <String>[]});
-
-  final List<String> animations;
-  final List<String> shops;
-}
 
 /// A new condition: a player flag.
 ConversationBranch newBranch() => ConversationBranch(capability: 'animus:flag-state', arguments: <String, Object?>{'name': ''});
@@ -45,7 +44,7 @@ enum ConditionKind {
   quest('Quest stage'),
   permission('Permission'),
   item('Item held'),
-  relationship('Relationship'),
+  relationship('Flag with this NPC'),
   expression('Expression'),
   other('Other');
 
@@ -110,6 +109,31 @@ void _putArgument(JsonMap arguments, String key, Object? value) {
   }
 }
 
+/// The condition kind picker, in the If card's heading row.
+class ConditionPicker extends StatelessWidget {
+  const ConditionPicker({required this.scope, required this.branch, required this.at, super.key});
+
+  final ConversationScope scope;
+  final ConversationBranch branch;
+  final StepAt at;
+
+  @override
+  Widget build(BuildContext context) {
+    final ConditionKind kind = conditionKind(branch);
+    return ConversationPicker(
+      label: 'Condition',
+      value: kind.name,
+      options: <PickOption>[
+        for (final ConditionKind option in ConditionKind.values)
+          if ((option != ConditionKind.other || kind == ConditionKind.other) && (scope.advanced || option != ConditionKind.expression || kind == option)) PickOption(option.name, option.label),
+      ],
+      onPick: (String value) => _editBranch(scope, at, (ConversationBranch b) => setConditionKind(b, ConditionKind.values.byName(value))),
+    );
+  }
+}
+
+/// What the picked condition needs: a flag name, a quest and stage, a
+/// permission, an item or an expression.
 class ConditionFields extends StatelessWidget {
   const ConditionFields({required this.scope, required this.branch, required this.at, super.key});
 
@@ -121,43 +145,51 @@ class ConditionFields extends StatelessWidget {
   Widget build(BuildContext context) {
     final ConditionKind kind = conditionKind(branch);
     final String id = 'conv-if:${at.key}';
-    Widget text(String key, String label, {String? placeholder}) => ConversationInput(
-          id: '$id:$key',
-          value: '${branch.arguments[key] ?? ''}',
-          label: label,
-          code: true,
-          placeholder: placeholder,
-          profile: switch (kind) {
-            ConditionKind.flag || ConditionKind.relationship => const FieldProfile(values: <ValueRef>[ValueRef.flags()]),
-            ConditionKind.quest => const FieldProfile(values: <ValueRef>[ValueRef.quests()]),
-            _ => FieldProfile.none,
-          },
-          onChanged: (String value) => _editBranch(scope, at, (ConversationBranch b) => b.arguments[key] = value, coalesce: 'if:${at.key}:$key'),
+    Widget text(String key, String label) => _labelled(
+          '$id:$key',
+          label,
+          null,
+          ConversationInput(
+            id: '$id:$key',
+            value: '${branch.arguments[key] ?? ''}',
+            label: label,
+            code: scope.advanced,
+            profile: switch (kind) {
+              ConditionKind.flag || ConditionKind.relationship => const FieldProfile(values: <ValueRef>[ValueRef.flags()]),
+              ConditionKind.quest => const FieldProfile(values: <ValueRef>[ValueRef.quests()]),
+              _ => FieldProfile.none,
+            },
+            onChanged: (String value) => _editBranch(scope, at, (ConversationBranch b) => b.arguments[key] = value, coalesce: 'if:${at.key}:$key'),
+          ),
         );
-    const List<PickOption> scopes = <PickOption>[PickOption('player', 'Player'), PickOption('npc', 'NPC'), PickOption('global', 'Everyone')];
-    Widget scopePicker() => ConversationPicker(
-          label: 'Scope',
-          value: asString(branch.arguments['scope']) ?? 'player',
-          options: scopes,
-          onPick: (String value) => _editBranch(scope, at, (ConversationBranch b) => _putArgument(b.arguments, 'scope', value == 'player' ? null : value)),
+    const List<PickOption> scopes = <PickOption>[PickOption('player', 'This player'), PickOption('npc', 'This NPC'), PickOption('global', 'Everyone')];
+    Widget scopePicker() => _labelled(
+          '$id:scope',
+          'Kept for',
+          'Whose flag it is: the player talking, the NPC, or one for the whole server.',
+          ConversationPicker(
+            id: '$id:scope',
+            label: 'Kept for',
+            value: asString(branch.arguments['scope']) ?? 'player',
+            options: scopes,
+            onPick: (String value) => _editBranch(scope, at, (ConversationBranch b) => _putArgument(b.arguments, 'scope', value == 'player' ? null : value)),
+          ),
         );
     final String compare = <String>['equals', 'atLeast', 'atMost'].firstWhere(branch.arguments.containsKey, orElse: () => 'atLeast');
-    return dom.div(classes: 'animus-conv-fields', <Widget>[
-      ConversationPicker(
-        label: 'Condition',
-        value: kind.name,
-        options: <PickOption>[for (final ConditionKind option in ConditionKind.values) if (option != ConditionKind.other || kind == ConditionKind.other) PickOption(option.name, option.label)],
-        onPick: (String value) => _editBranch(scope, at, (ConversationBranch b) => setConditionKind(b, ConditionKind.values.byName(value))),
-      ),
-      ...switch (kind) {
-        ConditionKind.flag => <Widget>[text('name', 'Flag name', placeholder: 'flag name'), scopePicker()],
-        ConditionKind.relationship => <Widget>[text('name', 'Relationship flag', placeholder: 'flag name')],
-        ConditionKind.quest => <Widget>[
-            text('name', 'Quest name', placeholder: 'quest name'),
+    final List<Widget> fields = switch (kind) {
+      ConditionKind.flag => <Widget>[text('name', 'Flag name'), scopePicker()],
+      ConditionKind.relationship => <Widget>[text('name', 'Flag name')],
+      ConditionKind.quest => <Widget>[
+          text('name', 'Quest'),
+          _labelled(
+            '$id:compare',
+            'Stage is',
+            null,
             ConversationPicker(
-              label: 'Stage test',
+              id: '$id:compare',
+              label: 'Stage is',
               value: compare,
-              options: const <PickOption>[PickOption('equals', 'is'), PickOption('atLeast', 'at least'), PickOption('atMost', 'at most')],
+              options: const <PickOption>[PickOption('equals', 'Exactly'), PickOption('atLeast', 'At least'), PickOption('atMost', 'At most')],
               onPick: (String value) => _editBranch(scope, at, (ConversationBranch b) {
                 final Object stage = b.arguments.remove(compare) ?? 1;
                 b.arguments
@@ -167,46 +199,66 @@ class ConditionFields extends StatelessWidget {
                   ..[value] = stage;
               }),
             ),
-            GuiNumberInput(
+          ),
+          _labelled(
+            '$id:stage',
+            'Stage',
+            null,
+            NumberInput(
+              id: '$id:stage',
               value: branch.arguments[compare] is num ? branch.arguments[compare]! as num : null,
               label: 'Stage',
               onChanged: (num? value) => _editBranch(scope, at, (ConversationBranch b) => b.arguments[compare] = value ?? 0, coalesce: 'if:${at.key}:stage'),
             ),
-            scopePicker(),
-          ],
-        ConditionKind.permission => <Widget>[text('permission', 'Permission', placeholder: 'town.vip')],
-        ConditionKind.item => <Widget>[
+          ),
+          scopePicker(),
+        ],
+      ConditionKind.permission => <Widget>[text('permission', 'Permission')],
+      ConditionKind.item => <Widget>[
+          _labelled(
+            '$id:item',
+            'Item',
+            null,
             ConversationInput(
               id: '$id:item',
               value: heldItemOf(branch.expression ?? '') ?? '',
               label: 'Item held',
-              code: true,
+              code: scope.advanced,
               profile: idProfile(const ValueRef.registry(RegistryKind.item)),
-              placeholder: 'minecraft:emerald',
               onChanged: (String value) => _editBranch(scope, at, (ConversationBranch b) => b.expression = heldItemExpression(value.trim()), coalesce: 'if:${at.key}:item'),
             ),
-          ],
-        ConditionKind.expression => <Widget>[
+          ),
+        ],
+      ConditionKind.expression => <Widget>[
+          _labelled(
+            '$id:expression',
+            'Expression',
+            'True or false, such as player.level >= 10.',
             ConversationInput(
               id: '$id:expression',
               value: branch.expression ?? '',
               label: 'Expression',
               code: true,
               profile: FieldProfile.behaviorExpression,
-              placeholder: "player.level >= 10",
+              placeholder: 'player.level >= 10',
               onChanged: (String value) => _editBranch(scope, at, (ConversationBranch b) => b.expression = value, coalesce: 'if:${at.key}:expression'),
             ),
-          ],
-        ConditionKind.other => <Widget>[
-            dom.code(<Widget>[Component.text(branch.capability ?? '')]),
+          ),
+        ],
+      ConditionKind.other => <Widget>[
+          _labelled(
+            '$id:other',
+            capabilityWords(branch.capability),
+            'A check this editor has no form for (${branch.capability}). Its settings are kept as written.',
             KeptJsonEditor(
               value: branch.arguments,
-              label: 'Arguments of ${branch.capability}',
+              label: 'Settings of ${branch.capability}',
               onChanged: (Object? value) => _editBranch(scope, at, (ConversationBranch b) => b.arguments = asMap(value)),
             ),
-          ],
-      },
-    ]);
+          ),
+        ],
+    };
+    return dom.div(fields);
   }
 }
 
@@ -245,9 +297,10 @@ class ActionPicker extends StatelessWidget {
       options: <PickOption>[
         const PickOption(startQuestChoice, 'Start quest'),
         for (final MapEntry<String, String> entry in actionNames.entries) PickOption(entry.key, entry.value),
-        for (final CapabilitySpec spec in others) PickOption(spec.id, spec.id),
-        if (action.capability.isNotEmpty && !actionNames.containsKey(action.capability) && !others.any((CapabilitySpec spec) => spec.id == action.capability))
-          PickOption(action.capability, action.capability),
+        if (scope.advanced)
+          for (final CapabilitySpec spec in others) PickOption(spec.id, capabilityWords(spec.id), hint: spec.id),
+        if (action.capability.isNotEmpty && !actionNames.containsKey(action.capability) && (!scope.advanced || !others.any((CapabilitySpec spec) => spec.id == action.capability)))
+          PickOption(action.capability, capabilityWords(action.capability), hint: scope.advanced ? action.capability : null),
       ],
       onPick: (String value) => scope.edit((Conversation c) {
         final ConversationStep? step = stepAt(c, at);
@@ -284,13 +337,12 @@ class ActionArguments extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final CapabilitySpec? spec = scope.catalog.capability(action.capability);
-    final String key = 'args:${at.key}';
     if (spec == null) {
       if (action.capability.isEmpty) return const dom.div(<Widget>[]);
-      return dom.div(classes: 'animus-conv-args', <Widget>[
+      return dom.div(<Widget>[
         KeptJsonEditor(
           value: action.arguments,
-          label: 'Arguments of ${action.capability}',
+          label: 'Settings of ${action.capability}',
           onChanged: (Object? value) => scope.edit((Conversation c) {
             final ConversationStep? step = stepAt(c, at);
             if (step is ConversationAction) step.arguments = asMap(value);
@@ -298,33 +350,28 @@ class ActionArguments extends StatelessWidget {
         ),
       ]);
     }
-    final bool all = scope.expanded.contains(key);
     final List<FieldSpec> shown = <FieldSpec>[
       for (final FieldSpec field in spec.arguments)
-        if (all || field.required || action.arguments.containsKey(field.key)) field,
+        if (field.required || action.arguments.containsKey(field.key)) field,
     ];
-    final bool more = shown.length < spec.arguments.length;
-    return dom.div(classes: 'animus-conv-args', <Widget>[
+    final List<FieldSpec> rest = <FieldSpec>[
+      for (final FieldSpec field in spec.arguments)
+        if (!shown.contains(field)) field,
+    ];
+    return dom.div(<Widget>[
       for (final FieldSpec field in shown) _row(field),
-      if (more || all)
-        Button.ghost(
-          label: all ? 'Fewer fields' : 'All fields',
-          size: ButtonSize.small,
-          attributes: <String, String>{'aria-expanded': '$all'},
-          onPressed: () => scope.toggle(key),
-        ),
+      if (rest.isNotEmpty) MoreFields(label: 'More settings', children: <Widget>[for (final FieldSpec field in rest) _row(field)]),
     ]);
   }
 
   Widget _row(FieldSpec field) {
     final String id = 'conv-arg:${at.key}:${field.key}';
-    final Object? value = action.arguments[field.key];
-    final String label = '${humanizeKey(field.key)}${field.required ? ' *' : ''}';
-    return dom.div(classes: 'animus-conv-arg', <Widget>[
-      dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': id}, <Widget>[withTip(Component.text(label), field.description)]),
-      _control(field, id, value),
-      if (field.boundsHint case final String hint) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(hint)]),
-    ]);
+    final Widget control = _control(field, id, action.arguments[field.key]);
+    // A JSON box or a value with its kind picker has no id to name.
+    // Simple keeps the bounds in the tip and in the problem a value outside
+    // them shows; Advanced also lists them under the field.
+    return _labelled(control is KeptJsonEditor || control is JsonValueEditor ? null : id, humanizeKey(field.key), field.help, control,
+        hint: scope.advanced ? field.boundsHint : null, required: field.required);
   }
 
   Widget _control(FieldSpec field, String id, Object? value) {
@@ -337,14 +384,14 @@ class ActionArguments extends StatelessWidget {
           placeholder: field.required ? 'Pick one' : 'Default',
           options: <PickOption>[
             if (!field.required) const PickOption('', 'Default'),
-            for (final FieldOption option in field.options) PickOption(option.label, option.label),
+            for (final FieldOption option in field.options) PickOption(option.label, humanizeKey(option.label)),
           ],
           onPick: (String picked) => _set(field.key, picked.isEmpty ? null : picked),
         );
       case FieldKind.boolean when value is bool || value == null:
-        return GuiSwitch(value: value == true, label: humanizeKey(field.key), onChanged: (bool on) => _set(field.key, on ? true : null));
+        return ArcaneToggleSwitch(value: value == true, label: humanizeKey(field.key), onChanged: (bool on) => _set(field.key, on ? true : null), size: ComponentSize.sm);
       case FieldKind.integer || FieldKind.number when value is num || value == null:
-        return GuiNumberInput(
+        return NumberInput(
           id: id,
           value: value as num?,
           integer: field.kind == FieldKind.integer,
@@ -353,35 +400,44 @@ class ActionArguments extends StatelessWidget {
           onChanged: (num? next) => _set(field.key, next, coalesce: 'arg:${at.key}:${field.key}'),
         );
       case FieldKind.string when value is String || value == null:
+        final FieldProfile profile = argumentProfile(action.capability, field.key);
+        void write(String next) => _set(field.key, next, coalesce: 'arg:${at.key}:${field.key}');
+        if (profile.miniMessage) return formattedTextInput(id: id, value: value as String? ?? '', label: humanizeKey(field.key), profile: profile, onChanged: write);
+        // Simple picks ids and documents by name; Advanced types them.
+        final List<ValueRef>? named = scope.advanced ? null : NamedValuePicker.refsOf(profile);
+        if (named != null) return NamedValuePicker(id: id, refs: named, value: value as String?, label: humanizeKey(field.key), onChanged: (String? next) => _set(field.key, next));
         return ConversationInput(
           id: id,
           value: value as String? ?? '',
           label: humanizeKey(field.key),
-          code: field.key != 'text' && field.key != 'command',
-          placeholder: _placeholder(field.key),
-          profile: argumentProfile(action.capability, field.key),
-          onChanged: (String next) => _set(field.key, next, coalesce: 'arg:${at.key}:${field.key}'),
+          code: scope.advanced && field.key != 'command',
+          profile: profile,
+          onChanged: write,
+        );
+      // Text, a number or true or false is edited as that, never as JSON.
+      case FieldKind.any when value == null || value is String || value is num || value is bool:
+        return JsonValueEditor(
+          value: value ?? '',
+          label: humanizeKey(field.key),
+          onChanged: (Object? next) => _set(field.key, next, coalesce: 'arg:${at.key}:${field.key}'),
         );
       default:
         return KeptJsonEditor(value: value, label: humanizeKey(field.key), onChanged: (Object? next) => _set(field.key, next));
     }
   }
 
-  String? _placeholder(String key) => switch (key) {
-        'name' => 'name',
-        'item' => 'minecraft:bread',
-        'shop' => scope.suggestions.shops.firstOrNull ?? 'town:baker',
-        'animation' => scope.suggestions.animations.firstOrNull ?? 'town:golem/wave',
-        'command' => 'say hello {player_name}',
-        _ => null,
-      };
 }
 
-/// A small labelled field inside an opened row.
-Widget _labelled(String id, String label, String? tip, Widget control) => dom.div(classes: 'animus-conv-arg', <Widget>[
-      dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': id}, <Widget>[withTip(Component.text(label), tip, docs: conversationDocs)]),
-      control,
-    ]);
+/// A field inside a step card, as every form lays one out.
+Widget _labelled(String? id, String label, String? tip, Widget control, {String? hint, bool required = false}) => Field(
+      label: label,
+      forId: id,
+      tip: tip == null || tip.trim().isEmpty ? null : tip,
+      docs: conversationDocs,
+      hint: hint,
+      required: required,
+      child: control,
+    );
 
 class LineExtras extends StatelessWidget {
   const LineExtras({required this.scope, required this.line, required this.at, super.key});
@@ -398,12 +454,12 @@ class LineExtras extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String id = 'conv-extra:${at.key}';
-    return dom.div(classes: 'animus-conv-args', <Widget>[
+    return dom.div(<Widget>[
       _labelled(
         '$id:delay',
         'Delay',
         'Ticks to wait before the line. 20 ticks is about a second.',
-        GuiNumberInput(
+        NumberInput(
           id: '$id:delay',
           value: line.delayTicks,
           label: 'Delay in ticks',
@@ -415,15 +471,22 @@ class LineExtras extends StatelessWidget {
         '$id:sound',
         'Sound',
         'Played at the NPC for the player it talks to.',
-        ConversationInput(
-          id: '$id:sound',
-          value: line.sound ?? '',
-          label: 'Sound',
-          code: true,
-          profile: idProfile(const ValueRef.registry(RegistryKind.sound)),
-          placeholder: 'minecraft:entity.villager.ambient',
-          onChanged: (String value) => _edit((ConversationLine l) => l.sound = value.trim().isEmpty ? null : value.trim(), 'sound'),
-        ),
+        scope.advanced
+            ? ConversationInput(
+                id: '$id:sound',
+                value: line.sound ?? '',
+                label: 'Sound',
+                code: true,
+                profile: idProfile(const ValueRef.registry(RegistryKind.sound)),
+                onChanged: (String value) => _edit((ConversationLine l) => l.sound = value.trim().isEmpty ? null : value.trim(), 'sound'),
+              )
+            : SoundPicker(
+                id: '$id:sound',
+                value: line.sound,
+                label: 'Sound',
+                allowNone: true,
+                onChanged: (String? value) => _edit((ConversationLine l) => l.sound = value, 'sound'),
+              ),
       ),
       _labelled(
         '$id:animation',
@@ -433,9 +496,8 @@ class LineExtras extends StatelessWidget {
           id: '$id:animation',
           value: line.animation ?? '',
           label: 'Animation',
-          code: true,
+          code: scope.advanced,
           profile: idProfile(const ValueRef.document(DocumentKind.animation)),
-          placeholder: scope.suggestions.animations.firstOrNull ?? 'town:golem/wave',
           onChanged: (String value) => _edit((ConversationLine l) => l.animation = value.trim().isEmpty ? null : value.trim(), 'animation'),
         ),
       ),
@@ -455,6 +517,13 @@ const List<PickOption> answerColours = <PickOption>[
   PickOption('white', 'White'),
   PickOption('gray', 'Gray'),
 ];
+
+/// The colour Minecraft draws an answer of [color] in (a name, an alias
+/// such as grey, or #RRGGBB); transparent for anything else.
+String answerSwatch(String color) {
+  if (RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(color)) return color;
+  return miniMessageColors[color.replaceAll('grey', 'gray')] ?? 'transparent';
+}
 
 class OptionExtras extends StatelessWidget {
   const OptionExtras({required this.scope, required this.choices, required this.at, required this.index, super.key});
@@ -477,7 +546,7 @@ class OptionExtras extends StatelessWidget {
       ...answerColours,
       if (option.color != null && !answerColours.any((PickOption colour) => colour.value == option.color)) PickOption(option.color!, option.color!),
     ];
-    return dom.div(classes: 'animus-conv-args', <Widget>[
+    return dom.div(<Widget>[
       _labelled(
         '$id:color',
         'Color',
@@ -494,12 +563,10 @@ class OptionExtras extends StatelessWidget {
         '$id:hover',
         'Hover',
         'Shown when the player points at the answer.',
-        ConversationInput(
+        formattedTextInput(
           id: '$id:hover',
           value: option.hover ?? '',
           label: 'Hover',
-          placeholder: 'Click to choose this answer',
-          profile: FieldProfile.richText,
           onChanged: (String value) => _edit((ConversationOption o) => o.hover = value.isEmpty ? null : value, coalesce: 'hover:${at.key}:$index'),
         ),
       ),
@@ -524,14 +591,14 @@ class OptionExtras extends StatelessWidget {
       _labelled(
         '$id:next',
         'Leads to',
-        'The block this answer runs. Nothing ends the conversation.',
+        'The part this answer runs.',
         ConversationPicker(
           id: '$id:next',
           label: 'Leads to',
           value: option.next ?? '',
           options: <PickOption>[
-            const PickOption('', 'Nothing'),
-            for (final String name in scope.conversation.blocks.keys) PickOption(name, name),
+            const PickOption('', 'Nothing, it ends'),
+            for (final String name in scope.conversation.blocks.keys) PickOption(name, blockTitle(scope.conversation, name), hint: scope.advanced ? name : null),
           ],
           onPick: (String value) => scope.edit((Conversation c) {
             final ConversationStep? step = stepAt(c, at);

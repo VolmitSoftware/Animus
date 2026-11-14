@@ -30,6 +30,15 @@ String diagnosticSentence(Diagnostic diagnostic) {
   return message.startsWith('is ') ? '$field $message' : '$field: $message';
 }
 
+/// [diagnostic] as the mode shows it: Simple keeps a config allow-list
+/// note to what it means, since its fix names ids and config keys.
+String diagnosticSentenceIn(Diagnostic diagnostic, {required bool advanced}) {
+  final String sentence = diagnosticSentence(diagnostic);
+  if (advanced || diagnostic.code != 'command-allow-list') return sentence;
+  final int fix = sentence.lastIndexOf(': ');
+  return fix < 0 ? sentence : '${sentence.substring(0, fix)}. Edit in Advanced to see how.';
+}
+
 bool _same(Diagnostic a, Diagnostic b) => a.path == b.path && a.message == b.message;
 
 /// The server's diagnostics the browser does not already show in [local].
@@ -45,4 +54,46 @@ List<Diagnostic> withoutRepeats(List<Diagnostic> all) {
     if (!kept.any((Diagnostic seen) => _same(seen, diagnostic))) kept.add(diagnostic);
   }
   return kept;
+}
+
+/// [all] with one problem at the same field of several list items
+/// (`$.events[3].item`, `$.events[7].item`) said once, with how many items
+/// have it: "Item is required (5 events)". The first one's path stays, so a
+/// fix or a jump still finds it.
+List<Diagnostic> groupRepeats(List<Diagnostic> all) {
+  final Map<String, List<Diagnostic>> groups = <String, List<Diagnostic>>{};
+  for (final Diagnostic diagnostic in all) {
+    final String key = '${diagnostic.severity.name}|${diagnostic.message}|${diagnostic.path.replaceAll(RegExp(r'\[\d+\]'), '[*]')}';
+    (groups[key] ??= <Diagnostic>[]).add(diagnostic);
+  }
+  return <Diagnostic>[
+    for (final List<Diagnostic> group in groups.values)
+      if (group.length == 1)
+        group.single
+      else
+        Diagnostic(group.first.severity, group.first.path, '${group.first.message} (${group.length} ${_itemsOf(group.first.path)})', code: group.first.code),
+  ];
+}
+
+/// What the list items of [path] are called: "events" for `$.events[3].item`.
+String _itemsOf(String path) {
+  final List<JsonStep>? steps = parseJsonPath(path);
+  if (steps != null) {
+    for (int at = steps.length - 1; at > 0; at--) {
+      final JsonStep step = steps[at - 1];
+      if (steps[at] is int && step is String) return humanizeKey(step).toLowerCase();
+    }
+  }
+  return 'places';
+}
+
+/// What a document's status badge says.
+enum DocumentCheck { valid, checking, problems }
+
+/// [problems] are the ones shown; [shown] is [all] less the problems held
+/// back while a field is being filled in. Notes that are not problems (a kind
+/// without a schema) leave a document valid.
+DocumentCheck documentCheck({required List<Diagnostic> all, required List<Diagnostic> shown, required List<Diagnostic> problems}) {
+  if (problems.isNotEmpty) return DocumentCheck.problems;
+  return shown.length < all.length ? DocumentCheck.checking : DocumentCheck.valid;
 }

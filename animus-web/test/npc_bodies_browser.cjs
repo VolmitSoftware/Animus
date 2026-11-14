@@ -15,7 +15,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const {closeDrawer, sidebar, topbarAction} = require('./support/shell.cjs');
+const {closeDrawer, sidebar, topbarAction, workspaceOpen} = require('./support/shell.cjs');
 
 const folder = path.resolve(__dirname, 'fixtures/npc_bodies');
 const shots = process.env.ANIMUS_SCREENSHOTS;
@@ -52,6 +52,27 @@ async function colours(page, png) {
   }, png.toString('base64'));
 }
 
+/**
+ * Waits until the stage has drawn with every mesh built, reading it every
+ * 250 ms. On a phone the stage is behind the header's Preview button.
+ */
+async function stageReady(page, timeout = 20000) {
+  const deadline = Date.now() + timeout;
+  if (!(await page.locator('.animus-mc-gl-host').count())) {
+    const preview = page.locator('#animus-main').getByRole('button', {name: 'Preview', exact: true});
+    if (await preview.count()) await preview.first().click();
+  }
+  for (;;) {
+    const ready = await page.evaluate(() => {
+      const host = document.querySelector('.animus-mc-gl-host');
+      return Boolean(host && Number(host.getAttribute('data-frames')) > 0 && host.getAttribute('data-unbuilt') === '0');
+    });
+    if (ready) return;
+    if (Date.now() > deadline) throw new Error(`the stage did not draw: ${await page.evaluate(() => [...document.querySelectorAll('.animus-mc-gl-host')].map((host) => `${host.getAttribute('data-frames')}/${host.getAttribute('data-unbuilt')}`).join(', ') + ' at ' + location.hash)}`);
+    await page.waitForTimeout(250);
+  }
+}
+
 async function run(browser, viewport, label, dark) {
   const page = await browser.newPage({viewport});
   page.setDefaultTimeout(20000);
@@ -59,12 +80,11 @@ async function run(browser, viewport, label, dark) {
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto(process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })());
-  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+  await page.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Open folder'}).first().click();
   await (await chooser).setFiles(folder);
-  await (await sidebar(page)).getByText('Body player', {exact: true}).waitFor();
-  await closeDrawer(page);
+  await workspaceOpen(page);
   const isDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
   if (isDark !== dark) await topbarAction(page, dark ? 'Use dark theme' : 'Use light theme');
   await page.waitForFunction(want => document.documentElement.classList.contains(want ? 'dark' : 'light'), dark);
@@ -72,19 +92,16 @@ async function run(browser, viewport, label, dark) {
   const all = samples();
   assert.ok(all.length > 0, 'no samples');
   for (const sample of all) {
-    await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/${encodeURIComponent(sample.id)}?view=preview`);
+    await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/${encodeURIComponent(sample.id)}`);
     await page.locator('h1').getByText(sample.name, {exact: true}).waitFor();
-    await page.waitForFunction(() => {
-      const element = document.querySelector('.animus-mc-gl-host');
-      return element && Number(element.getAttribute('data-frames')) > 0 && element.getAttribute('data-unbuilt') === '0';
-    });
+    await stageReady(page);
     const host = page.locator('.animus-mc-gl-host');
     const stage = page.locator('.animus-mc-stage');
     assert.equal(await stage.getAttribute('data-webgl'), 'ready', `${sample.id}: WebGL`);
-    const notes = (await page.locator('.animus-npc-notes').allTextContents()).join('\n');
+    // What the stage left out: counted on its status line, every sentence in data-notes.
+    const notes = (await stage.getAttribute('data-notes')) || '';
     assert.ok(!/no model|not a body type/.test(notes), `${sample.id}: ${notes}`);
-    const status = (await page.locator('.animus-mc-status').allTextContents()).join('\n');
-    assert.ok(!/drawn white|is not drawn/.test(status), `${sample.id}: ${status}`);
+    assert.ok(!/drawn white|is not drawn/.test(notes), `${sample.id}: ${notes}`);
     if (sample.type === 'minecraft:text_display') {
       assert.ok((await page.locator('.animus-mc-text-line').allTextContents()).some(line => line.includes('Welcome')), `${sample.id}: text`);
     } else {

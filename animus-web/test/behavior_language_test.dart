@@ -259,6 +259,7 @@ void main() {
       final List<Diagnostic> found = serverBehaviorsDiagnostics(newServerBehaviors(<String>['town:welcome', 'town:greeter', 'elsewhere:x']), documents);
       expect(found.single.path, r'$.behaviors[1]');
       expect(serverBehaviorNote('elsewhere:x', workspaceBehaviors(documents)), contains('Not in this workspace'));
+      expect(serverBehaviorNote('town:welcome', workspaceBehaviors(documents)), isNull, reason: 'a listed server behavior needs no note');
     });
   });
 }

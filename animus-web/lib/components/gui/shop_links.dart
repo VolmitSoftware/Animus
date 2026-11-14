@@ -1,12 +1,11 @@
-/// Which NPCs open the shop: the NPCs and groups whose `animus:shop` module
-/// names it, each with its window style and, for a villager body, the
-/// profession and level the trading screen title shows; and an NPC picker
-/// that attaches the shop in one undoable change.
+/// Which NPCs open the shop: the NPCs and trait groups whose `animus:shop`
+/// module names it, each a link to its page with Detach in its menu, and
+/// in Advanced its window and, for a villager body, the profession and
+/// level the trading screen title shows. A searchable NPC picker attaches
+/// the shop in one undoable change.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
-import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_text.dart';
@@ -14,10 +13,14 @@ import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../../state/editor_store.dart';
 import '../conversation/conversation_attach.dart' show ConversationCommit;
-import '../info_tip.dart';
-import '../offline/offline_fields.dart' show ConfirmRow;
-import 'gui_fields.dart';
+import '../../ui/confirm_dialog.dart';
+import '../../ui/mode.dart';
+import '../../ui/menu.dart';
+import 'gui_rows.dart';
 import 'shop_offer_editor.dart' show CountStepper;
+import '../select/animus_select.dart';
+import '../../ui/field.dart';
+import '../../ui/stack.dart';
 
 const String shopModuleKey = 'animus:shop';
 
@@ -84,11 +87,13 @@ List<AnimusDocument> shopUsers(Iterable<AnimusDocument> documents, String shop) 
     ];
 
 class ShopLinks extends StatefulWidget {
-  const ShopLinks({required this.shop, required this.documents, required this.onCommit, this.onOpen, super.key});
+  const ShopLinks({required this.shop, required this.documents, this.onCommit, this.onOpen, super.key});
 
   final String shop;
   final List<AnimusDocument> documents;
-  final ConversationCommit onCommit;
+
+  /// Writes the NPC documents; null shows the list without changing it.
+  final ConversationCommit? onCommit;
   final void Function(DocumentKind kind, String id)? onOpen;
 
   @override
@@ -96,23 +101,22 @@ class ShopLinks extends StatefulWidget {
 }
 
 class _ShopLinksState extends State<ShopLinks> {
-  String? _pick;
+  String? _open;
   bool _busy = false;
-
-  /// Asking before the attach replaces the picked NPC's shop.
-  bool _confirming = false;
 
   static String _key(AnimusDocument document) => '${document.kind.wireName}:${document.id}';
 
   static String _name(AnimusDocument document) {
     final String title = guiPlainText(document.title);
-    return '${document.kind == DocumentKind.group ? 'Group ' : ''}$title${title == document.id ? '' : ' (${document.id})'}';
+    return '${document.kind == DocumentKind.group ? 'Trait group ' : ''}${title.isEmpty ? document.id : title}';
   }
 
   Future<void> _commit(AnimusDocument document, JsonMap? Function(JsonMap module) change, String label) async {
+    final ConversationCommit? commit = component.onCommit;
+    if (commit == null) return;
     setState(() => _busy = true);
     try {
-      await component.onCommit(<DocumentChange>[
+      await commit(<DocumentChange>[
         DocumentChange.update(document.kind, document.id, (Object? latest) => withShopModule(document.kind, asMap(latest), change(shopModuleIn(document.kind, latest)))),
       ], label);
     } finally {
@@ -120,72 +124,81 @@ class _ShopLinksState extends State<ShopLinks> {
     }
   }
 
-  Future<void> _attach(AnimusDocument document) => _commit(document, (JsonMap module) => <String, Object?>{...module, 'shop': component.shop}, 'attach ${component.shop} to ${document.id}');
+  Future<void> _attach(AnimusDocument document) async {
+    final String? replaces = asString(shopModuleOf(document)['shop']);
+    if (replaces != null &&
+        !await askToConfirm(title: 'Replace $replaces on ${_name(document)}?', message: 'It opens ${component.shop} instead.', confirmLabel: 'Replace')) {
+      return;
+    }
+    await _commit(document, (JsonMap module) => <String, Object?>{...module, 'shop': component.shop}, 'attach ${component.shop} to ${document.id}');
+  }
+
+  Future<void> _detach(AnimusDocument document) async {
+    if (!await askToConfirm(title: 'Detach from ${_name(document)}?', message: 'The NPC stops opening this shop.', confirmLabel: 'Detach', destructive: true)) return;
+    await _commit(document, (JsonMap _) => null, 'detach ${component.shop} from ${document.id}');
+  }
 
   @override
   Widget build(BuildContext context) {
+    final bool advanced = ModeScope.advanced(context);
     final List<AnimusDocument> users = shopUsers(component.documents, component.shop);
     final List<AnimusDocument> others = <AnimusDocument>[
       for (final AnimusDocument document in component.documents)
-        if ((document.kind == DocumentKind.npc || document.kind == DocumentKind.group) && document.json is Map<String, Object?> && !users.contains(document)) document,
+        if ((document.kind == DocumentKind.npc || (advanced && document.kind == DocumentKind.group)) && document.json is Map<String, Object?> && !users.contains(document)) document,
     ];
     final Map<String, AnimusDocument> byKey = <String, AnimusDocument>{for (final AnimusDocument document in others) _key(document): document};
-    final AnimusDocument? picked = _pick == null ? null : byKey[_pick];
-    final String? replaces = picked == null ? null : asString(shopModuleOf(picked)['shop']);
-    return dom.div(classes: 'animus-shop-links', <Widget>[
-      dom.h3(classes: 'animus-shop-panel-title', <Widget>[
-        withTip(Component.text(users.isEmpty ? 'Used by' : 'Used by (${users.length})'), 'NPCs and groups whose shop module opens this shop on click.'),
-      ]),
-      if (users.isEmpty)
-        const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No NPC opens it yet.')])
-      else
-        dom.ul(classes: 'animus-shop-users', <Widget>[for (final AnimusDocument document in users) _user(document)]),
-      if (others.isNotEmpty && _confirming && picked != null && replaces != null)
-        ConfirmRow(
-          question: 'Replace $replaces on ${_name(picked)}?',
-          detail: 'It opens ${component.shop} instead.',
-          confirmLabel: 'Replace',
-          onConfirm: () async {
-            setState(() => _confirming = false);
-            await _attach(picked);
-            if (mounted) setState(() => _pick = null);
-          },
-          onCancel: () => setState(() => _confirming = false),
-        )
-      else if (others.isNotEmpty)
-        dom.div(classes: 'animus-row animus-shop-attach', <Widget>[
-          GuiSelect(
-            value: picked == null ? null : _pick,
-            options: byKey.keys.toList(),
+    return Field(
+      label: 'Opened by',
+      tip: 'NPCs that open this shop when clicked.',
+      child: stack(<Widget>[
+        if (users.isEmpty)
+          mutedText('No NPC opens it yet.')
+        else
+          OrderedRows(label: 'Opened by', rows: <OrderedRow>[for (final AnimusDocument document in users) _user(document, advanced)]),
+        if (component.onCommit != null && byKey.isNotEmpty)
+          AnimusSelect.values(
+            value: null,
+            values: byKey.keys.toList(),
             labels: <String, String>{for (final MapEntry<String, AnimusDocument> one in byKey.entries) one.key: _name(one.value)},
-            noneLabel: 'Attach to NPC...',
-            hiddenLabel: 'NPC to attach this shop to',
-            onChanged: (String? key) => setState(() {
-              _pick = key;
-              _confirming = false;
-            }),
-          ),
-          Button.primary(
-            label: 'Attach',
-            size: ButtonSize.small,
-            disabled: picked == null || _busy,
-            onPressed: () async {
-              final AnimusDocument? target = picked;
-              if (target == null) return;
-              if (replaces != null) {
-                setState(() => _confirming = true);
-                return;
-              }
-              await _attach(target);
-              if (mounted) setState(() => _pick = null);
+            details: <String, String>{
+              for (final MapEntry<String, AnimusDocument> one in byKey.entries)
+                if (asString(shopModuleOf(one.value)['shop']) case final String other) one.key: 'Opens $other',
+            },
+            noneLabel: 'Add NPC',
+            hiddenLabel: 'NPC that opens this shop',
+            disabled: _busy,
+            onChanged: (String? key) {
+              final AnimusDocument? picked = key == null ? null : byKey[key];
+              if (picked != null) _attach(picked);
             },
           ),
-          if (replaces != null) dom.span(classes: 'animus-gui-help', <Widget>[Component.text('Replaces $replaces.')]),
-        ]),
-    ]);
+      ]),
+    );
   }
 
-  Widget _user(AnimusDocument document) {
+  OrderedRow _user(AnimusDocument document, bool advanced) {
+    final String key = _key(document);
+    final bool open = advanced && _open == key;
+    final void Function()? opener = component.onOpen == null ? null : () => component.onOpen!(document.kind, document.id);
+    return OrderedRow(
+      key: key,
+      name: _name(document),
+      open: open,
+      attributes: <String, String>{'data-user': key},
+      line: Button.ghost(label: _name(document), size: ButtonSize.sm, onPressed: opener, attributes: <String, String>{'aria-label': 'Open ${_name(document)}'}),
+      entries: <AppMenuEntry>[
+        AppMenuEntry('Open', opener),
+        if (advanced) AppMenuEntry(open ? 'Hide window settings' : 'Window settings', () => setState(() => _open = open ? null : key)),
+        if (component.onCommit != null) ...<AppMenuEntry>[
+          const AppMenuEntry.separator(),
+          AppMenuEntry('Detach', () => _detach(document), destructive: true),
+        ],
+      ],
+      body: open ? _settings(document) : null,
+    );
+  }
+
+  Widget _settings(AnimusDocument document) {
     final JsonMap module = shopModuleOf(document);
     final JsonMap json = asMap(document.json);
     final bool villager = document.kind == DocumentKind.npc && isVillagerBody(json);
@@ -210,51 +223,40 @@ class _ShopLinksState extends State<ShopLinks> {
       put('villager', next.isEmpty ? null : next);
     }
 
-    return dom.li(attributes: <String, String>{'data-user': _key(document)}, <Widget>[
-      dom.div(classes: 'animus-row', <Widget>[
-        dom.strong(<Widget>[Component.text(_name(document))]),
-        if (component.onOpen != null)
-          Button.ghost(label: 'Open', size: ButtonSize.small, attributes: <String, String>{'aria-label': 'Open ${document.id}'}, onPressed: () => component.onOpen!(document.kind, document.id)),
-        GuiIconButton(icon: ArcaneIcon.x(size: IconSize.sm), label: 'Detach from ${document.id}', onPressed: () => _commit(document, (JsonMap _) => null, 'detach ${component.shop} from ${document.id}')),
-      ]),
-      GuiRow(
-        label: 'Window',
+    return stack(spacing: 16, <Widget>[
+      Field(
+        label: 'Opens as',
         forId: '$fieldId-style',
-        tip: "Replaces the shop's own style for this NPC.",
-        child: GuiSelect(
+        tip: "Replaces the shop's own window for this NPC.",
+        child: AnimusSelect.values(
           id: '$fieldId-style',
-          hiddenLabel: 'Window for ${document.id}',
           value: asString(module['style']),
-          options: const <String>['native', 'chest'],
+          values: const <String>['native', 'chest'],
           labels: const <String, String>{'native': 'Trading screen', 'chest': 'Chest window'},
           allowNone: true,
-          noneLabel: "The shop's style",
+          noneLabel: "The shop's window",
           onChanged: (String? style) => put('style', style),
         ),
       ),
       if (villager) ...<Widget>[
-        GuiRow(
+        Field(
           label: 'Profession',
           forId: '$fieldId-profession',
           tip: 'Shown in the trading screen title of this villager. An untitled shop takes its name.',
-          child: GuiSelect(
+          child: AnimusSelect.values(
             id: '$fieldId-profession',
-            hiddenLabel: 'Profession of ${document.id}',
             value: asString(look['profession']),
-            options: villagerProfessions,
+            values: villagerProfessions,
             labels: <String, String>{for (final String id in villagerProfessions) id: id.substring(10).replaceAll('_', ' ')},
             allowNone: true,
-            noneLabel: 'none',
+            noneLabel: 'None',
             onChanged: (String? profession) => putLook('profession', profession),
           ),
         ),
-        GuiRow(
+        Field(
           label: 'Level',
-          tip: 'Novice to Master, added to the title as vanilla does.',
-          child: dom.div(classes: 'animus-row', <Widget>[
-            CountStepper(value: asInt(look['level']), label: 'Villager level', max: 5, onChanged: (int? level) => putLook('level', level == null || level == 1 ? null : level)),
-            dom.span(classes: 'animus-muted', <Widget>[Component.text(villagerLevels[((asInt(look['level']) ?? 1) - 1).clamp(0, 4)])]),
-          ]),
+          help: villagerLevels[((asInt(look['level']) ?? 1) - 1).clamp(0, 4)],
+          child: CountStepper(value: asInt(look['level']), label: 'Villager level', max: 5, onChanged: (int? level) => putLook('level', level == null || level == 1 ? null : level)),
         ),
       ],
     ]);

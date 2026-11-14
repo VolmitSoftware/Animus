@@ -1,8 +1,8 @@
-/// The editor's dropdown: a button with the combobox role that opens a
-/// listbox, square and flat like every other control. It filters with a
-/// search field past [searchThreshold] options, works fully from the
-/// keyboard, opens as a sheet on phones and, for a document reference,
-/// ends with "+ New rig" and "Manage rigs" style rows.
+/// The editor's dropdown, on arcane_jaspr's shadcn combobox: group
+/// headings, a colour swatch or skin face before an option, a search field
+/// past [searchThreshold] options and, for a document reference, "+ New rig"
+/// and "Manage rigs" rows under the list. The arcane runtime opens it,
+/// moves through it with the keyboard and closes it on Escape.
 library;
 
 import 'dart:js_interop';
@@ -15,6 +15,7 @@ import 'package:web/web.dart' as web;
 import '../../logic/select/select_model.dart';
 import '../../model/document_kind.dart';
 import '../../state/document_return.dart';
+import '../../ui/density.dart';
 import 'picker_scope.dart';
 import 'select_popup.dart';
 
@@ -35,6 +36,57 @@ class AnimusSelect extends StatefulWidget {
     this.onNew,
     super.key,
   });
+
+  /// A choice among plain [values], shown by their [labels] where given. With
+  /// [allowNone] (or no [value]) a first [noneLabel] row clears it, and
+  /// [onChanged] gets null; a [value] not in [values] stays listed.
+  factory AnimusSelect.values({
+    required String? value,
+    required List<String> values,
+    required void Function(String? value) onChanged,
+    bool allowNone = false,
+    String noneLabel = 'default',
+    Map<String, String> labels = const <String, String>{},
+    Map<String, String> details = const <String, String>{},
+    Map<String, String> groups = const <String, String>{},
+    Map<String, String> skinFaces = const <String, String>{},
+    Set<String> unavailable = const <String>{},
+    bool disabled = false,
+    DocumentKind? references,
+    String? id,
+    String? label,
+    String? hiddenLabel,
+    void Function(String search)? onNew,
+    Key? key,
+  }) {
+    final List<String> all = <String>[...values, if (value != null && value.isNotEmpty && !values.contains(value)) value];
+    return AnimusSelect(
+      key: key,
+      id: id,
+      label: label,
+      hiddenLabel: hiddenLabel,
+      value: value ?? '',
+      placeholder: noneLabel,
+      references: references,
+      disabled: disabled,
+      onNew: onNew,
+      options: <SelectOption>[
+        if (allowNone || value == null) SelectOption(label: noneLabel, value: ''),
+        for (final String option in all)
+          if (option.isNotEmpty)
+            SelectOption(
+              label: labels[option] ?? option,
+              value: option,
+              description: details[option],
+              group: groups[option],
+              skinFace: skinFaces[option],
+              disabled: unavailable.contains(option),
+              keywords: labels[option] == null ? const <String>[] : <String>[option],
+            ),
+      ],
+      onChanged: (String next) => onChanged(next.isEmpty ? null : next),
+    );
+  }
 
   /// The chosen option's value; one not in [options] shows [placeholder].
   final String? value;
@@ -59,8 +111,7 @@ class AnimusSelect extends StatefulWidget {
   final String? field;
   final bool disabled;
 
-  /// Makes the [references] document here from the search text instead of
-  /// going to the New page; the search field then always shows.
+  /// Makes the [references] document here instead of going to the New page.
   final void Function(String search)? onNew;
 
   @override
@@ -69,260 +120,44 @@ class AnimusSelect extends StatefulWidget {
 
 class _AnimusSelectState extends State<AnimusSelect> {
   final String _ownId = 'animus-select-${_nextSelectId++}';
-  SelectState _state = const SelectState();
-  PopupPlacement _placement = const PopupPlacement(sheet: false);
-  void Function()? _stopWatching;
 
   String get _baseId => component.id ?? _ownId;
-  String get _rootId => '$_baseId-root';
-  String get _popupId => '$_baseId-popup';
-  String get _searchId => '$_baseId-search';
 
   String get _field => component.field ?? component.label ?? component.hiddenLabel ?? component.placeholder;
 
-  String get _name => component.hiddenLabel ?? component.label ?? component.placeholder;
-
-  bool get _searchable => component.onNew != null || searchable(component.options.length);
-
-  List<SelectAction> _actions(PickerScope? scope) {
-    final DocumentKind? kind = component.references;
-    return kind == null || scope == null ? const <SelectAction>[] : scope.actionsFor(kind, query: _state.query);
-  }
-
-  SelectRows _rows(PickerScope? scope) => SelectRows(filterOptions(component.options, _state.query), _actions(scope).length);
-
+  /// A form is built again on every keystroke; a dropdown whose options and
+  /// value did not change keeps its DOM (a long list is hundreds of nodes).
+  /// The callbacks read [component] when they run, so they stay current.
   @override
-  void dispose() {
-    _stopWatching?.call();
-    super.dispose();
+  bool shouldRebuild(AnimusSelect newComponent) {
+    final AnimusSelect now = component;
+    return now.value != newComponent.value ||
+        now.placeholder != newComponent.placeholder ||
+        now.id != newComponent.id ||
+        now.label != newComponent.label ||
+        now.hiddenLabel != newComponent.hiddenLabel ||
+        now.references != newComponent.references ||
+        now.field != newComponent.field ||
+        now.disabled != newComponent.disabled ||
+        (now.onNew == null) != (newComponent.onNew == null) ||
+        !sameOptions(now.options, newComponent.options);
   }
 
-  void _focus(String id) => web.window.requestAnimationFrame(((JSNumber _) {
-        final web.Element? element = web.document.getElementById(id);
-        if (element == null) return;
-        (element as web.HTMLElement).focus();
-        if (element.isA<web.HTMLInputElement>()) {
-          final web.HTMLInputElement input = element as web.HTMLInputElement;
-          input.setSelectionRange(input.value.length, input.value.length);
-        }
-      }).toJS);
-
-  void _setState(SelectState next, PickerScope? scope) {
-    final bool opening = next.open && !_state.open;
-    final bool closing = !next.open && _state.open;
-    if (opening) {
-      final SelectRows rows = SelectRows(filterOptions(component.options, next.query), _actions(scope).length);
-      final int groups = rows.options.map((SelectOption option) => option.group).whereType<String>().toSet().length;
-      final double wanted = popupHeight(options: rows.options.length, groups: groups, actions: rows.actionCount, search: _searchable);
-      _placement = placePopup(_baseId, wanted);
-      _stopWatching = watchOutside(
-        _rootId,
-        _popupId,
-        _baseId,
-        () {
-          if (mounted && _state.open) setState(() => _close());
-        },
-        wanted: wanted,
-        sheet: _placement.sheet,
-        onMove: (PopupPlacement moved) {
-          if (mounted && _state.open) setState(() => _placement = moved);
-        },
-      );
-      if (_searchable) _focus(_searchId);
-    }
-    if (closing) _close(keepState: true);
-    setState(() => _state = next);
-    if (next.open) revealRow(_baseId, next.active);
+  /// What the user typed in the list's search box, so "+ New" starts from it.
+  String _search() {
+    final web.Element? input = web.document.querySelector('[data-arcane-command-input="$_baseId-list"]');
+    return input != null && input.isA<web.HTMLInputElement>() ? (input as web.HTMLInputElement).value.trim() : '';
   }
 
-  void _close({bool keepState = false}) {
-    _stopWatching?.call();
-    _stopWatching = null;
-    if (!keepState) _state = const SelectState();
-  }
-
-  void _toggle(PickerScope? scope) {
-    if (component.disabled) return;
-    if (_state.open) {
-      _setState(const SelectState(), scope);
-      return;
-    }
-    _setState(SelectState(open: true, active: openingRow(_rows(scope), component.value)), scope);
-  }
-
-  void _pick(int index, PickerScope? scope) {
-    final SelectRows rows = _rows(scope);
-    if (index < 0 || index >= rows.length || !rows.enabled(index)) return;
-    final String query = _state.query;
-    _setState(const SelectState(), scope);
-    _focus(_baseId);
-    if (index < rows.options.length) {
-      final String value = rows.options[index].value;
-      if (value != component.value) component.onChanged(value);
-      return;
-    }
-    final SelectAction action = _actions(scope)[index - rows.options.length];
+  void _run(SelectAction action, PickerScope? scope) {
     final DocumentKind? kind = component.references;
     if (action.id == recordInGameActionId) {
       ArcaneSonner.info('Record in game with /animus record start <id>.');
     } else if (action.id == newActionId && component.onNew != null) {
-      component.onNew!(query);
+      component.onNew!(_search());
     } else if (kind != null && scope != null) {
-      scope.run(action.id, kind, _field, query);
+      scope.run(action.id, kind, _field, _search());
     }
-  }
-
-  void _key(web.Event raw, PickerScope? scope, {bool inSearch = false}) {
-    final web.KeyboardEvent event = raw as web.KeyboardEvent;
-    final SelectRows rows = _rows(scope);
-    if (_state.open && _searchable && !inSearch && event.key.length == 1 && !event.ctrlKey && !event.metaKey) {
-      // Letters typed before focus reaches the search field still search.
-      event.preventDefault();
-      event.stopPropagation();
-      _setState(searchChanged(_state, component.options, '${_state.query}${event.key}', rows.actionCount), scope);
-      _focus(_searchId);
-      return;
-    }
-    final SelectStep step = selectKey(
-      _state,
-      rows,
-      event.key,
-      value: component.value,
-      alt: event.altKey,
-      modifier: event.ctrlKey || event.metaKey,
-      inSearch: inSearch,
-      now: DateTime.now().millisecondsSinceEpoch,
-    );
-    if (!step.handled) {
-      if (step.effect == SelectEffect.dismiss) _setState(step.state, scope);
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    switch (step.effect) {
-      case SelectEffect.commit || SelectEffect.action:
-        _pick(_state.active, scope);
-      case SelectEffect.close:
-        _setState(step.state, scope);
-        _focus(_baseId);
-      case SelectEffect.dismiss || SelectEffect.none:
-        if (!_state.open && step.state.open && _searchable && event.key.length == 1) {
-          // A letter on a closed searchable dropdown starts the search.
-          _setState(searchChanged(step.state, component.options, event.key, rows.actionCount).copyWith(open: true), scope);
-        } else {
-          _setState(step.state, scope);
-        }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final PickerScope? scope = PickerScope.of(context);
-    _claimReturn(scope);
-    final SelectRows rows = _rows(scope);
-    final SelectOption? chosen = component.options.where((SelectOption option) => option.value == component.value).firstOrNull;
-    final bool open = _state.open;
-    final String activeId = open && _state.active >= 0 ? rowId(_baseId, _state.active) : '';
-    final String? hidden = component.hiddenLabel;
-    return dom.div(id: _rootId, classes: 'animus-select${open ? ' is-open' : ''}${component.disabled ? ' is-disabled' : ''}', <Widget>[
-      if (component.label != null) dom.label(htmlFor: _baseId, classes: 'animus-select-caption', <Widget>[Component.text(component.label!)]),
-      dom.button(
-        id: _baseId,
-        classes: 'animus-select-trigger${chosen == null ? ' is-placeholder' : ''}',
-        attributes: <String, String>{
-          'type': 'button',
-          'role': 'combobox',
-          'aria-haspopup': 'listbox',
-          'aria-expanded': '$open',
-          'aria-controls': '$_baseId-listbox',
-          'data-value': component.value ?? '',
-          'aria-label': ?hidden,
-          if (activeId.isNotEmpty && !_searchable) 'aria-activedescendant': activeId,
-          if (component.disabled) 'disabled': '',
-        },
-        events: <String, void Function(web.Event)>{
-          'click': (web.Event _) => _toggle(scope),
-          'keydown': (web.Event event) => _key(event, scope),
-          // Space handled on keydown must not also click the button on keyup.
-          'keyup': (web.Event event) {
-            if ((event as web.KeyboardEvent).key == ' ') event.preventDefault();
-          },
-        },
-        <Widget>[
-          if (chosen?.swatch != null) dom.span(classes: 'animus-select-swatch', attributes: <String, String>{'aria-hidden': 'true', 'style': 'background:${chosen!.swatch}'}, const <Widget>[]),
-          if (chosen?.skinFace != null) faceThumb(chosen!.skinFace!),
-          dom.span(classes: 'animus-select-value', <Widget>[Component.text(chosen?.label ?? component.placeholder)]),
-          dom.span(classes: 'animus-select-chevron', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[ArcaneIcon.chevronDown(size: IconSize.sm)]),
-        ],
-      ),
-      if (open && _placement.sheet)
-        dom.div(
-          classes: 'animus-select-scrim',
-          attributes: const <String, String>{'aria-hidden': 'true'},
-          events: <String, void Function(web.Event)>{
-            'click': (web.Event event) {
-              event
-                ..preventDefault()
-                ..stopPropagation();
-              _setState(const SelectState(), scope);
-              _focus(_baseId);
-            },
-          },
-          const <Widget>[],
-        ),
-      if (open)
-        dom.div(
-          id: _popupId,
-          classes: 'animus-select-popup${_placement.classes}',
-          styles: dom.Styles(raw: _placement.styles),
-          // A click inside the list must not activate an enclosing <label>,
-          // which would click the trigger again and reopen the list.
-          events: <String, void Function(web.Event)>{
-            'click': (web.Event event) => event
-              ..preventDefault()
-              ..stopPropagation(),
-          },
-          <Widget>[
-            if (_placement.sheet) dom.div(classes: 'animus-select-sheet-title', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[Component.text(_name)]),
-            if (_searchable)
-              dom.input(
-                id: _searchId,
-                classes: 'animus-select-search',
-                value: _state.query,
-                attributes: <String, String>{
-                  'type': 'text',
-                  'role': 'combobox',
-                  'autocomplete': 'off',
-                  'spellcheck': 'false',
-                  'placeholder': 'Search',
-                  'aria-label': 'Search $_name',
-                  'aria-autocomplete': 'list',
-                  'aria-expanded': 'true',
-                  'aria-controls': '$_baseId-listbox',
-                  if (activeId.isNotEmpty) 'aria-activedescendant': activeId,
-                },
-                events: <String, void Function(web.Event)>{
-                  'input': (web.Event event) {
-                    final String text = (event.target! as web.HTMLInputElement).value;
-                    _setState(searchChanged(_state, component.options, text, rows.actionCount), scope);
-                  },
-                  'keydown': (web.Event event) => _key(event, scope, inSearch: true),
-                },
-              ),
-            SelectListbox(
-              baseId: _baseId,
-              label: _name,
-              rows: rows,
-              active: _state.active,
-              selected: <String>{?component.value},
-              actions: _actions(scope),
-              query: _state.query,
-              onPick: (int index) => _pick(index, scope),
-              onHover: (int index) => setState(() => _state = _state.copyWith(active: index)),
-            ),
-          ],
-        ),
-    ]);
   }
 
   /// Applies the id made by this dropdown's "+ New" trip, once, after the
@@ -338,4 +173,83 @@ class _AnimusSelectState extends State<AnimusSelect> {
       revealAndFocus(_baseId);
     });
   }
+
+  Widget? _picture(SelectOption option) {
+    if (option.skinFace != null) return faceThumb(option.skinFace!);
+    if (option.swatch != null) {
+      return dom.span(classes: 'animus-select-swatch', styles: dom.Styles(raw: <String, String>{'background': option.swatch!}), const <Widget>[]);
+    }
+    return null;
+  }
+
+  /// [options] of a document dropdown named as their list rows name them;
+  /// the id stays a search word. Options given a label keep it.
+  List<SelectOption> _named(DocumentKind? kind, PickerScope? scope) {
+    final String? Function(DocumentKind, String)? nameOf = scope?.nameOf;
+    if (kind == null || nameOf == null) return component.options;
+    return <SelectOption>[
+      for (final SelectOption option in component.options)
+        if (option.value.isNotEmpty && option.label == option.value)
+          SelectOption(
+            value: option.value,
+            label: nameOf(kind, option.value) ?? option.value,
+            group: option.group,
+            description: option.description,
+            disabled: option.disabled,
+            keywords: <String>[...option.keywords, option.value],
+            swatch: option.swatch,
+            skinFace: option.skinFace,
+          )
+        else
+          option,
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final PickerScope? scope = PickerScope.of(context);
+    _claimReturn(scope);
+    final DocumentKind? kind = component.references;
+    final List<SelectOption> options = _named(kind, scope);
+    final List<SelectAction> actions = kind == null || scope == null ? const <SelectAction>[] : scope.actionsFor(kind);
+    final bool known = options.any((SelectOption option) => option.value == component.value);
+    final String? name = component.label == null ? component.hiddenLabel : null;
+    return dom.div(classes: 'animus-select', <Widget>[
+      if (name != null) dom.label(htmlFor: _baseId, classes: 'animus-sr-only', <Widget>[Component.text(name)]),
+      ArcaneCombobox<String>(
+        id: '$_baseId-list',
+        triggerId: _baseId,
+        size: DensityScope.isDense(context) ? ComboboxSize.sm : ComboboxSize.md,
+        label: component.label,
+        value: known ? component.value : null,
+        placeholder: component.placeholder,
+        searchable: component.onNew != null || searchable(options.length),
+        searchPlaceholder: 'Search',
+        disabled: component.disabled,
+        emptyMessage: 'No matches',
+        options: <ComboboxOption<String>>[
+          for (final SelectOption option in options)
+            ComboboxOption<String>(
+              value: option.value,
+              label: option.label,
+              description: option.description,
+              disabled: option.disabled,
+              keywords: option.keywords,
+              group: option.group,
+              leading: _picture(option),
+            ),
+        ],
+        footer: actions.isEmpty
+            ? null
+            : dom.div(classes: 'animus-select-actions', <Widget>[
+                for (final SelectAction action in actions)
+                  Button.ghost(label: action.label, size: ButtonSize.sm, fullWidth: true, onPressed: () => _run(action, scope)),
+              ]),
+        onChanged: (String? next) {
+          if (next != null && next != component.value) component.onChanged(next);
+        },
+      ),
+    ]);
+  }
 }
+

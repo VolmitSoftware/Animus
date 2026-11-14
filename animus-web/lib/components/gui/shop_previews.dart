@@ -1,14 +1,15 @@
-/// Both windows a shop can open in, tabbed: the villager trading screen and
-/// the chest window, drawn from the document as it is now. The chest
-/// window shows the shop's own pages and modes, or the chest GUI its
-/// `layout` names with the offers in its list area. Clicking an offer in
-/// either picks it on the board. Two switches show offers as a player whose
-/// limits ran out, or who lacks the offers' permissions, would see them.
+/// The shop's preview: the window players get (the villager trading screen
+/// or the chest window), drawn from the document as it is now and fitted to
+/// the frame's width and height. The chest window shows the shop's own pages
+/// and modes, or the chest GUI its `layout` names with the offers in its
+/// list area; the trading screen shows a page of offers at a time, as the
+/// client does. Clicking an offer picks it in the form. Advanced switches to
+/// the other window and shows offers as a player who is sold out or lacks
+/// the offers' permissions sees them. There is no camera, so the header has
+/// no Reset view or Fullscreen; the rarer choices are in its "..." menu.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
-import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_layout.dart';
@@ -18,13 +19,19 @@ import '../../logic/gui/shop_layout.dart';
 import '../../logic/gui/shop_offers.dart';
 import '../../model/animus_document.dart';
 import 'chest_window.dart';
-import 'gui_fields.dart';
+import '../../ui/stage_frame.dart';
+import '../../ui/mode.dart';
+import '../../ui/toggle_choice.dart';
+import '../../ui/action_row.dart';
+import '../../ui/menu.dart';
 import 'merchant_window.dart';
+import '../select/animus_select.dart';
+import 'gui_stack.dart';
 
 const Map<String, String> _modeLabels = <String, String>{'buy': 'Buy', 'sell': 'Sell', 'trade': 'Trade'};
 
 class ShopPreviews extends StatefulWidget {
-  const ShopPreviews({required this.document, this.layouts = const <String, JsonMap>{}, this.selected, this.onSelect, super.key});
+  const ShopPreviews({required this.document, this.layouts = const <String, JsonMap>{}, this.selected, this.onSelect, this.band = false, super.key});
 
   final AnimusDocument document;
 
@@ -35,17 +42,22 @@ class ShopPreviews extends StatefulWidget {
   /// Picks an offer clicked in a window; null makes the windows read-only.
   final void Function(OfferRef ref)? onSelect;
 
+  /// The preview sits in the band above the form.
+  final bool band;
+
   @override
   State<ShopPreviews> createState() => _ShopPreviewsState();
 }
 
 class _ShopPreviewsState extends State<ShopPreviews> {
-  int? _tab;
+  String? _window;
   int _page = 0;
   String? _mode;
   int _listPage = 0;
-  bool _usedUp = false;
-  bool _noPermission = false;
+  int _tradePage = 0;
+  Set<String> _showAs = <String>{};
+
+  int get _perPage => tradeOffersPerPage(band: component.band);
 
   JsonMap get _shop => asMap(component.document.json);
 
@@ -54,9 +66,10 @@ class _ShopPreviewsState extends State<ShopPreviews> {
     super.didUpdateWidget(oldComponent);
     final OfferRef? selected = component.selected;
     if (selected == null || selected == oldComponent.selected) return;
-    // The chest window follows the board so the picked offer is in view.
+    // The windows follow the form so the picked offer is in view.
     _page = selected.page;
     _mode = selected.grid;
+    _tradePage = tradePageOf(nativeShopOffers(_shop), selected.key, _perPage) ?? _tradePage;
     final int index = layoutOffers(_shop).indexWhere((BoardOffer offer) => offer.ref == selected);
     final JsonMap? gui = _layoutGui;
     if (gui != null && index >= 0) {
@@ -73,41 +86,121 @@ class _ShopPreviewsState extends State<ShopPreviews> {
     return gui != null && layoutHasList(gui) ? gui : null;
   }
 
-  Set<String> get _crossed => <String>{
-        for (final BoardOffer offer in boardOffers(_shop))
-          if ((_usedUp && (asMap(offer.entry['stock']).isNotEmpty || asMap(offer.entry['limit']).isNotEmpty)) || (_noPermission && asString(offer.entry['permission']) != null)) offer.ref.key,
-      };
+  Set<String> get _crossed {
+    final bool soldOut = _showAs.contains('sold-out');
+    final bool noPermission = _showAs.contains('no-permission');
+    return <String>{
+      for (final BoardOffer offer in boardOffers(_shop))
+        if ((soldOut && (asMap(offer.entry['stock']).isNotEmpty || asMap(offer.entry['limit']).isNotEmpty)) || (noPermission && asString(offer.entry['permission']) != null)) offer.ref.key,
+    };
+  }
 
   void _pick(OfferRef? ref) {
     if (ref != null) component.onSelect?.call(ref);
   }
 
+  /// The mode the chest window shows: the picked one, else the shop's
+  /// default, else the first it offers.
+  String _shownMode(JsonMap shop, List<String> modes) {
+    if (_mode != null && modes.contains(_mode)) return _mode!;
+    final String? first = asString(shop['defaultMode']);
+    return first != null && modes.contains(first) ? first : modes.first;
+  }
+
   @override
   Widget build(BuildContext context) {
     final JsonMap shop = _shop;
+    final bool advanced = ModeScope.advanced(context);
     final String style = effectiveShopStyle(shop);
-    final int tab = _tab ?? (style == 'native' ? 0 : 1);
-    final String where = asString(shop['style']) == null ? 'Players get the chest window, the server default.' : (style == 'native' ? 'Players get the trading screen.' : 'Players get the chest window.');
-    return dom.div(classes: 'animus-shop-previews', <Widget>[
-      dom.div(classes: 'animus-shop-preview-head', <Widget>[
-        GuiTabs(
-          label: 'Shop windows',
-          tabs: <String>['Trading screen${style == 'native' ? ' (in game)' : ''}', 'Chest window${style == 'chest' ? ' (in game)' : ''}'],
-          selected: tab,
-          onSelect: (int index) => setState(() => _tab = index),
-        ),
+    final String window = advanced ? (_window ?? style) : style;
+    final String where = style == 'native' ? 'Players get the trading screen.' : 'Players get the chest window.';
+    // The shop's own modes, in the header, when the chest window draws them.
+    final JsonMap? gui = window == 'native' ? null : _layoutGui;
+    final List<String> modes = window == 'native' || gui != null ? const <String>[] : enabledShopModes(shop);
+    final String mode = modes.isEmpty ? '' : _shownMode(shop, modes);
+    final JsonList pages = window == 'native' || gui != null ? const <Object?>[] : asList(shop['pages']);
+    final int page = pages.isEmpty ? 0 : _page.clamp(0, pages.length - 1);
+    final ({ChestLayout layout, int pages})? drawn = gui == null ? null : layoutShopInGui(gui, shop, page: _listPage);
+    final ({List<ShopOffer> offers, int page, int pages})? trades = window == 'native' ? tradePage(nativeShopOffers(shop), page: _tradePage, size: _perPage) : null;
+    // One pager for whichever window has more than one page of offers.
+    final int windowPages = trades?.pages ?? drawn?.pages ?? 1;
+    final int shown = trades?.page ?? _listPage.clamp(0, windowPages - 1);
+    void turn(int to) => setState(() {
+          if (trades != null) {
+            _tradePage = to;
+          } else {
+            _listPage = to;
+          }
+        });
+    final String status = window == style ? where : 'Players get the ${style == 'native' ? 'trading screen' : 'chest window'}, not this one.';
+    return StageFrame(
+      title: 'Preview',
+      free: true,
+      fullscreen: false,
+      collapsible: component.band,
+      toggles: <Widget>[
+        if (modes.length > 1)
+          ToggleChoice<String>(
+            label: 'Mode shown',
+            options: <ChoiceOption<String>>[for (final String one in modes) ChoiceOption<String>(one, _modeLabels[one] ?? one)],
+            value: mode,
+            onChanged: (String next) => setState(() => _mode = next),
+          ),
+        if (pages.length > 1)
+          AnimusSelect.values(
+            value: '$page',
+            hiddenLabel: 'Page shown',
+            values: <String>[for (int index = 0; index < pages.length; index++) '$index'],
+            labels: <String, String>{for (int index = 0; index < pages.length; index++) '$index': asString(asMap(pages[index])['name']) ?? 'Page ${index + 1}'},
+            onChanged: (String? next) => setState(() => _page = int.tryParse(next ?? '') ?? 0),
+          ),
+      ],
+      // The other window and what a player in a special case sees: rarer,
+      // so in the header's menu, which keeps the header one line on phones.
+      // A check marks what is shown.
+      more: <AppMenuEntry>[
+        if (advanced) ...<AppMenuEntry>[
+          _choice('Trading screen', window == 'native', () => setState(() => _window = 'native')),
+          _choice('Chest window', window == 'chest', () => setState(() => _window = 'chest')),
+          const AppMenuEntry.separator(),
+          _choice('Sold out', _showAs.contains('sold-out'), () => _flip('sold-out'), description: 'Offers with stock or a limit show used up'),
+          _choice('Missing permission', _showAs.contains('no-permission'), () => _flip('no-permission'), description: 'Offers that need one show locked'),
+        ],
+      ],
+      actions: <RowAction>[
+        if (windowPages > 1) ...<RowAction>[
+          RowAction('Previous page', shown == 0 ? null : () => turn(shown - 1), icon: ArcaneIcon.chevronLeft(), iconOnly: true),
+          RowAction('Next page', shown >= windowPages - 1 ? null : () => turn(shown + 1), icon: ArcaneIcon.chevronRight(), iconOnly: true),
+        ],
+      ],
+      status: windowPages > 1 ? 'Page ${shown + 1} of $windowPages. $status' : status,
+      statusTip: asString(shop['style']) == null ? 'The server default, unless config.toml says otherwise. An NPC can override it.' : 'Set in Settings, Opens as.',
+      child: previewPane(<Widget>[
+        if (trades != null)
+          _trading(shop, trades.offers)
+        else if (drawn != null)
+          _layoutWindow(_shownAs(drawn.layout))
+        else
+          _chest(shop, page, mode),
       ]),
-      dom.p(classes: 'animus-muted', <Widget>[Component.text(where)]),
-      if (tab == 0) _trading(shop) else _chest(shop),
-      dom.div(classes: 'animus-row', <Widget>[
-        GuiSwitch(value: _usedUp, label: 'Limits used up', onChanged: (bool on) => setState(() => _usedUp = on)),
-        GuiSwitch(value: _noPermission, label: 'No permissions', onChanged: (bool on) => setState(() => _noPermission = on)),
-      ]),
-    ]);
+    );
   }
 
-  Widget _trading(JsonMap shop) {
-    final List<ShopOffer> offers = nativeShopOffers(shop);
+  /// A menu row for a view that is on or off, checked while on.
+  static AppMenuEntry _choice(String label, bool on, void Function() pick, {String? description}) =>
+      AppMenuEntry(label, pick, description: description, icon: on ? ArcaneIcon.check() : null);
+
+  /// [layout] as the player the menu picked sees it.
+  ChestLayout _shownAs(ChestLayout layout) => shopShownAs(layout, _shop, soldOut: _showAs.contains('sold-out'), noPermission: _showAs.contains('no-permission'));
+
+  /// Shows offers as a player who is sold out or lacks their permission.
+  void _flip(String showAs) => setState(() {
+        final Set<String> next = <String>{..._showAs};
+        if (!next.remove(showAs)) next.add(showAs);
+        _showAs = next;
+      });
+
+  Widget _trading(JsonMap shop, List<ShopOffer> offers) {
     return MerchantWindow(
       title: asString(shop['title']) ?? asString(shop['id']) ?? component.document.id,
       offers: offers,
@@ -115,71 +208,33 @@ class _ShopPreviewsState extends State<ShopPreviews> {
       selected: component.selected?.key,
       crossed: _crossed,
       onOffer: component.onSelect == null ? null : (String key) => _pick(OfferRef.parse(key)),
+      band: component.band,
     );
   }
 
-  Widget _chest(JsonMap shop) {
-    final JsonMap? gui = _layoutGui;
+  /// The chest GUI the layout names, the offers in its list area.
+  Widget _layoutWindow(ChestLayout layout) {
     final OfferRef? selected = component.selected;
-    if (gui != null) {
-      final ({ChestLayout layout, int pages}) drawn = layoutShopInGui(gui, shop, page: _listPage);
-      final int page = _listPage.clamp(0, drawn.pages - 1);
-      final int? slot = selected == null ? null : drawn.layout.cells.where((ChestCell cell) => offerAtCell(cell) == selected).map((ChestCell cell) => cell.slot).firstOrNull;
-      return dom.div(classes: 'animus-shop-chest', <Widget>[
-        dom.div(classes: 'animus-row', <Widget>[
-          dom.span(classes: 'animus-muted', <Widget>[Component.text('In ${asString(shop['layout'])}. Page ${page + 1} of ${drawn.pages}.')]),
-          if (drawn.pages > 1) ...<Widget>[
-            Button.ghost(label: 'Previous page', size: ButtonSize.small, disabled: page == 0, onPressed: () => setState(() => _listPage = page - 1)),
-            Button.ghost(label: 'Next page', size: ButtonSize.small, disabled: page >= drawn.pages - 1, onPressed: () => setState(() => _listPage = page + 1)),
-          ],
-        ]),
-        ChestWindow(
-          layout: drawn.layout,
-          label: 'Chest window ${component.document.id}',
-          selected: slot,
-          onSlot: component.onSelect == null ? null : (int at) => _pick(offerAtCell(drawn.layout.cell(at))),
-        ),
-      ]);
-    }
-    final JsonList pages = asList(shop['pages']);
-    final int page = pages.isEmpty ? 0 : _page.clamp(0, pages.length - 1);
-    final List<String> modes = enabledShopModes(shop);
-    final String mode = _mode != null && modes.contains(_mode) ? _mode! : (asString(shop['defaultMode']) != null && modes.contains(asString(shop['defaultMode'])) ? asString(shop['defaultMode'])! : modes.first);
-    final ChestLayout layout = layoutShop(shop, page: page, mode: mode);
-    final int? slot = selected != null && selected.page == page && selected.grid == mode ? selected.slot : null;
-    return dom.div(classes: 'animus-shop-chest', <Widget>[
-      if (asString(shop['layout']) != null)
-        dom.p(classes: 'animus-gui-problem is-info', <Widget>[Component.text('${asString(shop['layout'])} is not a chest GUI with a list area here, so this is the shop\'s own pages.')]),
-      dom.div(classes: 'animus-gui-toolbar', <Widget>[
-        if (pages.length > 1)
-          GuiTabs(
-            label: 'Pages',
-            tabs: <String>[for (int index = 0; index < pages.length; index++) asString(asMap(pages[index])['name']) ?? 'Page ${index + 1}'],
-            selected: page,
-            onSelect: (int index) => setState(() => _page = index),
-          ),
-        if (modes.length > 1)
-          GuiTabs(label: 'Modes', tabs: <String>[for (final String one in modes) _modeLabels[one] ?? one], selected: modes.indexOf(mode), onSelect: (int index) => setState(() => _mode = modes[index])),
-      ]),
-      ChestWindow(
-        layout: layout,
-        label: 'Chest window ${component.document.id}',
-        selected: slot,
-        onSlot: component.onSelect == null ? null : (int at) => _pick(offerAtCell(layout.cell(at))),
-      ),
-    ]);
+    final int? slot = selected == null ? null : layout.cells.where((ChestCell cell) => offerAtCell(cell) == selected).map((ChestCell cell) => cell.slot).firstOrNull;
+    return ChestWindow(
+      layout: layout,
+      label: 'Chest window ${component.document.id}',
+      selected: slot,
+      onSlot: component.onSelect == null ? null : (int at) => _pick(offerAtCell(layout.cell(at))),
+      band: component.band,
+    );
   }
-}
 
-/// The Preview view of a shop: both windows, read-only.
-class ShopPreview extends StatelessWidget {
-  const ShopPreview({required this.document, this.layouts = const <String, JsonMap>{}, super.key});
-
-  final AnimusDocument document;
-  final Map<String, JsonMap> layouts;
-
-  @override
-  Widget build(BuildContext context) => dom.section(classes: 'animus-panel animus-gui-preview', <Widget>[
-        ShopPreviews(document: document, layouts: layouts),
-      ]);
+  Widget _chest(JsonMap shop, int page, String mode) {
+    final OfferRef? selected = component.selected;
+    final ChestLayout layout = _shownAs(layoutShop(shop, page: page, mode: mode));
+    final int? slot = selected != null && selected.page == page && selected.grid == mode ? selected.slot : null;
+    return ChestWindow(
+      layout: layout,
+      label: 'Chest window ${component.document.id}',
+      selected: slot,
+      onSlot: component.onSelect == null ? null : (int at) => _pick(offerAtCell(layout.cell(at))),
+      band: component.band,
+    );
+  }
 }

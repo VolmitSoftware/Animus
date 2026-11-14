@@ -1,476 +1,65 @@
-/* Inspectors: the NPC inspector, the behavior node tree and the JSON code view. */
+/* The behavior step tree and the JSON code view. Their controls are library
+   components and their stacks the library's Column and Row. */
 
-.animus-inspector {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.75rem;
-  min-width: 0;
-}
-
-.animus-inspect-object,
-.animus-control-stack,
-.animus-capability {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.5rem;
-  min-width: 0;
-}
-
-/* A nested object reads as a group: its name on its own line, its fields
-   below at full width, so nested label columns never squeeze the controls. */
-.animus-gui-row:has(> .animus-gui-control > .animus-inspect-object) > .animus-gui-control {
-  flex-basis: 100%;
-}
-
-/* Its fields indent their labels, not their controls, so every control
-   stays on the same column at any depth. */
-.animus-gui-control > .animus-inspect-object > .animus-gui-row > :first-child {
-  box-sizing: border-box;
-  padding-inline-start: 0.75rem;
-}
-
-.animus-gui-control > .animus-inspect-object .animus-gui-control > .animus-inspect-object > .animus-gui-row > :first-child {
-  padding-inline-start: 1.5rem;
-}
-
-.animus-inspect-const {
-  padding-top: 0.375rem;
-  font-size: var(--animus-text-sm);
-  overflow-wrap: anywhere;
-}
-
-.animus-inspect-item,
-.animus-routine {
-  display: grid;
-  gap: 0.375rem;
-  padding: 0.5rem;
-  border: 1px solid var(--animus-border);
-  min-width: 0;
-}
-
-.animus-kept-json {
-  min-height: var(--animus-control-h);
-  resize: vertical;
-  white-space: pre;
-  overflow: auto;
-}
-
-.animus-tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.0625rem 0.375rem;
-  border: 1px solid var(--animus-border);
-  font-size: 0.6875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--animus-muted);
-}
-
-.animus-tag.is-server {
-  border-color: #4d8ef7;
-  color: #8cb4fa;
-}
-
-/* ---- Behavior editor (lane L2) -------------------------------------------
-   The routine tree reads by indentation: each level sits on one thin rail,
-   not inside another bordered box. Pink marks only the focused row and the
-   primary actions; problems use the semantic error colour with a text flag. */
-
-.animus-behavior-tree {
-  display: grid;
-  gap: 0.75rem;
-  min-width: 0;
-}
-
-.animus-node {
-  display: grid;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-.animus-node-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.5rem;
-  align-items: baseline;
-  min-height: 2rem;
-  padding: 0.25rem 0.375rem;
-  cursor: pointer;
-  list-style: none;
-  min-width: 0;
-}
-
-.animus-node-summary::-webkit-details-marker {
-  display: none;
-}
-
-.animus-node-summary::before {
-  content: "\25B8";
-  flex: none;
-  width: 0.75rem;
-  color: var(--animus-muted);
-  transition: transform 120ms ease-out;
-}
-
-.animus-node[open] > .animus-node-summary::before {
-  transform: rotate(90deg);
-}
-
-.animus-node-summary:hover {
-  background: rgba(128, 128, 128, 0.1);
-}
-
-.animus-node-summary:focus-visible {
-  background: rgba(255, 95, 168, 0.08);
-}
-
-.animus-node-caption {
-  font-family: var(--font-mono);
-  font-size: var(--animus-text-xs);
-  color: var(--animus-muted);
-}
-
-.animus-node-type {
-  font-family: var(--font-mono);
-  font-size: var(--animus-text-sm);
-  font-weight: 600;
-}
-
-.animus-node-line {
-  flex: 1 1 12rem;
-  font-size: var(--animus-text-sm);
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
-
-.animus-node-flag {
-  font-size: var(--animus-text-xs);
-  font-weight: 600;
-}
-
-.animus-node-flag.is-error {
-  color: var(--animus-error);
-}
-
-.animus-node-flag.is-warning {
-  color: var(--animus-warning);
-}
-
-.animus-node.has-error > .animus-node-summary .animus-node-type {
-  color: var(--animus-error);
-}
-
-.animus-node-body {
-  display: grid;
-  gap: 0.5rem;
-  padding-inline-start: 1.125rem;
-  min-width: 0;
-}
-
-.animus-node-tools {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  align-items: center;
-  min-width: 0;
-}
-
-.animus-node-help {
-  flex: 1 1 10rem;
-  font-size: var(--animus-text-xs);
-  color: var(--animus-muted);
-  min-width: 0;
-}
-
-/* One rail per level: structure, not decoration. */
+/* Child steps sit on one rail per level: structure, not a box in a box. */
 .animus-node-children {
   display: grid;
-  gap: 0.375rem;
+  gap: 0.5rem;
+  min-width: 0;
   padding-inline-start: 0.75rem;
-  border-inline-start: 1px solid var(--animus-border);
-  min-width: 0;
+  border-inline-start: 1px solid var(--border);
 }
 
-.animus-add-node {
-  max-width: 22rem;
-}
-
-.animus-trigger {
-  display: grid;
-  gap: 0.375rem;
-  padding-block: 0.5rem;
-  border-top: 1px solid var(--animus-border);
-  min-width: 0;
-}
-
-.animus-trigger.has-error .animus-node-caption {
-  color: var(--animus-error);
-}
-
-/* A source picker and its value side by side while the value keeps 10rem;
-   in a narrow or deeply nested column the value moves under the picker. */
-.animus-operand,
-.animus-value-editor {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  align-items: flex-start;
-  min-width: 0;
-}
-
-.animus-operand > :first-child,
-.animus-value-editor > :first-child {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.animus-operand > :nth-child(2),
-.animus-value-editor > :nth-child(n + 2) {
-  flex: 1 1 10rem;
-  min-width: 0;
-}
-
-.animus-operand > :nth-child(n + 3) {
-  flex-basis: 100%;
-}
-
-/* A select keeps its own width; stretching it would leave its arrow
-   floating away from the box. */
-.animus-operand > .arcane-select-wrapper,
-.animus-value-editor > .arcane-select-wrapper {
-  flex: 0 1 auto;
-}
-
-.animus-expr {
-  position: relative;
-  min-width: 0;
-}
-
-.animus-expr-input {
-  width: 100%;
-  min-height: var(--animus-control-h);
-  box-sizing: border-box;
-  font-family: var(--font-mono);
-  resize: none;
-  overflow: hidden;
-  field-sizing: content;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.animus-value-list {
-  display: grid;
-  gap: 0.375rem;
-  min-width: 0;
-}
-
-.animus-value-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  align-items: flex-start;
-  min-width: 0;
-}
-
-.animus-value-row > :nth-child(2) {
-  flex: 1 1 10rem;
-  min-width: 0;
-}
-
-.animus-value-key {
-  padding-top: 0.375rem;
-  font-family: var(--font-mono);
-  font-size: var(--animus-text-sm);
-  overflow-wrap: anywhere;
-}
-
-.animus-slots {
-  display: grid;
-  gap: 0.375rem;
-  min-width: 0;
-}
-
-.animus-slots h5 {
-  margin: 0.25rem 0 0;
-  font-size: var(--animus-text-sm);
-}
-
-/* Rows already name their dropdowns; a dropdown's own caption stays for
-   screen readers only. */
-.animus-behavior-editor .animus-select-caption,
-.animus-server-behaviors .animus-gui-row .animus-select-caption {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.animus-server-list {
-  display: grid;
-  gap: 0.25rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.animus-server-item {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.75rem;
-  align-items: center;
-  padding: 0.375rem 0;
-  border-bottom: 1px solid var(--animus-border);
-  min-width: 0;
-}
-
-.animus-server-item code {
-  font-size: var(--animus-text-sm);
-  overflow-wrap: anywhere;
-}
-
-.animus-server-item .animus-muted {
-  flex: 1 1 14rem;
-  font-size: var(--animus-text-sm);
-}
-
-.animus-code-syntax {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
-  color: var(--animus-error);
-  font-size: var(--animus-text-sm);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animus-node-summary::before {
-    transition: none;
-  }
-}
-
-.animus-behavior-editor .animus-gui-control,
-.animus-behavior-editor .animus-gui-text,
-.animus-server-behaviors .animus-gui-control {
-  min-width: 0;
-}
-
-/* Single-column grids size to their container, not to the widest select
-   option, so deep trees and long capability names never push sideways. */
-.animus-behavior-tree,
-.animus-node,
-.animus-node-body,
-.animus-node-children,
-.animus-behavior-editor .animus-capability,
-.animus-behavior-editor .animus-control-stack,
-.animus-behavior-editor .animus-inspect-item,
-.animus-behavior-editor .animus-routine,
-.animus-slots,
-.animus-value-list {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.animus-behavior-editor .animus-select,
-.animus-server-behaviors .animus-select {
-  min-width: 0;
-  max-width: 100%;
-}
-
-@media (max-width: 520px) {
-  /* 12 px per level: the rail's own padding, no extra body indent. */
-  .animus-node-body {
-    padding-inline-start: 0;
-  }
-
-  .animus-node-children {
-    padding-inline-start: calc(0.75rem - 1px);
-  }
-
-  .animus-behavior-editor .animus-gui-row > :first-child {
-    flex-basis: 100%;
-  }
-
-  .animus-value-row > .animus-value-key {
-    flex-basis: 100%;
-  }
-
-  .animus-node-summary {
-    min-height: 2.75rem;
-    align-items: center;
-  }
-}
-
-/* ---- end of the behavior editor block ---------------------------------- */
-
-/* JSON code view. */
-
-.animus-code-editor {
-  display: grid;
-  gap: 0.5rem;
-  min-width: 0;
-}
-
+/* JSON code view: line numbers beside the text, as tall as the window
+   allows. */
 .animus-code-frame {
-  --animus-code-line: 1.45;
+  --code-h: clamp(14rem, calc(100dvh - 27rem), 44rem);
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  border: 1px solid var(--animus-border);
   overflow: hidden;
-  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--background);
+  font-family: var(--font-mono, monospace);
+}
+
+/* One line height for both, as phones raise the text area's font to 16px. */
+.animus-code-gutter,
+.animus-code-area {
+  height: var(--code-h);
+  padding-block: 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
 }
 
 .animus-code-gutter {
   overflow: hidden;
-  height: 34rem;
-  box-sizing: border-box;
-  padding: 0.5rem 0;
-  border-inline-end: 1px solid var(--animus-border);
-  font-family: var(--font-mono);
-  font-size: var(--animus-text-sm);
-  line-height: var(--animus-code-line);
-  color: var(--animus-muted);
+  border-inline-end: 1px solid var(--border);
+  color: var(--muted-foreground);
   text-align: end;
   user-select: none;
 }
 
 .animus-code-line {
-  padding: 0 0.5rem 0 0.75rem;
+  padding-inline: 0.75rem 0.5rem;
 }
 
 .animus-code-line.has-mark {
   cursor: pointer;
-  font-weight: 700;
-}
-
-.animus-code-line.has-mark::before {
-  content: "";
-  display: inline-block;
-  width: 0.5rem;
-  height: 0.5rem;
-  margin-inline-end: 0.375rem;
-  background: currentColor;
+  font-weight: 600;
 }
 
 .animus-code-line.is-error {
-  color: var(--animus-error);
-  background: rgba(229, 72, 77, 0.12);
+  color: var(--destructive);
 }
 
-.animus-code-line.is-warning,
-.animus-code-line.is-info {
-  color: #d8a338;
+.animus-code-line:is(.is-warning, .is-info) {
+  color: var(--warning);
 }
 
-/* Server diagnostics: a hollow square beside the filled local one. */
-.animus-code-line.is-server::before {
-  box-sizing: border-box;
-  border: 2px solid currentColor;
-  background: transparent;
+/* Server problems: underlined, so the mark does not rest on colour alone. */
+.animus-code-line.is-server {
+  text-decoration: underline;
 }
 
 .animus-code-input {
@@ -481,176 +70,21 @@
 .animus-code-area {
   display: block;
   width: 100%;
-  height: 34rem;
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0.5rem 0.75rem;
+  padding-inline: 0.75rem;
   border: 0;
   background: transparent;
   color: inherit;
-  font-family: var(--font-mono);
-  font-size: var(--animus-text-sm);
-  line-height: var(--animus-code-line);
   tab-size: 2;
   white-space: pre;
   overflow: auto;
   resize: none;
 }
 
-.animus-code-status {
-  font-size: var(--animus-text-xs);
-}
-
-.animus-code-problems {
-  list-style: none;
-  margin: 0;
-  padding: 0.5rem;
-  display: grid;
-  gap: 0.25rem;
-  max-height: 14rem;
-  overflow: auto;
-  border: 1px solid var(--animus-border);
-}
-
-.animus-code-problems li {
+/* A problem by line: its Line button, the message and the path, wrapping. */
+.animus-code-problem {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
   align-items: center;
-  font-size: var(--animus-text-sm);
-  min-width: 0;
-}
-
-.animus-code-problems li.is-error > span:last-child {
-  color: var(--animus-error);
-}
-
-.animus-code-problems code {
+  gap: 0.25rem 0.5rem;
   overflow-wrap: anywhere;
-}
-
-.animus-diagnostics li.is-server {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  align-items: center;
-}
-
-@media (max-width: 520px) {
-  .animus-code-gutter,
-  .animus-code-area {
-    height: 24rem;
-  }
-}
-
-/* Typed values and key/value editors: values no schema describes, edited by
-   kind. A row is key, value, remove; a nested list or object drops under its
-   key, indented, so depth reads without boxes inside boxes. */
-
-.animus-kv,
-.animus-typed-list,
-.animus-inspect-array {
-  display: grid;
-  gap: 0.375rem;
-  min-width: 0;
-}
-
-.animus-typed-list > button,
-.animus-inspect-array > button {
-  justify-self: start;
-}
-
-.animus-kv-row {
-  display: grid;
-  grid-template-columns: minmax(6rem, 10rem) minmax(0, 1fr) auto;
-  gap: 0.375rem;
-  align-items: start;
-  min-width: 0;
-}
-
-.animus-kv-key,
-.animus-kv-value,
-.animus-typed-kind {
-  display: grid;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-/* Inputs and triggers fill their grid column instead of keeping their
-   intrinsic width, which would push them under the next column. */
-.animus-kv-key > input,
-.animus-typed-kind > *,
-.animus-typed-kind .animus-select-trigger,
-.animus-typed-value > .animus-suggest,
-.animus-typed-value > input {
-  width: 100%;
-  min-width: 0;
-}
-
-.animus-typed-value {
-  display: grid;
-  grid-template-columns: 8rem minmax(0, 1fr);
-  gap: 0.375rem;
-  align-items: start;
-  min-width: 0;
-}
-
-.animus-typed-value.is-nested {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.animus-typed-value.is-nested > .animus-typed-kind {
-  max-width: 10rem;
-}
-
-.animus-typed-value.is-nested > .animus-kv,
-.animus-typed-value.is-nested > .animus-typed-list,
-.animus-inspect-array-item {
-  padding-left: 0.75rem;
-}
-
-.animus-typed-item {
-  display: grid;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-.animus-typed-actions,
-.animus-inspect-array-actions {
-  display: flex;
-  gap: 0.25rem;
-  flex-wrap: wrap;
-}
-
-.animus-inspect-array-item {
-  display: grid;
-  gap: 0.375rem;
-  min-width: 0;
-}
-
-.animus-typed-empty {
-  padding-top: 0.375rem;
-  font-size: var(--animus-text-sm);
-}
-
-/* A narrow editor (a phone, a split view, a nested object) puts the value
-   under its key and the kind above the value. */
-.animus-kv,
-.animus-typed-list {
-  container-type: inline-size;
-}
-
-@container (max-width: 30rem) {
-  .animus-kv-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .animus-kv-row > .animus-kv-value {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
-
-  .animus-typed-value {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }

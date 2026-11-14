@@ -34,6 +34,7 @@ public interface EditorHost {
     /** {@code paper}, {@code folia}, {@code spigot}, {@code purpur}, {@code fabric}, {@code forge}, {@code neoforge} or {@code other}. */
     String platform();
 
+    /** The platform's name for the server, such as {@link EditorServerName#fallback}; {@code [editor] serverName} wins over it. */
     String serverName();
 
     /** The shared file lane. Rejects with {@code RejectedExecutionException} when full, which the API answers as busy. */

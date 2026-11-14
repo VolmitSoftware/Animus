@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000700",
+  "id": "citizens-0",
+  "group": "world",
+  "name": "Shopkeeper",
+  "type": "minecraft:villager",
+  "spawned": true,
+  "migration": {
+    "importId": "6c56bf9b7f8cceff22477d00a413cf1effe76eda3822b82261bc0049f54e6ec6",
+    "citizensId": 0,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "hologram": {
+    "lines": [
+      "&c&lShop",
+      "&rRight click to trade",
+      "&eGold accepted",
+      "&r&oOpen daily"
+    ]
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "VILLAGER",
+      "location": {
+        "world": "world",
+        "x": 0.5,
+        "y": 64,
+        "z": 0.5
+      },
+      "hologramtrait": {
+        "lines": {
+          "0": "&oOpen daily",
+          "1": "&eGold accepted",
+          "2": "Right click to trade",
+          "3": "&c&lShop"
+        }
+      }
+    }
+  }
+}

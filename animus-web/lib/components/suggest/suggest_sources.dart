@@ -50,8 +50,12 @@ class SuggestSources extends StatefulWidget {
 
 class _SuggestSourcesState extends State<SuggestSources> {
   CompletionSources _registries = CompletionSources.empty;
+  final WorkspaceSourcesCache _cache = WorkspaceSourcesCache();
   CompletionSources? _built;
+  CompletionSources? _builtOver;
   List<AnimusDocument>? _builtFrom;
+  CompletionSources? _builtBase;
+  CompletionSources? _baseRegistries;
   CompletionCatalog? _builtCatalog;
   ServerLookups? _builtLookups;
 
@@ -63,23 +67,36 @@ class _SuggestSourcesState extends State<SuggestSources> {
       setState(() {
         _registries = loaded;
         _built = null;
+        _builtBase = null;
       });
     });
   }
 
-  /// Rebuilt only when the documents, catalog or server lists change.
-  CompletionSources get _sources {
-    final CompletionSources? cached = _built;
-    if (cached != null && identical(_builtFrom, component.documents) && identical(_builtCatalog, component.catalog) && identical(_builtLookups, component.lookups)) {
+  /// The registries, catalog and server lists, built again only when one
+  /// of them changes.
+  CompletionSources get _base {
+    final CompletionSources? cached = _builtBase;
+    if (cached != null && identical(_baseRegistries, _registries) && identical(_builtCatalog, component.catalog) && identical(_builtLookups, component.lookups)) {
       return cached;
     }
     CompletionSources base = _registries.copyWith(catalog: component.catalog);
     final ServerLookups? lookups = component.lookups;
     if (lookups != null) base = lookups.over(base);
-    _builtFrom = component.documents;
+    _baseRegistries = _registries;
     _builtCatalog = component.catalog;
     _builtLookups = lookups;
-    return _built = workspaceSources(component.documents, base: base);
+    return _builtBase = base;
+  }
+
+  /// The same instance while no id or name changes (an edit of one field),
+  /// so the fields under the scope are not built again for it.
+  CompletionSources get _sources {
+    final CompletionSources? cached = _built;
+    final CompletionSources base = _base;
+    if (cached != null && identical(_builtFrom, component.documents) && identical(_builtOver, base)) return cached;
+    _builtFrom = component.documents;
+    _builtOver = base;
+    return _built = _cache.sources(component.documents, base: base);
   }
 
   @override

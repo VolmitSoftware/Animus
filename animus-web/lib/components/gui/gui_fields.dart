@@ -1,31 +1,26 @@
-/// Inspector fields for the GUI editors: labelled rows, text fields with
-/// expression checking and completion, numbers, choices, switches and line
-/// lists. Every field reports a whole new value; the editors write it into
-/// the document.
+/// Shared pieces of the GUI editors: field ids and problems by document
+/// path, text modes, line lists, formatted game text and notes.
+/// Every field reports a whole new value; the editors write it into the
+/// document.
 library;
-
-import 'dart:js_interop';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
-import '../../config/docs_links.dart';
 import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_text.dart';
 import '../../mc/npc/mc_text.dart';
-import '../../logic/select/select_model.dart';
 import '../../model/animus_document.dart';
-import '../../model/document_kind.dart';
-import '../../logic/diagnostic_text.dart';
-import '../../logic/help_text.dart';
 import '../../logic/suggest/field_profile.dart';
-import '../info_tip.dart';
-import '../select/animus_select.dart';
 import '../suggest/autocomplete_input.dart';
-import '../typing_pause.dart';
+import '../../ui/alert.dart';
+import '../../ui/density.dart';
+import '../../ui/icon_button.dart';
+import 'gui_stack.dart';
+import '../../ui/stack.dart';
 
 /// What a text field holds, which decides its checks and completion.
 enum GuiTextMode {
@@ -42,60 +37,13 @@ enum GuiTextMode {
 /// [writeAt]); edits sharing [coalesce] close together undo as one step.
 typedef JsonEdit = void Function(JsonUpdate update, {String? coalesce});
 
-int _nextFieldId = 0;
-
 /// Whether the system asks for reduced motion; animated previews start
 /// paused when it does.
 bool prefersReducedMotion() => web.window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/// A fresh element id for a control and the label that names it.
-String guiFieldId() => 'animus-field-${_nextFieldId++}';
-
-/// A stable element id for the control at a document [path], so a [GuiRow]
+/// A stable element id for the control at a document [path], so a field's
 /// label can point at it with `for`.
 String guiPathId(String path) => 'animus-at-${path.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '-')}';
-
-/// A labelled row: the control, an optional help line and the diagnostics
-/// the document has at [path]. With [forId] the label is a `<label for>`
-/// naming the control with that id.
-class GuiRow extends StatefulWidget {
-  const GuiRow({required this.label, required this.child, this.help, this.tip, this.problems = const <Diagnostic>[], this.forId, super.key});
-
-  final String label;
-  final Widget child;
-  final String? help;
-
-  /// Tip text on the label; with it, [help] always stays inline.
-  final String? tip;
-  final List<Diagnostic> problems;
-  final String? forId;
-
-  @override
-  State<GuiRow> createState() => _GuiRowState();
-}
-
-class _GuiRowState extends State<GuiRow> with TypingPause<GuiRow> {
-  @override
-  Widget build(BuildContext context) {
-    final List<Diagnostic> shown = typing ? const <Diagnostic>[] : component.problems;
-    final ({String? hint, String? tip}) split = component.tip == null ? splitHelp(component.help) : (hint: component.help == null || component.help!.isEmpty ? null : component.help, tip: component.tip);
-    return dom.div(classes: 'animus-gui-row${shown.any((Diagnostic d) => d.severity == DiagnosticSeverity.error) ? ' has-error' : ''}', events: typingEvents, <Widget>[
-      component.forId != null
-          ? dom.label(htmlFor: component.forId, classes: 'animus-gui-label', <Widget>[withTip(Component.text(component.label), split.tip)])
-          : dom.span(classes: 'animus-gui-label', <Widget>[withTip(Component.text(component.label), split.tip)]),
-      dom.div(classes: 'animus-gui-control', <Widget>[
-        component.child,
-        if (split.hint != null) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(split.hint!)]),
-        for (final Diagnostic problem in withoutRepeats(shown))
-          dom.span(
-            classes: 'animus-gui-problem is-${problem.severity.name}',
-            attributes: <String, String>{'role': 'note', 'title': problem.path},
-            <Widget>[Component.text(diagnosticSentence(problem))],
-          ),
-      ]),
-    ]);
-  }
-}
 
 /// Diagnostics at exactly [path], or inside it when [nested].
 List<Diagnostic> diagnosticsAt(List<Diagnostic> all, String path, {bool nested = false}) => <Diagnostic>[
@@ -104,260 +52,28 @@ List<Diagnostic> diagnosticsAt(List<Diagnostic> all, String path, {bool nested =
           diagnostic,
     ];
 
-/// A text field. Template and expression fields show their problems as you
-/// type; every field with a profile completes through [AutocompleteInput].
-class GuiTextInput extends StatefulWidget {
-  const GuiTextInput({
-    required this.value,
-    required this.onChanged,
-    this.mode = GuiTextMode.plain,
-    this.names = ExpressionNames.standard,
-    this.profile,
-    this.placeholder,
-    this.multiline = false,
-    this.label,
-    this.id,
-    super.key,
-  });
-
-  /// The element id; a [GuiRow] with the same `forId` labels it.
-  final String? id;
-
-  final String value;
-  final void Function(String value) onChanged;
-  final GuiTextMode mode;
-  final ExpressionNames names;
-
-  /// What the field completes; by default the [mode]'s (GUI text or
-  /// expression, nothing for plain text).
-  final FieldProfile? profile;
-  final String? placeholder;
-  final bool multiline;
-
-  /// The accessible name.
-  final String? label;
-
-  @override
-  State<GuiTextInput> createState() => _GuiTextInputState();
-}
-
-class _GuiTextInputState extends State<GuiTextInput> {
-  late final String _id = component.id ?? guiFieldId();
-
-  /// The latest typed text, ahead of the saved value.
-  String? _typed;
-
-  String get _text => _typed ?? component.value;
-
-  @override
-  void didUpdateWidget(GuiTextInput oldComponent) {
-    super.didUpdateWidget(oldComponent);
-    if (component.value != oldComponent.value && component.value != _typed) _typed = null;
-  }
-
-  FieldProfile get _profile =>
-      component.profile ??
-      switch (component.mode) {
-        GuiTextMode.plain => FieldProfile.none,
-        GuiTextMode.template => FieldProfile.guiText,
-        GuiTextMode.expression => FieldProfile.guiExpression,
-      };
-
-  String? get _problem {
-    final String value = _text;
-    if (value.isEmpty) return null;
-    return switch (component.mode) {
-      GuiTextMode.plain => null,
-      GuiTextMode.template => checkTemplate(value, names: component.names).firstOrNull,
-      GuiTextMode.expression => checkExpression(value, names: component.names),
+/// The completion profile, and with it the whole-text check, of a mode.
+FieldProfile guiTextProfile(GuiTextMode mode) => switch (mode) {
+      GuiTextMode.plain => FieldProfile.none,
+      GuiTextMode.template => FieldProfile.guiText,
+      GuiTextMode.expression => FieldProfile.guiExpression,
     };
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    final String? problem = _problem;
-    final String text = _text;
-    return dom.div(classes: 'animus-gui-text', <Widget>[
-      AutocompleteInput(
-        id: _id,
-        value: component.value,
-        profile: _profile,
-        gui: component.names,
-        label: component.label,
-        placeholder: component.placeholder,
-        multiline: component.multiline,
-        invalid: problem != null,
-        describedBy: problem != null ? '$_id-problem' : null,
-        onChanged: (String next) {
-          setState(() => _typed = next);
-          component.onChanged(next);
-        },
-      ),
-      if (component.mode == GuiTextMode.template && (text.contains('&') || text.contains('<') || text.contains('{{')))
-        dom.span(classes: 'animus-gui-sample', <Widget>[GuiStyledText(text)]),
-      if (problem != null) dom.span(id: '$_id-problem', classes: 'animus-gui-problem is-error', <Widget>[Component.text(problem)]),
-    ]);
-  }
-}
+/// The default inventory title colour (`0x404040`).
+const int mcInventoryTitleColor = 0x404040;
 
-/// A number field; empty clears the value.
-class GuiNumberInput extends StatefulWidget {
-  const GuiNumberInput({required this.value, required this.onChanged, this.integer = true, this.label, this.placeholder, this.digits, this.id, super.key});
+bool _formatted(String text) => text.contains('&') || text.contains('<') || text.contains('{{');
 
-  /// The element id; a [GuiRow] with the same `forId` labels it.
-  final String? id;
-  final num? value;
-  final void Function(num? value) onChanged;
-  final bool integer;
-  final String? label;
-  final String? placeholder;
+/// A GUI template's formatted sample, when it has codes, tags or holes.
+Widget? templateSample(String text) => _formatted(text) ? GuiStyledText(text) : null;
 
-  /// Characters of the widest allowed value; the field is sized to fit them.
-  final int? digits;
+/// A window title's sample, drawn as the game draws it: dark grey on the
+/// window's grey.
+Widget? windowTitleSample(String text) =>
+    _formatted(text) ? dom.span(classes: 'animus-gui-window-title', <Widget>[GuiStyledText(text, defaultColor: mcInventoryTitleColor)]) : null;
 
-  @override
-  State<GuiNumberInput> createState() => _GuiNumberInputState();
-}
-
-class _GuiNumberInputState extends State<GuiNumberInput> {
-  /// The raw text while focused, kept over slower saves.
-  String? _typed;
-
-  @override
-  Widget build(BuildContext context) {
-    final num? shown = component.value;
-    return dom.input(
-      id: component.id,
-      classes: 'animus-gui-input is-number',
-      type: dom.InputType.number,
-      value: _typed ?? (shown == null ? '' : (shown == shown.roundToDouble() ? shown.toInt().toString() : shown.toString())),
-      attributes: <String, String>{
-        if (component.integer) 'step': '1' else 'step': 'any',
-        'aria-label': ?component.label,
-        'placeholder': ?component.placeholder,
-        if (component.digits != null) 'style': '--animus-digits: ${component.digits}',
-      },
-      events: <String, void Function(web.Event)>{
-        'input': (web.Event event) {
-          final String raw = (event.target! as web.HTMLInputElement).value.trim();
-          _typed = raw;
-          if (raw.isEmpty) {
-            component.onChanged(null);
-            return;
-          }
-          final num? parsed = component.integer ? int.tryParse(raw) : num.tryParse(raw);
-          if (parsed != null) component.onChanged(parsed);
-        },
-        'blur': (web.Event _) {
-          if (mounted) setState(() => _typed = null);
-        },
-      },
-    );
-  }
-}
-
-/// A choice from [options]. With [allowNone], a first entry clears it.
-/// [references] makes it a document picker with "+ New" and "Manage" rows.
-class GuiSelect extends StatelessWidget {
-  const GuiSelect({
-    required this.value,
-    required this.options,
-    required this.onChanged,
-    this.allowNone = false,
-    this.noneLabel = 'default',
-    this.labels = const <String, String>{},
-    this.details = const <String, String>{},
-    this.groups = const <String, String>{},
-    this.skinFaces = const <String, String>{},
-    this.disabled = const <String>{},
-    this.inactive = false,
-    this.references,
-    this.id,
-    this.label,
-    this.hiddenLabel,
-    this.onNew,
-    super.key,
-  });
-
-  final String? value;
-  final List<String> options;
-  final void Function(String? value) onChanged;
-  final bool allowNone;
-  final String noneLabel;
-  final Map<String, String> labels;
-
-  /// A secondary line under an option's label in the list.
-  final Map<String, String> details;
-
-  /// The group heading of each option that has one.
-  final Map<String, String> groups;
-
-  /// The skin texture whose face shows beside an option.
-  final Map<String, String> skinFaces;
-
-  /// Options shown but not pickable.
-  final Set<String> disabled;
-
-  /// The whole control is disabled.
-  final bool inactive;
-  final DocumentKind? references;
-
-  /// The element id, so a [GuiRow] label can point at it with `for`.
-  final String? id;
-
-  /// A visible label rendered by the select itself; use it where no row label
-  /// names the control.
-  final String? label;
-
-  /// A label read by assistive technology only, for a select whose purpose
-  /// the surrounding layout already shows.
-  final String? hiddenLabel;
-
-  /// See [AnimusSelect.onNew].
-  final void Function(String search)? onNew;
-
-  @override
-  Widget build(BuildContext context) {
-    final List<String> all = <String>[...options, if (value != null && value!.isNotEmpty && !options.contains(value)) value!];
-    return AnimusSelect(
-      id: id,
-      label: label,
-      hiddenLabel: hiddenLabel,
-      value: value ?? '',
-      placeholder: noneLabel,
-      references: references,
-      disabled: inactive,
-      onNew: onNew,
-      options: <SelectOption>[
-        if (allowNone || value == null) SelectOption(label: noneLabel, value: ''),
-        for (final String option in all)
-          if (option.isNotEmpty)
-            SelectOption(
-              label: labels[option] ?? option,
-              value: option,
-              description: details[option],
-              group: groups[option],
-              skinFace: skinFaces[option],
-              disabled: disabled.contains(option),
-              keywords: labels[option] == null ? const <String>[] : <String>[option],
-            ),
-      ],
-      onChanged: (String next) => onChanged(next.isEmpty ? null : next),
-    );
-  }
-}
-
-/// A boolean with three states when [tristate]: unset, on, off.
-class GuiSwitch extends StatelessWidget {
-  const GuiSwitch({required this.value, required this.onChanged, required this.label, super.key});
-
-  final bool value;
-  final void Function(bool value) onChanged;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => ArcaneCheckbox(checked: value, label: label, size: ComponentSize.sm, onChanged: onChanged);
-}
+/// An item name's sample, italic until a colour code as the game draws it.
+Widget? itemNameSample(String text) => _formatted(text) ? GuiStyledText(text, item: true) : null;
 
 /// An editable list of text lines (lore, hologram text, mask rows).
 class GuiLinesEditor extends StatelessWidget {
@@ -378,193 +94,104 @@ class GuiLinesEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return dom.div(classes: 'animus-gui-lines', <Widget>[
+    return stack(<Widget>[
       for (int index = 0; index < lines.length; index++)
-        dom.div(classes: 'animus-gui-line', <Widget>[
-          GuiTextInput(
+        fieldLine(<Widget>[
+          AutocompleteInput(
             key: ValueKey<String>('line-$index'),
             value: lines[index],
-            mode: mode,
-            names: names,
+            profile: guiTextProfile(mode),
+            preview: mode == GuiTextMode.template ? templateSample : null,
+            gui: names,
             label: 'Line ${index + 1}',
             onChanged: (String value) => onChanged(<String>[...lines]..[index] = value),
           ),
-          GuiIconButton(
+          AppIconButton(
             icon: ArcaneIcon.arrowUp(size: IconSize.sm),
             label: 'Move line ${index + 1} up',
             disabled: index == 0,
             onPressed: () => onChanged(<String>[for (final Object? line in moveItem(lines, index, index - 1)) line! as String]),
           ),
-          GuiIconButton(
+          AppIconButton(
             icon: ArcaneIcon.arrowDown(size: IconSize.sm),
             label: 'Move line ${index + 1} down',
             disabled: index == lines.length - 1,
             onPressed: () => onChanged(<String>[for (final Object? line in moveItem(lines, index, index + 1)) line! as String]),
           ),
-          GuiIconButton(
+          AppIconButton(
             icon: ArcaneIcon.x(size: IconSize.sm),
             label: 'Remove line ${index + 1}',
             onPressed: () => onChanged(<String>[...lines]..removeAt(index)),
           ),
         ]),
-      Button.ghost(label: addLabel, size: ButtonSize.small, onPressed: () => onChanged(<String>[...lines, ''])),
+      Button.outline(label: addLabel, size: buttonSize(DensityScope.of(context)), onPressed: () => onChanged(<String>[...lines, ''])),
     ]);
   }
 }
 
-class GuiIconButton extends StatelessWidget {
-  const GuiIconButton({required this.icon, required this.label, required this.onPressed, this.disabled = false, this.size = ButtonSize.iconSm, super.key});
-
-  final ArcaneGlyph icon;
-  final String label;
-  final void Function() onPressed;
-  final bool disabled;
-
-  /// Square: [ButtonSize.iconSm] in rows of buttons, [ButtonSize.icon] on a
-  /// removable chip or tag, which sits beside fields.
-  final ButtonSize size;
-
-  @override
-  Widget build(BuildContext context) => Button.ghost(
-        icon: icon,
-        size: size,
-        disabled: disabled,
-        attributes: <String, String>{'aria-label': label, 'title': label},
-        onPressed: onPressed,
-      );
-}
-
-/// Formatted Minecraft text with sample values in its holes.
+/// Formatted Minecraft text with sample values in its holes. Uncoloured
+/// text is [defaultColor]; with null it takes the theme's text colour, for
+/// text on the editor's own surfaces (the Test chat) rather than a game
+/// window's.
 class GuiStyledText extends StatelessWidget {
-  const GuiStyledText(this.text, {this.defaultColor = mcDefaultTextColor, super.key});
+  const GuiStyledText(this.text, {this.defaultColor = mcDefaultTextColor, this.item = false, super.key}) : runs = null;
+
+  /// Runs already read, such as one row of a text display whose style
+  /// carries on from the rows above it ([guiDisplayRows]).
+  const GuiStyledText.runs(List<McTextRun> this.runs, {super.key})
+      : text = '',
+        defaultColor = mcDefaultTextColor,
+        item = false;
 
   final String text;
-  final int defaultColor;
+  final int? defaultColor;
+
+  /// An item's name or lore line: italic until a colour or reset code.
+  final bool item;
+  final List<McTextRun>? runs;
 
   @override
-  Widget build(BuildContext context) => dom.span(classes: 'animus-mc-styled', <Widget>[
-        for (final McTextRun run in guiTextRuns(text, defaultColor: defaultColor))
-          dom.span(
-            styles: dom.Styles(raw: <String, String>{
-              'color': run.cssColor,
-              if (run.bold) 'font-weight': '700',
-              if (run.italic) 'font-style': 'italic',
-              if (run.underlined || run.strikethrough)
-                'text-decoration': '${run.underlined ? 'underline ' : ''}${run.strikethrough ? 'line-through' : ''}'.trim(),
-            }),
-            <Widget>[Component.text(run.text)],
-          ),
-      ]);
-}
-
-/// A collapsible group of fields.
-class GuiSection extends StatefulWidget {
-  const GuiSection({required this.title, required this.children, this.open = true, this.count, this.tip, this.docs, super.key});
-
-  final String title;
-  final List<Widget> children;
-
-  /// Whether the section is open at first; a later change is followed.
-  final bool open;
-  final int? count;
-
-  /// Tip text on the title, linking to [docs] or the surrounding page.
-  final String? tip;
-  final DocLink? docs;
-
-  @override
-  State<GuiSection> createState() => _GuiSectionState();
-}
-
-/// Handles a click on a `details` element's own summary (not a link or
-/// button inside it): the browser's toggle is cancelled and the caller opens
-/// or closes the part through its state. The browser reports its own toggle
-/// only a task later, and a build in between drops the `open` it set, so a
-/// part opened while an edit lands would fold shut again.
-bool takeSummaryClick(web.Event event) {
-  final web.EventTarget? target = event.target;
-  if (target == null || !target.isA<web.Element>()) return false;
-  final web.Element? control = (target as web.Element).closest('a, button, input, select, textarea, summary');
-  if (control == null || control.tagName.toLowerCase() != 'summary') return false;
-  event.preventDefault();
-  return true;
-}
-
-class _GuiSectionState extends State<GuiSection> {
-  /// Kept from the user's own open and close, so an edit that builds the
-  /// section again does not fold it back to [GuiSection.open].
-  late bool _open = component.open;
-
-  /// An owner that opens the section for a new selection is followed.
-  @override
-  void didUpdateWidget(GuiSection oldComponent) {
-    super.didUpdateWidget(oldComponent);
-    if (oldComponent.open != component.open) _open = component.open;
+  Widget build(BuildContext context) {
+    final int? themed = defaultColor;
+    return dom.span(classes: 'animus-mc-styled', <Widget>[
+      for (final McTextRun run in runs ?? guiTextRuns(text, defaultColor: themed ?? mcDefaultTextColor, item: item))
+        dom.span(
+          styles: dom.Styles(raw: <String, String>{
+            if (themed != null || run.color != mcDefaultTextColor) 'color': run.cssColor,
+            if (run.bold) 'font-weight': '700',
+            if (run.italic) 'font-style': 'italic',
+            if (run.underlined || run.strikethrough)
+              'text-decoration': '${run.underlined ? 'underline ' : ''}${run.strikethrough ? 'line-through' : ''}'.trim(),
+          }),
+          <Widget>[Component.text(run.text)],
+        ),
+    ]);
   }
+}
+
+/// A problem or note inside a row's form, where a boxed alert would be a
+/// box in a box: one line in its tone's colour, and an optional action.
+class GuiNote extends StatelessWidget {
+  const GuiNote({required this.message, this.tone = AlertTone.info, this.action, super.key});
+
+  final String message;
+  final AlertTone tone;
+  final Widget? action;
 
   @override
-  Widget build(BuildContext context) => dom.details(
-        classes: 'animus-gui-section',
-        attributes: <String, String>{if (_open) 'open': ''},
-        events: <String, void Function(web.Event)>{
-          'toggle': (web.Event event) {
-            final bool open = (event.currentTarget! as web.HTMLDetailsElement).open;
-            if (open != _open) setState(() => _open = open);
-          },
-        },
+  Widget build(BuildContext context) => dom.div(
+        attributes: <String, String>{'data-problem': tone.name, if (tone == AlertTone.error || tone == AlertTone.warning) 'role': 'alert'},
         <Widget>[
-          dom.summary(events: <String, void Function(web.Event)>{
-            'click': (web.Event event) {
-              if (takeSummaryClick(event)) setState(() => _open = !_open);
-            },
-          }, <Widget>[
-            withTip(Component.text(component.title), component.tip, docs: component.docs),
-            if (component.count != null) dom.span(classes: 'animus-count', <Widget>[Component.text('${component.count}')]),
+          Wrap(spacing: Gap.sm.value, runSpacing: Gap.xs.value, crossAxisAlignment: WrapCrossAlignment.center, children: <Widget>[
+            Text(message, size: FontSize.sm, color: switch (tone) { AlertTone.error => TextColor.error, AlertTone.warning => TextColor.warning, AlertTone.ok => TextColor.success, AlertTone.info => TextColor.muted }),
+            ?action,
           ]),
-          dom.div(classes: 'animus-gui-section-body', component.children),
         ],
       );
 }
 
 /// Reads a string list from JSON, dropping non-strings.
 List<String> stringList(Object? value) => <String>[for (final Object? item in asList(value)) if (item is String) item];
-
-/// Section tabs: a tablist whose selected tab has a raised neutral fill and
-/// a pink border, so the pink fill stays with the primary action.
-class GuiTabs extends StatelessWidget {
-  const GuiTabs({required this.tabs, required this.selected, required this.onSelect, required this.label, this.disabled = const <int>{}, super.key});
-
-  final List<String> tabs;
-  final int selected;
-  final void Function(int index) onSelect;
-  final String label;
-  final Set<int> disabled;
-
-  @override
-  Widget build(BuildContext context) => dom.div(
-        // `.animus-tabs` takes the editor-wide selected-tab rule, so these
-        // read the same as the document's view tabs.
-        classes: 'animus-tabs animus-gui-tabs',
-        attributes: <String, String>{'role': 'tablist', 'aria-label': label},
-        <Widget>[
-          // Native buttons, as in the view tabs: an arcane button's inline
-          // style would hide the selected tab's border.
-          for (int index = 0; index < tabs.length; index++)
-            dom.button(
-              classes: 'animus-tab',
-              attributes: <String, String>{
-                'type': 'button',
-                'role': 'tab',
-                'aria-selected': '${index == selected}',
-                'data-tab': '$index',
-                if (disabled.contains(index)) 'disabled': '',
-              },
-              events: <String, void Function(web.Event)>{'click': (web.Event _) => onSelect(index)},
-              <Widget>[Component.text(tabs[index])],
-            ),
-        ],
-      );
-}
 
 /// A number, or an expression that gives one: digits write a number, any
 /// other text writes the expression string.
@@ -581,11 +208,11 @@ class GuiNumberOrExpression extends StatelessWidget {
   Widget build(BuildContext context) {
     final Object? shown = value;
     final String text = shown is num ? (shown == shown.roundToDouble() ? '${shown.toInt()}' : '$shown') : (shown is String ? shown : '');
-    return GuiTextInput(
+    return AutocompleteInput(
       id: id,
       value: text,
-      mode: GuiTextMode.expression,
-      names: names,
+      profile: FieldProfile.guiExpression,
+      gui: names,
       label: label,
       onChanged: (String raw) {
         final String trimmed = raw.trim();
@@ -598,19 +225,3 @@ class GuiNumberOrExpression extends StatelessWidget {
     );
   }
 }
-
-/// Earlier and later buttons for the item at [index] of a list of [length].
-List<Widget> guiMoveButtons({required int index, required int length, required String noun, required void Function(int to) onMove}) => <Widget>[
-      GuiIconButton(
-        icon: ArcaneIcon.arrowUp(size: IconSize.sm),
-        label: 'Move $noun earlier',
-        disabled: index == 0,
-        onPressed: () => onMove(index - 1),
-      ),
-      GuiIconButton(
-        icon: ArcaneIcon.arrowDown(size: IconSize.sm),
-        label: 'Move $noun later',
-        disabled: index >= length - 1,
-        onPressed: () => onMove(index + 1),
-      ),
-    ];

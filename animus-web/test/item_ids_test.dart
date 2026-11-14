@@ -30,6 +30,40 @@ void main() {
     });
   });
 
+  group('item names', () {
+    test('should name an item by its key in sentence case', () {
+      expect(itemName('minecraft:golden_apple'), 'Golden apple');
+      expect(itemName('minecraft:emerald'), 'Emerald');
+      expect(itemName('mymod:tools/ruby_pick'), 'Tools ruby pick');
+    });
+
+    test('should show the name in Simple and the id in Advanced', () {
+      expect(itemFieldText('minecraft:emerald', advanced: false), 'Emerald');
+      expect(itemFieldText('minecraft:emerald', advanced: true), 'minecraft:emerald');
+      expect(itemFieldText('', advanced: false), '');
+      expect(itemFieldText('{{ args.item }}', advanced: false), '{{ args.item }}');
+      expect(itemFieldText('minecraft:diamond_sword[enchantments={}]', advanced: false), 'minecraft:diamond_sword[enchantments={}]');
+    });
+
+    test('should read plain words as a search and anything else as text to write', () {
+      expect(itemSearchOnly('gold ingot'), isTrue);
+      expect(itemSearchOnly('Gold_ingot'), isTrue);
+      expect(itemSearchOnly('minecraft:gold_ingot'), isFalse);
+      expect(itemSearchOnly('mymod:ruby'), isFalse);
+      expect(itemSearchOnly('{{ args.item }}'), isFalse);
+      expect(itemSearchOnly(''), isFalse);
+      expect(itemSearchOnly('   '), isFalse);
+    });
+
+    test('should find the item a typed name names', () {
+      const List<String> ids = <String>['minecraft:golden_apple', 'minecraft:enchanted_golden_apple', 'mymod:ruby'];
+      expect(itemNamed('golden apple', ids), 'minecraft:golden_apple');
+      expect(itemNamed('  Golden Apple ', ids), 'minecraft:golden_apple');
+      expect(itemNamed('ruby', ids), 'mymod:ruby');
+      expect(itemNamed('golden', ids), isNull);
+    });
+  });
+
   group('item options', () {
     const List<String> registry = <String>['minecraft:apple', 'minecraft:iron_sword', 'minecraft:iron_ingot', 'minecraft:diamond_sword', 'minecraft:bread'];
 

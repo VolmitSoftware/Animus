@@ -223,7 +223,7 @@ void main() {
       expect(box.max.y - box.min.y, closeTo(4, 1e-6));
       expect(box.max.z - box.min.z, closeTo(4, 1e-6));
       expect(box.max.x - box.min.x, closeTo(1 / 16, 1e-6));
-      expect(scene('minecraft:painting', <String, Object?>{'painting': <String, Object?>{'variant': 'mod:art'}}).notes.single, contains('mod:art'));
+      expect(scene('minecraft:painting', <String, Object?>{'painting': <String, Object?>{'variant': 'mod:art'}}).notes.single, contains('Art (mod)'));
     });
 
     test('an item frame holds its item turned by eighths', () {

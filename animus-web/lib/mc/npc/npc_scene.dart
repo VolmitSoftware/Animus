@@ -3,6 +3,11 @@
 /// The body stands at the origin turned to its definition yaw.
 library;
 
+import 'dart:math' as math;
+
+import '../../logic/gui/gui_text.dart';
+import '../../logic/item_ids.dart' show itemName;
+import '../../logic/npc/npc_appearance.dart' show bodyLabel;
 import '../assets/mc_display_pose.dart';
 import '../mesh/mc_mesh.dart';
 import '../rigs/mc_entity_rigs.dart';
@@ -13,6 +18,7 @@ import '../rigs/mc_rig_mesher.dart';
 import '../rigs/mc_rigs.dart';
 import '../scene/mc_camera.dart';
 import '../scene/mc_math.dart';
+import '../scene/mc_occlusion.dart';
 import '../scene/mc_scene.dart';
 import 'mc_text.dart';
 import 'npc_look.dart';
@@ -46,6 +52,10 @@ final class NpcText {
     this.scaleY = 1,
     this.brightness,
     this.keepInside = false,
+    this.yields = false,
+    this.nearOnly = false,
+    this.occluder,
+    this.placed = false,
   });
 
   final McTextAlign alignment;
@@ -65,6 +75,23 @@ final class NpcText {
   /// never leaves the stage: a speech bubble must stay readable at any pan.
   final bool keepInside;
 
+  /// An editor label (another NPC's name, a route point's number): drawn
+  /// after the subject's text, never moved, and left out where it would
+  /// cover a text already placed or the subject.
+  final bool yields;
+
+  /// Drawn only while its anchor is near the camera ([mcNearTextReach]).
+  final bool nearOnly;
+
+  /// The neighbour this name belongs to: hidden with its body when the
+  /// stage leaves that body out ([mcCulled]).
+  final McOccluder? occluder;
+
+  /// Placed by its scene on purpose (a menu's components, a hologram's
+  /// lines): the stage draws it exactly where it projects, never clamps or
+  /// moves it, and other texts keep clear of it.
+  final bool placed;
+
   /// A sneaking player's nameplate: the client draws it faded and hides it
   /// behind blocks.
   final bool dim;
@@ -81,14 +108,17 @@ final class NpcText {
   /// Bottom centre, world blocks: text grows upward from here.
   final McVec3 anchor;
 
-  /// Section-sign formatted lines, top first.
+  /// Section-sign formatted lines of one text display, top first: a style
+  /// carries on down them as the client draws it.
   final List<String> lines;
 
-  /// The client's own player nameplate rather than a text display.
+  /// Drawn as a name tag (the client's own player nameplate, or an editor
+  /// label) rather than a text display.
   final bool nameplate;
 
-  /// Lines already styled (GUI text with hex colours and MiniMessage); when
-  /// set, the stage draws these instead of parsing [lines].
+  /// Rows already styled (GUI text with sample values, or lines that are
+  /// displays of their own); when set, the stage draws these instead of
+  /// reading [lines].
   final List<List<McTextRun>>? styled;
 
   /// The same text with its anchor moved [by].
@@ -107,6 +137,10 @@ final class NpcText {
         scaleY: scaleY,
         brightness: brightness,
         keepInside: keepInside,
+        yields: yields,
+        nearOnly: nearOnly,
+        occluder: occluder,
+        placed: placed,
       );
 }
 
@@ -196,9 +230,9 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
   final String? disguise = look.disguise;
   final String? named = disguise == null ? null : NpcLook.disguiseType(disguise);
   final List<String> notes = <String>[
-    if (disguise != null && named == null) 'disguise: $disguise names no vanilla body; the preview draws the NPC\'s own body and LibsDisguises shows the disguise in game.',
-    if (named != null) 'disguise: the preview draws the $named body it names; LibsDisguises options show in game only.',
-    if (look.baby) 'baby: the preview draws the grown body; the server shows the baby.',
+    if (disguise != null && named == null) 'The disguise $disguise names no vanilla body; the preview draws the NPC\'s own body and LibsDisguises shows the disguise in game.',
+    if (named != null) 'The preview draws the ${bodyLabel(named).toLowerCase()} body the disguise names; LibsDisguises options show in game only.',
+    if (look.baby) 'The preview draws the grown body; the server shows the baby.',
   ];
   if (notes.isEmpty) return drawn;
   return NpcScene(scene: drawn.scene, texts: drawn.texts, notes: <String>[...notes, ...drawn.notes], presentable: drawn.presentable);
@@ -220,8 +254,7 @@ NpcScene _bodyScene(NpcLook look, NpcSkinChoice skin) {
       scene: McScene.empty,
       texts: const <NpcText>[],
       notes: <String>[
-        '${look.type.isEmpty ? 'This definition names no body type' : '${look.type} is not a body type Animus presents'}. '
-            'Use one of ${mcPresentedBodyTypes.join(', ')}.',
+        '${look.type.isEmpty ? 'This NPC names no body' : '${bodyLabel(look.type)} is not a body Animus shows'}. Pick a body from the list.',
       ],
       presentable: false,
     );
@@ -267,19 +300,19 @@ NpcScene _bodyScene(NpcLook look, NpcSkinChoice skin) {
     final String? markings = look.type == 'minecraft:horse' ? mcHorseMarkingsTexture(look.settings) : null;
     if (markings != null) nodes.add(McRigNode(key: 'markings', rig: rig, pose: body.rig, textureId: markings, transform: root));
   }
-  if (look.type == 'minecraft:llama' && look.settings['chest'] == true) notes.add('llama.chest: the preview does not draw the chest.');
+  if (look.type == 'minecraft:llama' && look.settings['chest'] == true) notes.add('The preview does not draw the llama\'s chest.');
   if (look.type == 'minecraft:armadillo' && look.settings['state'] is String && look.settings['state'] != 'idle') {
-    notes.add('armadillo.state: ${look.settings['state']} shows in game; the preview draws it idle.');
+    notes.add('The armadillo shows ${'${look.settings['state']}'.replaceAll('_', ' ')} in game; the preview draws it idle.');
   }
   if (look.type == 'minecraft:ender_dragon' && look.settings['phase'] is String) {
-    notes.add('dragon.phase: ${look.settings['phase']} shows in game while it rests; the preview does not animate it.');
+    notes.add('The dragon\'s ${'${look.settings['phase']}'.replaceAll('_', ' ')} phase shows in game while it rests; the preview does not animate it.');
   }
 
   final bool humanoid = avatar || look.type == 'minecraft:armor_stand';
   for (final MapEntry<NpcSlot, NpcItem> entry in look.equipment.entries) {
     final NpcSlot slot = entry.key;
     final NpcItem item = entry.value;
-    final String where = '${slot.key}: ${item.id}';
+    final String where = itemName(item.id);
     if (humanoid) {
       if (slot == NpcSlot.mainHand || slot == NpcSlot.offHand) {
         nodes.add(_heldItem(look, parts, model, slot, item, small: small, slim: skin.slim));
@@ -347,11 +380,11 @@ NpcScene _bodyScene(NpcLook look, NpcSkinChoice skin) {
       ));
       continue;
     }
-    notes.add('$where is not drawn on ${look.type}.');
+    notes.add('$where is not drawn on ${bodyLabel(look.type).toLowerCase()} bodies.');
   }
 
   final double feet = (look.isPlayer && look.pose == NpcPose.sitting ? -mcPlayerVehicleAttachment : 0) * scale;
-  return _finish(look, nodes, notes, _framePoints(mcMeshRig(rig, pose: body.rig), root), feet: feet, top: feet + body.heightBlocks * scale);
+  return _finish(look, nodes, notes, _drawnPoints(_framePoints(mcMeshRig(rig, pose: body.rig), root), nodes), feet: feet, top: feet + body.heightBlocks * scale);
 }
 
 /// The name and hologram over [top], the framing and the glow.
@@ -364,11 +397,13 @@ NpcScene _finish(NpcLook look, List<McSceneNode> nodes, List<String> notes, List
         nameplate: true,
         dim: look.isPlayer && look.pose == NpcPose.sneaking,
       ),
-    if (look.textLines.isNotEmpty)
-      NpcText(anchor: McVec3(0, top + (look.nativeName ? 0.55 : 0.3), 0), lines: look.textLines, nameplate: false),
+    if (look.textLines.isNotEmpty) _lookText(look, McVec3(0, top + (look.nativeName ? 0.55 : 0.3), 0)),
   ];
   return _framed(look, nodes, texts, notes, frame, feet: feet, top: top);
 }
+
+/// The hologram lines and name over a body, drawn as [NpcLook.textRows].
+NpcText _lookText(NpcLook look, McVec3 anchor) => NpcText(anchor: anchor, lines: look.textLines, nameplate: false, styled: look.textRows);
 
 NpcScene _framed(NpcLook look, List<McSceneNode> nodes, List<NpcText> texts, List<String> notes, List<McVec3> frame, {required double feet, required double top}) {
   if (frame.isEmpty) frame.addAll(McBounds(McVec3(-0.5, feet, -0.5), McVec3(0.5, top, 0.5)).corners);
@@ -421,7 +456,7 @@ NpcScene _mobScene(NpcLook look, McMobBody mob) {
   for (final MapEntry<NpcSlot, NpcItem> entry in look.equipment.entries) {
     final NpcSlot slot = entry.key;
     final NpcItem item = entry.value;
-    final String where = '${slot.key}: ${item.id}';
+    final String where = itemName(item.id);
     final String? armor = mob.armor;
     if (armor != null) {
       if (slot == NpcSlot.mainHand || slot == NpcSlot.offHand) {
@@ -472,9 +507,9 @@ NpcScene _mobScene(NpcLook look, McMobBody mob) {
       nodes.add(McRigNode(key: 'equipment:body', rig: rigOf(worn.$1), pose: mcMobPose(worn.$1, first.poses), textureId: worn.$2, transform: root, tint: worn.$3, glint: item.glint));
       continue;
     }
-    notes.add('$where is not drawn on ${look.type}.');
+    notes.add('$where is not drawn on ${bodyLabel(look.type).toLowerCase()} bodies.');
   }
-  return _finish(look, nodes, notes, _framePoints(mcMeshRig(rig, pose: pose), root), feet: 0, top: mob.heightBlocks * scale);
+  return _finish(look, nodes, notes, _drawnPoints(_framePoints(mcMeshRig(rig, pose: pose), root), nodes), feet: 0, top: mob.heightBlocks * scale);
 }
 
 /// An object body: its own nodes and text, and the name over its top.
@@ -483,7 +518,7 @@ NpcScene _objectScene(NpcLook look, NpcObject object) {
   final double top = frame.isEmpty ? 0.5 : McBounds.of(frame).max.y;
   final List<NpcText> texts = <NpcText>[
     ...object.texts,
-    if (look.textLines.isNotEmpty) NpcText(anchor: McVec3(0, top + 0.3, 0), lines: look.textLines, nameplate: false),
+    if (look.textLines.isNotEmpty) _lookText(look, McVec3(0, top + 0.3, 0)),
   ];
   return _framed(look, object.nodes, texts, <String>[...object.notes], frame, feet: 0, top: top);
 }
@@ -552,6 +587,32 @@ McItemNode _headItem(Map<String, McMat4> parts, McMat4 model, NpcItem item) {
   return McItemNode(key: 'equipment:head', itemId: item.modelKey, pose: McDisplayPose.head, transform: model.multiply(head), glint: item.glint);
 }
 
+/// How far round its attachment point a held or worn item is framed,
+/// blocks: about half a hand-held sword or block as the client draws it.
+const double _itemReach = 0.45;
+
+/// [body] (the body's own points) and those of everything else it draws:
+/// armour layers and saddles by their meshes, held and worn items as a
+/// cube round their attachment point. The camera frames what is drawn, so
+/// a helmet, a base plate or a sword never leaves the view.
+List<McVec3> _drawnPoints(List<McVec3> body, List<McSceneNode> nodes) {
+  final Set<McVec3> points = <McVec3>{...body};
+  for (final McSceneNode node in nodes) {
+    if (node.key == 'body') continue;
+    if (node is McRigNode) points.addAll(_framePoints(mcMeshRig(node.rig, pose: node.pose), node.transform));
+    if (node is McItemNode) {
+      for (final double x in <double>[-_itemReach, _itemReach]) {
+        for (final double y in <double>[-_itemReach, _itemReach]) {
+          for (final double z in <double>[-_itemReach, _itemReach]) {
+            points.add(node.transform.transformPoint(McVec3(x, y, z)));
+          }
+        }
+      }
+    }
+  }
+  return points.toList();
+}
+
 /// The mesh's distinct corners in world space, the points the camera frames.
 List<McVec3> _framePoints(McMesh mesh, McMat4 transform) {
   final Set<McVec3> points = <McVec3>{};
@@ -561,16 +622,30 @@ List<McVec3> _framePoints(McMesh mesh, McMat4 transform) {
   return points.toList();
 }
 
+/// How wide the text layer draws [line] (legacy codes allowed) at
+/// [fontPx]: the client's glyphs advance 6 font pixels (7 bold) of 8 to the
+/// em. An estimate; thin glyphs make it a little wide.
+double mcTextLineWidthPx(String line, double fontPx) {
+  double units = 0;
+  for (final McTextRun run in guiSectionRuns(line)) {
+    units += run.text.length * (run.bold ? 7 : 6);
+  }
+  return units / 8 * fontPx;
+}
+
 /// [home] moved back until every framed text block (its top is one of the
 /// [frame] points) clears the top of a [widthPx] x [heightPx] view by the
-/// framing margin at the size the stage draws it. [mcTextFontPx] never goes
-/// below [mcTextMinFontPx], so over a large body a name is taller than the
-/// quarter block a line takes in the world, and the points alone let it run
-/// off the top.
+/// framing margin and its widest line fits the view without wrapping, at
+/// the size the stage draws it ([mcCrispFontPx]). The font never goes below
+/// its floor, so over a large body a name is taller than the quarter block a
+/// line takes in the world, and a long name is wider than a phone stage: the
+/// points alone let it run off the top or wrap over the head.
 McCamera mcFrameTexts(McCamera home, List<NpcText> texts, List<McVec3> frame, {required double widthPx, required double heightPx}) {
   if (widthPx <= 0 || heightPx <= 0) return home;
   // One pixel of slack: a name at its world size sits on the margin already.
   final double margin = heightPx * (1 - mcFramingFill) / 2 - 1;
+  final double room = widthPx - 2 * mcTextInsetPx;
+  final double floor = mcCrispFontPx(mcTextMinFontPx);
   final List<NpcText> framed = <NpcText>[
     for (final NpcText text in texts)
       if (frame.contains(text.anchor + McVec3(0, text.lines.length * 0.25, 0))) text,
@@ -579,7 +654,17 @@ McCamera mcFrameTexts(McCamera home, List<NpcText> texts, List<McVec3> frame, {r
     for (final NpcText text in framed) {
       final McVec3? at = mcProjectToPixels(camera, text.anchor, widthPx: widthPx, heightPx: heightPx);
       if (at == null) continue;
-      if (at.y - text.lines.length * 1.25 * mcTextFontPx(heightPx, at.z) * text.scaleY < margin) return false;
+      final double font = mcCrispFontPx(mcTextFontPx(heightPx, at.z) * text.scaleY);
+      final double wrap = math.min(font * text.lineWidth / 8, room);
+      int lines = 0;
+      double widest = 0;
+      for (final String line in text.lines) {
+        final double width = mcTextLineWidthPx(line, font) * text.scaleX / text.scaleY;
+        widest = math.max(widest, width);
+        lines += math.max(1, (width / wrap).ceil());
+      }
+      if (widest > room && font > floor) return false;
+      if (at.y - lines * 1.25 * font < margin) return false;
     }
     return true;
   }
@@ -589,4 +674,41 @@ McCamera mcFrameTexts(McCamera home, List<NpcText> texts, List<McVec3> frame, {r
     camera = camera.copyWith(distance: camera.distance * 1.08).clamped();
   }
   return camera;
+}
+
+/// The stage's home view of [frame] in a [widthPx] x [heightPx] stage
+/// (4:3 until it is measured): from the front of a body turned [yawDeg], a
+/// little from above, every framed point inside the view, then moved back
+/// until the framed [texts] fit ([mcFrameTexts]).
+McCamera mcHomeCamera(List<McVec3> frame, List<NpcText> texts, {required double yawDeg, required double widthPx, required double heightPx, McBounds? reach}) =>
+    mcFrameTexts(
+      mcCameraFraming(frame, yawDeg: yawDeg + 180, aspect: heightPx > 0 ? widthPx / heightPx : 4 / 3, reach: reach),
+      texts,
+      frame,
+      widthPx: widthPx,
+      heightPx: heightPx,
+    );
+
+/// Roughly where the subject's own texts (nameplate, hologram, speech) hang:
+/// each grows up from its anchor, a line ten font pixels tall and a glyph
+/// about six wide, forty font pixels to a block. Null without any.
+McBounds? npcPlates(List<NpcText> texts) {
+  double minX = double.infinity, minY = double.infinity, minZ = double.infinity;
+  double maxX = -double.infinity, maxY = -double.infinity, maxZ = -double.infinity;
+  for (final NpcText text in texts) {
+    if (text.yields || text.occluder != null) continue;
+    final List<String> rows = text.styled == null
+        ? <String>[for (final String line in text.lines) guiPlainText(line)]
+        : <String>[for (final List<McTextRun> row in text.styled!) row.map((McTextRun run) => run.text).join()];
+    if (rows.isEmpty) continue;
+    final int widest = rows.map((String row) => row.length).reduce(math.max);
+    final double half = widest * 3 / 40 * text.scaleX, high = rows.length * 10 / 40 * text.scaleY;
+    minX = math.min(minX, text.anchor.x - half);
+    maxX = math.max(maxX, text.anchor.x + half);
+    minZ = math.min(minZ, text.anchor.z - half);
+    maxZ = math.max(maxZ, text.anchor.z + half);
+    minY = math.min(minY, text.anchor.y);
+    maxY = math.max(maxY, text.anchor.y + high);
+  }
+  return minX > maxX ? null : McBounds(McVec3(minX, minY, minZ), McVec3(maxX, maxY, maxZ));
 }

@@ -1,0 +1,9 @@
+{
+  "refs": [
+    {
+      "kind": "npc",
+      "id": "town/guard",
+      "revision": 3
+    }
+  ]
+}

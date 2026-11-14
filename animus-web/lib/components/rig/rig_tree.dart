@@ -1,19 +1,27 @@
 /// The bone tree: one tree item per bone, indented by depth, with the tree
 /// keyboard model (Up and Down move, Home and End jump, Right goes to the
-/// first child, Left to the parent; selection follows focus), and the add,
-/// delete, rename and parent controls for the selected bone.
+/// first child, Left to the parent; selection follows focus), Add and
+/// Delete in its header row, and the selected bone's name (saved when the
+/// field is left or Enter is pressed) and parent.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
+import 'package:jaspr/jaspr.dart' show Component, ValueKey;
 import 'package:web/web.dart' as web;
 
 import '../../config/docs_links.dart';
 import '../../logic/rig_edit.dart';
-import '../gui/gui_fields.dart';
-import '../info_tip.dart';
+import '../../logic/rig_view.dart';
+import '../../ui/action_row.dart';
+import '../../ui/field.dart';
+import '../../ui/info_tip.dart';
+import '../../ui/menu.dart';
+import 'rig_inputs.dart';
 import 'rig_inspector.dart';
+import '../select/animus_select.dart';
+import '../npc/npc_layout.dart';
+import '../../ui/stack.dart';
 
 class RigTree extends StatefulWidget {
   const RigTree({
@@ -31,8 +39,12 @@ class RigTree extends StatefulWidget {
   final String? selected;
   final void Function(String bone) onSelect;
   final void Function() onAdd;
+
+  /// Asks, then deletes [bone].
   final void Function(String bone) onDelete;
-  final void Function(String from, String to) onRename;
+
+  /// Renames a bone; returns why it cannot, or null once it is done.
+  final String? Function(String from, String to) onRename;
   final RigChange onEdit;
 
   @override
@@ -40,13 +52,12 @@ class RigTree extends StatefulWidget {
 }
 
 class _RigTreeState extends State<RigTree> {
-  String? _rename;
-  String? _renaming;
-
-  static String _visualLabel(Object? visual) {
-    if (visual is! JsonMap || visual['type'] == 'none') return 'pivot';
-    return '${visual['type']}';
-  }
+  static String _visualLabel(Object? visual) => switch (visual is JsonMap ? visual['type'] : null) {
+        'item' => 'Item',
+        'block' => 'Block',
+        'text' => 'Text',
+        _ => 'Pivot',
+      };
 
   void _focus(String bone) {
     component.onSelect(bone);
@@ -96,14 +107,28 @@ class _RigTreeState extends State<RigTree> {
     final String? selected = component.selected;
     final String focusable = selected != null && order.contains(selected) ? selected : (order.isEmpty ? '' : order.first);
     final Set<String> under = selected == null ? const <String>{} : subtree(rig, selected).toSet();
-    if (_renaming != selected) {
-      _renaming = selected;
-      _rename = null;
-    }
-    final String draft = _rename ?? selected ?? '';
-    return dom.div(classes: 'animus-rig-tree', <Widget>[
-      dom.h3(id: 'animus-rig-tree-heading', <Widget>[withTip(Component.text('Bones (${bones.length})'), 'The rig\'s bones, children under their parent. Arrow keys move the selection.', docs: Docs.rigs)]),
-      dom.ul(classes: 'animus-inset-focus', attributes: const <String, String>{'role': 'tree', 'aria-labelledby': 'animus-rig-tree-heading'}, <Widget>[
+    return dom.div(classes: 'animus-rig-tree', styles: stackStyles(), <Widget>[
+      ActionRow(
+        dense: true,
+        label: 'Bones',
+        moreId: 'rig-bone-more',
+        leading: <Widget>[
+          dom.h3(id: 'animus-rig-tree-heading', styles: groupHeadingStyles, <Widget>[
+            TipLabel(
+              label: Component.text('Bones (${bones.length})'),
+              tip: 'Children sit under their parent. Arrow keys move the selection. A rig holds at most $maximumBones bones.',
+              docs: Docs.rigs,
+            ),
+          ]),
+        ],
+        secondary: <RowAction>[
+          RowAction(selected == null ? 'Add bone' : 'Add child', bones.length >= maximumBones ? null : component.onAdd, icon: ArcaneIcon.plus()),
+        ],
+        more: <AppMenuEntry>[
+          if (selected != null) AppMenuEntry('Delete bone', bones.length <= 1 ? null : () => component.onDelete(selected), destructive: true),
+        ],
+      ),
+      dom.ul(classes: 'animus-rig-bones', attributes: const <String, String>{'role': 'tree', 'aria-labelledby': 'animus-rig-tree-heading'}, <Widget>[
         for (final JsonMap bone in bones)
           dom.li(
             classes: 'animus-rig-bone${bone['id'] == selected ? ' is-selected' : ''}',
@@ -114,65 +139,45 @@ class _RigTreeState extends State<RigTree> {
               'tabindex': bone['id'] == focusable ? '0' : '-1',
               'data-bone': '${bone['id']}',
             },
-            styles: dom.Styles(raw: <String, String>{'padding-left': '${0.5 + (boneDepth(rig, '${bone['id']}') - 1) * 0.9}rem'}),
+            styles: dom.Styles(raw: <String, String>{'--depth': '${boneDepth(rig, '${bone['id']}') - 1}'}),
             events: <String, void Function(web.Event)>{
               'click': (web.Event _) => component.onSelect('${bone['id']}'),
               'keydown': (web.Event event) => _key(event as web.KeyboardEvent, order, '${bone['id']}'),
             },
             <Widget>[
               dom.span(<Widget>[Component.text('${bone['id']}')]),
-              dom.span(classes: 'animus-muted', <Widget>[Component.text(_visualLabel(bone['visual']))]),
+              mutedText(_visualLabel(bone['visual'])),
             ],
           ),
       ]),
-      dom.div(classes: 'animus-rig-actions', <Widget>[
-        Button.secondary(
-          label: selected == null ? 'Add bone' : 'Add child',
-          icon: ArcaneIcon.plus(),
-          size: ButtonSize.small,
-          disabled: bones.length >= maximumBones,
-          onPressed: component.onAdd,
-        ),
-        if (selected != null)
-          Button.ghost(
-            label: 'Delete bone',
-            size: ButtonSize.small,
-            disabled: bones.length <= 1,
-            onPressed: () => component.onDelete(selected),
-          ),
-      ]),
-      if (bones.length >= maximumBones) const dom.p(classes: 'animus-muted', <Widget>[Component.text('A rig holds at most 64 bones.')]),
       if (selected != null) ...<Widget>[
-        dom.label(classes: 'animus-rig-field', <Widget>[
-          const dom.span(<Widget>[Component.text('Name')]),
-          dom.div(classes: 'animus-row', <Widget>[
-            TextInput(
-              value: draft,
-              attributes: const <String, String>{'aria-label': 'Bone name'},
-              onChanged: (String value) => setState(() => _rename = value),
-              onSubmitted: (String value) => component.onRename(selected, value),
-            ),
-            Button.secondary(
-              label: 'Rename',
-              disabled: draft == selected,
-              onPressed: () => component.onRename(selected, draft),
-            ),
-          ]),
-        ]),
-        dom.label(classes: 'animus-rig-field', <Widget>[
-          dom.span(<Widget>[withTip(const Component.text('Parent'), 'The bone this one moves with. A bone cannot sit under its own children.', docs: Docs.rigs)]),
-          GuiSelect(
+        CommitField(
+          key: ValueKey<String>('bone-name:$selected'),
+          label: 'Name',
+          id: 'rig-bone-name',
+          value: selected,
+          onCommit: (String draft) {
+            final String? target = boneRenameTarget(selected, draft);
+            return target == null ? null : component.onRename(selected, target);
+          },
+        ),
+        Field(
+          label: 'Parent',
+          forId: 'rig-bone-parent',
+          tip: 'The bone this one moves with. A bone cannot sit under its own children.',
+          docs: Docs.rigs,
+          child: AnimusSelect.values(
+            id: 'rig-bone-parent',
             value: parentOf(boneById(rig, selected) ?? const <String, Object?>{}) ?? '',
-            options: <String>[
+            values: <String>[
               for (final JsonMap bone in bones)
                 if (!under.contains(bone['id'])) '${bone['id']}',
             ],
             allowNone: true,
-            noneLabel: '(rig origin)',
-            hiddenLabel: 'Parent',
+            noneLabel: 'Rig origin',
             onChanged: (String? value) => component.onEdit((JsonMap json) => reparentBone(json, selected, value)),
           ),
-        ]),
+        ),
       ],
     ]);
   }

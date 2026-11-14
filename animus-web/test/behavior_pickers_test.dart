@@ -12,6 +12,7 @@ import 'package:animus_editor/logic/npc/route_copy.dart';
 import 'package:animus_editor/model/animus_document.dart';
 import 'package:animus_editor/model/document_kind.dart';
 import 'package:animus_editor/state/editor_store.dart';
+import 'package:animus_editor/logic/inspect/behavior_words.dart';
 import 'package:test/test.dart';
 
 final CompletionCatalog catalog = InspectSchemas.embedded.catalog;
@@ -228,8 +229,8 @@ void main() {
   });
 
   group('capability choice labels', () {
-    CapabilitySpec spec({required bool available, String reason = 'available', bool privileged = false}) => CapabilitySpec(
-          id: 'example:glow',
+    CapabilitySpec spec({required bool available, String reason = 'available', bool privileged = false, String id = 'example:glow'}) => CapabilitySpec(
+          id: id,
           kind: 'action',
           description: '',
           privileged: privileged,
@@ -238,12 +239,19 @@ void main() {
           arguments: const <FieldSpec>[],
         );
 
-    test('should say offline only when the offline catalog is the reason', () {
-      expect(capabilityChoiceLabel(spec(available: true)), 'example:glow');
-      expect(capabilityChoiceLabel(spec(available: true, privileged: true)), 'example:glow (privileged)');
-      expect(capabilityChoiceLabel(spec(available: false, reason: 'platform-unavailable: offline validation has no server')), 'example:glow (unavailable offline)');
-      expect(capabilityChoiceLabel(spec(available: false, reason: 'platform-unavailable: needs Paper')), 'example:glow (not on this server)');
-      expect(capabilityChoiceLabel(spec(available: false, reason: 'platform-unavailable: needs Paper', privileged: true)), 'example:glow (not on this server; privileged)');
+    test('should name the capability in words with its module, never its id, and say offline only when the offline catalog is the reason', () {
+      expect(capabilityChoiceLabel(spec(available: true, id: 'animus:look')), 'Look');
+      expect(capabilityChoiceLabel(spec(available: true)), 'Glow (example)');
+      expect(capabilityChoiceLabel(spec(available: true, privileged: true)), 'Glow (example; privileged)');
+      expect(capabilityChoiceLabel(spec(available: false, reason: 'platform-unavailable: offline validation has no server')), 'Glow (example; unavailable offline)');
+      expect(capabilityChoiceLabel(spec(available: false, reason: 'platform-unavailable: needs Paper')), 'Glow (example; not on this server)');
+      expect(capabilityChoiceLabel(spec(available: false, reason: 'platform-unavailable: needs Paper', privileged: true)), 'Glow (example; not on this server; privileged)');
     });
+  });
+
+  test('should label argument keys in words, a single letter in capitals', () {
+    expect(argumentLabel('x'), 'X');
+    expect(argumentLabel('soundVolume'), 'Sound volume');
+    expect(argumentLabel('target'), 'Target');
   });
 }

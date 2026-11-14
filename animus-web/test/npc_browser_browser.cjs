@@ -1,49 +1,60 @@
-// Opens test/fixtures/npc_browser in the built site at desktop and phone
-// widths, in the dark and the light theme, and checks the NPC browser
-// (search, the nested folder tree by mouse and keyboard with expand,
-// collapse and counts, folder create, rename, move and delete each undone
-// in one step, NPCs moved into a nested folder, the export zip's nested
-// paths, tag filters, empty states, bulk tag and folder edits undone in one
-// step each, a bulk module switch, the delete confirm and Escape), the NPC
-// inspector (its parts and
-// their summaries, pose, owner, hologram lines with a preview, armor stand
-// parts and angles, the rig picker), the route editor (a point added on the
-// grid, one dragged, one nudged and one added and removed from the
-// keyboard, and a recording step added, typed, made a position and
-// removed), the combat editor (an out-of-range value flagged, then fixed),
-// the equipment and skin editors, the skin document's summary and the
-// conversation view. Then, against the fake server loaded with the same
-// fixture, it renames a folder, applies it as moves, sees the moved paths
-// on the server and undoes the apply, spawns and despawns a selection on
-// the server (the despawn asks first) and shows that a token without the
-// spawn scope cannot. No console errors and no sideways scrolling anywhere.
+// The NPC list against the fake server loaded with test/fixtures/npc_browser,
+// at 1600, 768 and 390 px (dark, dark, light): every NPC is listed with its
+// name right after pairing (no click), the NPC named only `&f` opens by its
+// row, the Folder, Body and World filters and search narrow the list, Simple
+// shows no checkboxes or file paths, and New NPC makes an NPC and opens it.
+// In Advanced: tag chips, then bulk tags add and remove, a move to a new
+// folder, a module turned off, on and removed, a trait group added and
+// removed (each one undo step, sent at Apply and checked on the server),
+// delete with its confirm and Undo, Select all down to the empty state,
+// spawn and despawn on the server (Despawn asks first), folder rename (sent
+// as moves that keep the revision chain) and folder move, and New NPC with
+// a folder and an id. A token without the `spawn` scope spawns and
+// despawns in the definitions instead. No console errors, no sideways
+// scrolling.
+//
+// With ANIMUS_SCALE_URL (a second fake server started with --scale=1200,
+// about 500 NPCs) it also lists them all, scrolls to the end, opens the
+// last row and prints the time to the first rows and the time per key of
+// a search.
 //
 //   python3 tool/serve_site.py --port <WEB_PORT> &
 //   dart run tool/fake_server.dart --port=<FAKE_PORT> --origin=http://127.0.0.1:<WEB_PORT> --data=test/fixtures/npc_browser &
-//   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
-//     ANIMUS_WEB_URL=http://127.0.0.1:<WEB_PORT> ANIMUS_FAKE_URL=http://127.0.0.1:<FAKE_PORT> \
-//     ANIMUS_SCREENSHOTS=<scratch folder> node test/npc_browser_browser.cjs
+//   dart run tool/fake_server.dart --port=<SCALE_PORT> --origin=http://127.0.0.1:<WEB_PORT> --scale=1200 &
+//   ANIMUS_WEB_URL=http://127.0.0.1:<WEB_PORT> ANIMUS_FAKE_URL=http://127.0.0.1:<FAKE_PORT> \
+//     ANIMUS_SCALE_URL=http://127.0.0.1:<SCALE_PORT> ANIMUS_SCREENSHOTS=<folder> node test/npc_browser_browser.cjs
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const {sidebar, topbarAction} = require('./support/shell.cjs');
-const {choose, chooseAndWait, valueOf} = require('./support/select.cjs');
+const {setMode, topbarAction, saveState, saveAction} = require('./support/shell.cjs');
+const {choose} = require('./support/select.cjs');
 
-const folder = path.resolve(__dirname, 'fixtures/npc_browser');
-const site = process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })();
+const site = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to your own served site'); })()).replace(/\/$/, '');
 const fake = process.env.ANIMUS_FAKE_URL || (() => { throw new Error('Set ANIMUS_FAKE_URL to your own fake server, never :9797'); })();
+const scaleFake = process.env.ANIMUS_SCALE_URL;
 const shots = process.env.ANIMUS_SCREENSHOTS;
-const skinHash = 'dc33741fb113d5f1f3876ba48fb235adefc63628862c1e659f4061d8c7c18717';
+// ANIMUS_VIEWPORTS= (empty) runs the 500-NPC part alone.
+const viewports = (process.env.ANIMUS_VIEWPORTS ?? '1600x1000:dark,768x1024:light,390x844:dark').split(',').filter(Boolean).map((entry) => {
+  const [size, theme] = entry.split(':');
+  const [width, height] = size.split('x').map(Number);
+  return {width, height, theme: theme || 'dark'};
+});
+
+const all = ['crier', 'harbor/dockhand', 'harbor/ferryman', 'harbor/lamplighter', 'town/baker', 'town/guard-north', 'town/guard-south', 'town/market/fishmonger', 'town/market/stalls/cartwright', 'wild/golem-keeper'];
+// Pairing grants spawn by default; this token is narrowed to leave it out.
+const noSpawn = 'read,validate,preview,apply:npcs,apply:behaviors,apply:gui,apply:rigs,terrain';
 
 async function shot(page, name) {
   if (!shots) return;
   fs.mkdirSync(shots, {recursive: true});
-  await page.screenshot({path: path.join(shots, `${name}.png`), fullPage: true});
+  // Dialogs and menus fade in.
+  await page.waitForTimeout(350);
+  await page.screenshot({path: path.join(shots, `${name}.png`)});
 }
 
-async function control(route, body) {
-  const response = await fetch(`${fake}/__fake/${route}`, {
+async function control(route, body, base = fake) {
+  const response = await fetch(`${base}/__fake/${route}`, {
     method: body === undefined ? 'GET' : 'POST',
     headers: body === undefined ? {} : {'Content-Type': 'application/json'},
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -52,22 +63,22 @@ async function control(route, body) {
   return response.json();
 }
 
+async function source(id) {
+  return (await control(`document?kind=npc&id=${encodeURIComponent(id)}`)).source;
+}
+
+async function serverNpcs(base = fake) {
+  return (await control('state', undefined, base)).documents.filter((document) => document.kind === 'npc');
+}
+
 function watch(page) {
   const errors = [];
   page.on('pageerror', (error) => errors.push(String(error)));
   page.on('console', (message) => {
-    // The brand lane ships the pairing page's mark asset; until then its 404 is expected.
-    if (message.type() === 'error') errors.push(message.text());
+    // Generated skins name textures that do not exist on Mojang's host.
+    if (message.type() === 'error' && !/textures\.minecraft\.net|status of 404/.test(message.text())) errors.push(message.text());
   });
   return errors;
-}
-
-async function open(browser, viewport, theme) {
-  const context = await browser.newContext({viewport});
-  await context.addInitScript((mode) => window.localStorage.setItem('animus.theme', mode), theme);
-  const page = await context.newPage();
-  page.setDefaultTimeout(15000);
-  return {context, page, errors: watch(page)};
 }
 
 async function noSidewaysScroll(page, where) {
@@ -75,677 +86,492 @@ async function noSidewaysScroll(page, where) {
   assert.ok(overflow <= 1, `${where}: the page scrolls sideways by ${overflow}px`);
 }
 
-async function rows(page) {
-  return page.locator('.animus-npc-row[data-npc]').evaluateAll((elements) => elements.map((element) => element.getAttribute('data-npc')));
+/** Pairs a new context with [base] and opens its NPC list; returns the time to the first rows. */
+async function pair(browser, viewport, {scopes, base = fake} = {}) {
+  await control('reset', {}, base);
+  const {code} = await control(`pair?paths=direct${scopes ? `&scopes=${scopes}` : ''}`, {}, base);
+  const context = await browser.newContext({viewport: {width: viewport.width, height: viewport.height}});
+  await context.addInitScript((theme) => window.localStorage.setItem('animus.theme', theme), viewport.theme);
+  const page = await context.newPage();
+  page.setDefaultTimeout(20000);
+  const errors = watch(page);
+  await page.goto(`${site}/#/pair/${code}`);
+  await page.getByRole('button', {name: 'Pair', exact: true}).click();
+  const paired = Date.now();
+  await page.waitForFunction(() => location.hash.startsWith('#/server/'));
+  const id = decodeURIComponent((await page.evaluate(() => location.hash)).split('/')[2]);
+  const workspace = encodeURIComponent(`server-${id}`);
+  await page.evaluate((hash) => { location.hash = hash; }, `#/workspace/${workspace}/npcs`);
+  await page.locator('.ui-library-row .ui-library-title').first().waitFor();
+  return {context, page, errors, workspace, firstRows: Date.now() - paired};
 }
 
-async function waitRows(page, expected) {
-  await page.waitForFunction((want) => {
-    const got = [...document.querySelectorAll('.animus-npc-row[data-npc]')].map((element) => element.getAttribute('data-npc'));
-    return JSON.stringify(got) === JSON.stringify(want);
-  }, expected).catch(async (error) => {
-    throw new Error(`rows are ${JSON.stringify(await rows(page))}, not ${JSON.stringify(expected)}: ${error.message}`);
-  });
+const list = (page) => page.locator('#npc-list');
+const row = (page, id) => page.locator(`.ui-library-row[data-key="npc:${id}"]`);
+
+/** Every row key of the list, scrolling through it (rows are windowed). */
+async function keys(page) {
+  const viewport = list(page).locator('.ui-library-rows');
+  if (!(await viewport.count())) return [];
+  await viewport.evaluate((element) => { element.scrollTop = 0; });
+  const seen = new Set();
+  for (let round = 0; round < 400; round++) {
+    await page.waitForTimeout(30);
+    for (const key of await page.locator('.ui-library-row').evaluateAll((found) => found.map((element) => element.getAttribute('data-key')))) seen.add(key.slice('npc:'.length));
+    const more = await viewport.evaluate((element) => {
+      if (element.scrollTop + element.clientHeight >= element.scrollHeight - 1) return false;
+      element.scrollTop += element.clientHeight;
+      return true;
+    });
+    if (!more) break;
+  }
+  await viewport.evaluate((element) => { element.scrollTop = 0; });
+  return [...seen].sort();
+}
+
+async function waitKeys(page, expected, where) {
+  const want = [...expected].sort();
+  const deadline = Date.now() + 15000;
+  let got = await keys(page);
+  while (JSON.stringify(got) !== JSON.stringify(want) && Date.now() < deadline) {
+    await page.waitForTimeout(150);
+    got = await keys(page);
+  }
+  assert.deepEqual(got, want, `${where}: rows`);
+}
+
+async function count(page) {
+  return list(page).locator('.ui-library-bar .ui-library-count').textContent();
 }
 
 async function search(page, text) {
-  const input = page.getByLabel('Search NPCs', {exact: true});
-  await input.fill(text);
+  await page.getByLabel('Search npcs', {exact: true}).fill(text);
 }
 
-async function codeOf(page) {
-  await page.getByRole('tab', {name: 'Code'}).click();
-  const text = await page.locator('.animus-code textarea').inputValue();
-  await page.getByRole('tab', {name: 'Visual'}).click();
-  return JSON.parse(text);
+/** Picks the filter select [id] value ('' for its "All"/"Any" entry). */
+async function filter(page, id, value) {
+  await choose(page.locator(`#${id}`), value);
 }
 
-async function settle(page) {
+async function pick(page, ids) {
+  for (const id of ids) {
+    await row(page, id).scrollIntoViewIfNeeded();
+    await row(page, id).locator('.ui-library-pick [role="checkbox"]').click();
+    await row(page, id).locator('.ui-library-pick [role="checkbox"][aria-checked="true"]').waitFor();
+  }
+  await page.locator('.ui-library-bulk .ui-library-count', {hasText: `${ids.length} picked`}).waitFor();
+}
+
+async function clearPicks(page) {
+  const bulk = page.locator('.ui-library-bulk');
+  if (await bulk.count()) await bulk.getByRole('button', {name: 'Clear', exact: true}).click();
+  await bulk.waitFor({state: 'detached'});
+}
+
+/** Runs a bulk bar action, from the bar or its "..." menu when it did not fit. */
+async function bulk(page, name) {
+  const bar = page.locator('.ui-library-bulk');
+  // The bar folds what does not fit into its "..." menu once it has measured.
   await page.waitForTimeout(250);
-}
-
-async function tagsOf(page, key) {
-  return page.locator(`.animus-npc-row[data-npc="${key}"] .animus-npc-tag`).evaluateAll((elements) => elements.map((element) => element.getAttribute('data-tag')));
-}
-
-async function select(page, key) {
-  await page.getByRole('checkbox', {name: `Select ${key}`, exact: true}).check();
-}
-
-/** Opens an inspector part (closed by default on phones) and returns it. */
-async function part(inspector, id) {
-  const details = inspector.locator(`details[data-section="${id}"]`);
-  if (!(await details.evaluate((element) => element.open))) await details.locator('summary').first().click();
-  return details;
-}
-
-/** The tree item of a folder ('' is npcs/ itself). */
-function folderItem(page, folder) {
-  return page.locator(`.animus-npc-tree [role="treeitem"][data-folder="${folder}"]`);
-}
-
-async function folderCount(page, folder) {
-  return Number(await folderItem(page, folder).locator('.animus-count').textContent());
-}
-
-/** Runs a folder action on the selected folder and returns its form. */
-async function folderAction(page, name) {
-  const actions = page.getByRole('group', {name: 'Folder actions'});
-  await actions.getByRole('button', {name, exact: true}).click();
-  return actions;
-}
-
-/** On a phone the filters, folders and tags wait behind Filters; shows them. */
-async function showFilters(page) {
-  const toggle = page.getByRole('region', {name: 'NPC browser'}).getByRole('button', {name: 'Filters'});
-  if (await toggle.isVisible() && (await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click();
-}
-
-async function focusedFolder(page) {
-  return page.evaluate(() => document.activeElement?.getAttribute('data-folder'));
-}
-
-async function focusedLabel(page) {
-  return page.evaluate(() => document.activeElement?.getAttribute('aria-label'));
-}
-
-async function local(browser, viewport, tag, theme) {
-  const {context, page, errors} = await open(browser, viewport, theme);
-  const phone = viewport.width < 600;
-  await page.goto(`${site}/`);
-  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
-  const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', {name: 'Open folder'}).first().click();
-  await (await chooser).setFiles(folder);
-  await page.getByRole('heading', {name: 'Every document passes the shared schemas'}).waitFor();
-
-  // Browser: list, search, folder and tag filters.
-  await (await sidebar(page)).locator('.animus-tree-browse').click();
-  const browserPanel = page.getByRole('region', {name: 'NPC browser'});
-  await browserPanel.waitFor();
-  const all = ['crier', 'harbor/dockhand', 'harbor/ferryman', 'town/baker', 'town/guard-north', 'town/guard-south', 'town/market/fishmonger', 'town/market/stalls/cartwright', 'wild/golem-keeper'];
-  await waitRows(page, all);
-  if (phone) {
-    // The list comes first; folders and tags wait behind Filters.
-    assert.equal(await page.locator('.animus-npc-folders').isVisible(), false, `${tag}: folders fold away on a phone`);
-    const firstRow = await page.locator('.animus-npc-row[data-npc]').first().boundingBox();
-    assert.ok(firstRow.y < viewport.height, `${tag}: the first NPC row is on the first screen (y ${Math.round(firstRow.y)})`);
+  const button = bar.getByRole('button', {name, exact: true});
+  if (await button.isVisible().catch(() => false)) {
+    await button.click();
+    return;
   }
-  await showFilters(page);
-  await shot(page, `${tag}-01-browser`);
-  await noSidewaysScroll(page, `${tag} browser`);
+  await bar.getByRole('button', {name: 'More actions'}).click();
+  await page.getByRole('menuitem', {name, exact: true}).click();
+}
+
+/** The open dialog with [id]; returns it once visible. */
+async function dialog(page, id) {
+  const found = page.locator(`#${id}`);
+  await found.getByRole('dialog').or(found.locator('[role="dialog"]')).first().waitFor();
+  return found;
+}
+
+async function closed(page, id) {
+  await page.locator(`#${id} [role="dialog"]`).waitFor({state: 'detached'}).catch(async () => {
+    await page.locator(`#${id}`).waitFor({state: 'detached'});
+  });
+}
+
+async function confirm(page, title, button) {
+  const alert = page.getByRole('alertdialog');
+  await alert.getByText(title).waitFor();
+  await alert.getByRole('button', {name: button, exact: true}).click();
+  await alert.waitFor({state: 'detached'});
+}
+
+async function changes(page, text) {
+  await saveState(page).filter({hasText: text}).waitFor();
+}
+
+async function apply(page) {
+  await saveAction(page, 'apply').click();
+  await saveState(page).filter({hasText: /^Applied|^Up to date/}).waitFor();
+}
+
+async function headerMenu(page, item) {
+  await page.locator('#animus-main').getByRole('button', {name: 'More actions'}).first().click();
+  await page.getByRole('menuitem', {name: item, exact: true}).click();
+}
+
+async function advancedLine(page, id) {
+  await row(page, id).scrollIntoViewIfNeeded();
+  return row(page, id).locator('.ui-library-line').textContent();
+}
+
+async function backToList(page, workspace) {
+  await page.evaluate((hash) => { location.hash = hash; }, `#/workspace/${workspace}/npcs`);
+  await list(page).waitFor();
+}
+
+async function simple(page, workspace, tag) {
+  // Every NPC with its name, no click after pairing; the `&f` NPC is
+  // "Unnamed NPC" with its folder path as its line.
+  await waitKeys(page, all, `${tag} after pairing`);
+  assert.equal(await count(page), '10 NPCs');
+  await row(page, 'town/baker').locator('.ui-library-title', {hasText: 'Baker'}).waitFor();
+  assert.equal(await row(page, 'harbor/lamplighter').locator('.ui-library-title').textContent(), 'Unnamed NPC');
+  assert.equal(await row(page, 'harbor/lamplighter').locator('.ui-library-line').textContent(), 'Villager, harbor at 30, 64, 6', 'an unnamed NPC is told apart by where it stands');
+  // Simple: no checkboxes, no file paths, no folder menu.
+  assert.equal(await list(page).locator('.ui-library-pick').count(), 0, `${tag}: no checkboxes in Simple`);
+  const lines = await list(page).locator('.ui-library-line').allTextContents();
+  assert.ok(lines.every((line) => !line.includes('npcs/')), `${tag}: no file paths in Simple: ${lines}`);
+  assert.equal(await page.locator('#animus-main').getByRole('button', {name: 'More actions'}).count(), 0, `${tag}: nothing but New NPC in the Simple header`);
+  assert.equal(await row(page, 'harbor/dockhand').locator('.ui-library-line').textContent(), 'Armor stand, harbor');
+  await shot(page, `list-${tag}-simple`);
+  await noSidewaysScroll(page, `${tag} list`);
+
+  // Folder, Body and World: one row of selects inside the list's own bar,
+  // with its search and chips; nothing filters the list from outside it.
+  const boxes = await page.locator('#npc-list .ui-library-tools .animus-select').evaluateAll((found) => found.map((element) => element.getBoundingClientRect().top));
+  assert.equal(boxes.length, 3);
+  assert.ok(boxes.every((top) => Math.abs(top - boxes[0]) < 2), `${tag}: the filter selects share one row: ${boxes}`);
+  assert.equal(await page.locator('#animus-main .animus-select').evaluateAll((found) => found.filter((element) => !element.closest('#npc-list')).length), 0, `${tag}: a filter outside the list card`);
+  await filter(page, 'npc-filter-folder', 'town');
+  await waitKeys(page, ['town/baker', 'town/guard-north', 'town/guard-south', 'town/market/fishmonger', 'town/market/stalls/cartwright'], `${tag} folder town`);
+  await filter(page, 'npc-filter-folder', 'town/market');
+  await waitKeys(page, ['town/market/fishmonger', 'town/market/stalls/cartwright'], `${tag} folder town/market`);
+  await filter(page, 'npc-filter-folder', '');
+  await filter(page, 'npc-filter-body', 'minecraft:armor_stand');
+  await waitKeys(page, ['harbor/dockhand', 'wild/golem-keeper'], `${tag} body`);
+  await filter(page, 'npc-filter-world', 'harbor');
+  await waitKeys(page, ['harbor/dockhand'], `${tag} body and world`);
+  await filter(page, 'npc-filter-body', '');
+  await waitKeys(page, ['harbor/dockhand', 'harbor/ferryman', 'harbor/lamplighter'], `${tag} world`);
+  await filter(page, 'npc-filter-world', '');
+  await waitKeys(page, all, `${tag} filters cleared`);
+
+  // Search: words of the name, the body and world line, and the id.
   await search(page, 'guard');
-  await waitRows(page, ['town/guard-north', 'town/guard-south']);
-  await search(page, 'tag:guard -tag:patrol');
-  await waitRows(page, ['town/guard-south']);
-  await search(page, 'has:combat');
-  await waitRows(page, ['town/guard-north', 'town/guard-south']);
-
-  // A search that matches nothing names it and offers to clear it.
+  await waitKeys(page, ['town/guard-north', 'town/guard-south'], `${tag} search guard`);
+  await search(page, 'armor harbor');
+  await waitKeys(page, ['harbor/dockhand'], `${tag} search armor harbor`);
   await search(page, 'nobody-here');
-  await browserPanel.getByText('No NPC matches "nobody-here".').waitFor();
-  await shot(page, `${tag}-02-no-match`);
-  await browserPanel.locator('.animus-npc-empty').getByRole('button', {name: 'Clear search'}).click();
-  await waitRows(page, all);
+  await list(page).getByText('No matches.').waitFor();
+  await list(page).getByRole('button', {name: 'Clear search'}).click();
+  await waitKeys(page, all, `${tag} search cleared`);
+  await list(page).getByRole('group', {name: 'Filters'}).getByRole('button', {name: 'Despawned', exact: true}).click();
+  await waitKeys(page, ['harbor/dockhand', 'town/market/stalls/cartwright'], `${tag} despawned chip`);
+  await list(page).getByRole('group', {name: 'Filters'}).getByRole('button', {name: 'Despawned', exact: true}).click();
+  await waitKeys(page, all, `${tag} chip off`);
 
-  // Folder tree by mouse: nested folders, a folder's own count, and its
-  // subtree's count once collapsed.
-  const tree = page.getByRole('tree', {name: 'Folders'});
-  assert.deepEqual(await tree.locator('[role="treeitem"]').evaluateAll((items) => items.map((item) => `${item.getAttribute('aria-level')}:${item.dataset.folder}`)),
-    ['1:', '2:harbor', '2:town', '3:town/market', '4:town/market/stalls', '2:wild']);
-  assert.equal(await folderCount(page, ''), 1, 'npcs/ itself holds the crier');
-  assert.equal(await folderCount(page, 'town'), 3);
-  await folderItem(page, 'town').click();
-  await waitRows(page, ['town/baker', 'town/guard-north', 'town/guard-south', 'town/market/fishmonger', 'town/market/stalls/cartwright']);
-  assert.equal(await page.getByLabel('Search NPCs', {exact: true}).inputValue(), 'folder:town');
-  assert.equal(await folderItem(page, 'town').getAttribute('aria-selected'), 'true');
-  await folderItem(page, 'town').locator('[data-testid="tree-toggle"]').click();
-  await folderItem(page, 'town/market').waitFor({state: 'detached'});
-  assert.equal(await folderItem(page, 'town').getAttribute('aria-expanded'), 'false');
-  assert.equal(await folderCount(page, 'town'), 5, 'a collapsed folder counts its subtree');
-  assert.match(await folderItem(page, 'town').getAttribute('aria-label'), /5 NPCs with its folders/);
-  await shot(page, `${tag}-02b-tree-collapsed`);
-  await folderItem(page, 'town').locator('[data-testid="tree-toggle"]').click();
-  await folderItem(page, 'town/market').waitFor();
-  await search(page, 'folder:=town');
-  await waitRows(page, ['town/baker', 'town/guard-north', 'town/guard-south']);
-  await search(page, '');
-  await waitRows(page, all);
+  // The NPC named only `&f` opens by its row.
+  await row(page, 'harbor/lamplighter').click();
+  await page.waitForFunction(() => decodeURIComponent(location.hash).endsWith('/npc/harbor/lamplighter'));
+  await page.locator('#animus-main-heading').waitFor();
+  await backToList(page, workspace);
 
-  // Folder tree by keyboard: one tab stop, arrows, Home, End and Enter,
-  // Right expands then enters, Left collapses then returns to the parent.
-  assert.equal(await tree.locator('[role="treeitem"][tabindex="0"]').count(), 1, 'the tree has one tab stop');
-  await folderItem(page, '').focus();
-  await page.keyboard.press('ArrowDown');
-  assert.equal(await focusedFolder(page), 'harbor');
-  await page.keyboard.press('ArrowDown');
-  assert.equal(await focusedFolder(page), 'town');
-  await page.keyboard.press('ArrowLeft');
-  await folderItem(page, 'town/market').waitFor({state: 'detached'});
-  await page.keyboard.press('ArrowRight');
-  await folderItem(page, 'town/market').waitFor();
-  await page.keyboard.press('ArrowRight');
-  assert.equal(await focusedFolder(page), 'town/market');
-  await page.keyboard.press('ArrowLeft');
-  await folderItem(page, 'town/market/stalls').waitFor({state: 'detached'});
-  await page.keyboard.press('ArrowLeft');
-  assert.equal(await focusedFolder(page), 'town');
-  await page.keyboard.press('ArrowRight');
-  assert.equal(await focusedFolder(page), 'town/market');
-  await page.keyboard.press('ArrowRight');
-  await folderItem(page, 'town/market/stalls').waitFor();
-  await page.keyboard.press('End');
-  assert.equal(await focusedFolder(page), 'wild');
-  await page.keyboard.press('Enter');
-  await waitRows(page, ['wild/golem-keeper']);
-  await page.keyboard.press('Home');
-  assert.equal(await focusedFolder(page), '');
-  await page.keyboard.press('Enter');
-  await waitRows(page, all);
-  assert.equal(await tree.locator('[role="treeitem"][tabindex="0"]').count(), 1);
-  // The page remembers collapsed folders for this workspace.
-  await folderItem(page, 'wild').focus();
-  await page.keyboard.press('ArrowUp');
-  await page.keyboard.press('ArrowUp');
-  assert.equal(await focusedFolder(page), 'town/market');
-  await page.keyboard.press('ArrowLeft');
-  await folderItem(page, 'town/market/stalls').waitFor({state: 'detached'});
-  assert.ok((await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('animus.npc-folders.collapsed.')).map((key) => localStorage.getItem(key)))).some((value) => value.includes('town/market')));
-  await page.keyboard.press('ArrowRight');
-  await folderItem(page, 'town/market/stalls').waitFor();
-
-  // New folder: a bad name is refused in the server's words; a good one
-  // shows empty until an NPC lands there.
-  await folderItem(page, 'harbor').click();
-  let actions = await folderAction(page, 'New folder');
-  await actions.getByLabel('New folder in npcs/harbor/').fill('Bad Name');
-  await actions.getByRole('button', {name: 'Make folder'}).click();
-  await actions.getByTestId('folder-problem').filter({hasText: 'expected the folder under npcs/: empty, or up to 8 names of 1\u201364 lowercase letters'}).waitFor();
-  await shot(page, `${tag}-02c-folder-refused`);
-  await actions.getByLabel('New folder in npcs/harbor/').fill('docks');
-  await actions.getByRole('button', {name: 'Make folder'}).click();
-  await folderItem(page, 'harbor/docks').waitFor();
-  assert.equal(await folderCount(page, 'harbor/docks'), 0);
-  await browserPanel.getByText('npcs/harbor/docks/ is empty.', {exact: false}).waitFor();
-  await browserPanel.locator('.animus-npc-empty').getByRole('link', {name: 'New NPC in npcs/harbor/docks/'}).waitFor();
-  await shot(page, `${tag}-02d-folder-empty`);
-  await search(page, '');
-  await waitRows(page, all);
-
-  // Move two NPCs into the nested folder with the bulk picker, in one step.
-  await select(page, 'crier');
-  await select(page, 'harbor/dockhand');
-  const picker = page.getByRole('group', {name: 'Bulk edit'});
-  await chooseAndWait(picker.getByLabel('Move to', {exact: true}), 'harbor/docks');
-  await picker.getByRole('button', {name: 'Move to npcs/harbor/docks/'}).click();
-  const docked = ['harbor/ferryman', 'harbor/docks/dockhand', 'harbor/docks/crier', 'town/baker', 'town/guard-north', 'town/guard-south', 'town/market/fishmonger', 'town/market/stalls/cartwright', 'wild/golem-keeper'];
-  await waitRows(page, docked);
-  assert.equal(await folderCount(page, ''), 0);
-  assert.equal(await folderCount(page, 'harbor/docks'), 2);
-  await page.getByRole('button', {name: 'Clear selection'}).click();
-
-  // Rename a folder with a subtree, then undo it in one step.
-  await folderItem(page, 'town/market').click();
-  actions = await folderAction(page, 'Rename');
-  await actions.getByLabel('New name for npcs/town/market/').fill('bazaar');
-  await actions.getByRole('button', {name: 'Rename folder'}).click();
-  await folderItem(page, 'town/bazaar/stalls').waitFor();
-  await waitRows(page, ['town/bazaar/fishmonger', 'town/bazaar/stalls/cartwright']);
-  await shot(page, `${tag}-02e-folder-renamed`);
+  // New NPC in Simple: name and body only; Create opens it.
+  await page.getByTestId('npc-new').click();
+  let box = await dialog(page, 'npc-new-dialog');
+  assert.equal(await box.locator('#npc-new-folder, #npc-new-id').count(), 0, `${tag}: no folder or id in Simple`);
+  await shot(page, `list-${tag}-new-simple`);
+  await box.getByRole('button', {name: 'Create', exact: true}).click();
+  await box.getByText('Give the NPC a name.').waitFor();
+  await box.locator('#npc-new-name').fill('Lamp Seller');
+  await choose(box.locator('#npc-new-body'), 'minecraft:villager');
+  await box.getByRole('button', {name: 'Create', exact: true}).click();
+  await page.waitForFunction(() => decodeURIComponent(location.hash).endsWith('/npc/local/lamp-seller'));
+  await changes(page, '1 change not applied');
   await topbarAction(page, 'Undo');
-  await folderItem(page, 'town/market/stalls').waitFor();
-  await folderItem(page, 'town/bazaar').waitFor({state: 'detached'});
+  await changes(page, 'Up to date');
+  await backToList(page, workspace);
+  await waitKeys(page, all, `${tag} new NPC undone`);
+}
 
-  // Move a folder under another one, then undo.
-  await folderItem(page, 'town/market').click();
-  actions = await folderAction(page, 'Move');
-  await chooseAndWait(actions.getByLabel('Move npcs/town/market/ into'), 'harbor');
-  await actions.getByRole('button', {name: 'Move folder'}).click();
-  await folderItem(page, 'harbor/market/stalls').waitFor();
-  await waitRows(page, ['harbor/market/fishmonger', 'harbor/market/stalls/cartwright']);
+async function advanced(page, workspace, tag) {
+  await setMode(page, 'advanced');
+  await list(page).locator('.ui-library-pick').first().waitFor();
+  assert.equal(await advancedLine(page, 'town/guard-north'), 'Player, world · npcs/town/guard-north · guard, patrol');
+  await shot(page, `list-${tag}-advanced`);
+  await noSidewaysScroll(page, `${tag} advanced`);
+
+  // Tag chips narrow the list (any picked tag).
+  const tags = page.getByRole('group', {name: 'Tags', exact: true});
+  await tags.getByRole('button', {name: 'guard', exact: true}).click();
+  await waitKeys(page, ['town/guard-north', 'town/guard-south'], `${tag} tag chip`);
+  await tags.getByRole('button', {name: 'quest', exact: true}).click();
+  await waitKeys(page, ['harbor/ferryman', 'town/guard-north', 'town/guard-south'], `${tag} two tag chips`);
+  await tags.getByRole('button', {name: 'guard', exact: true}).click();
+  await tags.getByRole('button', {name: 'quest', exact: true}).click();
+  await waitKeys(page, all, `${tag} tag chips off`);
+
+  // Tags: add one to three NPCs, then remove it; each is one undo step.
+  await pick(page, ['town/baker', 'town/guard-north', 'town/guard-south']);
+  await shot(page, `list-${tag}-bulk`);
+  await bulk(page, 'Tags');
+  let box = await dialog(page, 'npc-tags-dialog');
+  await box.getByText('Tags for 3 NPCs').waitFor();
+  await box.locator('#npc-tag').fill('Bad Tag');
+  await box.getByRole('button', {name: 'Add tag', exact: true}).click();
+  await box.getByText('Use 1-32 lowercase letters, digits, _ or -.').waitFor();
+  await box.locator('#npc-tag').fill('night-watch');
+  await shot(page, `list-${tag}-tags-dialog`);
+  await box.getByRole('button', {name: 'Add tag', exact: true}).click();
+  await closed(page, 'npc-tags-dialog');
+  await page.getByText('Tagged 3 NPCs.').first().waitFor();
+  assert.match(await advancedLine(page, 'town/baker'), /merchant, night-watch$/);
+  assert.equal(await advancedLine(page, 'harbor/ferryman'), 'Player, harbor · npcs/harbor/ferryman · quest');
+  await changes(page, '3 changes not applied');
+  await bulk(page, 'Tags');
+  box = await dialog(page, 'npc-tags-dialog');
+  await box.getByRole('button', {name: 'Remove', exact: true}).click();
+  await choose(box.locator('#npc-untag'), 'night-watch');
+  await box.getByRole('button', {name: 'Remove tag', exact: true}).click();
+  await closed(page, 'npc-tags-dialog');
+  assert.match(await advancedLine(page, 'town/baker'), /merchant$/);
   await topbarAction(page, 'Undo');
-  await folderItem(page, 'town/market/stalls').waitFor();
-
-  // Delete: a folder with NPCs says why not; an empty one goes.
-  await folderItem(page, 'town').click();
-  actions = await folderAction(page, 'Delete');
-  await actions.getByText('npcs/town/ holds 5 NPCs; move or delete them first.').waitFor();
-  await actions.getByRole('button', {name: 'Back'}).click();
-  await folderItem(page, 'wild').click();
-  actions = await folderAction(page, 'New folder');
-  await actions.getByLabel('New folder in npcs/wild/').fill('caves');
-  await actions.getByRole('button', {name: 'Make folder'}).click();
-  await folderItem(page, 'wild/caves').waitFor();
-  actions = await folderAction(page, 'Delete');
-  await actions.getByRole('button', {name: 'Remove folder'}).click();
-  await folderItem(page, 'wild/caves').waitFor({state: 'detached'});
-  await noSidewaysScroll(page, `${tag} folders`);
-
-  // Export writes the nested paths.
-  const download = page.waitForEvent('download');
-  await topbarAction(page, 'Export the data folder zip', {menu: 'export'});
-  const zip = fs.readFileSync(await (await download).path());
-  for (const entry of ['npcs/harbor/docks/crier.json', 'npcs/harbor/docks/dockhand.json', 'npcs/town/market/stalls/cartwright.json']) {
-    assert.ok(zip.includes(Buffer.from(entry)), `zip holds ${entry}`);
-  }
-
-  // Undo the NPC move: everything is back where the fixture has it.
+  await page.waitForFunction(() => document.querySelector('.ui-library-row[data-key="npc:town/baker"] .ui-library-line')?.textContent.endsWith('night-watch'));
   await topbarAction(page, 'Undo');
-  await search(page, '');
-  await waitRows(page, all);
+  await changes(page, 'Up to date');
 
-  await page.locator('.animus-npc-folders').getByRole('button', {name: /^quest 1$/}).click();
-  await waitRows(page, ['harbor/ferryman']);
-  await shot(page, `${tag}-03-search`);
-  await search(page, '');
-  await waitRows(page, all);
-
-  // Bulk: tag three NPCs, move two to a new folder, undo each in one step.
-  await select(page, 'town/guard-north');
-  await select(page, 'town/guard-south');
-  await select(page, 'town/baker');
-  const bulk = page.getByRole('group', {name: 'Bulk edit'});
-  await bulk.getByText('3 NPCs selected').waitFor();
-  await bulk.getByLabel('Tag', {exact: true}).fill('night-watch');
-  await bulk.getByRole('button', {name: 'Add tag'}).click();
-  await page.locator('.animus-npc-row[data-npc="town/baker"] .animus-npc-tag[data-tag="night-watch"]').waitFor();
-  assert.deepEqual(await tagsOf(page, 'town/guard-north'), ['guard', 'patrol', 'night-watch']);
-  assert.deepEqual(await tagsOf(page, 'harbor/ferryman'), ['quest'], 'unselected NPCs keep their tags');
-  await page.getByRole('checkbox', {name: 'Select town/baker', exact: true}).uncheck();
-  await bulk.getByText('2 NPCs selected').waitFor();
-  await bulk.getByLabel('Or a new path', {exact: true}).fill('watch/night');
-  await bulk.getByRole('button', {name: 'Move to npcs/watch/night/'}).click();
-  await waitRows(page, ['crier', 'harbor/dockhand', 'harbor/ferryman', 'town/baker', 'town/market/fishmonger', 'town/market/stalls/cartwright', 'watch/night/guard-north', 'watch/night/guard-south', 'wild/golem-keeper']);
-  await shot(page, `${tag}-04-bulk`);
+  // Folder: move two NPCs to a new folder typed as a path, then undo.
+  await clearPicks(page);
+  await pick(page, ['town/guard-north', 'town/guard-south']);
+  await bulk(page, 'Folder');
+  box = await dialog(page, 'npc-move-dialog');
+  await box.locator('#npc-move-path').fill('Watch/Night/');
+  await box.getByRole('button', {name: 'Move', exact: true}).click();
+  await closed(page, 'npc-move-dialog');
+  await waitKeys(page, all.map((id) => id.startsWith('town/guard') ? `watch/night/${id.slice(5)}` : id), `${tag} moved`);
   await topbarAction(page, 'Undo');
-  await waitRows(page, all);
-  assert.deepEqual(await tagsOf(page, 'town/guard-south'), ['guard', 'night-watch'], 'undoing the move keeps the tags');
-  await topbarAction(page, 'Undo');
-  await page.waitForFunction(() => !document.querySelector('.animus-npc-tag[data-tag="night-watch"]'));
-  assert.deepEqual(await tagsOf(page, 'town/guard-north'), ['guard', 'patrol']);
+  await waitKeys(page, all, `${tag} move undone`);
+  await clearPicks(page);
 
-  // Bulk module switch: combat off on both guards, then undo.
-  await page.getByRole('checkbox', {name: 'Select every NPC shown'}).check();
-  await bulk.getByText('9 NPCs selected').waitFor();
-  await page.getByRole('checkbox', {name: 'Select every NPC shown'}).uncheck();
-  await select(page, 'town/guard-north');
-  await select(page, 'town/guard-south');
-  await chooseAndWait(bulk.getByLabel('Module to change'), 'animus:combat');
-  await bulk.getByRole('button', {name: 'Disable', exact: true}).click();
-  await page.waitForFunction(() => !document.querySelector('.animus-npc-row [data-feature="combat"]'));
-  await shot(page, `${tag}-05-bulk-module`);
-  await topbarAction(page, 'Undo');
-  await page.locator('.animus-npc-row[data-npc="town/guard-north"] [data-feature="combat"]').waitFor();
+  // Module: combat off, on, then removed; each applied and read back.
+  await pick(page, ['town/guard-north', 'town/guard-south']);
+  await bulk(page, 'Module');
+  box = await dialog(page, 'npc-module-dialog');
+  await box.getByRole('button', {name: 'Off', exact: true}).click();
+  await box.getByRole('button', {name: 'Turn off', exact: true}).click();
+  await closed(page, 'npc-module-dialog');
+  await page.getByText('Turned off animus:combat for 2 NPCs.').first().waitFor();
+  await apply(page);
+  assert.equal((await source('town/guard-north')).modules['animus:combat'].enabled, false);
+  await bulk(page, 'Module');
+  box = await dialog(page, 'npc-module-dialog');
+  await box.getByRole('button', {name: 'On', exact: true}).click();
+  await box.getByRole('button', {name: 'Turn on', exact: true}).click();
+  await closed(page, 'npc-module-dialog');
+  await apply(page);
+  assert.equal((await source('town/guard-south')).modules['animus:combat'].enabled, true);
+  await bulk(page, 'Module');
+  box = await dialog(page, 'npc-module-dialog');
+  await box.getByRole('button', {name: 'Remove', exact: true}).click();
+  await shot(page, `list-${tag}-module-dialog`);
+  await box.getByRole('button', {name: 'Remove module', exact: true}).click();
+  await closed(page, 'npc-module-dialog');
+  await apply(page);
+  assert.equal((await source('town/guard-north')).modules['animus:combat'], undefined);
+  await clearPicks(page);
 
-  // Bulk delete asks first; Escape keeps the NPCs.
-  await bulk.getByRole('button', {name: 'Delete', exact: true}).click();
-  await bulk.getByRole('button', {name: 'Delete 2 NPCs'}).waitFor();
-  await shot(page, `${tag}-06-delete-confirm`);
+  // Trait group: add two NPCs to "watch", then take them out.
+  await pick(page, ['harbor/dockhand', 'harbor/ferryman']);
+  await bulk(page, 'Trait group');
+  box = await dialog(page, 'npc-group-dialog');
+  await choose(box.locator('#npc-group'), 'watch');
+  await box.getByRole('button', {name: 'Add to group', exact: true}).click();
+  await closed(page, 'npc-group-dialog');
+  await page.getByText('Assigned watch: 2 changed, 0 unchanged.').first().waitFor();
+  await apply(page);
+  assert.deepEqual((await source('harbor/dockhand')).groups, ['watch']);
+  await bulk(page, 'Trait group');
+  box = await dialog(page, 'npc-group-dialog');
+  await box.getByRole('button', {name: 'Remove', exact: true}).click();
+  await choose(box.locator('#npc-group'), 'watch');
+  await box.getByRole('button', {name: 'Remove from group', exact: true}).click();
+  await closed(page, 'npc-group-dialog');
+  await apply(page);
+  assert.equal((await source('harbor/ferryman')).groups, undefined);
+  await clearPicks(page);
+
+  // Delete asks first; Escape keeps the NPC, Delete removes it, Undo brings it back.
+  await pick(page, ['crier']);
+  await bulk(page, 'Delete');
+  await page.getByRole('alertdialog').getByText('Delete 1 NPC?').waitFor();
+  await shot(page, `list-${tag}-delete-confirm`);
   await page.keyboard.press('Escape');
-  await bulk.getByRole('button', {name: 'Delete', exact: true}).waitFor();
-  assert.equal(await bulk.getByRole('button', {name: 'Delete 2 NPCs'}).count(), 0);
-  await waitRows(page, all);
-  await noSidewaysScroll(page, `${tag} bulk`);
-  await page.getByRole('button', {name: 'Clear selection'}).click();
+  await page.getByRole('alertdialog').waitFor({state: 'detached'});
+  await waitKeys(page, all, `${tag} delete kept`);
+  await bulk(page, 'Delete');
+  await confirm(page, 'Delete 1 NPC?', 'Delete');
+  // On a server the row stays, marked, until Apply deletes it there.
+  // Phones hide the row badges (the kit's list at 520 px and below).
+  await row(page, 'crier').getByText('Deleted', {exact: true}).waitFor({state: 'attached'});
+  await changes(page, '1 change not applied');
+  await topbarAction(page, 'Undo');
+  await row(page, 'crier').getByText('Deleted', {exact: true}).waitFor({state: 'detached'});
+  await changes(page, 'Up to date');
+  await clearPicks(page);
 
-  // Inspector parts: on phones every part but identity starts closed.
-  await page.locator('.animus-npc-row[data-npc="town/guard-north"] .animus-npc-name a').click();
-  const inspector = page.getByRole('region', {name: 'NPC inspector'});
-  await inspector.waitFor();
-  const openParts = await inspector.locator('details.animus-npc-section').evaluateAll((list) => list.map((element) => [element.dataset.section, element.open]));
-  if (phone) assert.deepEqual(openParts.filter(([, isOpen]) => isOpen).map(([id]) => id), ['identity'], 'phones open only identity');
-  else assert.ok(openParts.every(([, isOpen]) => isOpen), 'desktops open every part');
-  if (phone) await inspector.locator('details[data-section="behaviour"] .animus-npc-section-summary').getByText(/1 behavior|0 behaviors|waypoints/).waitFor();
+  // Spawn and Despawn act on the server now with the spawn scope; Despawn asks.
+  await pick(page, ['harbor/dockhand', 'town/market/stalls/cartwright']);
+  await bulk(page, 'Spawn');
+  await page.getByText('Spawned 2 NPCs on the server.').first().waitFor();
+  await bulk(page, 'Despawn');
+  await page.getByRole('alertdialog').getByText('Despawn 2 NPCs now?').waitFor();
+  await shot(page, `list-${tag}-despawn-confirm`);
+  await confirm(page, 'Despawn 2 NPCs now?', 'Despawn');
+  await page.getByText('Despawned 2 NPCs on the server.').first().waitFor();
+  await changes(page, 'Up to date');
+  await clearPicks(page);
 
-  // Route: add a point on the grid, drag point 0, then from the keyboard.
-  const behaviour = await part(inspector, 'behaviour');
-  const route = behaviour.getByRole('group', {name: 'Route editor'});
-  const grid = route.locator('svg.animus-route-grid');
-  await grid.scrollIntoViewIfNeeded();
-  assert.equal(await grid.locator('.animus-route-node').count(), 4);
-  // Where a block sits on screen now; the grid may rescale or scroll after an edit.
-  const screenOf = async () => {
-    await grid.scrollIntoViewIfNeeded();
-    const box = await grid.boundingBox();
-    const bounds = await grid.evaluate((svg) => ({x: Number(svg.dataset.minX), z: Number(svg.dataset.minZ), size: Number(svg.dataset.size)}));
-    return (x, z) => ({x: box.x + (x - bounds.x) / bounds.size * box.width, y: box.y + (z - bounds.z) / bounds.size * box.height});
-  };
-  const added = (await screenOf())(8, 0);
-  await page.mouse.click(added.x, added.y);
-  await grid.locator('.animus-route-node').nth(4).waitFor();
-  const toScreen = await screenOf();
-  const dot = await grid.locator('[data-node="points:0"]').boundingBox();
-  const from = {x: dot.x + dot.width / 2, y: dot.y + dot.height / 2};
-  const to = toScreen(2, -8);
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, {steps: 4});
-  await page.mouse.move(to.x, to.y, {steps: 4});
-  await page.mouse.up();
-  await settle(page);
-  await shot(page, `${tag}-07-route`);
-  let json = await codeOf(page);
-  let points = json.modules['animus:navigation'].points;
-  assert.equal(points.length, 5);
-  assert.deepEqual(points[4], {x: 8, y: 64, z: 0});
-  assert.deepEqual([points[0].x, points[0].z], [2, -8]);
-  assert.equal(points[1].waitTicks, 60, 'other point fields survive');
+  // Folder rename from the "..." menu: sent as moves that keep the revision chain.
+  await headerMenu(page, 'Rename folder');
+  box = await dialog(page, 'npc-folder-dialog');
+  await choose(box.locator('#npc-folder-from'), 'town/market');
+  await box.locator('#npc-folder-name').fill('bazaar');
+  await shot(page, `list-${tag}-folder-dialog`);
+  await box.getByRole('button', {name: 'Rename', exact: true}).click();
+  await closed(page, 'npc-folder-dialog');
+  await waitKeys(page, all.map((id) => id.replace('town/market/', 'town/bazaar/')), `${tag} folder renamed`);
+  await apply(page);
+  const moved = (await serverNpcs()).map((document) => document.id);
+  assert.ok(moved.includes('town/bazaar/stalls/cartwright') && !moved.includes('town/market/fishmonger'), `the server has the moved paths: ${moved}`);
+  assert.equal((await serverNpcs()).find((document) => document.id === 'town/bazaar/fishmonger').revision, 2, 'a move keeps the revision chain');
 
-  // Keyboard: nudge point 2 a quarter block east and a block north, then add
-  // a point by its coordinates and delete it again.
-  const routeAgain = (await part(inspector, 'behaviour')).getByRole('group', {name: 'Route editor'});
-  await routeAgain.locator('[data-node="points:2"]').focus();
-  await page.keyboard.press('ArrowRight');
-  await page.keyboard.press('Shift+ArrowUp');
-  await settle(page);
-  const adder = routeAgain.getByRole('group', {name: 'Add point at'});
-  await adder.getByLabel('New point x').fill('20');
-  await adder.getByLabel('New point y').fill('65');
-  await adder.getByLabel('New point z').fill('-3');
-  await adder.getByRole('button', {name: 'Add point', exact: true}).click();
-  await routeAgain.locator('[data-node="points:5"]').waitFor();
-  json = await codeOf(page);
-  points = json.modules['animus:navigation'].points;
-  assert.deepEqual(points[2], {x: 12.25, y: 64, z: 3}, 'arrows nudge the focused point');
-  assert.deepEqual(points[5], {x: 20, y: 65, z: -3}, 'the form adds a point');
-  const routeThird = (await part(inspector, 'behaviour')).getByRole('group', {name: 'Route editor'});
-  await routeThird.locator('[data-node="points:5"]').focus();
-  await page.keyboard.press('Delete');
-  await page.waitForFunction(() => !document.querySelector('[data-node="points:5"]'));
-  json = await codeOf(page);
-  assert.equal(json.modules['animus:navigation'].points.length, 5, 'Delete removes the focused point');
+  // Folder move into another folder, then undo.
+  await headerMenu(page, 'Move folder');
+  box = await dialog(page, 'npc-folder-dialog');
+  await choose(box.locator('#npc-folder-from'), 'wild');
+  await choose(box.locator('#npc-folder-into'), 'harbor');
+  await box.getByRole('button', {name: 'Move', exact: true}).click();
+  await closed(page, 'npc-folder-dialog');
+  await waitKeys(page, all.map((id) => id.replace('town/market/', 'town/bazaar/').replace('wild/', 'harbor/wild/')), `${tag} folder moved`);
+  await topbarAction(page, 'Undo');
+  await changes(page, 'Up to date');
 
-  // A recording step: listed and numbered with the points, typed by id when
-  // the workspace has no recordings, then made a position and removed.
-  const routeStep = (await part(inspector, 'behaviour')).getByRole('group', {name: 'Route editor'});
-  await routeStep.getByRole('button', {name: 'Add recording step'}).click();
-  const stepPicked = routeStep.getByRole('group', {name: 'Selected Step 5'});
-  await stepPicked.waitFor();
-  await stepPicked.getByText('No recordings. Type an id.', {exact: true}).waitFor();
-  await stepPicked.getByLabel('Step 5 recording').fill('market-loop');
-  await stepPicked.getByLabel('Step 5 toTick').fill('400');
-  await settle(page);
-  const stepRow = routeStep.getByRole('list', {name: 'Route points'}).locator('li').nth(5);
-  await stepRow.getByText('market-loop, ticks 0 to 400').waitFor();
-  assert.equal(await stepRow.locator('span').first().textContent(), 'step');
-  assert.equal(await routeStep.locator('svg.animus-route-grid .animus-route-node').count(), 5, 'a step is not drawn on the grid');
-  await shot(page, `${tag}-07b-route-step`);
-  json = await codeOf(page);
-  assert.deepEqual(json.modules['animus:navigation'].points[5], {recording: 'market-loop', toTick: 400});
-  // Code and back clears the selection, so pick the step from the list again.
-  const routeStepAgain = (await part(inspector, 'behaviour')).getByRole('group', {name: 'Route editor'});
-  await routeStepAgain.getByRole('list', {name: 'Route points'}).locator('li').nth(5).locator('button').click();
-  await routeStepAgain.getByRole('group', {name: 'Selected Step 5'}).getByRole('button', {name: 'Make a position'}).click();
-  await routeStepAgain.locator('[data-node="points:5"]').waitFor();
-  json = await codeOf(page);
-  assert.deepEqual(Object.keys(json.modules['animus:navigation'].points[5]), ['x', 'y', 'z'], 'the recording fields go with the step');
-  const routeStepLast = (await part(inspector, 'behaviour')).getByRole('group', {name: 'Route editor'});
-  await routeStepLast.locator('[data-node="points:5"]').focus();
-  await page.keyboard.press('Delete');
-  await page.waitForFunction(() => !document.querySelector('[data-node="points:5"]'));
+  // New NPC in Advanced: folder and an id taken from the name.
+  await page.getByTestId('npc-new').click();
+  box = await dialog(page, 'npc-new-dialog');
+  await box.locator('#npc-new-name').fill('Night Owl');
+  assert.equal(await box.locator('#npc-new-id').inputValue(), 'night-owl');
+  await choose(box.locator('#npc-new-folder'), 'harbor');
+  await shot(page, `list-${tag}-new-advanced`);
+  await box.getByRole('button', {name: 'Create', exact: true}).click();
+  await page.waitForFunction(() => decodeURIComponent(location.hash).endsWith('/npc/harbor/night-owl'));
+  await topbarAction(page, 'Undo');
+  await changes(page, 'Up to date');
+  await backToList(page, workspace);
 
-  // Body: pose and owner.
-  const body = await part(inspector, 'body');
-  await chooseAndWait(body.getByRole('combobox', {name: 'Pose', exact: true}), 'sitting');
-  await settle(page);
-  const identity = await part(inspector, 'identity');
-  await identity.getByLabel('Owner UUID').fill('Steve');
-  await identity.locator('.animus-gui-problem[title="$.owner"]').first().waitFor();
-  await identity.getByLabel('Owner UUID').fill('0f6a3b8e-6a55-4b1e-9d8a-1f2e3d4c5b6a');
-  await settle(page);
+  // Select all (Ctrl+A on the list), delete and apply: the empty state offers New NPC.
+  await list(page).locator('.ui-library-rows').focus();
+  await page.keyboard.press('Control+a');
+  await page.locator('.ui-library-bulk .ui-library-count', {hasText: '10 picked'}).waitFor();
+  await bulk(page, 'Delete');
+  await confirm(page, 'Delete 10 NPCs?', 'Delete');
+  await apply(page);
+  await list(page).getByText('No NPCs yet.').waitFor();
+  assert.equal((await serverNpcs()).length, 0);
+  await shot(page, `list-${tag}-empty`);
+  await list(page).getByRole('button', {name: 'New NPC', exact: true}).click();
+  box = await dialog(page, 'npc-new-dialog');
+  await box.getByRole('button', {name: 'Cancel', exact: true}).click();
+  await closed(page, 'npc-new-dialog');
+  await setMode(page, 'simple');
+}
 
-  // Appearance: hologram lines with a coloured preview and a style field.
-  const appearance = await part(inspector, 'appearance');
-  await appearance.getByRole('button', {name: 'Add hologram text'}).click();
-  const hologram = (await part(inspector, 'appearance')).getByRole('group', {name: 'Hologram'});
-  await hologram.getByLabel('Hologram line 1', {exact: true}).fill('&aHello there');
-  await hologram.getByLabel('Hologram line 1', {exact: true}).blur();
-  await hologram.locator('.animus-hologram-preview').getByText('Hello there').waitFor();
-  await chooseAndWait(hologram.getByRole('combobox', {name: 'Billboard', exact: true}), 'vertical');
-  await settle(page);
-  await shot(page, `${tag}-08-appearance`);
-  json = await codeOf(page);
-  assert.equal(json.pose, 'sitting');
-  assert.equal(json.owner, '0f6a3b8e-6a55-4b1e-9d8a-1f2e3d4c5b6a');
-  assert.deepEqual(json.hologram, {lines: ['&aHello there'], billboard: 'vertical'});
-
-  // Combat: an out-of-range reach is flagged at its field, then fixed.
-  const modules = await part(inspector, 'modules');
-  const combat = modules.locator('.animus-combat-editor').first();
-  await combat.scrollIntoViewIfNeeded();
-  const reach = combat.getByLabel('melee.reach', {exact: true});
-  await reach.fill('9');
-  await reach.blur();
-  await combat.locator('.animus-gui-problem[title*="melee.reach"]').first().waitFor();
-  await page.locator('.animus-diagnostics li[title*="melee.reach"]').first().waitFor();
-  await shot(page, `${tag}-09-combat-invalid`);
-  await reach.fill('4.5');
-  await reach.blur();
-  await page.waitForFunction(() => ![...document.querySelectorAll('.animus-diagnostics li')].some((item) => item.title.includes('melee.reach')));
-  json = await codeOf(page);
-  assert.equal(json.modules['animus:combat'].melee.reach, 4.5);
-  assert.equal(json.modules['animus:combat'].melee.damage, 5, 'other combat fields survive');
-
-  // Equipment and skin.
-  const look = await part(inspector, 'appearance');
-  // A slot click opens its item field under the equipment grid.
-  const equipmentSlot = (key) => look.locator(`[data-slot-grid="animus-equipment"] [data-slot="${key}"]`);
-  await equipmentSlot('off_hand').scrollIntoViewIfNeeded();
-  await equipmentSlot('off_hand').click();
-  const offHand = look.getByLabel('equipment.off_hand', {exact: true});
-  await offHand.fill('minecraft:shield');
-  await offHand.blur();
-  // A bare id is a minecraft item: kept as written, not flagged.
-  await equipmentSlot('head').click();
-  const head = look.getByLabel('equipment.head', {exact: true});
-  await head.fill('netherite_helmet');
-  await head.blur();
-  await settle(page);
-  assert.equal(await page.locator('.animus-diagnostics li[title*="equipment.head"]').count(), 0, `${tag}: a bare item id validates`);
-  await choose(look.locator('#animus-skin-pick'), skinHash);
-  await settle(page);
-  json = await codeOf(page);
-  assert.deepEqual(json.equipment.off_hand, {id: 'minecraft:shield'});
-  assert.deepEqual(json.equipment.head, {id: 'netherite_helmet'});
-  assert.equal(json.equipment.main_hand.id, 'minecraft:iron_sword');
-  assert.equal(json.skin, skinHash);
-  await page.locator('.animus-npc-visual canvas').first().waitFor();
-  await shot(page, `${tag}-10-inspector`);
-  await noSidewaysScroll(page, `${tag} inspector`);
-
-  // Armor stand parts and angles, and the rig picker, on the golem keeper.
-  const base = await page.evaluate(() => location.hash.replace(/\/npc\/.*$/, ''));
-  await page.goto(`${site}/${base}/npc/wild%2Fgolem-keeper`);
-  const keeper = page.getByRole('region', {name: 'NPC inspector'});
-  await keeper.waitFor();
-  const keeperBody = await part(keeper, 'body');
-  const stand = keeperBody.getByRole('group', {name: 'Armor stand'});
-  await stand.getByRole('checkbox', {name: 'Small'}).click();
-  await stand.locator('[role="checkbox"][aria-checked="true"]').first().waitFor();
-  await stand.getByLabel('Head x degrees', {exact: true}).fill('15');
-  await stand.getByLabel('Head x degrees', {exact: true}).blur();
-  assert.equal(await valueOf(keeperBody.getByRole('combobox', {name: 'Rig', exact: true})), 'town:golem');
-  await keeperBody.getByRole('button', {name: 'Open rig'}).waitFor();
-  await chooseAndWait(keeperBody.getByRole('combobox', {name: 'Rig', exact: true}), '');
-  await settle(page);
-  json = await codeOf(page);
-  assert.deepEqual(json.armorStand, {small: true, head: [15, 0, 0]});
-  assert.equal(json.rig, undefined, 'picking no rig removes it');
-  await chooseAndWait((await part(keeper, 'body')).getByRole('combobox', {name: 'Rig', exact: true}), 'town:golem');
-  await settle(page);
-  json = await codeOf(page);
-  assert.deepEqual(json.rig, {id: 'town:golem'});
-  await shot(page, `${tag}-11-armor-stand`);
-  await noSidewaysScroll(page, `${tag} armor stand`);
-
-  // The skin document: hash, model and the NPC that now wears it.
-  await page.goto(`${site}/${base}/skin/${skinHash}`);
-  const skin = page.getByRole('region', {name: 'Skin'});
-  await skin.waitFor();
-  await skin.getByText(skinHash).waitFor();
-  await skin.locator('.animus-skin-facts').getByText('Slim arms (Alex)').waitFor();
-  await skin.getByRole('button', {name: /North Guard \(town\/guard-north\)/}).waitFor();
-  await skin.getByRole('button', {name: 'Load skin PNG'}).waitFor();
-  await shot(page, `${tag}-12-skin`);
-  await noSidewaysScroll(page, `${tag} skin`);
-
-  // The ferryman's behavior opens on its Conversation tab.
-  await page.goto(`${site}/${base}/behavior/harbor%3Aferryman`);
-  await page.waitForFunction(() => location.hash.includes('view=conversation'));
-  const conversation = page.getByRole('region', {name: 'Conversation'});
-  await conversation.locator('[data-block="main"]').waitFor();
-  assert.equal(await page.locator('[id="conv-prompt:main:2"]').inputValue(), 'Need a crossing?');
-  assert.equal(await page.locator('[id="conv-prompt:cross:1"]').inputValue(), 'Pay now or later?');
-  await conversation.locator('[data-block="cross"] [data-option="now"] [data-block="paid"]').waitFor();
-  await page.locator('[id="conv-option:main:2:1"]').fill('Not today');
-  await settle(page);
-  await shot(page, `${tag}-13-dialogue`);
-  json = await codeOf(page);
-  assert.equal(json.routines.main.steps[2].arguments.options[1].text, 'Not today');
-  await noSidewaysScroll(page, `${tag} dialogue`);
-
-  assert.deepEqual(errors, [], `${tag}: console errors`);
+/** Without the spawn scope, Spawn and Despawn change the definitions, sent at Apply. */
+async function withoutSpawn(browser, viewport, tag) {
+  const {context, page, errors} = await pair(browser, viewport, {scopes: noSpawn});
+  await setMode(page, 'advanced');
+  await waitKeys(page, all, `${tag} no spawn scope`);
+  await pick(page, ['harbor/dockhand']);
+  await bulk(page, 'Spawn');
+  await page.getByText('Spawned 1 NPC.').first().waitFor();
+  await changes(page, '1 change not applied');
+  await row(page, 'harbor/dockhand').getByText('Despawned', {exact: true}).waitFor({state: 'detached'});
+  await bulk(page, 'Despawn');
+  await row(page, 'harbor/dockhand').getByText('Despawned', {exact: true}).waitFor({state: 'attached'});
+  assert.equal(await page.getByRole('alertdialog').count(), 0, 'a definition despawn does not ask');
+  await changes(page, 'Up to date');
+  await bulk(page, 'Spawn');
+  await apply(page);
+  assert.equal((await source('harbor/dockhand')).spawned, true);
+  await setMode(page, 'simple');
+  assert.deepEqual(errors, [], `${tag}: console errors without the spawn scope`);
   await context.close();
 }
 
-async function empty(browser, viewport, tag, theme) {
-  const {context, page, errors} = await open(browser, viewport, theme);
-  await page.goto(`${site}/`);
-  await page.getByLabel('Workspace name').fill('Empty town');
-  await page.getByRole('button', {name: 'Create blank workspace'}).click();
-  await page.getByRole('heading', {name: 'New document'}).waitFor();
-  const workspace = await page.evaluate(() => location.hash.replace(/\/new.*$/, ''));
-  await page.goto(`${site}/${workspace}/npcs`);
-  const browserPanel = page.getByRole('region', {name: 'NPC browser'});
-  await browserPanel.getByText('No NPCs yet.').waitFor();
-  await shot(page, `${tag}-14-empty`);
-  await noSidewaysScroll(page, `${tag} empty`);
-  await browserPanel.getByRole('link', {name: 'Create an NPC'}).click();
-  await page.getByRole('heading', {name: 'New document'}).waitFor();
-  assert.ok((await page.evaluate(() => location.hash)).endsWith('/new/npc'));
-  assert.deepEqual(errors, [], `${tag}: console errors on the empty workspace`);
-  await context.close();
-}
-
-async function pairWith(page, scopes) {
-  await control('reset', {});
-  const {code} = await control(`pair?paths=direct${scopes ? `&scopes=${scopes}` : ''}`, {});
-  await page.goto(`${site}/#/pair/${code}`);
-  await page.locator('[data-testid="pair-fingerprint"]').waitFor();
-  await page.getByRole('button', {name: 'Pair', exact: true}).click();
-  await page.waitForFunction(() => location.hash.startsWith('#/server/'));
-  await page.getByText(/documents on the server/).waitFor();
-  for (const id of ['harbor/dockhand', 'harbor/ferryman']) await page.getByRole('checkbox', {name: id, exact: true}).check();
-  await page.getByRole('button', {name: 'Open 2'}).click();
-  await page.waitForFunction(() => decodeURIComponent(location.hash).includes('/npc/'));
-  await (await sidebar(page)).locator('.animus-tree-browse').click();
-  await waitRows(page, ['harbor/dockhand', 'harbor/ferryman']);
-  await select(page, 'harbor/dockhand');
-  await select(page, 'harbor/ferryman');
-  return page.getByRole('group', {name: 'Bulk edit'});
-}
-
-/** The list's empty state names the gone folder and how to get back. */
-async function browserEmpty(page, text) {
-  const empty = page.getByRole('region', {name: 'NPC browser'}).locator('.animus-npc-empty');
-  await empty.getByText(text, {exact: false}).waitFor();
-  await empty.getByRole('button', {name: 'Show every NPC'}).waitFor();
-}
-
-async function serverDocuments() {
-  const state = await control('state');
-  return state.documents.filter((document) => document.kind === 'npc').map((document) => document.id).sort();
-}
-
-/** A server workspace with every NPC open: rename town/market, apply, undo. */
-async function serverFolders(browser, viewport, tag, theme) {
-  const {context, page, errors} = await open(browser, viewport, theme);
-  await control('reset', {});
-  const {code} = await control('pair?paths=direct', {});
-  await page.goto(`${site}/#/pair/${code}`);
-  await page.locator('[data-testid="pair-fingerprint"]').waitFor();
-  await page.getByRole('button', {name: 'Pair', exact: true}).click();
-  await page.waitForFunction(() => location.hash.startsWith('#/server/'));
-  await page.getByText(/documents on the server/).waitFor();
-  for (const id of ['town/baker', 'town/market/fishmonger', 'town/market/stalls/cartwright']) await page.getByRole('checkbox', {name: id, exact: true}).check();
-  await page.getByRole('button', {name: 'Open 3'}).click();
-  await page.waitForFunction(() => decodeURIComponent(location.hash).includes('/npc/'));
-  await (await sidebar(page)).locator('.animus-tree-browse').click();
-  await waitRows(page, ['town/baker', 'town/market/fishmonger', 'town/market/stalls/cartwright']);
-  await showFilters(page);
-  const before = await serverDocuments();
-  await folderItem(page, 'town/market').click();
-  const actions = await folderAction(page, 'Rename');
-  await actions.getByLabel('New name for npcs/town/market/').fill('bazaar');
-  await actions.getByRole('button', {name: 'Rename folder'}).click();
-  await folderItem(page, 'town/bazaar/stalls').waitFor();
-  await page.getByTestId('draft-count').filter({hasText: '2 changed drafts, 2 moved'}).waitFor();
-  await page.locator('.animus-live-drafts').getByText('npc town/market/fishmonger to town/bazaar/fishmonger').waitFor();
-  await shot(page, `${tag}-15a-server-moves`);
-  await page.getByRole('button', {name: 'Apply 2'}).click();
-  await page.getByTestId('live-last').filter({hasText: 'Applied 2 documents, 2 moved'}).waitFor();
-  await page.getByTestId('draft-count').filter({hasText: 'No changed drafts'}).waitFor();
-  const moved = await serverDocuments();
-  assert.ok(moved.includes('town/bazaar/fishmonger') && moved.includes('town/bazaar/stalls/cartwright'), `the server has the moved paths: ${moved}`);
-  assert.ok(!moved.includes('town/market/fishmonger') && !moved.includes('town/market/stalls/cartwright'), 'the old paths are gone');
-  assert.equal(moved.length, before.length);
-  const state = await control('state');
-  const fish = state.documents.find((document) => document.id === 'town/bazaar/fishmonger');
-  assert.equal(fish.revision, 2, 'a move keeps the revision chain');
-  await page.getByRole('button', {name: 'Undo last apply'}).click();
-  await page.getByRole('alertdialog').getByText('Undo the last apply on the server?').waitFor();
-  await page.getByRole('button', {name: 'Undo on the server'}).click();
-  await page.getByTestId('live-last').filter({hasText: 'Undid 2 documents, 2 moved'}).waitFor();
-  assert.deepEqual(await serverDocuments(), before, 'undo moves them back');
-  await browserEmpty(page, 'npcs/town/bazaar/ is empty.');
-  await search(page, '');
-  await waitRows(page, ['town/baker', 'town/market/fishmonger', 'town/market/stalls/cartwright']);
-  await page.getByTestId('draft-count').filter({hasText: 'No changed drafts'}).waitFor();
-  await shot(page, `${tag}-15b-server-undone`);
-  await noSidewaysScroll(page, `${tag} server folders`);
-  assert.deepEqual(errors, [], `${tag}: console errors on the server folder rename`);
-  await context.close();
-}
-
-async function server(browser, viewport, tag, theme) {
-  await serverFolders(browser, viewport, tag, theme);
-  {
-    const {context, page, errors} = await open(browser, viewport, theme);
-    const bulk = await pairWith(page, 'spawn');
-    await bulk.getByRole('button', {name: 'Spawn on server', exact: true}).click();
-    await page.getByTestId('live-last').filter({hasText: 'Spawned 2 NPCs on the server.'}).waitFor();
-    await bulk.getByRole('button', {name: 'Despawn on server', exact: true}).click();
-    await bulk.getByRole('button', {name: 'Despawn 2 NPCs now'}).waitFor();
-    await shot(page, `${tag}-15-server-despawn-confirm`);
-    await bulk.getByRole('button', {name: 'Despawn 2 NPCs now'}).click();
-    await page.getByTestId('live-last').filter({hasText: 'Despawned 2 NPCs on the server.'}).waitFor();
-    await noSidewaysScroll(page, `${tag} server`);
-    assert.deepEqual(errors, [], `${tag}: console errors on the server workspace`);
-    await context.close();
+/** About 500 NPCs: listed at once, scrolled to the end, the last one opened, search timed per key. */
+async function scale(browser) {
+  const npcs = await serverNpcs(scaleFake);
+  const viewport = {width: 1600, height: 1000, theme: 'dark'};
+  const {context, page, errors, firstRows} = await pair(browser, viewport, {base: scaleFake});
+  await list(page).locator('.ui-library-count', {hasText: `${npcs.length} NPCs`}).waitFor({timeout: 90000});
+  const rows = list(page).locator('.ui-library-rows');
+  await rows.focus();
+  await page.keyboard.press('End');
+  await page.waitForTimeout(200);
+  const last = await page.locator('.ui-library-row.is-active').getAttribute('data-key');
+  assert.ok(last && last.startsWith('npc:'), `the last row is active: ${last}`);
+  assert.ok(await page.locator('.ui-library-row').count() < 60, 'rows are windowed');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction((id) => decodeURIComponent(location.hash).endsWith(`/npc/${id}`), last.slice(4));
+  await page.goBack();
+  await list(page).waitFor();
+  // Per key: from keydown to the frame after the list answered.
+  await page.evaluate(() => {
+    window.__keys = [];
+    const input = document.querySelector('#npc-list .ui-library-search input');
+    let start = 0;
+    input.addEventListener('keydown', () => { start = performance.now(); }, true);
+    document.addEventListener('input', () => {
+      requestAnimationFrame(() => setTimeout(() => window.__keys.push(performance.now() - start), 0));
+    });
+  });
+  const input = page.getByLabel('Search npcs', {exact: true});
+  await input.click();
+  for (const key of 'fishmonger') {
+    await page.keyboard.type(key);
+    await page.waitForTimeout(120);
   }
-  {
-    const {context, page, errors} = await open(browser, viewport, theme);
-    const bulk = await pairWith(page, '');
-    await bulk.getByText(/needs the spawn scope/).waitFor();
-    assert.equal(await bulk.getByRole('button', {name: 'Spawn on server'}).count(), 0, 'no spawn without the scope');
-    await shot(page, `${tag}-16-server-no-scope`);
-    assert.deepEqual(errors, [], `${tag}: console errors without the spawn scope`);
-    await context.close();
-  }
+  const times = (await page.evaluate(() => window.__keys)).sort((a, b) => a - b);
+  const median = times[Math.floor(times.length / 2)];
+  console.log(`scale: ${npcs.length} NPCs, first rows ${firstRows} ms after pairing; search per key median ${median.toFixed(1)} ms, max ${times[times.length - 1].toFixed(1)} ms (${times.length} keys)`);
+  assert.ok(median < 50, `a key in search costs ${median} ms`);
+  assert.match(await count(page), /^\d+ of \d+ NPCs$/);
+  assert.deepEqual(errors, [], 'scale: console errors');
+  await context.close();
 }
 
 (async () => {
   const browser = await chromium.launch();
   try {
-    for (const [viewport, width] of [[{width: 1440, height: 900}, 'desktop'], [{width: 390, height: 844}, 'phone']]) {
-      for (const theme of ['dark', 'light']) {
-        const tag = `${width}-${theme}`;
-        await local(browser, viewport, tag, theme);
-        await empty(browser, viewport, tag, theme);
-        await server(browser, viewport, tag, theme);
-        console.log(`${tag}: ok`);
-      }
+    for (const viewport of viewports) {
+      const tag = `${viewport.width}-${viewport.theme}`;
+      const {context, page, errors, workspace, firstRows} = await pair(browser, viewport);
+      await simple(page, workspace, tag);
+      await advanced(page, workspace, tag);
+      assert.deepEqual(errors, [], `${tag}: console errors`);
+      await context.close();
+      if (viewport.width !== 768) await withoutSpawn(browser, viewport, tag);
+      console.log(`${tag}: ok (first rows ${firstRows} ms after pairing)`);
     }
+    if (scaleFake) await scale(browser);
+    else console.log('scale: skipped (set ANIMUS_SCALE_URL to a fake server started with --scale=1200)');
   } finally {
     await browser.close();
   }

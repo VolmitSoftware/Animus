@@ -170,7 +170,7 @@ void main() {
       expect(found, containsAll(<String>[
         "error \$.keys.a.actions[0].action: call 'missing' names no list under actions",
         "error \$.actions.one: named action list 'one' calls itself through call",
-        'error \$.slots["12"]: slot 12 is outside a 9x1 window (slots 0 to 8)',
+        'error \$.slots["12"]: Slot 13 is outside a 9x1 window (slots 1 to 9)',
         'error \$.mask: the mask has 2 rows; a 9x1 window has 1',
         "warning \$.mask: mask character 'b' has no key and draws nothing",
       ]));
@@ -208,7 +208,7 @@ void main() {
         'error \$.pages[0].buy["1"].price: prices have at most 4 decimal places',
         'warning \$.pages[0].buy["13"]: slot 13 sits under the close control and is hidden while that control shows',
         "error \$.pages[0].buy[\"13\"].id: entry id 'a' is already used at \$.pages[0].buy[\"1\"]; limits and stock are kept under it",
-        'error \$.pages[0].buy["30"]: slot 30 is outside a 2-row page (slots 0 to 17)',
+        'error \$.pages[0].buy["30"]: Slot 31 is outside a 2-row page (slots 1 to 18)',
         'warning \$.pages[0].trade: the trade grid has entries but trade is not in modes, so players never see it',
       ]));
       expect(found, contains('error \$.pages[0].buy["30"].discount.end: the discount ends before it starts'));
@@ -356,6 +356,17 @@ void main() {
       expect(only('[112233]x').color, 0x112233);
       expect(only(r'\u2764').text, '\u2764');
       expect(guiPlainText('§zq &#12345x'), '§zq &#12345x', reason: 'unknown codes and short hex stay as text');
+    });
+
+    test('should draw item names and lore italic until a colour or reset code', () {
+      List<McTextRun> item(String text) => guiTextRuns(text, item: true);
+      expect(item('Plain sword').single.italic, isTrue, reason: 'a custom name without a colour code is italic in game');
+      expect(item('&lBold').single, const McTextRun('Bold', bold: true, italic: true));
+      expect(item('&6Gold').single.italic, isFalse, reason: 'a leading colour code makes it upright');
+      expect(item('&rReset').single.italic, isFalse);
+      expect(item('Lead &6gold').map((McTextRun run) => run.italic).toList(), <bool>[true, false]);
+      expect(item('&6Gold &oitalic').last.italic, isTrue);
+      expect(guiTextRuns('Plain').single.italic, isFalse, reason: 'chat and titles are upright');
     });
   });
 

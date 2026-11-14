@@ -1,40 +1,26 @@
-/// The shop's offers as rows that read like trades: the kind, item icons
-/// with counts on both sides of the arrow, the same as one sentence, and
-/// the slot. A row opens its editor in place. Rows reorder within their
-/// page and grid by drag or Alt+Up and Alt+Down; Up and Down move between
-/// rows and Delete removes one, or every ticked row.
+/// The shop's offers as rows that read like trades: the item icons with
+/// their counts, then the same as one sentence ("1 saddle for 6 emerald"),
+/// under the icons on a phone. A row opens its
+/// form in place. Rows reorder within their page and mode by drag or by
+/// their "..." menu (Move up, Move down), which also duplicates and deletes.
 library;
-
-import 'dart:js_interop';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
-import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/shop_board.dart';
 import '../../logic/gui/shop_offers.dart';
 import '../../model/animus_document.dart';
-import '../info_tip.dart';
+import '../../ui/badge.dart';
+import '../../ui/tone.dart';
 import '../mc/mc_item_icons.dart';
-import 'gui_fields.dart';
+import 'gui_rows.dart';
 import 'shop_offer_editor.dart' show offerKindTags;
-
-/// The element id of an offer row's main button.
-String offerRowId(OfferRef ref) => 'animus-shop-offer-${ref.page}-${ref.grid}-${ref.slot}';
-
-/// Focuses the row of [ref] once it is drawn: an edit is saved before the
-/// board shows it, so this waits up to [frames] frames for the row.
-void focusOfferRow(OfferRef ref, {int frames = 60}) => web.window.requestAnimationFrame(((JSNumber _) {
-      final web.Element? element = web.document.getElementById(offerRowId(ref));
-      if (element != null) {
-        (element as web.HTMLElement).focus();
-      } else if (frames > 0) {
-        focusOfferRow(ref, frames: frames - 1);
-      }
-    }).toJS);
+import 'gui_stack.dart';
+import '../../ui/stack.dart';
 
 /// An item icon with its count, or the money token with its price.
 class GoodsIcon extends StatelessWidget {
@@ -47,18 +33,23 @@ class GoodsIcon extends StatelessWidget {
     final String? key = McItemIcons.keyOf(goods.item);
     final String? url = key == null ? null : McItemIcons.url(key);
     final String? label = goods.label;
-    return dom.span(classes: 'animus-shop-goods-icon', <Widget>[
+    return Row(mainAxisSize: MainAxisSize.min, gapSize: Gap.xs, children: <Widget>[
       dom.span(classes: 'animus-shop-icon', <Widget>[
-        if (url != null)
-          dom.img(src: url, alt: '', attributes: const <String, String>{'draggable': 'false'})
-        else
-          dom.span(classes: 'animus-shop-icon-missing', <Widget>[Component.text(goods.item.isEmpty ? '?' : itemWords(goods.item))]),
-        if (label == null && goods.count > 1) dom.span(classes: 'animus-shop-icon-count', <Widget>[Component.text('${goods.count}')]),
+        dom.span(classes: 'animus-chest-face', <Widget>[
+          if (url != null)
+            dom.img(src: url, alt: '', attributes: const <String, String>{'draggable': 'false', 'width': '24', 'height': '24'})
+          else
+            dom.span(classes: 'animus-chest-missing', <Widget>[Component.text(goods.item.isEmpty ? '?' : itemWords(goods.item))]),
+          if (label == null && goods.count > 1) dom.span(classes: 'animus-chest-count', <Widget>[Component.text('${goods.count}')]),
+        ]),
       ]),
-      if (label != null) dom.span(classes: 'animus-shop-icon-price', <Widget>[Component.text(label)]),
+      if (label != null) dom.span(classes: 'animus-shop-price', <Widget>[Component.text(label)]),
     ]);
   }
 }
+
+/// Grid names as group headings.
+const Map<String, String> offerGridTitles = <String, String>{'trade': 'Trades', 'buy': 'Buying', 'sell': 'Selling'};
 
 class OfferBoard extends StatefulWidget {
   const OfferBoard({
@@ -77,17 +68,17 @@ class OfferBoard extends StatefulWidget {
   final JsonMap shop;
   final OfferRef? selected;
 
-  /// Ticked rows, by [OfferRef.key].
-  final Set<String> checked;
+  /// Ticked rows by [OfferRef.key]; null hides the boxes (Simple).
+  final Set<String>? checked;
   final List<Diagnostic> Function(OfferRef ref) problemsOf;
   final void Function(OfferRef? ref) onSelect;
   final void Function(Set<String> keys) onCheck;
 
   /// A board edit to save.
   final void Function(ShopEdit edit) onEdit;
-  final void Function(List<OfferRef> refs) onDelete;
+  final void Function(OfferRef ref) onDelete;
 
-  /// The open row's editor.
+  /// The open row's form.
   final Widget Function(BoardOffer offer) editor;
 
   @override
@@ -95,9 +86,6 @@ class OfferBoard extends StatefulWidget {
 }
 
 class _OfferBoardState extends State<OfferBoard> {
-  OfferRef? _dragging;
-  String? _over;
-
   @override
   void initState() {
     super.initState();
@@ -114,42 +102,11 @@ class _OfferBoardState extends State<OfferBoard> {
     if (mounted) setState(() {});
   }
 
-  void _nudge(OfferRef ref, int delta) {
-    final ShopEdit edit = nudgeOffer(component.shop, ref, delta);
-    if (edit.ref == null || edit.ref == ref) return;
-    component.onEdit(edit);
-    focusOfferRow(edit.ref!);
-  }
-
-  void _key(web.Event raw, BoardOffer offer, List<BoardOffer> all) {
-    final web.KeyboardEvent event = raw as web.KeyboardEvent;
-    final int index = all.indexWhere((BoardOffer o) => o.ref == offer.ref);
-    switch (event.key) {
-      case 'ArrowUp' || 'ArrowDown':
-        event.preventDefault();
-        final int delta = event.key == 'ArrowUp' ? -1 : 1;
-        if (event.altKey) {
-          _nudge(offer.ref, delta);
-        } else if (index + delta >= 0 && index + delta < all.length) {
-          focusOfferRow(all[index + delta].ref);
-        }
-      case 'Home' || 'End':
-        event.preventDefault();
-        if (all.isNotEmpty) focusOfferRow((event.key == 'Home' ? all.first : all.last).ref);
-      case 'Delete':
-        event.preventDefault();
-        final bool many = component.checked.contains(offer.ref.key) && component.checked.length > 1;
-        component.onDelete(many ? <OfferRef>[for (final String key in component.checked) ?OfferRef.parse(key)] : <OfferRef>[offer.ref]);
-        final BoardOffer? next = index + 1 < all.length ? all[index + 1] : (index > 0 ? all[index - 1] : null);
-        if (next != null && !many) focusOfferRow(next.ref);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final List<BoardOffer> offers = boardOffers(component.shop);
     if (offers.isEmpty) {
-      return const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No offers yet. Add one to start.')]);
+      return mutedText('No offers yet.');
     }
     final JsonList pages = asList(component.shop['pages']);
     final List<Widget> groups = <Widget>[];
@@ -160,160 +117,88 @@ class _OfferBoardState extends State<OfferBoard> {
       while (end < offers.length && offers[end].ref.sameGroup(head)) {
         end++;
       }
+      final List<BoardOffer> group = offers.sublist(start, end);
       final String page = asString(asMap(head.page < pages.length ? pages[head.page] : null)['name']) ?? 'Page ${head.page + 1}';
-      final String title = '${offerGridTitles[head.grid]} · $page';
-      groups.add(dom.section(classes: 'animus-shop-group', attributes: <String, String>{'aria-label': title, 'data-group': '${head.page}:${head.grid}'}, <Widget>[
-        dom.h3(classes: 'animus-shop-group-title', <Widget>[
-          withTip(Component.text(title), 'Offers in one mode on one page. Players switch between Trades, Buying and Selling in the window.', docs: Docs.shopEntries),
-          if (!offers[start].modeOn) const dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text(' Mode off: players never see these.')]),
-        ]),
-        dom.ol(classes: 'animus-shop-offers animus-inset-focus', <Widget>[
-          for (int index = start; index < end; index++) _row(offers[index], offers, index - start, end - start),
+      final String title = pages.length > 1 ? '${offerGridTitles[head.grid]}, $page' : offerGridTitles[head.grid]!;
+      groups.add(dom.section(attributes: <String, String>{'aria-label': title, 'data-group': '${head.page}:${head.grid}'}, <Widget>[
+        stack(<Widget>[
+          groupHeading(title, after: <Widget>[if (!group.first.modeOn) const StatusBadge('Mode off', tone: BadgeTone.warning)]),
+          OrderedRows(
+            label: title,
+            deleteNoun: 'offer',
+            rows: <OrderedRow>[for (int index = 0; index < group.length; index++) _row(group[index], start + index)],
+            onMove: (int from, int to) {
+              final ShopEdit edit = reorderOffer(component.shop, group[from].ref, to);
+              if (edit.ref != null) component.onEdit(edit);
+            },
+            onDuplicate: (int index) {
+              final ShopEdit edit = duplicateOffer(component.shop, group[index].ref);
+              if (edit.ref == null) return;
+              component.onEdit(edit);
+              component.onSelect(edit.ref);
+            },
+            onDelete: (int index) => component.onDelete(group[index].ref),
+          ),
         ]),
       ]));
       start = end;
     }
-    return dom.div(classes: 'animus-shop-board-groups', groups);
+    return stack(spacing: 16, groups);
   }
 
-  Widget _row(BoardOffer offer, List<BoardOffer> all, int position, int count) {
+  OrderedRow _row(BoardOffer offer, int number) {
     final OfferRef ref = offer.ref;
     final bool open = component.selected == ref;
-    final bool ticked = component.checked.contains(ref.key);
+    final Set<String>? checked = component.checked;
     final List<Diagnostic> problems = component.problemsOf(ref);
     final int errors = problems.where((Diagnostic d) => d.severity == DiagnosticSeverity.error).length;
     final int warnings = problems.length - errors;
     final String sentence = offerSentence(offer.entry);
     final OfferSides sides = offerSides(offer.entry);
-    final String name = '${offerKindTags[offer.type] ?? offer.type}: $sentence';
-    final List<String> classes = <String>[
-      'animus-shop-offer',
-      if (open) 'is-open',
-      if (ticked) 'is-ticked',
-      if (_over == ref.key) 'is-drop',
-      if (_dragging == ref) 'is-dragging',
-    ];
-    return dom.li(
-      key: ValueKey<String>('offer:${ref.key}'),
-      classes: classes.join(' '),
+    final String kind = offerKindTags[offer.type] ?? offer.type;
+    return OrderedRow(
+      key: ref.key,
+      name: 'offer ${number + 1}',
+      open: open,
       attributes: <String, String>{'data-offer': ref.key, 'data-id': offer.id},
-      events: <String, void Function(web.Event)>{
-        'dragover': (web.Event event) {
-          final OfferRef? from = _dragging;
-          if (from == null || !from.sameGroup(ref) || from == ref) return;
-          event.preventDefault();
-          if (_over != ref.key) setState(() => _over = ref.key);
-        },
-        'dragleave': (web.Event _) {
-          if (_over == ref.key) setState(() => _over = null);
-        },
-        'drop': (web.Event event) {
-          final OfferRef? from = _dragging;
-          event.preventDefault();
-          setState(() {
-            _dragging = null;
-            _over = null;
-          });
-          if (from == null || !from.sameGroup(ref) || from == ref) return;
-          final ShopEdit edit = reorderOffer(component.shop, from, offerPosition(component.shop, ref).$1);
-          if (edit.ref != null) component.onEdit(edit);
-        },
-      },
-      <Widget>[
-        dom.div(
-          classes: 'animus-shop-offer-row',
-          attributes: const <String, String>{'draggable': 'true'},
-          events: <String, void Function(web.Event)>{
-            'dragstart': (web.Event event) {
-              (event as web.DragEvent).dataTransfer?.setData('text/plain', ref.key);
-              event.dataTransfer?.effectAllowed = 'move';
-              setState(() => _dragging = ref);
-            },
-            'dragend': (web.Event _) => setState(() {
-                  _dragging = null;
-                  _over = null;
-                }),
-          },
-          <Widget>[
-          dom.span(classes: 'animus-shop-grip', attributes: const <String, String>{'title': 'Drag to reorder', 'aria-hidden': 'true'}, <Widget>[
-            ArcaneIcon.gripVertical(size: IconSize.sm),
-          ]),
-          dom.label(classes: 'animus-shop-check', <Widget>[
+      line: RowOpener(
+        open: open,
+        label: '$kind: $sentence.${errors > 0 ? ' $errors ${errors == 1 ? 'problem' : 'problems'}.' : ''}',
+        onToggle: () => component.onSelect(open ? null : ref),
+        body: open ? component.editor(offer) : null,
+        leading: <Widget>[
+          if (checked != null)
             dom.input(
               type: dom.InputType.checkbox,
-              checked: ticked,
-              attributes: <String, String>{'aria-label': 'Select $name'},
+              checked: checked.contains(ref.key),
+              attributes: <String, String>{'aria-label': 'Select $sentence'},
               events: <String, void Function(web.Event)>{
                 'change': (web.Event event) {
                   final bool on = (event.target! as web.HTMLInputElement).checked;
-                  component.onCheck(on ? <String>{...component.checked, ref.key} : (<String>{...component.checked}..remove(ref.key)));
+                  component.onCheck(on ? <String>{...checked, ref.key} : (<String>{...checked}..remove(ref.key)));
                 },
               },
             ),
-          ]),
-          dom.button(
-            id: offerRowId(ref),
-            classes: 'animus-shop-offer-main',
-            attributes: <String, String>{
-              'type': 'button',
-              'aria-expanded': '$open',
-              'aria-label': '$name. ${_where(ref)}.${errors > 0 ? ' $errors problem${errors == 1 ? '' : 's'}.' : ''} Alt and arrow keys reorder.',
-            },
-            events: <String, void Function(web.Event)>{
-              'click': (web.Event _) => component.onSelect(open ? null : ref),
-              'keydown': (web.Event event) => _key(event, offer, all),
-            },
-            <Widget>[
-              dom.span(classes: 'animus-shop-trade', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[
-                for (int i = 0; i < sides.takes.length; i++) ...<Widget>[
-                  if (i > 0) const dom.span(classes: 'animus-shop-plus', <Widget>[Component.text('+')]),
-                  GoodsIcon(sides.takes[i]),
-                ],
-                if (offer.type != 'static') const dom.span(classes: 'animus-shop-arrow', <Widget>[Component.text('→')]),
-                for (int i = 0; i < sides.gives.length; i++) ...<Widget>[
-                  if (i > 0) const dom.span(classes: 'animus-shop-plus', <Widget>[Component.text('+')]),
-                  GoodsIcon(sides.gives[i]),
-                ],
-              ]),
-              dom.span(classes: 'animus-shop-sentence', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[Component.text(sentence)]),
-              dom.span(classes: 'animus-shop-where', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[
-                dom.span(classes: 'animus-shop-kind is-${offer.type}', <Widget>[Component.text(offerKindTags[offer.type] ?? offer.type)]),
-                Component.text(' · Slot ${ref.slot}'),
-                if (errors > 0) dom.span(classes: 'animus-shop-flag is-error', <Widget>[Component.text(' · $errors problem${errors == 1 ? '' : 's'}')]),
-                if (errors == 0 && warnings > 0) dom.span(classes: 'animus-shop-flag is-warning', <Widget>[Component.text(' · $warnings note${warnings == 1 ? '' : 's'}')]),
-              ]),
-            ],
-          ),
-          dom.div(classes: 'animus-shop-offer-actions', <Widget>[
-            GuiIconButton(icon: ArcaneIcon.arrowUp(size: IconSize.sm), label: 'Move earlier: $sentence', disabled: position == 0, onPressed: () => _nudge(ref, -1)),
-            GuiIconButton(icon: ArcaneIcon.arrowDown(size: IconSize.sm), label: 'Move later: $sentence', disabled: position >= count - 1, onPressed: () => _nudge(ref, 1)),
-            GuiIconButton(
-              icon: ArcaneIcon.copy(size: IconSize.sm),
-              label: 'Duplicate: $sentence',
-              onPressed: () {
-                final ShopEdit edit = duplicateOffer(component.shop, ref);
-                if (edit.ref == null) return;
-                component.onEdit(edit);
-                component.onSelect(edit.ref);
-              },
-            ),
-            GuiIconButton(icon: ArcaneIcon.trash(size: IconSize.sm), label: 'Delete: $sentence', onPressed: () => component.onDelete(<OfferRef>[ref])),
-          ]),
-        ]),
-        if (open) ...<Widget>[
-          for (final Diagnostic problem in problems)
-            dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', attributes: const <String, String>{'role': 'note'}, <Widget>[
-              dom.code(<Widget>[Component.text(problem.path.substring(ref.path.length).isEmpty ? 'offer' : problem.path.substring(ref.path.length))]),
-              Component.text(' ${problem.message}'),
-            ]),
-          component.editor(offer),
         ],
-      ],
+        children: <Widget>[
+          dom.span(classes: 'animus-shop-trade', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[
+            Row(mainAxisSize: MainAxisSize.min, gapSize: Gap.xs, children: <Widget>[
+              for (final ShopGoods goods in sides.gives) GoodsIcon(goods),
+              for (final ShopGoods goods in sides.takes) GoodsIcon(goods),
+            ]),
+          ]),
+          // Two lines before it is cut, so the price stays readable on a phone.
+          Expanded(
+            child: dom.span(classes: 'animus-shop-sentence', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[
+              Text(sentence, size: FontSize.sm, maxLines: 2, overflow: TextOverflow.ellipsis),
+            ]),
+          ),
+          if (errors > 0)
+            StatusBadge('$errors ${errors == 1 ? 'problem' : 'problems'}', tone: BadgeTone.error)
+          else if (warnings > 0)
+            StatusBadge('$warnings ${warnings == 1 ? 'note' : 'notes'}', tone: BadgeTone.warning),
+        ],
+      ),
     );
   }
-
-  String _where(OfferRef ref) => 'Slot ${ref.slot}';
 }
-
-/// Grid names as group headings.
-const Map<String, String> offerGridTitles = <String, String>{'trade': 'Trades', 'buy': 'Buying', 'sell': 'Selling'};

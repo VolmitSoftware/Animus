@@ -1,28 +1,34 @@
-// The Appearance skin picker: a workspace skin by its face, the arm model,
-// then a built-in skin, with the stage wearing each one.
-// The new skin documents (the classic copy and Smith) are not on the fake server
-// yet, so its lookup of each answers 404 once; that is expected.
+// The skin picker behind Basics' Change: a saved skin by its face, then a
+// built-in skin, with the stage wearing each one.
+// The built-in skin makes a skin document the fake server does not have yet,
+// so its lookup answers 404 once; that is expected.
 // Fake server data: --data=../qa/demo/editor/fixtures/town-deep (from animus-web/).
 module.exports = async (L) => {
-  const {film: f, page, h} = await L.pairedSession('22-npc-appearance-skin');
-  const side = page.getByRole('complementary', {name: 'Documents'});
-  await page.waitForTimeout(1500);
+  const {film: f, page, h} = await L.pairedSession('22-npc-appearance-skin', {path: '/npcs'});
+  const list = page.getByRole('listbox', {name: 'NPCs'});
+  await list.waitFor();
+  await page.waitForTimeout(1200);
   f.mark();
   await h.pause(300);
-  await h.click(side.getByText('Baker', {exact: true}).first(), {after: 1200});
-  const ap = L.section(page, 'appearance');
-  const pick = ap.getByRole('combobox', {name: 'Skin', exact: true});
-  await h.reveal(ap.getByRole('group', {name: 'Built-in skins'}));
-  await h.click(pick, {after: 700});
-  const skin = (await L.listboxOf(pick)).getByRole('option', {name: /^dc33741fb113/});
-  await h.hover(skin, 1000);
-  await h.click(skin, {after: 900});
+  await h.click(list.getByRole('option', {name: /^Baker/}), {after: 1500});
+  const skin = page.getByRole('toolbar', {name: 'Skin'});
+  const stage = page.getByRole('img', {name: /^Preview of Baker/});
+  const dialog = page.getByRole('dialog', {name: 'Choose a skin'});
+  await h.hover(skin, 900);
+  await h.click(skin.getByRole('button', {name: 'Change'}), {after: 900});
+  const saved = dialog.getByRole('listbox', {name: 'Saved skins'}).getByRole('option').first();
+  await h.hover(saved, 900);
+  await h.click(saved, {after: 1200, noReveal: true});
+  // Rest on the stage beside the model, not over it.
+  await h.moveTo(stage, {ox: 0.82, oy: 0.7});
   await h.result(2200);
-  const slim = ap.getByRole('checkbox', {name: /Slim arms/});
-  await h.hover(slim, 600);
-  await h.click(slim, {after: 900});
-  await h.result(2000);
-  await h.click(ap.getByRole('button', {name: 'Wear the built-in Smith skin'}), {after: 1000});
+  await h.click(skin.getByRole('button', {name: 'Change'}), {after: 900});
+  await h.click(dialog.getByRole('button', {name: 'Built-in', exact: true}), {after: 800, noReveal: true});
+  const smith = dialog.getByRole('option', {name: 'Smith', exact: true});
+  await h.hover(smith, 900);
+  await h.click(smith, {after: 1200, noReveal: true});
+  await h.hover(skin, 600);
+  await h.moveTo(stage, {ox: 0.82, oy: 0.7});
   await h.result(2400);
-  return L.finish(f, {closing: 'Baker wears a workspace skin, then the built-in Smith skin'});
+  return L.finish(f, {closing: 'Baker wears a saved skin, then the built-in Smith skin'});
 };

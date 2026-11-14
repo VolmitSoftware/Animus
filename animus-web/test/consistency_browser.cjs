@@ -1,8 +1,7 @@
 // Measures every row of controls on every screen of the built site, at 1440
 // and 390 px wide, dark and light, and fails when controls that sit side by
 // side differ in height or centre line (a field next to a button, a dropdown
-// next to a button, a toolbar, a chip row) or when a control has a rounded
-// corner. A row is the controls of one parent box that overlap vertically,
+// next to a button, a toolbar, a chip row). Corners are shadcn's own. A row is the controls of one parent box that overlap vertically,
 // and also the largest box whose controls all sit on one line; each control
 // is measured with getBoundingClientRect.
 // Buttons of one rank in a row share one look: border, background, height,
@@ -12,13 +11,13 @@
 // selected or current one stand apart on purpose and are not compared; the
 // rest must match, so a borderless text button next to bordered ones
 // fails.
-// Screens: home with no server paired (the paste field and Use this code),
-// a pairing link, the example-packs workspace and each of its documents
+// Screens: the start page on a first visit (the pairing field and Pair), a
+// pairing link, the example-packs workspace and each of its documents
 // (the first of each kind in every view), New document, the NPC list, Send
 // to a server, the converter, every document of the gui_editors,
 // rig_editor and groups_recordings fixtures and ../schema/fixtures/export,
-// then a server paired with the fake server (default --data) and each of
-// its documents.
+// then a server paired with the fake server (default --data), its Home and
+// each of its documents, and the start page's Continue list.
 // Every inspector part is opened first.
 // ANIMUS_CONSISTENCY_WIDTHS (optional, comma separated) limits the widths;
 // ANIMUS_CONSISTENCY_SCREENS (optional, a regular expression) checks only
@@ -36,7 +35,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const {closeDrawer, sidebar} = require('./support/shell.cjs');
+const {documentHrefs, startAction} = require('./support/shell.cjs');
 
 const url = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })()).replace(/\/$/, '');
 const fake = (process.env.ANIMUS_FAKE_URL || (() => { throw new Error('Set ANIMUS_FAKE_URL to your own fake server, never :9797'); })()).replace(/\/$/, '');
@@ -106,7 +105,9 @@ async function scan(page, skipped) {
     // A button that takes part in the same-rank comparison: one with text,
     // not filled, not pressed, selected or current.
     const ranks = control => {
-      if (!control.matches('button, a.arcane-button') || control.matches('[role="tab"], [role="combobox"], [aria-pressed="true"], [aria-selected="true"], [aria-current]:not([aria-current="false"])')) return false;
+      // A toggle group's items are a switch, not actions of a rank.
+      // An ActionRow's primary is that row's one filled button.
+      if (!control.matches('button, a.arcane-button') || control.matches('[role="tab"], [role="combobox"], .arcane-toggle-group-item, [aria-pressed="true"], [aria-selected="true"], [aria-current]:not([aria-current="false"]), [data-action-slot="primary"]')) return false;
       if (!shownText(control)) return false;
       const style = getComputedStyle(control);
       const filled = !/rgba\(.*, 0\)$/.test(style.backgroundColor) && style.backgroundColor === style.borderTopColor;
@@ -120,8 +121,14 @@ async function scan(page, skipped) {
 
     // Outermost matches only: the input inside a bordered field box is part
     // of that box.
+    // Marks that are not controls of a row: the (i) inside a label, a status
+    // badge that opens the problems, the library's corner close on a dialog,
+    // and tabs, which are a strip of their own (a form's tab row beside a
+    // preview's header is not one row of buttons).
+    const marks = '[data-animus-info], .ui-badge-button, .arcane-dialog-close, .arcane-sheet-close, [role="tab"]';
     const controls = [...document.querySelectorAll(selector)].filter(el => {
       if (el.tagName === 'INPUT' && plain.has(el.type)) return false;
+      if (el.matches(marks)) return false;
       if (el.parentElement.closest(selector)) return false;
       return shown(el);
     });
@@ -142,9 +149,6 @@ async function scan(page, skipped) {
         `h${round(box.height)}`, `font ${style.fontSize}`, `radius ${style.borderTopLeftRadius}`,
         `border ${style.borderTopWidth}`, `pad ${style.paddingLeft}`,
       ].join(' | '));
-      if (parseFloat(style.borderTopLeftRadius) > 0 && !skip.some(rule => control.matches(rule))) {
-        out.push(`rounded corner ${style.borderTopLeftRadius} on ${describe(control)}`);
-      }
       // Text set as a button (a help tip on a label, a link in a sentence)
       // takes its line's height, not a control's.
       if (style.display.startsWith('inline') && parseFloat(style.borderTopWidth) === 0 && style.backgroundColor === 'rgba(0, 0, 0, 0)' && parseFloat(style.paddingLeft) === 0) continue;
@@ -279,7 +283,7 @@ async function run(browser, width, theme, failures, census) {
   // Every document the sidebar links to, in the visual view, and the first
   // of each kind in the other views too.
   const walk = async label => {
-    const hrefs = await page.locator('#animus-sidebar a[href*="/workspace/"]').evaluateAll(links => links.map(link => link.getAttribute('href')));
+    const hrefs = await documentHrefs(page);
     const kinds = new Set();
     for (const href of [...new Set(hrefs)]) {
       const match = /#\/workspace\/[^/]+\/([^/?]+)\/([^?]+)$/.exec(href);
@@ -293,25 +297,37 @@ async function run(browser, width, theme, failures, census) {
         await page.waitForTimeout(view === 'preview' || view === 'split' ? 400 : 100);
         const opened = await page.evaluate(() => new URLSearchParams(location.hash.split('?')[1] || '').get('view') || 'visual');
         await visit(`${label} ${match[1]} ${decodeURIComponent(match[2])} ${opened}`);
+        // An NPC or trait group form is cut into tabs: every tab is a screen.
+        if (opened === 'visual' && (match[1] === 'npc' || match[1] === 'group')) {
+          const tabs = page.locator('.animus-npc-tabs [role="tab"]');
+          const first = await tabs.evaluateAll(all => all.findIndex(tab => tab.getAttribute('aria-selected') === 'true'));
+          for (let index = 0; index < await tabs.count(); index++) {
+            if (index === first) continue;
+            const name = (await tabs.nth(index).innerText()).trim();
+            await tabs.nth(index).click();
+            await page.locator(`[data-npc-tab="${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}"]`).waitFor();
+            await visit(`${label} ${match[1]} ${decodeURIComponent(match[2])} ${opened} tab ${name}`);
+          }
+        }
       }
     }
   };
 
   await page.goto(url);
-  await page.evaluate(mode => window.localStorage.setItem('animus.theme', mode), theme);
+  await page.evaluate(mode => { window.localStorage.setItem('animus.theme', mode); window.localStorage.setItem('animus.mode', 'advanced'); }, theme);
   await page.reload();
-  await page.getByRole('heading', {name: 'Start a workspace'}).waitFor();
-  await page.getByText('No servers paired.').first().waitFor();
+  await page.getByRole('heading', {name: 'Animus web editor'}).waitFor();
+  await page.getByRole('textbox', {name: 'Pairing link'}).waitFor();
   await visit('home');
 
-  await page.getByRole('button', {name: 'Create with example packs'}).click();
-  await page.getByRole('heading', {name: 'Try it in the browser'}).waitFor();
+  await page.getByRole('button', {name: 'Open examples'}).click();
+  await page.locator('[data-testid="home-count"]').first().waitFor();
   const workspace = /#\/workspace\/([^/?]+)/.exec(page.url())[1];
   await visit('workspace');
   await walk('examples');
   for (const [name, route] of [
     ['new document', `#/workspace/${workspace}/new`], ['new npc', `#/workspace/${workspace}/new/npc`],
-    ['npc list', `#/workspace/${workspace}/npcs`], ['sync', `#/workspace/${workspace}/sync`], ['converter', '#/citizens'],
+    ['npc list', `#/workspace/${workspace}/npcs`], ['list shops', `#/workspace/${workspace}/list/shop`], ['list movement', `#/workspace/${workspace}/list/route`], ['sync', `#/workspace/${workspace}/sync`], ['converter', '#/citizens'],
   ]) {
     if (!wanted(name)) continue;
     await hash(route);
@@ -320,12 +336,12 @@ async function run(browser, width, theme, failures, census) {
 
   for (const folder of folders) {
     await page.goto(url);
-    await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+    await page.getByRole('heading', {name: 'Continue'}).waitFor();
     const chooser = page.waitForEvent('filechooser');
-    await page.getByRole('button', {name: 'Open folder'}).first().click();
+    await startAction(page, 'Open folder');
     await (await chooser).setFiles(folder);
     await page.waitForFunction(() => /#\/workspace\//.test(location.hash));
-    await page.locator('#animus-sidebar a[href*="/workspace/"]').first().waitFor({state: 'attached'});
+    await page.locator('.ui-save-bar').waitFor();
     const label = path.basename(folder);
     await walk(label);
     const opened = /#\/workspace\/([^/?]+)/.exec(page.url())[1];
@@ -333,7 +349,7 @@ async function run(browser, width, theme, failures, census) {
     await visit(`${label} npc list`);
     if (label === 'groups_recordings') {
       await hash(`#/workspace/${opened}/recordings`);
-      await page.locator('[data-recording="list"]').waitFor();
+      await page.locator('#movement-list').waitFor();
       await visit(`${label} recordings list`);
     }
   }
@@ -341,19 +357,21 @@ async function run(browser, width, theme, failures, census) {
   // A pairing link, then the paired server.
   const {code} = await control('pair?paths=both', {});
   await page.goto(`${url}/#/pair/${code}`);
-  await page.locator('[data-testid="pair-fingerprint"]').waitFor();
+  await page.getByTestId('pair-submit').waitFor();
   await visit('pair');
-  await page.getByRole('button', {name: 'Pair', exact: true}).click();
+  await page.getByTestId('pair-submit').click();
   await page.waitForFunction(() => location.hash.startsWith('#/server/'));
-  await page.getByRole('heading', {name: /documents on the server/}).waitFor();
+  await page.locator('[data-testid="home-count"]').first().waitFor();
   await visit('server');
-  await (await sidebar(page)).getByRole('button', {name: /^Open all/}).click();
-  await closeDrawer(page);
-  await page.locator('#animus-sidebar a[href*="/workspace/server-"]').nth(3).waitFor({state: 'attached'});
+  // The workspace fills from the catalog by itself: wait for Home's NPC count
+  // (the nav shows no counts as an icon rail).
+  const server = await page.evaluate(() => location.hash.split('/')[2]);
+  await hash(`#/workspace/server-${server}`);
+  await page.waitForFunction(() => /^[1-9]\d*$/.test(document.querySelector('.ui-home-card[data-job="npcs"] [data-testid="home-count"]')?.textContent?.trim() || ''));
   await visit('server catalog opened');
   await walk('server');
   await page.goto(`${url}/#/`);
-  await page.getByRole('heading', {name: 'Start a workspace'}).waitFor();
+  await page.getByRole('heading', {name: 'Continue'}).waitFor();
   await visit('home paired');
 
   await context.close();

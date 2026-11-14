@@ -187,4 +187,14 @@ void main() {
       expect(withDefault('random', const <String>['sequence', 'random'], 'sequence').value, 'random');
     });
   });
+
+  group('sameOptions', () {
+    test('should match equal lists built twice and tell a changed one apart', () {
+      List<SelectOption> build(String second) => <SelectOption>[const SelectOption(value: 'a', label: 'Alpha'), SelectOption(value: 'b', label: second)];
+      expect(sameOptions(build('Beta'), build('Beta')), isTrue);
+      expect(sameOptions(build('Beta'), build('Bravo')), isFalse);
+      expect(sameOptions(build('Beta'), <SelectOption>[const SelectOption(value: 'a', label: 'Alpha')]), isFalse);
+      expect(sameOptions(<SelectOption>[const SelectOption(value: 'a', label: 'Alpha')], <SelectOption>[const SelectOption(value: 'a', label: 'Alpha', disabled: true)]), isFalse);
+    });
+  });
 }

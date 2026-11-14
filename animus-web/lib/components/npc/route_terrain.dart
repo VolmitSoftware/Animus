@@ -9,7 +9,6 @@ library;
 import 'dart:async';
 import 'dart:js_interop';
 
-import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
@@ -47,11 +46,20 @@ String _imageOf(TerrainSurfaceTile tile, TerrainAssets assets) => _imageUrls.put
 /// The route editor's terrain: surface tiles in view, plus the block window
 /// of the 3D view when it is open.
 final class RouteTerrain implements TerrainLookup {
-  RouteTerrain(this._changed) {
+  RouteTerrain(void Function() changed) : _onChanged = changed {
     TerrainLink.addListener(_linkChanged);
   }
 
-  final void Function() _changed;
+  final void Function() _onChanged;
+
+  /// Raised whenever what the grid draws or checks may have changed, so a
+  /// map that skips rebuilds can tell.
+  int revision = 0;
+
+  void _changed() {
+    revision++;
+    _onChanged();
+  }
   final Map<(int, int), TerrainSurfaceTile> _tiles = <(int, int), TerrainSurfaceTile>{};
   final Set<(int, int)> _asked = <(int, int)>{};
   String? _covered;
@@ -59,8 +67,15 @@ final class RouteTerrain implements TerrainLookup {
   String? _world;
   TerrainClient? _client = TerrainLink.client;
 
+  TerrainVolume? _volume;
+
   /// Block states from the 3D view, which win over the surface.
-  TerrainVolume? volume;
+  TerrainVolume? get volume => _volume;
+  set volume(TerrainVolume? next) {
+    if (identical(next, _volume)) return;
+    _volume = next;
+    revision++;
+  }
 
   /// True when the grid is too wide to fill and terrain loads along the
   /// route only.
@@ -91,7 +106,8 @@ final class RouteTerrain implements TerrainLookup {
       _tiles.clear();
       _asked.clear();
       _covered = null;
-      volume = null;
+      _volume = null;
+      revision++;
     }
     final TerrainClient? client = TerrainLink.client;
     if (client == null || world == null) return;
@@ -119,7 +135,7 @@ final class RouteTerrain implements TerrainLookup {
   TerrainColumn? column(int x, int z) => _tiles[(terrainFloorDiv(x, terrainTileSize), terrainFloorDiv(z, terrainTileSize))]?.at(x, z);
 
   @override
-  String? state(int x, int y, int z) => volume?.stateAt(x, y, z);
+  String? state(int x, int y, int z) => _volume?.stateAt(x, y, z);
 
   /// The standable y for a point placed at [x], [z], near [nearY]; null
   /// without terrain there.
@@ -196,23 +212,33 @@ final class RouteTerrain implements TerrainLookup {
   }
 }
 
-Component _problem(String label, String text) => dom.li(
-      classes: 'animus-gui-problem is-warning',
-      attributes: const <String, String>{'data-terrain-issue': ''},
-      <Component>[dom.strong(<Component>[Component.text(label)]), Component.text(' $text')],
-    );
+/// One problem under the map: a point or guide (picked when its link is
+/// followed), or a leg between two points.
+class RouteIssue {
+  const RouteIssue(this.label, this.text, {this.node});
 
-/// The flagged points and steep legs, listed under the grid.
-Component routeTerrainProblems(Map<(String, int), TerrainIssue> issues, Map<(int, int), (int, int, int)> steep) =>
-    dom.ul(classes: 'animus-route-problems', attributes: const <String, String>{'aria-label': 'Terrain problems'}, <Component>[
+  final String label;
+  final String text;
+
+  /// The point or guide it sits on: `points` or `guides`, and its index.
+  final (String, int)? node;
+}
+
+/// The flagged points and steep legs, numbered from 1 as the map shows them.
+List<RouteIssue> routeTerrainIssues(RouteSpec spec, Map<(String, int), TerrainIssue> issues, Map<(int, int), (int, int, int)> steep) => <RouteIssue>[
       for (final MapEntry<(String, int), TerrainIssue> issue in issues.entries)
-        _problem('${issue.key.$1 == 'guides' ? 'Guide' : 'Point'} ${issue.key.$2}', issue.value.text),
-      for (final MapEntry<(int, int), (int, int, int)> link in steep.entries)
-        _problem(
-          'Leg ${link.key.$1} to ${link.key.$2}',
-          link.value.$3 > 0 ? 'climbs ${link.value.$3} blocks at ${link.value.$1}, ${link.value.$2}' : 'drops ${-link.value.$3} blocks at ${link.value.$1}, ${link.value.$2}',
+        RouteIssue(
+          issue.key.$1 == 'guides' ? 'Guide ${spec.points.length + issue.key.$2 + 1}' : 'Point ${issue.key.$2 + 1}',
+          issue.value.text,
+          node: issue.key,
         ),
-    ]);
+      for (final MapEntry<(int, int), (int, int, int)> link in steep.entries)
+        RouteIssue(
+          'Leg ${link.key.$1 + 1} to ${link.key.$2 + 1}',
+          link.value.$3 > 0 ? 'climbs ${link.value.$3} blocks at ${link.value.$1}, ${link.value.$2}' : 'drops ${-link.value.$3} blocks at ${link.value.$1}, ${link.value.$2}',
+          node: link.key.$1 < spec.points.length ? ('points', link.key.$1) : null,
+        ),
+    ];
 
 /// Where the 3D view centres: the picked point, the first point, the NPC.
 (double, double, double) routeFocus(RouteSpec spec, (String, int)? picked, (double, double, double)? origin) {

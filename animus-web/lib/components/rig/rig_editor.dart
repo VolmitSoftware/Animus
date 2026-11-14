@@ -1,8 +1,11 @@
-/// The rig editor: bone tree, 3D stage with the skeleton and move, rotate
-/// and scale gizmos, the bone inspector and the keyframe timeline. The stage
-/// samples with the Dart port of the server's sampler, so a pose here is the
-/// pose the server sends. Every change is a workspace commit (undoable);
-/// gizmo drags preview locally and commit once on release.
+/// The rig editor: the toolbar, the 3D stage in its frame with the skeleton
+/// and the move, rotate and scale gizmo, the bone tree, the bone inspector
+/// and the keyframe timeline. When the editor is 64rem wide or more the
+/// tree and the inspector sit beside the stage and the timeline under it;
+/// narrower, one tab row under the stage shows one of them. The stage samples with the Dart port of the
+/// server's sampler, so a pose here is the pose the server sends. Every
+/// change is a workspace commit (undoable); gizmo drags preview locally and
+/// commit once on release.
 library;
 
 import 'dart:async';
@@ -12,19 +15,18 @@ import 'dart:typed_data';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart' hide Easing;
 import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
-import '../../config/docs_links.dart';
 import '../../logic/bbmodel_import.dart' show sanitizeName;
 import '../../logic/data_folder_export.dart';
+import '../../logic/diagnostic_text.dart';
 import '../../logic/rig_edit.dart';
 import '../../logic/rig_gizmo_edit.dart';
 import '../../logic/rig_sampler.dart';
+import '../../logic/rig_view.dart';
 import '../../mc/npc/npc_look.dart';
 import '../../mc/npc/npc_scene.dart';
 import '../../mc/rig/rig_scene.dart';
-import '../../mc/rigs/mc_rigs.dart';
 import '../../mc/scene/mc_camera.dart';
 import '../../mc/scene/mc_math.dart';
 import '../../mc/scene/mc_scene.dart';
@@ -33,8 +35,9 @@ import '../../model/document_kind.dart';
 import '../../services/browser.dart';
 import '../../state/editor_store.dart';
 import '../../state/workspace_repository.dart';
-import '../gui/gui_fields.dart';
-import '../info_tip.dart';
+import '../../ui/alert.dart';
+import '../../ui/confirm_dialog.dart';
+import '../../ui/tabs.dart';
 import '../mc/mc_asset_loader.dart';
 import '../mc/mc_stage.dart';
 import 'rig_actions.dart';
@@ -44,23 +47,7 @@ import 'rig_inspector.dart';
 import 'rig_timeline.dart';
 import 'rig_tree.dart';
 
-/// Bodies the stage can show under a `body: shown` rig: every type a
-/// transport presents.
-const Map<String, String> previewBodies = <String, String>{
-  'minecraft:player': 'Player',
-  'minecraft:armor_stand': 'Armor stand',
-  'minecraft:horse': 'Horse',
-  'minecraft:llama': 'Llama',
-  'minecraft:turtle': 'Turtle',
-  'minecraft:frog': 'Frog',
-  'minecraft:armadillo': 'Armadillo',
-  'minecraft:ender_dragon': 'Ender dragon',
-};
-
 const String _restPose = '';
-
-/// The phone layout shows one of these under the stage at a time.
-enum RigPane { tree, inspector, timeline }
 
 class RigEditor extends StatefulWidget {
   const RigEditor({required this.store, required this.rig, required this.onOpen, this.animationId, super.key});
@@ -96,18 +83,19 @@ class _RigEditorState extends State<RigEditor> {
   JsonMap? _dragRig;
   JsonMap? _dragAnimation;
   TrackTarget _keyTarget = TrackTarget.rotation;
-  Blend _keyBlend = Blend.replace;
   int? _track;
   (int, int)? _keyframe;
   int? _event;
   String _bodyType = 'minecraft:player';
+  bool _newOpen = false;
   String _newAnimation = '';
+  String? _newProblem;
   String? _problem;
   List<String> _notes = const <String>[];
   Map<String, BonePose> _poses = const <String, BonePose>{};
   bool _framed = false;
   bool _busy = false;
-  RigPane _pane = RigPane.timeline;
+  late RigPane _pane = initialRigPane(animation: component.animationId != null);
 
   JSFunction? _move;
   JSFunction? _up;
@@ -163,7 +151,7 @@ class _RigEditorState extends State<RigEditor> {
 
   static String _firstError(AnimusDocument? document) {
     for (final Diagnostic diagnostic in document?.diagnostics ?? const <Diagnostic>[]) {
-      if (diagnostic.severity == DiagnosticSeverity.error) return ' ${diagnostic.path}: ${diagnostic.message}.';
+      if (diagnostic.severity == DiagnosticSeverity.error) return ' ${diagnosticSentence(diagnostic)}';
     }
     return '';
   }
@@ -184,6 +172,7 @@ class _RigEditorState extends State<RigEditor> {
     super.didUpdateWidget(oldComponent);
     if (component.animationId != oldComponent.animationId && component.animationId != null) {
       _animation = component.animationId!;
+      _pane = RigPane.timeline;
     }
     if (_selected != null && boneById(_rigJson, _selected!) == null) {
       final List<JsonMap> bones = bonesOf(_rigJson);
@@ -318,18 +307,39 @@ class _RigEditorState extends State<RigEditor> {
     setState(() => _selected = id);
   }
 
-  void _rename(String from, String to) {
-    final String target = to.trim();
-    if (target.isEmpty || target == from) return;
+  /// Renames a bone and its tracks in every animation; returns why it
+  /// cannot, for the name field.
+  String? _rename(String from, String to) {
+    try {
+      renameBone(_rigJson, from, to);
+    } on RigEditException catch (refused) {
+      return refused.message;
+    }
     _edit(
-      (JsonMap rig) => renameBone(rig, from, target),
-      animations: (JsonMap _) => _eachAnimation((JsonMap animation) => renameTrackBone(animation, from, target)),
+      (JsonMap rig) => renameBone(rig, from, to),
+      animations: (JsonMap _) => _eachAnimation((JsonMap animation) => renameTrackBone(animation, from, to)),
     );
-    setState(() => _selected = target);
+    setState(() => _selected = to);
+    return null;
   }
 
-  void _delete(String bone) {
-    final String? parent = parentOf(boneById(_rigJson, bone) ?? const <String, Object?>{});
+  Future<void> _delete(String bone) async {
+    final JsonMap? entry = boneById(_rigJson, bone);
+    if (entry == null) return;
+    final String? parent = parentOf(entry);
+    final ({int tracks, int animations}) keyed = boneTracks(<JsonMap>[for (final AnimusDocument document in _animations) document.json! as JsonMap], bone);
+    final bool yes = await askToConfirm(
+      title: 'Delete bone $bone?',
+      message: deleteBoneMessage(
+        parent: parent,
+        children: bonesOf(_rigJson).where((JsonMap other) => parentOf(other) == bone).length,
+        tracks: keyed.tracks,
+        animations: keyed.animations,
+      ),
+      confirmLabel: 'Delete bone',
+      destructive: true,
+    );
+    if (!yes || !mounted) return;
     _edit(
       (JsonMap rig) => deleteBone(rig, bone),
       animations: (JsonMap _) => _eachAnimation((JsonMap animation) => dropTrackBone(animation, bone)),
@@ -419,7 +429,7 @@ class _RigEditorState extends State<RigEditor> {
 
   JsonMap _gizmoEdit(JsonMap? animation, JsonMap rig, String bone, int axis, double amount, double time) => animation == null
       ? restGizmoEdit(rig, bone, _mode, axis, amount)
-      : keyGizmoEdit(animation, bone, _mode, axis, amount, time, track: _track, blend: _keyBlend, pose: _poses[bone]);
+      : keyGizmoEdit(animation, bone, _mode, axis, amount, time, track: _track, pose: _poses[bone]);
 
   void _grab(GizmoGrab grab, web.PointerEvent event) {
     final String? bone = _selected;
@@ -493,12 +503,6 @@ class _RigEditorState extends State<RigEditor> {
     _up = null;
   }
 
-  static num _round(double value) {
-    final double rounded = (value * 100000).roundToDouble() / 100000;
-    return rounded == rounded.roundToDouble() ? rounded.round() : rounded;
-  }
-
-
   // --- import and export -----------------------------------------------------
 
   Future<void> _import() async {
@@ -526,9 +530,37 @@ class _RigEditorState extends State<RigEditor> {
     if (bundle.missing.isNotEmpty) ArcaneSonner.warning('Not in this workspace, left out: ${bundle.missing.join(', ')}.');
   }
 
+  void _askNewAnimation() => setState(() {
+        _newOpen = true;
+        _newProblem = null;
+        _newAnimation = '';
+      });
+
+  void _closeNewAnimation() => setState(() => _newOpen = false);
+
+  /// The New animation dialog's Create: `<rig>/<name>`, named in the rig.
   void _createAnimation() {
-    final String name = sanitizeName(_newAnimation, 'animation');
-    _create('$_rigId/$name', name: name);
+    final String name = sanitizeName(_newAnimation.trim().isEmpty ? _suggestedName : _newAnimation, 'animation');
+    final String id = '$_rigId/$name';
+    if (!documentIdPattern.hasMatch(id)) {
+      setState(() => _newProblem = 'Use lowercase letters, digits, - and _.');
+      return;
+    }
+    if (component.store.document(DocumentKind.animation, id) != null) {
+      setState(() => _newProblem = 'This rig already has an animation called $name.');
+      return;
+    }
+    setState(() => _newOpen = false);
+    _create(id, name: name);
+  }
+
+  /// idle, then walk, then the first free `animation-n`.
+  String get _suggestedName {
+    final JsonMap names = animationNames(_rigJson);
+    for (final String name in navigationAnimations) {
+      if (!names.containsKey(name) && component.store.document(DocumentKind.animation, '$_rigId/$name') == null) return name;
+    }
+    return freeAnimationName(_rigJson, 'animation');
   }
 
   /// Creates an empty animation [id] for this rig, naming it [name] in the
@@ -550,7 +582,7 @@ class _RigEditorState extends State<RigEditor> {
     ).then((void _) {
       if (name != null && !named) ArcaneSonner.info('Created $id. Name $name is taken; name it under Animation names.');
       _animation = id;
-      _newAnimation = '';
+      _pane = RigPane.timeline;
       _tick = 0;
       _idleTick = null;
       _track = null;
@@ -560,14 +592,16 @@ class _RigEditorState extends State<RigEditor> {
     }));
   }
 
-  void _addKeyframe({bool newTrack = false}) {
+  /// Keys the selected bone at the playhead: on its track for the channel
+  /// (the selected one first), or on a new track with [newTrack]'s blend.
+  void _addKeyframe({Blend? newTrack}) {
     final String? bone = _selected;
     final JsonMap? animation = _animationJson;
     final BonePose? pose = bone == null ? null : _poses[bone];
     if (bone == null || animation == null || pose == null) return;
     final TrackTarget target = _keyTarget;
-    final Blend blend = target == TrackTarget.visible ? Blend.replace : _keyBlend;
-    final int? track = newTrack ? null : trackFor(animation, bone, target, preferred: _track);
+    final Blend blend = target == TrackTarget.visible ? Blend.replace : (newTrack ?? Blend.replace);
+    final int? track = newTrack != null ? null : trackFor(animation, bone, target, preferred: _track);
     final double time = _clipTime;
     final Object value;
     if (target == TrackTarget.visible) {
@@ -576,7 +610,7 @@ class _RigEditorState extends State<RigEditor> {
     } else {
       value = cleanVector(ownTrackValue(animation, track, target, trackBlend(animation, track, blend), time, pose));
     }
-    if (newTrack) {
+    if (newTrack != null) {
       _editAnimation((JsonMap json) => addTrack(json, bone, target, blend, time, value));
       setState(() => _track = tracksOf(animation).length);
     } else {
@@ -611,69 +645,68 @@ class _RigEditorState extends State<RigEditor> {
       return named.isEmpty ? short : '${named.join(', ')} ($short)';
     }
 
-    return dom.section(classes: 'animus-panel animus-rig-editor', attributes: <String, String>{'data-rig': _rigId}, <Widget>[
-      _toolbar(rig),
-      if (_problem != null) dom.p(classes: 'animus-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(_problem!)]),
+    return dom.section(classes: 'animus-rig-editor', attributes: <String, String>{'data-rig': _rigId}, <Widget>[
+      RigToolbar(
+        bodyShown: rig['body'] == 'shown',
+        previewBody: _bodyType,
+        busy: _busy,
+        onBody: (bool shown) => _edit((JsonMap json) => cloneJson(json)..['body'] = shown ? 'shown' : 'hidden'),
+        onPreviewBody: (String type) {
+          _bodyType = type;
+          _framed = false;
+          _refresh();
+        },
+        onImport: _import,
+        onDownload: _downloadServerFiles,
+      ),
+      if (_problem != null) AppAlert(tone: AlertTone.error, message: _problem!, live: true),
       dom.div(classes: 'animus-rig-layout', attributes: <String, String>{'data-pane': _pane.name}, <Widget>[
         dom.div(classes: 'animus-rig-stage', <Widget>[
-          GizmoToolbar(
-            mode: _mode,
-            restPose: _animation == _restPose,
-            tick: _round(_clipTime),
-            onMode: (GizmoMode mode) => setState(() => _mode = mode),
-            onResetView: _stage.resetCamera,
-          ),
-          McStage(
+          RigStage(
             controller: _stage,
             label: 'Rig ${component.rig.id}${_selected == null ? '' : ', bone $_selected selected'}',
-            overlay: (McCamera camera, double width, double height) => overlay.build(camera, width, height),
+            overlay: overlay,
+            mode: _mode,
+            onMode: (GizmoMode mode) => setState(() => _mode = mode),
+            restPose: _animation == _restPose,
+            idle: _idleTick != null,
+            time: _clipTime,
+            notes: _notes,
           ),
-          if (_notes.isNotEmpty)
-            dom.ul(classes: 'animus-npc-notes', <Widget>[
-              for (final String note in _notes) dom.li(<Widget>[Component.text(note)]),
-            ]),
-          dom.div(classes: 'animus-segmented animus-rig-panes', attributes: const <String, String>{'role': 'group', 'aria-label': 'Panel'}, <Widget>[
-            for (final (RigPane pane, String text) in const <(RigPane, String)>[
-              (RigPane.tree, 'Bones'),
-              (RigPane.inspector, 'Inspector'),
-              (RigPane.timeline, 'Timeline'),
-            ])
-              Button(
-                label: text,
-                size: ButtonSize.small,
-                variant: pane == _pane ? ButtonVariant.secondary : ButtonVariant.ghost,
-                attributes: <String, String>{'aria-pressed': '${pane == _pane}'},
-                onPressed: () => setState(() => _pane = pane),
-              ),
-          ]),
         ]),
-        dom.div(classes: 'animus-rig-pane is-tree', <Widget>[
+        dom.div(classes: 'animus-rig-tabs', <Widget>[
+          AppTabs(
+            id: 'rig-panes',
+            label: 'Rig panels',
+            tabs: <String>[for (final RigPane pane in RigPane.values) pane.label],
+            selected: _pane.index,
+            onSelect: (int index) => setState(() => _pane = RigPane.values[index]),
+          ),
+        ]),
+        dom.div(classes: 'animus-rig-pane is-bones', attributes: const <String, String>{'aria-label': 'Bones'}, <Widget>[
           RigTree(
             rig: rig,
             selected: _selected,
             onSelect: (String id) => setState(() => _selected = id),
             onAdd: _addBone,
-            onDelete: _delete,
+            onDelete: (String bone) => unawaited(_delete(bone)),
             onRename: _rename,
             onEdit: (JsonMap Function(JsonMap rig) change) => _edit(change),
           ),
         ]),
-        dom.div(classes: 'animus-rig-pane is-inspector', <Widget>[
+        dom.div(classes: 'animus-rig-pane is-inspector', attributes: const <String, String>{'aria-label': 'Inspector'}, <Widget>[
           RigInspector(rig: rig, bone: _selected, onEdit: (JsonMap Function(JsonMap rig) change) => _edit(change)),
         ]),
         dom.div(classes: 'animus-rig-pane is-timeline', <Widget>[
           RigTimeline(
-            animations: <(String, String)>[
-              ('Rest pose', _restPose),
-              for (final AnimusDocument document in _animations) (label(document), document.id),
-            ],
+            animations: <(String, String)>[for (final AnimusDocument document in _animations) (label(document), document.id)],
             selected: _animation,
             animation: _animationJson,
             valid: _clip != null,
             time: _clipTime,
             playing: _playing,
             speed: _speed,
-            status: _idleTick == null ? null : 'Clip ended, playing idle. Press Play to restart.',
+            status: _idleTick == null ? null : 'The animation ended; playing idle. Press Play to restart.',
             names: RigAnimationsPanel(
               rig: rig,
               documents: <String, String?>{
@@ -686,21 +719,17 @@ class _RigEditorState extends State<RigEditor> {
             ),
             selectedBone: _selected,
             keyTarget: _keyTarget,
-            keyBlend: _keyBlend,
             track: _track,
             keyframe: _keyframe,
             event: _event,
-            newName: _newAnimation,
             onAnimation: _open,
-            onNewName: (String value) => setState(() => _newAnimation = value),
-            onCreate: _createAnimation,
+            onNewAnimation: _askNewAnimation,
             onPlay: _play,
             onScrub: _scrub,
             onSpeed: (double value) => setState(() => _speed = value),
             onKeyTarget: (TrackTarget target) => setState(() => _keyTarget = target),
-            onKeyBlend: (Blend blend) => setState(() => _keyBlend = blend),
             onAddKeyframe: _addKeyframe,
-            onNewTrack: () => _addKeyframe(newTrack: true),
+            onNewTrack: (Blend blend) => _addKeyframe(newTrack: blend),
             onSelectTrack: (int? track) => setState(() {
               _track = track;
               final JsonMap? json = _animationJson;
@@ -729,6 +758,15 @@ class _RigEditorState extends State<RigEditor> {
           ),
         ]),
       ]),
+      NewAnimationDialog(
+        open: _newOpen,
+        value: _newAnimation,
+        suggested: _suggestedName,
+        problem: _newProblem,
+        onChanged: (String value) => _newAnimation = value,
+        onCreate: _createAnimation,
+        onClose: _closeNewAnimation,
+      ),
     ]);
   }
 
@@ -743,37 +781,5 @@ class _RigEditorState extends State<RigEditor> {
       _playing = false;
     });
     _refresh();
-  }
-
-  Widget _toolbar(JsonMap rig) {
-    return dom.div(classes: 'animus-rig-toolbar', <Widget>[
-      RigFileButtons(busy: _busy, onImport: _import, onDownload: _downloadServerFiles),
-      dom.label(classes: 'animus-rig-field', <Widget>[
-        dom.span(<Widget>[withTip(const Component.text('Body'), 'Hidden shows only the rig; the hidden body keeps the hitbox. Shown keeps the vanilla body and the rig adds parts.', docs: Docs.rigs)]),
-        GuiSelect(
-          value: rig['body'] == 'shown' ? 'shown' : 'hidden',
-          options: const <String>['hidden', 'shown'],
-          labels: const <String, String>{'hidden': 'Hidden (rig only)', 'shown': 'Shown (with NPC body)'},
-          hiddenLabel: 'Body',
-          onChanged: (String? value) => _edit((JsonMap json) => cloneJson(json)..['body'] = value ?? 'hidden'),
-        ),
-      ]),
-      if (rig['body'] == 'shown')
-        dom.label(classes: 'animus-rig-field', <Widget>[
-          dom.span(<Widget>[withTip(const Component.text('Preview body'), 'The body shown here only. In game the NPC uses its own.', docs: Docs.editorRigs)]),
-          GuiSelect(
-            value: _bodyType,
-            options: mcBodyTypes,
-            labels: previewBodies,
-            hiddenLabel: 'Preview body',
-            onChanged: (String? value) {
-              if (value == null) return;
-              _bodyType = value;
-              _framed = false;
-              _refresh();
-            },
-          ),
-        ]),
-    ]);
   }
 }

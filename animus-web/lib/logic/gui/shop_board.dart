@@ -6,6 +6,9 @@
 /// the offer it touched now lives.
 library;
 
+import '../../model/animus_document.dart';
+import '../../model/document_kind.dart';
+import '../../model/document_summary.dart' show plainName;
 import 'gui_json.dart';
 import 'gui_validation.dart' show shopControlAt, shopGridsFor, shopModes;
 import 'shop_entries.dart';
@@ -394,7 +397,30 @@ String itemWords(String id) {
 String _say(ShopGoods goods) {
   final String? label = goods.label;
   if (label != null) return label == 'Free' ? 'free' : '$label money';
-  return '${goods.count} ${itemWords(goods.item)}';
+  final String words = itemWords(goods.item);
+  return '${goods.count} ${goods.count == 1 ? words : itemPlural(words)}';
+}
+
+/// Last words of item names counted as a mass or already plural: "16 wheat",
+/// "2 iron horse armor", "2 shears".
+const Set<String> _uncounted = <String>{
+  'armor', 'wheat', 'wool', 'glass', 'sand', 'gravel', 'dirt', 'stone', 'cobblestone', 'coal', 'redstone', 'string',
+  'leather', 'bread', 'beef', 'porkchop', 'mutton', 'chicken', 'rabbit', 'cod', 'salmon', 'gunpowder', 'sugar', 'dust',
+  'meal', 'flesh', 'ice', 'snow', 'clay', 'obsidian', 'netherrack', 'terracotta', 'concrete', 'powder', 'kelp', 'seagrass',
+  'moss', 'bamboo', 'cactus', 'scrap', 'quartz', 'lapis', 'lazuli', 'netherite', 'copper', 'iron', 'gold', 'ore', 'mud',
+  'honeycomb', 'milk', 'water', 'lava', 'fish', 'cane', 'stew', 'soup', 'steel', 'ink', 'wax', 'silk',
+};
+
+/// [words] (an item's name, "hay block") for more than one: "hay blocks",
+/// "torches", "sweet berries"; a mass or plural name stays as it is.
+String itemPlural(String words) {
+  final int space = words.lastIndexOf(' ');
+  final String last = words.substring(space + 1);
+  final String head = words.substring(0, space + 1);
+  if (last.isEmpty || _uncounted.contains(last) || last.endsWith('s')) return words;
+  if (RegExp(r'(ch|sh|x|z)$').hasMatch(last) || last == 'potato' || last == 'tomato') return '$head${last}es';
+  if (RegExp(r'[^aeiou]y$').hasMatch(last)) return '$head${last.substring(0, last.length - 1)}ies';
+  return '$head${last}s';
 }
 
 /// The offer as one line: "2 emerald + 1 book → 1 enchanted book".
@@ -405,5 +431,29 @@ String offerSentence(JsonMap entry) {
   final String takes = sides.takes.isEmpty ? 'nothing' : sides.takes.map(_say).join(' + ');
   final String gives = sides.gives.isEmpty ? 'nothing' : sides.gives.map(_say).join(' + ');
   final String runs = sides.commands == 0 ? '' : ', runs ${sides.commands} command${sides.commands == 1 ? '' : 's'}';
-  return '$takes → $gives$runs';
+  return '$gives for $takes$runs';
+}
+
+/// The plain names of the NPCs whose shop module opens each shop, by shop
+/// id; an NPC without a visible name goes by its id.
+Map<String, List<String>> shopOpeners(Iterable<AnimusDocument> documents) {
+  final Map<String, List<String>> openers = <String, List<String>>{};
+  for (final AnimusDocument document in documents) {
+    if (document.kind != DocumentKind.npc) continue;
+    final JsonMap json = asMap(document.json);
+    final String? shop = asString(asMap(asMap(json['modules'])['animus:shop'])['shop']);
+    if (shop == null) continue;
+    final String? name = plainName(json['name']);
+    (openers[shop] ??= <String>[]).add(name == null || name.trim().isEmpty ? document.id : name.trim());
+  }
+  return openers;
+}
+
+/// A shop's line in the Shops list: how many offers and who opens it
+/// ("12 offers, opened by Baker"); null when neither is known.
+String? shopListLine(int? offers, List<String> openers) {
+  final String? count = offers == null ? null : (offers == 0 ? 'No offers' : (offers == 1 ? '1 offer' : '$offers offers'));
+  final String? by = openers.isEmpty ? null : 'opened by ${openers.first}${openers.length > 1 ? ' and ${openers.length - 1} more' : ''}';
+  if (count == null) return by == null ? null : '${by[0].toUpperCase()}${by.substring(1)}';
+  return by == null ? count : '$count, $by';
 }

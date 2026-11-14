@@ -1,0 +1,16 @@
+{
+  "refs": [
+    {
+      "kind": "npc",
+      "id": "town/guard"
+    },
+    {
+      "kind": "shop",
+      "id": "town:bakery"
+    },
+    {
+      "kind": "npc",
+      "id": "town/gone"
+    }
+  ]
+}

@@ -79,31 +79,39 @@ class _AnimusAppState extends State<AnimusApp> {
       return;
     }
     final ServerConnection connection = component.hub.connection(serverId);
-    TerrainLink.attach(serverId, connection);
     // The tab that owns the server's workspace runs live editing; see StoreOwner.
     final LiveSession session = LiveSession(store: component.store, connection: connection, serverId: serverId, owner: StoreOwner(component.store));
+    TerrainLink.attach(serverId, connection, elsewhere: () => session.waiting);
     session.addListener(() {
       if (mounted) setState(() {});
     });
     session.notices.listen(_toast);
-    session.start();
+    // Set before start: starting notifies listeners, which land here again.
     _session = session;
-    if (connection.status.phase == ConnectionPhase.offline && component.hub.hasToken(serverId)) {
-      component.hub.connect(serverId);
-    }
+    // The session connects only in the tab that owns the workspace.
+    session.start();
+    _loadRouted();
   }
 
+  /// A server document opened by its address is read when it is not here yet.
+  void _loadRouted() {
+    final EditorRoute route = _route;
+    if (route is DocumentRoute) _session?.ensureLoaded(<DocumentRef>[DocumentRef(route.kind, route.documentId)]);
+  }
+
+  /// The session's toast on screen: a new one replaces it, so they never pile up.
+  String? _noticeToast;
+
   void _toast(LiveNotice notice) {
-    switch (notice.level) {
-      case NoticeLevel.success:
-        ArcaneSonner.success(notice.message);
-      case NoticeLevel.warning:
-        ArcaneSonner.warning(notice.message);
-      case NoticeLevel.error:
-        ArcaneSonner.error(notice.message);
-      case NoticeLevel.info:
-        ArcaneSonner.info(notice.message);
-    }
+    if (!notice.toast) return;
+    final String? shown = _noticeToast;
+    if (shown != null) ArcaneSonner.dismiss(shown);
+    _noticeToast = switch (notice.level) {
+      NoticeLevel.success => ArcaneSonner.success(notice.message),
+      NoticeLevel.warning => ArcaneSonner.warning(notice.message),
+      NoticeLevel.error => ArcaneSonner.error(notice.message),
+      NoticeLevel.info => ArcaneSonner.info(notice.message),
+    };
   }
 
   Future<void> _routeTo(EditorRoute route) async {
@@ -116,6 +124,7 @@ class _AnimusAppState extends State<AnimusApp> {
       NewDocumentRoute(:final String workspaceId) => workspaceId,
       KindListRoute(:final String workspaceId) => workspaceId,
       SyncRoute(:final String workspaceId) => workspaceId,
+      CitizensRoute(:final String? workspaceId) => workspaceId,
       _ => null,
     };
     if (route is ServerRoute) {
@@ -133,6 +142,7 @@ class _AnimusAppState extends State<AnimusApp> {
       await component.store.refreshWorkspaces();
     } else {
       await component.store.openWorkspace(workspaceId);
+      _loadRouted();
     }
   }
 
@@ -159,7 +169,10 @@ class _AnimusAppState extends State<AnimusApp> {
           onToggleTheme: _toggleTheme,
           onNavigate: (EditorRoute route) => navigate(route.format()),
         ),
-        const ArcaneSonner(),
+        // Toasts stack above the save bar (48 px) with a 16 px gap, under
+        // menus, suggestion lists and modals, and let clicks through; only
+        // their own buttons take one.
+        const ArcaneSonner(edgeOffset: 64, layer: 35, passThrough: true),
       ]),
     );
   }

@@ -1,11 +1,16 @@
+import 'dart:math' as math;
+
 import 'package:animus_editor/logic/gui/gui_catalog.dart';
 import 'package:animus_editor/logic/gui/gui_json.dart';
 import 'package:animus_editor/logic/gui/gui_presets.dart';
 import 'package:animus_editor/logic/gui/hologram_lines.dart';
 import 'package:animus_editor/mc/gui/gui_scene.dart';
 import 'package:animus_editor/mc/npc/npc_scene.dart';
+import 'package:animus_editor/mc/scene/mc_math.dart';
 import 'package:animus_editor/model/document_kind.dart';
 import 'package:test/test.dart';
+
+import 'fixtures.dart';
 
 void main() {
   group('actions', () {
@@ -39,6 +44,9 @@ void main() {
       expect(humanizeKey('customModelValue'), 'Custom model value');
       expect(humanizeKey('when'), 'When');
       expect(humanizeKey('link_distance'), 'Link distance');
+      expect(humanizeKey('backgroundArgb'), 'Background colour');
+      expect(humanizeKey('npcId'), 'NPC ID');
+      expect(humanizeKey('argb'), 'Colour');
     });
   });
 
@@ -154,6 +162,47 @@ void main() {
       expect(scene.targets.first.centre.z, closeTo(-3, 1e-9));
       expect(scene.targets[1].centre.z, closeTo(-2.5, 1e-9));
       expect(scene.notes.any((String note) => note.contains('labelled box')), isTrue);
+      expect(scene.texts.where((NpcText text) => text.lines.join().contains('Cow')), hasLength(1));
+    });
+
+    test('should lay the default menu out as the server does: one line each, centred on its offset, framed whole', () {
+      final GuiScene scene = menuScene(readJson('gloss/fixtures/menu-default.json')! as JsonMap);
+      NpcText text(String part) => scene.texts.firstWhere((NpcText text) => text.lines.join().contains(part));
+      final NpcText title = text('Gloss Menu'), body = text('Edit menus'), close = text('Close');
+      expect(body.lineWidth, 16384, reason: 'menu text does not wrap unless its style says so');
+      expect(<bool>[title.placed, body.placed, close.placed], <bool>[true, true, true], reason: 'the stage leaves menu text where the menu puts it');
+      expect(body.background, '#00000000');
+      expect(title.anchor.y, greaterThan(body.anchor.y));
+      expect(body.anchor.y, greaterThan(close.anchor.y));
+      for (final (NpcText shown, double offset) in <(NpcText, double)>[(title, 0.35), (body, 0.05), (close, -0.35)]) {
+        expect(shown.anchor.y + shown.lines.length * guiTextRowBlocks / 2, closeTo(1.7 + offset, 1e-9), reason: 'the block is centred on the offset');
+      }
+      expect(title.anchor.y, greaterThanOrEqualTo(body.anchor.y + guiTextRowBlocks), reason: 'title and body do not overlap');
+      expect(body.anchor.y, greaterThanOrEqualTo(close.anchor.y + guiTextRowBlocks), reason: 'body and close do not overlap');
+      final Iterable<double> xs = scene.scene.frame.map((McVec3 point) => point.x);
+      expect(xs.reduce(math.max) - xs.reduce(math.min), greaterThanOrEqualTo(5), reason: 'the camera frames the whole body line');
+      final GuiSceneTarget pick = scene.targets.firstWhere((GuiSceneTarget target) => target.key == 'body');
+      expect(pick.half.x * 2, greaterThanOrEqualTo(5));
+      expect(pick.half.y * 2, closeTo(guiTextRowBlocks, 1e-9));
+    });
+
+    test('should draw menu text with its icon style', () {
+      final NpcText text = menuScene(<String, Object?>{
+        'components': <Object?>[
+          <String, Object?>{
+            'id': 't',
+            'offset': <Object?>[0, 0, 0],
+            'data': <String, Object?>{
+              'type': 'decoration',
+              'icon': <String, Object?>{'type': 'text', 'text': 'Hi', 'style': <String, Object?>{'scaleY': 2, 'lineWidth': 80, 'shadow': true}},
+            },
+          },
+        ],
+      }).texts.single;
+      expect(text.scaleY, 2);
+      expect(text.lineWidth, 80);
+      expect(text.shadow, isTrue);
+      expect(text.anchor.y + guiTextRowBlocks * 2 / 2, closeTo(1.5, 1e-9));
     });
 
     test('should tilt a fixed hologram by pitch, keep a facing one upright and note entity rows', () {
@@ -172,7 +221,8 @@ void main() {
         'lines': <Object?>[<String, Object?>{'entity': 'cow', 'show': false}, <String, Object?>{'entity': 'pig'}],
       });
       expect(entity.notes.where((String note) => note.contains('hidden')), hasLength(1));
-      expect(entity.texts.where((NpcText text) => text.lines.join().contains('minecraft:pig')), hasLength(1));
+      expect(entity.texts.where((NpcText text) => text.lines.join().contains('Pig')), hasLength(1), reason: 'the box is labelled with the entity by name');
+      expect(entity.texts.where((NpcText text) => text.lines.join().contains('minecraft:')), isEmpty);
     });
 
     test('should draw hologram text rows as one text display with the hologram style', () {
@@ -221,7 +271,7 @@ void main() {
       expect(hologramScene(<String, Object?>{'style': <String, Object?>{'textOpacity': 2}, 'lines': <Object?>['a']}).texts.single.opacity, 1,
           reason: 'the client draws opacity 3 and below fully opaque');
       final GuiScene hidden = hologramScene(<String, Object?>{'style': <String, Object?>{'seeThrough': false}, 'lines': <Object?>['a']});
-      expect(hidden.notes.where((String note) => note.contains('seeThrough')), hasLength(1));
+      expect(hidden.notes.where((String note) => note.contains('see-through')), hasLength(1));
     });
   });
 }

@@ -111,7 +111,7 @@ class DirectPath {
       body: body,
       address: peerAddress(request),
     );
-    final FakeResponse result = refused == null ? server.api.handle(call) : refused.toResponse().withHeaders(server.api.cors(call));
+    final FakeResponse result = refused == null ? await server.api.handle(call) : refused.toResponse().withHeaders(server.api.cors(call));
     if (result.isDropped) return destroyConnection(request);
     await writeResponse(request.response, result);
   }

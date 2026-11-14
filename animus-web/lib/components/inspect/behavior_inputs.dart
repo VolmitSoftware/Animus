@@ -13,10 +13,17 @@ import 'package:jaspr/jaspr.dart' show Component;
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/behavior_language.dart';
 import '../../logic/suggest/field_profile.dart';
-import '../gui/gui_fields.dart';
+import '../../model/animus_document.dart' show DiagnosticSeverity;
+import '../../ui/action_row.dart';
+import '../conversation/conversation_input.dart' show formattedTextInput;
 import '../suggest/autocomplete_input.dart';
 import '../suggest/suggest_scope.dart';
 import 'inspect_fields.dart';
+import '../select/animus_select.dart';
+import '../../ui/icon_button.dart';
+import '../../ui/number_input.dart';
+import '../../ui/stack.dart';
+import '../../ui/problem_text.dart';
 
 int _nextId = 0;
 
@@ -24,15 +31,7 @@ int _nextId = 0;
 /// facts, context keys and functions; a problem shows under the field as
 /// you type.
 class BehaviorExpressionInput extends StatefulWidget {
-  const BehaviorExpressionInput({
-    required this.value,
-    required this.onChanged,
-    required this.scope,
-    required this.label,
-    this.template = false,
-    this.placeholder,
-    super.key,
-  });
+  const BehaviorExpressionInput({required this.value, required this.onChanged, required this.scope, required this.label, this.template = false, this.placeholder, super.key});
 
   final String value;
   final void Function(String value) onChanged;
@@ -66,7 +65,7 @@ class _BehaviorExpressionInputState extends State<BehaviorExpressionInput> {
     final String text = _typed ?? component.value;
     final String? problem = text.isEmpty && component.template ? null : (component.template ? checkBehaviorTemplate(text, component.scope) : checkBehaviorExpression(text, component.scope));
     final BehaviorNames names = BehaviorNames(scope: component.scope, variableScopes: SuggestScope.of(context).behavior?.variableScopes ?? const <String, String>{});
-    return dom.div(classes: 'animus-gui-text animus-expr', <Widget>[
+    return stack(spacing: 4, <Widget>[
       AutocompleteInput(
         id: _id,
         value: component.value,
@@ -75,7 +74,8 @@ class _BehaviorExpressionInputState extends State<BehaviorExpressionInput> {
         label: component.label,
         placeholder: component.placeholder,
         oneLine: true,
-        classes: 'animus-gui-input is-code animus-expr-input',
+        classes: 'animus-expr-input',
+        code: true,
         invalid: problem != null,
         describedBy: problem != null ? '$_id-problem' : null,
         onChanged: (String next) {
@@ -83,7 +83,7 @@ class _BehaviorExpressionInputState extends State<BehaviorExpressionInput> {
           component.onChanged(next);
         },
       ),
-      if (problem != null) dom.span(id: '$_id-problem', classes: 'animus-gui-problem is-error', <Widget>[Component.text(problem)]),
+      if (problem != null) problemLine(DiagnosticSeverity.error, problem, id: '$_id-problem'),
     ]);
   }
 }
@@ -101,11 +101,11 @@ enum _ValueKind {
 }
 
 _ValueKind _kindOf(Object? value) => switch (value) {
-      String() => _ValueKind.text,
-      num() => _ValueKind.number,
-      bool() => _ValueKind.flag,
-      _ => _ValueKind.json,
-    };
+  String() => _ValueKind.text,
+  num() => _ValueKind.number,
+  bool() => _ValueKind.flag,
+  _ => _ValueKind.json,
+};
 
 /// A value of type `any`: text, a number, true or false, or JSON for
 /// lists and maps. The kind picker converts the value.
@@ -119,30 +119,36 @@ class JsonValueEditor extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final _ValueKind kind = _kindOf(value);
-    return dom.div(classes: 'animus-value-editor', <Widget>[
-      GuiSelect(
-        value: kind.name,
-        options: <String>[for (final _ValueKind option in _ValueKind.values) option.name],
-        labels: <String, String>{for (final _ValueKind option in _ValueKind.values) option.name: option.label},
-        label: '$label kind',
-        onChanged: (String? next) {
-          final _ValueKind? picked = _ValueKind.values.where((_ValueKind option) => option.name == next).firstOrNull;
-          if (picked == null || picked == kind) return;
-          onChanged(switch (picked) {
-            _ValueKind.text => value == null ? '' : (value is String ? value : jsonEncode(value)),
-            _ValueKind.number => value is String ? (num.tryParse(value! as String) ?? 0) : 0,
-            _ValueKind.flag => value == true || value == 'true',
-            _ValueKind.json => value is List<Object?> || value is Map<String, Object?> ? value : <Object?>[],
-          });
-        },
-      ),
-      switch (kind) {
-        _ValueKind.text => GuiTextInput(value: value is String ? value! as String : '', label: label, onChanged: (String next) => onChanged(next)),
-        _ValueKind.number => GuiNumberInput(value: value as num?, integer: false, label: label, onChanged: (num? next) => onChanged(next ?? 0)),
-        _ValueKind.flag => GuiSwitch(value: value == true, label: label, onChanged: (bool next) => onChanged(next)),
-        _ValueKind.json => KeptJsonEditor(value: value, label: label, onChanged: (Object? next) => onChanged(next ?? <Object?>[])),
-      },
-    ]);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      gapSize: Gap.sm,
+      children: <Widget>[
+        AnimusSelect.values(
+          value: kind.name,
+          values: <String>[for (final _ValueKind option in _ValueKind.values) option.name],
+          labels: <String, String>{for (final _ValueKind option in _ValueKind.values) option.name: option.label},
+          hiddenLabel: '$label kind',
+          onChanged: (String? next) {
+            final _ValueKind? picked = _ValueKind.values.where((_ValueKind option) => option.name == next).firstOrNull;
+            if (picked == null || picked == kind) return;
+            onChanged(switch (picked) {
+              _ValueKind.text => value == null ? '' : (value is String ? value : jsonEncode(value)),
+              _ValueKind.number => value is String ? (num.tryParse(value! as String) ?? 0) : 0,
+              _ValueKind.flag => value == true || value == 'true',
+              _ValueKind.json => value is List<Object?> || value is Map<String, Object?> ? value : <Object?>[],
+            });
+          },
+        ),
+        Expanded(
+          child: switch (kind) {
+            _ValueKind.text => formattedTextInput(value: value is String ? value! as String : '', label: label, onChanged: (String next) => onChanged(next)),
+            _ValueKind.number => NumberInput(value: value as num?, integer: false, label: label, onChanged: (num? next) => onChanged(next ?? 0)),
+            _ValueKind.flag => ArcaneToggleSwitch(value: value == true, label: label, onChanged: (bool next) => onChanged(next), size: ComponentSize.sm),
+            _ValueKind.json => KeptJsonEditor(value: value, label: label, onChanged: (Object? next) => onChanged(next ?? <Object?>[])),
+          },
+        ),
+      ],
+    );
   }
 }
 
@@ -160,61 +166,94 @@ class TypedValueEditor extends StatelessWidget {
   Widget build(BuildContext context) {
     switch (type) {
       case 'boolean':
-        return GuiSwitch(value: value == true, label: label, onChanged: (bool next) => onChanged(next));
+        return ArcaneToggleSwitch(value: value == true, label: label, onChanged: (bool next) => onChanged(next), size: ComponentSize.sm);
       case 'integer' || 'decimal':
-        return GuiNumberInput(
+        return NumberInput(
           value: value is num ? value! as num : null,
           integer: type == 'integer',
           label: label,
           onChanged: (num? next) => onChanged(type == 'integer' ? (next ?? 0).round() : (next ?? 0).toDouble()),
         );
       case 'string':
-        return GuiTextInput(value: value is String ? value! as String : '', label: label, onChanged: (String next) => onChanged(next));
+        return AutocompleteInput(value: value is String ? value! as String : '', label: label, onChanged: (String next) => onChanged(next), profile: FieldProfile.none);
       case 'list':
         final JsonList items = asList(value);
-        return dom.div(classes: 'animus-value-list', attributes: <String, String>{'role': 'group', 'aria-label': label}, <Widget>[
-          if (items.isEmpty) const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('Empty list')]),
-          for (int index = 0; index < items.length; index++)
-            dom.div(key: ValueKey<String>('item-$index'), classes: 'animus-value-row', <Widget>[
-              dom.span(classes: 'animus-value-key', <Widget>[Component.text('${index + 1}')]),
-              JsonValueEditor(value: items[index], label: '$label item ${index + 1}', onChanged: (Object? next) => onChanged(<Object?>[...items]..[index] = next)),
-              GuiIconButton(icon: ArcaneIcon.x(size: IconSize.sm), label: 'Remove $label item ${index + 1}', onPressed: () => onChanged(<Object?>[...items]..removeAt(index))),
+        return dom.div(
+          attributes: <String, String>{'role': 'group', 'aria-label': label},
+          <Widget>[
+            stack(<Widget>[
+              if (items.isEmpty) noteLine('Empty list'),
+              for (int index = 0; index < items.length; index++)
+                Row(
+                  key: ValueKey<String>('item-$index'),
+                  gapSize: Gap.sm,
+                  children: <Widget>[
+                    dom.code(<Widget>[Component.text('${index + 1}')]),
+                    Expanded(
+                      child: JsonValueEditor(value: items[index], label: '$label item ${index + 1}', onChanged: (Object? next) => onChanged(<Object?>[...items]..[index] = next)),
+                    ),
+                    AppIconButton(icon: ArcaneIcon.x(), label: 'Remove $label item ${index + 1}', onPressed: () => onChanged(<Object?>[...items]..removeAt(index))),
+                  ],
+                ),
+              ActionRow(
+                dense: true,
+                secondary: <RowAction>[
+                  RowAction('Add item', () => onChanged(<Object?>[...items, ''])),
+                ],
+              ),
             ]),
-          Button.ghost(label: 'Add item', size: ButtonSize.small, onPressed: () => onChanged(<Object?>[...items, ''])),
-        ]);
+          ],
+        );
       case 'map':
         final JsonMap entries = asMap(value);
         final List<String> keys = entries.keys.toList();
-        return dom.div(classes: 'animus-value-list', attributes: <String, String>{'role': 'group', 'aria-label': label}, <Widget>[
-          if (entries.isEmpty) const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('Empty map')]),
-          for (int index = 0; index < keys.length; index++)
-            dom.div(key: ValueKey<String>('entry-$index'), classes: 'animus-value-row', <Widget>[
-              GuiTextInput(
-                value: keys[index],
-                label: '$label key ${index + 1}',
-                onChanged: (String next) {
-                  if (next.isNotEmpty && !entries.containsKey(next)) onChanged(renameKey(entries, keys[index], next));
-                },
+        return dom.div(
+          attributes: <String, String>{'role': 'group', 'aria-label': label},
+          <Widget>[
+            stack(<Widget>[
+              if (entries.isEmpty) noteLine('Empty map'),
+              for (int index = 0; index < keys.length; index++)
+                Row(
+                  key: ValueKey<String>('entry-$index'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  gapSize: Gap.sm,
+                  children: <Widget>[
+                    Expanded(
+                      child: AutocompleteInput(
+                        value: keys[index],
+                        label: '$label key ${index + 1}',
+                        onChanged: (String next) {
+                          if (next.isNotEmpty && !entries.containsKey(next)) onChanged(renameKey(entries, keys[index], next));
+                        },
+                        profile: FieldProfile.none,
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: JsonValueEditor(
+                        value: entries[keys[index]],
+                        label: '$label value of ${keys[index]}',
+                        onChanged: (Object? next) => onChanged(<String, Object?>{...entries, keys[index]: next}),
+                      ),
+                    ),
+                    AppIconButton(icon: ArcaneIcon.x(), label: 'Remove key ${keys[index]}', onPressed: () => onChanged(<String, Object?>{...entries}..remove(keys[index]))),
+                  ],
+                ),
+              ActionRow(
+                dense: true,
+                secondary: <RowAction>[
+                  RowAction('Add key', () {
+                    String key = 'key';
+                    for (int number = 2; entries.containsKey(key); number++) {
+                      key = 'key_$number';
+                    }
+                    onChanged(<String, Object?>{...entries, key: ''});
+                  }),
+                ],
               ),
-              JsonValueEditor(
-                value: entries[keys[index]],
-                label: '$label value of ${keys[index]}',
-                onChanged: (Object? next) => onChanged(<String, Object?>{...entries, keys[index]: next}),
-              ),
-              GuiIconButton(icon: ArcaneIcon.x(size: IconSize.sm), label: 'Remove key ${keys[index]}', onPressed: () => onChanged(<String, Object?>{...entries}..remove(keys[index]))),
             ]),
-          Button.ghost(
-            label: 'Add key',
-            size: ButtonSize.small,
-            onPressed: () {
-              String key = 'key';
-              for (int number = 2; entries.containsKey(key); number++) {
-                key = 'key_$number';
-              }
-              onChanged(<String, Object?>{...entries, key: ''});
-            },
-          ),
-        ]);
+          ],
+        );
       default:
         return JsonValueEditor(value: value, label: label, onChanged: onChanged);
     }

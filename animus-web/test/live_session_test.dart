@@ -7,11 +7,14 @@ import 'package:animus_editor/logic/json_merge.dart';
 import 'package:animus_editor/logic/shared_schemas.dart';
 import 'package:animus_editor/model/animus_document.dart';
 import 'package:animus_editor/model/document_kind.dart';
+import 'package:animus_editor/model/document_summary.dart';
 import 'package:animus_editor/model/server_binding.dart';
 import 'package:animus_editor/services/server/server_connection.dart';
 import 'package:animus_editor/services/server/transport.dart';
 import 'package:animus_editor/state/editor_store.dart';
 import 'package:animus_editor/state/catalog_entry.dart';
+import 'package:animus_editor/state/document_loader.dart';
+import 'package:animus_editor/state/library.dart';
 import 'package:animus_editor/state/live_session.dart';
 import 'package:animus_editor/state/workspace_repository.dart';
 import 'package:crypto/crypto.dart';
@@ -46,21 +49,76 @@ class MiniServer {
     };
   }
 
-  Map<String, Object?> version(Map<String, Object?> document) =>
-      <String, Object?>{for (final String field in <String>['kind', 'id', 'path', 'revision', 'hash']) field: document[field]};
+  Map<String, Object?> version(Map<String, Object?> document) => <String, Object?>{
+        for (final String field in <String>['kind', 'id', 'path', 'revision', 'hash']) field: document[field],
+        'summary': summarizeDocument(DocumentKind.parse(document['kind']! as String)!, document['id']! as String, document['source']).fields,
+      };
+
+  int batchReads = 0;
+
+  /// Catalog entries per page; the cursor is the index of the next entry.
+  int pageSize = 1000;
+
+  /// The next [rateLimited] batch reads answer 429 with a retry hint.
+  int rateLimited = 0;
+
+  /// Refs in each batch read, in order.
+  final List<int> readSizes = <int>[];
+
+  /// Documents the batch read refuses with this error code instead of reading.
+  final Map<String, String> refused = <String, String>{};
 
   ApiResponse handle(ApiRequest request) {
     before?.call(request);
     final Uri uri = Uri.parse(request.path);
     final List<String> segments = uri.pathSegments;
     if (request.method == 'GET' && uri.path == '/v1/catalog') {
-      return ApiResponse(200, <String, Object?>{'documents': <Object?>[for (final Map<String, Object?> document in documents.values) version(document)], 'next': null});
+      final List<Map<String, Object?>> all = documents.values.toList();
+      final int from = int.tryParse(uri.queryParameters['after'] ?? '') ?? 0;
+      final int to = from + pageSize < all.length ? from + pageSize : all.length;
+      return ApiResponse(200, <String, Object?>{
+        'documents': <Object?>[for (final Map<String, Object?> document in all.sublist(from, to)) version(document)],
+        'next': to < all.length ? '$to' : null,
+      });
+    }
+    if (request.method == 'POST' && uri.path == '/v1/documents/read') {
+      if (rateLimited > 0) {
+        rateLimited--;
+        return const ApiResponse(429, <String, Object?>{'error': <String, Object?>{'code': 'rate-limited', 'message': 'slow', 'retryAfterMillis': 50}});
+      }
+      batchReads++;
+      readSizes.add(((request.body! as Map<String, Object?>)['refs']! as List<Object?>).length);
+      final List<Map<String, Object?>> refs = <Map<String, Object?>>[
+        for (final Object? ref in (request.body! as Map<String, Object?>)['refs']! as List<Object?>) ref! as Map<String, Object?>,
+      ];
+      return ApiResponse(200, <String, Object?>{
+        'documents': <Object?>[
+          for (final Map<String, Object?> ref in refs)
+            if (!refused.containsKey('${ref['kind']}:${ref['id']}'))
+              if (documents['${ref['kind']}:${ref['id']}'] case final Map<String, Object?> document) <String, Object?>{...document, 'summary': version(document)['summary']},
+        ],
+        'errors': <Object?>[
+          for (final Map<String, Object?> ref in refs)
+            if (refused['${ref['kind']}:${ref['id']}'] case final String code)
+              <String, Object?>{'kind': ref['kind'], 'id': ref['id'], 'code': code, 'message': code}
+            else if (!documents.containsKey('${ref['kind']}:${ref['id']}'))
+              <String, Object?>{'kind': ref['kind'], 'id': ref['id'], 'code': 'not-found', 'message': 'none'},
+        ],
+        'remaining': <Object?>[],
+      });
     }
     if (request.method == 'GET' && segments.length >= 4 && segments[1] == 'documents') {
       final Map<String, Object?>? document = documents['${segments[2]}:${segments.sublist(3).join('/')}'];
       return document == null
           ? const ApiResponse(404, <String, Object?>{'error': <String, Object?>{'code': 'not-found', 'message': 'none'}})
           : ApiResponse(200, document);
+    }
+    if (request.method == 'POST' && segments.length == 4 && segments[1] == 'npcs' && (segments[3] == 'spawn' || segments[3] == 'despawn')) {
+      // As the Java server: the NPC file gets `spawned` and a new revision; the catalog event follows.
+      final String id = Uri.decodeComponent(segments[2]);
+      final Map<String, Object?> source = documents['npc:$id']!['source']! as Map<String, Object?>;
+      put(DocumentKind.npc, id, <String, Object?>{...source, 'spawned': segments[3] == 'spawn'});
+      return ApiResponse(200, <String, Object?>{'id': id, 'spawned': segments[3] == 'spawn'});
     }
     if (request.method == 'POST' && uri.path == '/v1/validate') {
       final List<Object?> changes = (request.body! as Map<String, Object?>)['documents']! as List<Object?>;
@@ -180,9 +238,9 @@ class HeldRepository extends MemoryWorkspaceRepository {
   Completer<void>? hold;
 
   @override
-  Future<void> save(WorkspaceSnapshot snapshot) async {
+  Future<void> save(WorkspaceSnapshot snapshot, {WorkspaceSnapshot? previous, Set<String>? changed}) async {
     await hold?.future;
-    await super.save(snapshot);
+    await super.save(snapshot, previous: previous, changed: changed);
   }
 }
 
@@ -215,47 +273,56 @@ void main() {
     await connection.dispose();
   });
 
+  Future<void> openAll() => session.ensureLoaded(<DocumentRef>[for (final CatalogEntry entry in session.catalog) DocumentRef(entry.kind, entry.id)]);
+
   Future<void> edit(String id, Map<String, Object?> Function(Map<String, Object?> json) change) async {
     final AnimusDocument document = store.document(DocumentKind.npc, id)!;
     await store.editSource(DocumentKind.npc, id, prettyJson(change(Map<String, Object?>.of(document.json! as Map<String, Object?>))));
   }
 
-  test('should load the catalog when online and open documents with their server base', () async {
-    expect(session.catalog.map((CatalogEntry entry) => entry.id), <String>['town/guard', 'town/baker']);
-    await session.openDocuments(session.catalog);
+  test('should list the catalog with names once online and read every document in the background', () async {
+    expect(session.catalog.map((CatalogEntry entry) => entry.id), <String>['town/baker', 'town/guard']);
+    expect(store.library(DocumentKind.npc).map((LibraryEntry entry) => entry.name), <String>['Baker', 'Guard']);
     expect(store.workspace!.documents.length, 2);
+    expect(server.batchReads, 1, reason: 'one batch read, no read per document');
+    expect(network.sent.where(((ConnectionPath, ApiRequest) sent) => sent.$2.path.startsWith('/v1/documents/npc')), isEmpty);
     expect(store.workspace!.server!.bases['npc:town/guard']!.revision, 1);
     expect(session.stateOf(DocumentKind.npc, 'town/guard'), DraftState.clean);
     expect(store.document(DocumentKind.npc, 'town/guard')!.path, 'npcs/town/guard.json');
   });
 
   test('should show the newest notice as fresh until the user moves on', () async {
-    await session.openDocuments(session.catalog);
-    expect(session.freshNotice?.message, 'Opened 2 documents from the server.');
+    await session.validate();
+    expect(session.freshNotice?.message, 'Nothing to validate.');
     session.markLogSeen();
     expect(session.freshNotice, isNull);
-    expect(session.log.last.message, 'Opened 2 documents from the server.', reason: 'the log keeps it');
+    expect(session.log.last.message, 'Nothing to validate.', reason: 'the log keeps it');
   });
 
-  test('should open the skin document an NPC names once, quietly, with its server base', () async {
+  test('should read a document it is asked for once, quietly, with its server base', () async {
     final String hash = 'ab' * 32;
     final Map<String, Object?> skin = <String, Object?>{'signature': 'sig', 'skinName': 'x' * 36, 'textureRaw': 'e30='};
     server.put(DocumentKind.skin, hash, skin);
     final List<LiveNotice> notices = <LiveNotice>[];
     session.notices.listen(notices.add);
     final int before = network.sent.length;
-    await Future.wait(<Future<void>>[session.openSkin(hash), session.openSkin(hash)]);
-    await session.openSkin(hash);
+    final List<LoadResult> results = await Future.wait(<Future<LoadResult>>[
+      session.ensureLoaded(<DocumentRef>[DocumentRef(DocumentKind.skin, hash)]),
+      session.ensureLoaded(<DocumentRef>[DocumentRef(DocumentKind.skin, hash)]),
+    ]);
+    expect(results.first.loaded, <String>['skin:$hash']);
+    await session.ensureLoaded(<DocumentRef>[DocumentRef(DocumentKind.skin, hash)]);
     expect(store.document(DocumentKind.skin, hash)!.json, skin);
     expect(store.workspace!.server!.bases['skin:$hash'], isNotNull);
-    expect(network.sent.length - before, 1, reason: 'one GET for the skin');
+    expect(network.sent.length - before, 1, reason: 'one batch read for the skin');
     expect(notices, isEmpty);
-    await session.openSkin('cd' * 32);
+    final LoadResult missing = await session.ensureLoaded(<DocumentRef>[DocumentRef(DocumentKind.skin, 'cd' * 32)]);
+    expect(missing.missing, <String>['skin:${'cd' * 32}']);
     expect(store.document(DocumentKind.skin, 'cd' * 32), isNull, reason: 'the server has no such skin');
   });
 
   test('should apply a change set and move the base to the new revision', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
     expect(session.drafts.single.state, DraftState.modified);
     await session.apply(message: 'rename');
@@ -269,7 +336,7 @@ void main() {
   });
 
   test('should keep an edit made while an apply is in flight and send edits queued before it', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     final AnimusDocument shown = store.document(DocumentKind.npc, 'town/guard')!;
     // Two quick edits from the same shown document, then Apply at once.
     unawaited(store.commit(documents: <DocumentChange>[DocumentChange.update(DocumentKind.npc, shown.id, writeAt(shown.json, <JsonStep>['name'], 'Captain'))]));
@@ -303,14 +370,14 @@ void main() {
   });
 
   test('should show server diagnostics from validation per document', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'A very long name indeed');
     expect(await session.validate(), isFalse);
     expect(session.serverDiagnostics['npc:town/guard']!.single.path, r'$.name');
   });
 
   test('should drop a server diagnostic once its path is edited and keep the others', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'A very long name indeed');
     expect(await session.validate(), isFalse);
     session.serverDiagnostics['npc:town/guard'] = <Diagnostic>[
@@ -324,7 +391,7 @@ void main() {
   });
 
   test('should start a preview with the focused NPC even when unchanged', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     await session.startPreview(focus: <String>{'npc:town/baker'});
     expect(session.preview!.running, isTrue);
     expect(session.preview!.npcs, <String>['town/baker']);
@@ -334,7 +401,7 @@ void main() {
   });
 
   test('should report the live NPCs a running preview hides and clear them when it ends', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     await session.startPreview(focus: <String>{'npc:town/baker'});
     expect(session.preview!.hidden, <String>['town/baker']);
     expect(session.preview!.hiddenLine, 'Hidden while previewing: town/baker');
@@ -344,7 +411,7 @@ void main() {
   });
 
   test('should stop on a conflict, merge non-overlapping fields and apply on the server revision', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
     server.put(DocumentKind.npc, 'town/guard', <String, Object?>{'schemaVersion': 1, 'id': 'guard', 'group': 'town', 'name': 'Guard', 'spawned': false});
     await session.apply();
@@ -363,7 +430,7 @@ void main() {
   });
 
   test('should let the user pick a side for a field both changed', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Mine');
     server.put(DocumentKind.npc, 'town/guard', <String, Object?>{'schemaVersion': 1, 'id': 'guard', 'group': 'town', 'name': 'Theirs', 'spawned': true});
     await session.apply();
@@ -375,7 +442,7 @@ void main() {
   });
 
   test('should learn after a dropped connection that the change set applied', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
     network.dropAfter = (ApiRequest request) => request.path == '/v1/changes';
     await session.apply();
@@ -390,7 +457,7 @@ void main() {
   });
 
   test('should settle a change set still being written at reconnect from its change event', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
     ApiRequest? held;
     network.handler = serverHandler(rest: (ApiRequest request) {
@@ -420,8 +487,9 @@ void main() {
   });
 
   test('should explain an event stream closed at its limit, reconnect and refetch what changed meanwhile', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     final int catalogLoads = network.sent.where(((ConnectionPath, ApiRequest) sent) => sent.$2.path == '/v1/catalog').length;
+    final int reads = server.batchReads;
     // Events the editor never read: the server dropped them with the stream.
     server.put(DocumentKind.npc, 'town/baker', <String, Object?>{'schemaVersion': 1, 'id': 'baker', 'group': 'town', 'name': 'Night Baker'});
     final FakeSubscription stream = network.lastStream;
@@ -435,10 +503,26 @@ void main() {
     expect(network.sent.where(((ConnectionPath, ApiRequest) sent) => sent.$2.path == '/v1/catalog').length, greaterThan(catalogLoads));
     expect((store.document(DocumentKind.npc, 'town/baker')!.json! as Map<String, Object?>)['name'], 'Night Baker');
     expect(session.stateOf(DocumentKind.npc, 'town/baker'), DraftState.clean);
+    expect(server.batchReads, reads + 1, reason: 'only the changed document is read again, in one batch');
+  });
+
+  test('should explain a limit close when the session started after the connection was already online', () async {
+    await session.dispose();
+    expect(connection.status.online, isTrue, reason: 'pairing connects before the workspace opens its session');
+    session = LiveSession(store: store, connection: connection, serverId: profile.id);
+    session.start();
+    await settle();
+    final FakeSubscription stream = network.lastStream;
+    stream.emit(<String, Object?>{'type': 'closing', 'reason': 'limit'});
+    await stream.end('limit');
+    await settle();
+    final List<String> messages = <String>[for (final LiveNotice notice in session.log) notice.message];
+    expect(messages.where((String message) => message.contains('Fell behind on server events.')), hasLength(1));
+    expect(connection.status.online, isTrue);
   });
 
   test('should show a resync after a reconnect and say plainly what it found', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
     // Changed on the server while this editor was cut off: one clean copy, one draft.
     server.put(DocumentKind.npc, 'town/guard', <String, Object?>{'schemaVersion': 1, 'id': 'guard', 'group': 'town', 'name': 'Sergeant', 'spawned': true});
@@ -453,8 +537,8 @@ void main() {
     expect(session.busy, isNull);
     expect(session.stale, <String>{'npc:town/guard'});
     final List<String> messages = <String>[for (final LiveNotice notice in session.log) notice.message];
-    expect(messages.last, 'Resynced with the server: 1 document refreshed. 1 draft also changed on the server; merge it before applying.');
-    expect(messages.where((String message) => message.startsWith('Refreshed')), isEmpty, reason: 'one line for the whole resync');
+    expect(messages.last, 'Resynced with the server: 1 document refreshed. 1 change conflicts with the server; review before applying.');
+    expect(messages.where((String message) => message.startsWith('Updated')), isEmpty, reason: 'one line for the whole resync');
   });
 
   test('should say a resync found nothing changed', () async {
@@ -464,12 +548,55 @@ void main() {
     expect(session.log.last.message, 'Resynced with the server; nothing changed while disconnected.');
   });
 
+  test('should read the whole catalog again on Reload and reconcile what the server changed unheard', () async {
+    server.put(DocumentKind.npc, 'town/smith', <String, Object?>{'schemaVersion': 1, 'id': 'smith', 'group': 'town', 'name': 'Smith'});
+    network.lastStream.emit(<String, Object?>{
+      'type': 'catalog',
+      'documents': <Object?>[server.version(server.documents['npc:town/smith']!)],
+    });
+    await settle();
+    await openAll();
+    await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
+    // Changes no event told this editor about.
+    server.documents.remove('npc:town/baker');
+    server.documents.remove('npc:town/guard');
+    server.put(DocumentKind.npc, 'town/smith', <String, Object?>{'schemaVersion': 1, 'id': 'smith', 'group': 'town', 'name': 'Blacksmith'});
+    server.put(DocumentKind.npc, 'town/newcomer', <String, Object?>{'schemaVersion': 1, 'id': 'newcomer', 'group': 'town', 'name': 'Newcomer'});
+    int catalogReads = 0;
+    server.before = (ApiRequest request) {
+      if (request.path.startsWith('/v1/catalog')) catalogReads++;
+    };
+    final List<String?> busy = <String?>[];
+    session.addListener(() => busy.add(session.busy));
+
+    await session.loadCatalog();
+    await settle();
+
+    expect(catalogReads, 1);
+    expect(busy, contains('Reloading'));
+    expect(session.catalog.map((CatalogEntry entry) => entry.id), <String>['town/newcomer', 'town/smith']);
+    expect(store.document(DocumentKind.npc, 'town/baker'), isNull, reason: 'a clean copy the server deleted goes');
+    expect(store.libraryEntry(DocumentKind.npc, 'town/baker'), isNull);
+    expect(store.workspace!.server!.bases.containsKey('npc:town/baker'), isFalse);
+    expect((store.document(DocumentKind.npc, 'town/guard')!.json! as Map<String, Object?>)['name'], 'Captain', reason: 'a draft is never dropped');
+    expect(store.libraryEntry(DocumentKind.npc, 'town/guard')!.stale, isTrue);
+    expect((store.document(DocumentKind.npc, 'town/smith')!.json! as Map<String, Object?>)['name'], 'Blacksmith');
+    expect(store.libraryEntry(DocumentKind.npc, 'town/newcomer')!.name, 'Newcomer');
+    expect(session.log.last.message, 'Reloaded the catalog: 1 new, 2 removed, 1 refreshed. 1 change conflicts with the server; review before applying.');
+  });
+
+  test('should say a Reload found nothing changed', () async {
+    await session.loadCatalog();
+    await settle();
+    expect(session.log.last.message, 'Reloaded the catalog; nothing changed.');
+  });
+
   test('should not call the first connect a resync', () async {
     expect(session.log.map((LiveNotice notice) => notice.message), isNot(contains(startsWith('Resynced'))));
   });
 
   test('should report a change set that never reached the server after a reconnect', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
     network.down.add(ConnectionPath.direct);
     await session.apply();
@@ -481,7 +608,7 @@ void main() {
   });
 
   test('should refresh a clean document and mark an edited one stale on catalog events', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
     server
       ..put(DocumentKind.npc, 'town/guard', <String, Object?>{'schemaVersion': 1, 'id': 'guard', 'group': 'town', 'name': 'Sentry'})
@@ -499,8 +626,40 @@ void main() {
     expect(session.conflicts['npc:town/guard']!.merge.conflicts.single.path, r'$.name');
   });
 
+  test('should not offer to delete a stale draft whose server copy could not be read for the merge', () async {
+    await openAll();
+    await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
+    server.put(DocumentKind.npc, 'town/guard', <String, Object?>{'schemaVersion': 1, 'id': 'guard', 'group': 'town', 'name': 'Sentry'});
+    network.lastStream.emit(<String, Object?>{'type': 'catalog', 'documents': <Object?>[server.version(server.documents['npc:town/guard']!)]});
+    await settle();
+    expect(session.stale, <String>{'npc:town/guard'});
+    server.refused['npc:town/guard'] = 'too-large';
+    await session.merge('npc:town/guard');
+    expect(session.conflicts, isEmpty, reason: 'an unreadable server copy is not a deletion');
+    expect(session.log.last.message, contains('Could not read the server copy'));
+    expect((store.document(DocumentKind.npc, 'town/guard')!.json! as Map<String, Object?>)['name'], 'Captain');
+  });
+
+  test('should take the catalog event of its own spawn quietly, as no change from elsewhere', () async {
+    await openAll();
+    // The event may come before the answer, as the fake server sends it.
+    server.before = (ApiRequest request) {
+      if (!request.path.endsWith('/despawn')) return;
+      scheduleMicrotask(() => network.lastStream.emit(<String, Object?>{
+            'type': 'catalog',
+            'documents': <Object?>[<String, Object?>{...server.version(server.documents['npc:town/guard']!), 'source': 'editor'}],
+          }));
+    };
+    await session.spawnNpcs(<String>['town/guard'], spawn: false);
+    await settle();
+    expect((store.document(DocumentKind.npc, 'town/guard')!.json! as Map<String, Object?>)['spawned'], isFalse);
+    expect(session.stateOf(DocumentKind.npc, 'town/guard'), DraftState.clean);
+    expect(session.log.last.message, 'Despawned 1 NPC on the server.');
+    expect(session.log.map((LiveNotice notice) => notice.message), isNot(contains(contains('changed on the server'))));
+  });
+
   test('should undo an applied change set through the server', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
     await session.apply();
     final String changeId = store.workspace!.server!.history.single.changeId;
@@ -512,7 +671,7 @@ void main() {
   });
 
   test('should not call its own apply or undo a change on the server', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
     await session.apply();
     void catalogEvent() => network.lastStream.emit(<String, Object?>{
@@ -523,7 +682,7 @@ void main() {
     await settle();
     // The undo's catalog event lands while the editor fetches what it wrote.
     server.before = (ApiRequest request) {
-      if (request.method != 'GET' || !request.path.startsWith('/v1/documents/')) return;
+      if (request.path != '/v1/documents/read') return;
       server.before = null;
       catalogEvent();
     };
@@ -533,11 +692,11 @@ void main() {
     await settle();
     final List<String> messages = <String>[for (final LiveNotice notice in session.log) notice.message];
     expect(messages, contains(startsWith('Undid')));
-    expect(messages.where((String message) => message.startsWith('Refreshed')), isEmpty);
+    expect(messages.where((String message) => message.startsWith('Updated')), isEmpty);
   });
 
   test('should still report a change made elsewhere after its own undo', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
     await session.apply();
     await session.undo(store.workspace!.server!.history.single.changeId);
@@ -547,12 +706,27 @@ void main() {
       'documents': <Object?>[server.version(server.documents['npc:town/guard']!)],
     });
     await settle();
-    expect(session.log.last.message, 'Refreshed 1 document changed on the server.');
+    expect(session.log.last.message, 'Updated 1 file from the server.');
     expect((store.document(DocumentKind.npc, 'town/guard')!.json! as Map<String, Object?>)['name'], 'Sentry');
   });
 
+  test('should announce documents the server gained, not ones it changed or this editor wrote', () async {
+    await openAll();
+    final List<List<String>> heard = <List<String>>[];
+    session.arrivals.listen((List<DocumentRef> refs) => heard.add(<String>[for (final DocumentRef ref in refs) ref.key]));
+    server.put(DocumentKind.inventory, 'town:counter', <String, Object?>{'schemaVersion': 1, 'revision': 1, 'rows': 3});
+    server.put(DocumentKind.npc, 'town/guard', <String, Object?>{'schemaVersion': 1, 'id': 'guard', 'group': 'town', 'name': 'Sentry'});
+    network.lastStream.emit(<String, Object?>{
+      'type': 'catalog',
+      'documents': <Object?>[server.version(server.documents['inventory:town:counter']!), server.version(server.documents['npc:town/guard']!)],
+    });
+    await settle();
+    expect(heard, <List<String>>[<String>['inventory:town:counter']]);
+    expect(store.libraryEntry(DocumentKind.inventory, 'town:counter'), isNotNull, reason: 'the library keeps it whatever the mode');
+  });
+
   test('should send deletions and creations in one change set', () async {
-    await session.openDocuments(session.catalog);
+    await openAll();
     await store.commit(documents: <DocumentChange>[
       const DocumentChange(DocumentKind.npc, 'town/baker', null),
       DocumentChange(DocumentKind.npc, 'town/smith', prettyJson(<String, Object?>{'schemaVersion': 1, 'id': 'smith', 'group': 'town', 'name': 'Smith'})),
@@ -568,7 +742,8 @@ void main() {
   test('should send a moved NPC as one move and undo it back', () async {
     server.put(DocumentKind.npc, 'town/crier', <String, Object?>{'schemaVersion': 1, 'uuid': '3b5d1f0e-8c2a-4e7b-9a61-0c4d2e8f1a35', 'id': 'crier', 'group': 'town', 'name': 'Crier'});
     await session.loadCatalog();
-    await session.openDocuments(session.catalog);
+    await openAll();
+    final int? before = store.libraryCounts()[DocumentKind.npc];
     final AnimusDocument crier = store.document(DocumentKind.npc, 'town/crier')!;
     final Map<String, Object?> moved = <String, Object?>{...crier.json! as Map<String, Object?>, 'group': 'town/market'};
     await store.commit(documents: <DocumentChange>[
@@ -577,6 +752,9 @@ void main() {
     ]);
     final DraftChange draft = session.drafts.single;
     expect(draft.state, DraftState.moved);
+    expect(store.libraryCounts()[DocumentKind.npc], before, reason: 'a moved NPC counts once, as the list shows it once');
+    expect(<String>[for (final LibraryEntry entry in store.library(DocumentKind.npc)) entry.id], allOf(contains('town/market/crier'), isNot(contains('town/crier'))));
+    expect(store.libraryEntry(DocumentKind.npc, 'town/market/crier')!.draft, DraftState.moved);
     expect(draft.from, 'town/crier');
     expect(draft.change!['from'], <String, Object?>{'id': 'town/crier'});
     expect(draft.change!['baseRevision'], 1);
@@ -597,8 +775,8 @@ void main() {
   });
 
   test('should persist the binding with the workspace', () async {
-    await session.openDocuments(session.catalog);
-    final WorkspaceSnapshot decoded = WorkspaceSnapshot.decode(store.workspace!.encode());
+    await openAll();
+    final WorkspaceSnapshot decoded = (await repository.load(store.workspace!.id))!;
     expect(decoded.server!.bases['npc:town/guard']!.hash, store.workspace!.server!.bases['npc:town/guard']!.hash);
   });
 }

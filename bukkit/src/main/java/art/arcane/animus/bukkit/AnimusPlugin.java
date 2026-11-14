@@ -528,7 +528,8 @@ public final class AnimusPlugin extends JavaPlugin {
             return available;
         };
         EditorService service = new EditorService(runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(runtime, commands, owners, extensions,
-                modulePlatform.name().toLowerCase(Locale.ROOT), "", features, new BukkitLookups(getServer())::read,
+                modulePlatform.name().toLowerCase(Locale.ROOT), art.arcane.animus.core.editor.EditorServerName.fallback(getServer().getMotd(), getServer().getWorldContainer().toPath()),
+                features, new BukkitLookups(getServer())::read,
                 (Player player, String node) -> player.hasPermission(node), new BukkitEditorNotices(this, replies), (String message) -> getLogger().info(message),
                 new BukkitEditorTerrain(this, regions), (java.util.UUID player, String node) -> BukkitOfflinePermission.check(getServer(), player, node))), (String message) -> getLogger().info(message),
                 (String message) -> getLogger().warning(message));
@@ -594,7 +595,7 @@ public final class AnimusPlugin extends JavaPlugin {
     private void splash(SplashScreen.Startup startup) {
         try {
             String server = getServer().getName() + " " + SplashScreenSupport.serverVersionWithoutMcSuffix(getServer().getVersion());
-            ComponentLog.logMarkup(this, getLogger(), null, Level.INFO, SplashScreen.render(SplashScreen.Details.current(server, startup), SplashScreen.Colors.MINIMESSAGE), null);
+            ComponentLog.logMarkup(this, getLogger(), null, Level.INFO, SplashScreen.render(SplashScreen.Details.current(server, startup, SplashScreen.editorUrl(runtime)), SplashScreen.Colors.MINIMESSAGE), null);
         } catch (RuntimeException | LinkageError failure) {
             getLogger().log(Level.WARNING, "Splash screen failed to render", failure);
         }

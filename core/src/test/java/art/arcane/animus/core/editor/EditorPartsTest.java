@@ -129,6 +129,7 @@ class EditorPartsTest {
                 assertTrue(port > 0, direct);
                 assertEquals(Optional.empty(), code.relayUrl(), "the relay is off in this config");
                 assertEquals(EditorIdentity.loadOrCreate(runtime.documents()).fingerprint(), code.fingerprint());
+                assertEquals(Optional.of("Town"), code.serverName(), "the platform's name while [editor] serverName is empty");
                 assertTrue(service.status().stream().anyMatch((String line) -> line.startsWith("Editor ready | listener 127.0.0.1:" + port + " (http) ")));
                 assertTrue(service.handler().isPresent());
             } finally { service.close(); }
@@ -136,7 +137,7 @@ class EditorPartsTest {
     }
 
     @Test
-    void pairCommand_isTwoLinesWithOpenAndCopyChipsAndThePlainLinkForTheConsole() throws Exception {
+    void pairCommand_isOneLineForAPlayerAndTwoWithTheScopesForTheConsole() throws Exception {
         Path data = directory.resolve("paired");
         Files.createDirectories(data);
         Files.writeString(data.resolve("config.toml"), "[editor]\nlistenerEnabled = true\nrelayEnabled = false\nport = 0\n");
@@ -150,18 +151,18 @@ class EditorPartsTest {
                 EditorCommands commands = new EditorCommands(() -> service, Runnable::run);
                 List<ChatLine> player = new ArrayList<>();
                 commands.pair(recorder(EditorHarness.ADMIN, player), "laptop", "", "", "");
-                assertEquals(2, player.size());
+                assertEquals(1, player.size());
                 String link = player.getFirst().console().substring(player.getFirst().console().indexOf("https://"));
                 assertTrue(link.contains("#/pair/ANM1."), link);
-                assertEquals("[Animus]: Pairing link ready; open it once within 10 minutes [Open editor] [Click to copy]",
-                        PlainTextComponentSerializer.plainText().serialize(player.getFirst().component()));
-                String access = PlainTextComponentSerializer.plainText().serialize(player.get(1).component());
-                assertTrue(access.startsWith("[Animus]: The paired editor may ") && access.contains("; pairing lasts 7d") && access.endsWith("[Token id] [Revoke]"), access);
-                assertFalse(access.contains("tok_"), "no bare token in chat: " + access);
+                String shown = PlainTextComponentSerializer.plainText().serialize(player.getFirst().component());
+                assertEquals("[Animus]: Link ready. Open it within 10 minutes [Open editor] [Copy] [Revoke]", shown);
+                assertFalse(shown.contains("tok_"), "no bare token in chat: " + shown);
                 List<String> console = new ArrayList<>();
                 commands.pair(recorder(null, console), "", "", "", "");
                 assertEquals(2, console.size());
-                assertTrue(RichText.plain(console.getFirst()).matches("\\[Animus]: Pairing link ready; open it once within 10 minutes https://\\S+#/pair/ANM1\\.\\S+"), console.getFirst());
+                assertTrue(RichText.plain(console.getFirst()).matches("\\[Animus]: Link ready\\. Open it within 10 minutes https://\\S+#/pair/ANM1\\.\\S+"), console.getFirst());
+                assertTrue(RichText.plain(console.get(1)).matches("\\[Animus]: Scopes read validate preview apply:npcs apply:behaviors apply:gui apply:rigs import spawn terrain; ends after 7d unused; token tok_\\S+"),
+                        console.get(1));
             } finally { service.close(); }
         } finally { runtime.close(); }
     }
@@ -202,8 +203,29 @@ class EditorPartsTest {
     }
 
     @Test
+    void pairOptions_foldersAreNpcFolderNames_andAFolderCoversTheFoldersInsideIt() throws Exception {
+        for (String folder : List.of("Town", "town/", "/town", "town//market", "town/../harbor", "town market", "-town", "a/b/c/d/e/f/g/h/i")) {
+            IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> EditorCommands.grant(actor(null), "", "", folder, "", 7), folder);
+            assertEquals("folders take lowercase folder names under npcs/, such as town or town/market; " + folder + " is not one", refused.getMessage());
+        }
+        assertEquals(List.of("town/market", "harbor"), EditorCommands.grant(actor(null), "", "", " town/market , harbor ", "", 7).groups());
+        try (DocumentStore store = new DocumentStore(directory)) {
+            EditorTokens tokens = new EditorTokens(store, new EditorHarness.TestClock());
+            EditorTokens.Pairing pairing = tokens.pair(EditorCommands.grant(actor(null), "", "", "town", "", 7));
+            String bearer = tokens.exchange(pairing.tokenId(), pairing.secret(), Optional.empty()).getKey();
+            EditorTokens.Token token = tokens.authenticate(bearer);
+            assertTrue(EditorApi.visible(token, DocumentKind.NPC, "town/guard"));
+            assertTrue(EditorApi.visible(token, DocumentKind.NPC, "town/market/baker"), "town covers the folders inside it");
+            assertFalse(EditorApi.visible(token, DocumentKind.NPC, "townhall/clerk"), "whole folder names only, not a text prefix");
+            assertFalse(EditorApi.visible(token, DocumentKind.NPC, "guard"), "nor the npcs/ folder itself");
+        }
+    }
+
+    @Test
     void pairOptions_commandScopeNeedsItsOwnPermissionAndIsNeverADefault() {
         assertFalse(EditorScope.DEFAULT_PAIRING.contains(EditorScope.APPLY_COMMANDS));
+        assertEquals(java.util.Arrays.stream(EditorScope.values()).filter((EditorScope scope) -> scope != EditorScope.APPLY_COMMANDS).toList(), EditorScope.DEFAULT_PAIRING,
+                "every other scope, spawn and import included, is a default");
         assertTrue(EditorScope.parse("admin").isEmpty(), "the unused admin scope is gone");
         CommandActor admin = new CommandActor() {
             @Override public boolean permitted(String node) { return !node.equals(EditorCommands.COMMANDS_PERMISSION); }

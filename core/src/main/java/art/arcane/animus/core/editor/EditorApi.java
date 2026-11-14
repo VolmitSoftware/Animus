@@ -2,8 +2,8 @@ package art.arcane.animus.core.editor;
 
 import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.Subsystem;
-import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.config.EditorNotifySettings;
+import art.arcane.animus.core.config.EditorRelaySettings;
 import art.arcane.animus.core.config.EditorSettings;
 import art.arcane.animus.core.migration.CitizensDropIn;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -63,13 +63,18 @@ public final class EditorApi implements EditorRequestHandler {
             "Access-Control-Allow-Headers", "Authorization, Content-Type, X-Animus-Counter, If-None-Match", "Access-Control-Expose-Headers", "ETag", "Access-Control-Max-Age", "600",
             "Access-Control-Allow-Private-Network", "true", "Vary", "Origin");
 
-    /** What the API holds. {@code npcs} reaches the live NPC registry for spawn, despawn and imports; {@code importHost} says whether Citizens or Shopkeepers still run. */
-    public record Parts(EditorSettings settings, boolean relayEnabled, EditorHost host, EditorIdentity identity, EditorTokens tokens, EditorAudit audit,
-                        EditorDocuments documents, EditorChanges changes, EditorPreviews previews, EditorEvents events, EditorNotices notices,
-                        Supplier<NpcRepository> npcs, Supplier<CitizensDropIn.Host> importHost, ScheduledExecutorService timers, Clock clock, String minecraftVersion) {
+    /**
+     * What the API holds. {@code npcs} reaches the live NPC registry for spawn, despawn and imports; {@code importHost} says
+     * whether Citizens or Shopkeepers still run; {@code warnings} takes the console lines for refusals.
+     */
+    public record Parts(EditorSettings settings, EditorRelaySettings relay, EditorHost host, EditorIdentity identity, EditorTokens tokens, EditorAudit audit,
+                        EditorDocuments documents, EditorCatalog catalog, EditorChanges changes, EditorPreviews previews, EditorEvents events, EditorNotices notices,
+                        EditorWarnings warnings, Supplier<NpcRepository> npcs, Supplier<CitizensDropIn.Host> importHost, ScheduledExecutorService timers, Clock clock,
+                        String minecraftVersion) {
         /** The same parts under hotloaded {@code [editor]} settings. */
-        public Parts with(EditorSettings next, boolean relay) {
-            return new Parts(Objects.requireNonNull(next), relay, host, identity, tokens, audit, documents, changes, previews, events, notices, npcs, importHost, timers, clock, minecraftVersion);
+        public Parts with(EditorSettings next, EditorRelaySettings nextRelay) {
+            return new Parts(Objects.requireNonNull(next), Objects.requireNonNull(nextRelay), host, identity, tokens, audit, documents, catalog, changes, previews, events, notices,
+                    warnings, npcs, importHost, timers, clock, minecraftVersion);
         }
     }
 
@@ -77,18 +82,17 @@ public final class EditorApi implements EditorRequestHandler {
     private final EditorSchemas schemas = new EditorSchemas();
     private final Map<String, AtomicInteger> inFlight = new ConcurrentHashMap<>();
     private final Map<String, double[]> buckets = new ConcurrentHashMap<>();
-    private static final int PAIR_WINDOW_ADDRESSES = 4096;
-    private static final String SHARED_PAIR_WINDOW = "";
-    private final Map<String, long[]> pairWindows = new ConcurrentHashMap<>();
     private final EditorTerrainReads terrain = new EditorTerrainReads(this::parts);
     private final EditorImportRoutes imports = new EditorImportRoutes(this);
+    private final EditorDocumentRoutes documents = new EditorDocumentRoutes(this);
+    private final EditorPairingRoutes pairing = new EditorPairingRoutes(this);
 
     public EditorApi(Parts parts) { this.parts = Objects.requireNonNull(parts); }
 
     public Parts parts() { return parts; }
 
     /** A hotload of {@code [editor]}: origins, bounds and rates apply to the next request; tokens and pairings stay. */
-    public void settings(EditorSettings next, boolean relayEnabled) { parts = parts.with(next, relayEnabled); }
+    public void settings(EditorSettings next, EditorRelaySettings relay) { parts = parts.with(next, relay); }
 
     @Override
     public CompletionStage<EditorResponse> handle(EditorRequest request) {
@@ -124,11 +128,10 @@ public final class EditorApi implements EditorRequestHandler {
         try {
             origin(head);
             String method = head.method(), path = head.route();
-            if (method.equals("OPTIONS") || path.equals("/v1/hello") || path.equals("/v1/pair")) return Admission.OPEN;
+            if (method.equals("OPTIONS") || path.equals("/v1/hello") || path.equals("/v1/pair") || forgets(method, path)) return Admission.OPEN;
             EditorTokens.Token token = parts.tokens().authenticate(bearer(head));
             Optional<Route> route = path.startsWith("/v1/") ? match(method, path.substring(4).split("/", -1)) : Optional.empty();
-            if (route.isPresent() && route.get().scope() != null && !token.has(route.get().scope()))
-                throw new EditorError(EditorError.Code.SCOPE_MISSING, "This token lacks " + route.get().scope().wireName() + ".");
+            if (route.isPresent() && route.get().scope() != null && !token.has(route.get().scope())) throw lacks(route.get().scope());
             return Admission.AUTHENTICATED;
         } catch (EditorError refused) {
             Map<String, String> cors = cors(head);
@@ -146,12 +149,19 @@ public final class EditorApi implements EditorRequestHandler {
         return headers;
     }
 
-    /** The relay checks origins on its own browser handshake; the direct path checks every request. No Origin means no browser. */
+    /**
+     * The relay checks origins on its own browser handshake; the direct path checks every request. No Origin means no browser.
+     * A refused origin is logged once an hour, and told to whoever has a pairing link open, since it is usually a pairing.
+     */
     private void origin(EditorRequest request) throws EditorError {
         if (request.transport() != EditorRequest.Transport.DIRECT) return;
         Optional<String> origin = request.header("origin");
-        if (origin.isPresent() && !parts.settings().allowedOrigins().contains(origin.get()))
-            throw new EditorError(EditorError.Code.ORIGIN_NOT_ALLOWED, "Origin " + origin.get() + " is not in [editor] allowedOrigins.");
+        if (origin.isEmpty() || parts.settings().allowedOrigins().contains(origin.get())) return;
+        String shown = origin.get().length() > 128 ? origin.get().substring(0, 128) : origin.get();
+        parts.warnings().once("origin " + shown, Duration.ofHours(1), "Editor refused origin " + shown + ": it is not in [editor] allowedOrigins");
+        for (EditorTokens.Open open : parts.tokens().openPairings())
+            if (parts.warnings().due("origin notice " + shown + " " + open.tokenId(), Duration.ofHours(1))) pairing.refused(open, "origin " + shown + " is not in allowedOrigins");
+        throw new EditorError(EditorError.Code.ORIGIN_NOT_ALLOWED, "Origin " + shown + " is not in [editor] allowedOrigins.");
     }
 
     private CompletionStage<EditorResponse> route(EditorRequest request) throws EditorError {
@@ -163,19 +173,18 @@ public final class EditorApi implements EditorRequestHandler {
             throw new EditorError(EditorError.Code.NOT_FOUND, "No endpoint " + path + ".");
         }
         String[] segments = path.substring(4).split("/", -1);
-        if (method.equals("GET") && path.equals("/v1/hello")) return done(EditorResponse.json(200, hello()));
-        if (method.equals("POST") && path.equals("/v1/pair")) return pair(request);
+        if (method.equals("GET") && path.equals("/v1/hello")) return done(EditorResponse.json(200, pairing.hello()));
+        if (method.equals("POST") && path.equals("/v1/pair")) return done(pairing.pair(request));
+        if (forgets(method, path)) return done(forget(request));
         EditorTokens.Token token = parts.tokens().authenticate(bearer(request));
         Route route = match(method, segments).orElseThrow(() -> new EditorError(EditorError.Code.NOT_FOUND, "No endpoint " + method + " " + path + "."));
-        if (route.scope() != null && !token.has(route.scope()))
-            throw new EditorError(EditorError.Code.SCOPE_MISSING, "This token lacks " + route.scope().wireName() + ".");
-        if (route.anyApply() && token.scopes().stream().noneMatch((EditorScope scope) -> scope.wireName().startsWith("apply:")))
-            throw new EditorError(EditorError.Code.SCOPE_MISSING, "This token has no apply scope.");
+        if (route.scope() != null && !token.has(route.scope())) throw lacks(route.scope());
         rate(token);
-        if (method.equals("POST") || method.equals("DELETE")) counter(request, token);
+        if ((method.equals("POST") || method.equals("DELETE")) && route.counted()) counter(request, token);
         AtomicInteger running = inFlight.computeIfAbsent(token.id(), (String id) -> new AtomicInteger());
         if (running.incrementAndGet() > parts.settings().concurrentRequestsPerToken()) {
             running.decrementAndGet();
+            parts.warnings().limited(token.id());
             throw new EditorError(EditorError.Code.RATE_LIMITED, "At most " + parts.settings().concurrentRequestsPerToken() + " requests run at once per token.", 250, null);
         }
         CompletionStage<EditorResponse> result;
@@ -204,37 +213,46 @@ public final class EditorApi implements EditorRequestHandler {
 
     @FunctionalInterface private interface Endpoint { CompletionStage<EditorResponse> handle(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError; }
 
-    private record Route(EditorScope scope, boolean anyApply, Endpoint handler) {}
+    /**
+     * {@code counted}: a POST or DELETE that changes something and so needs {@code X-Animus-Counter}. A null scope is
+     * checked by the handler: apply and undo need the apply scope of every document kind they write.
+     */
+    private record Route(EditorScope scope, boolean counted, Endpoint handler) {
+        Route(EditorScope scope, Endpoint handler) { this(scope, true, handler); }
+    }
+
+    static EditorError lacks(EditorScope scope) { return EditorError.scopeMissing(scope, "This token lacks " + scope.wireName() + "."); }
 
     private Optional<Route> match(String method, String[] s) {
         String first = s[0];
         int n = s.length;
         Route route = switch (method) {
             case "GET" -> switch (first) {
-                case "capabilities" -> n == 1 ? new Route(EditorScope.READ, false, this::capabilities) : null;
-                case "schemas" -> n == 1 ? new Route(EditorScope.READ, false, this::schemas) : null;
-                case "lookups" -> n == 1 ? new Route(EditorScope.READ, false, this::lookups) : null;
-                case "catalog" -> n == 1 ? new Route(EditorScope.READ, false, this::catalog) : null;
-                case "documents" -> n >= 3 ? new Route(EditorScope.READ, false, this::document) : null;
-                case "skins" -> n == 3 && s[2].equals("texture.png") ? new Route(EditorScope.READ, false, this::skin) : null;
-                case "changes" -> n == 2 ? new Route(EditorScope.READ, false, this::changeStatus) : null;
-                case "imports" -> n == 1 ? new Route(EditorScope.IMPORT, false, imports::status) : null;
-                case "terrain" -> n == 2 && s[1].equals("surface") ? new Route(EditorScope.TERRAIN, false, (EditorRequest request, EditorTokens.Token token, String[] path) -> terrain.surface(request, token))
-                        : n == 2 && s[1].equals("blocks") ? new Route(EditorScope.TERRAIN, false, (EditorRequest request, EditorTokens.Token token, String[] path) -> terrain.blocks(request, token))
-                        : n == 2 && s[1].equals("position") ? new Route(EditorScope.TERRAIN, false, (EditorRequest request, EditorTokens.Token token, String[] path) -> terrain.position(request, token)) : null;
+                case "capabilities" -> n == 1 ? new Route(EditorScope.READ, this::capabilities) : null;
+                case "schemas" -> n == 1 ? new Route(EditorScope.READ, this::schemas) : null;
+                case "lookups" -> n == 1 ? new Route(EditorScope.READ, this::lookups) : null;
+                case "catalog" -> n == 1 ? new Route(EditorScope.READ, documents::catalog) : null;
+                case "documents" -> n >= 3 ? new Route(EditorScope.READ, documents::document) : null;
+                case "skins" -> n == 3 && s[2].equals("texture.png") ? new Route(EditorScope.READ, this::skin) : null;
+                case "changes" -> n == 2 ? new Route(EditorScope.READ, this::changeStatus) : null;
+                case "imports" -> n == 1 ? new Route(EditorScope.IMPORT, imports::status) : null;
+                case "terrain" -> n == 2 && s[1].equals("surface") ? new Route(EditorScope.TERRAIN, (EditorRequest request, EditorTokens.Token token, String[] path) -> terrain.surface(request, token))
+                        : n == 2 && s[1].equals("blocks") ? new Route(EditorScope.TERRAIN, (EditorRequest request, EditorTokens.Token token, String[] path) -> terrain.blocks(request, token))
+                        : n == 2 && s[1].equals("position") ? new Route(EditorScope.TERRAIN, (EditorRequest request, EditorTokens.Token token, String[] path) -> terrain.position(request, token)) : null;
                 default -> null;
             };
             case "POST" -> switch (first) {
-                case "validate" -> n == 1 ? new Route(EditorScope.VALIDATE, false, this::validate) : null;
-                case "previews" -> n == 1 ? new Route(EditorScope.PREVIEW, false, this::preview) : null;
-                case "changes" -> n == 1 ? new Route(null, true, this::apply) : n == 3 && s[2].equals("undo") ? new Route(null, true, this::undo) : null;
-                case "imports" -> n == 1 ? new Route(EditorScope.IMPORT, false, imports::upload)
-                        : n == 2 && s[1].equals("stage") ? new Route(EditorScope.IMPORT, false, imports::stage)
-                        : n == 3 && Set.of("apply", "rollback").contains(s[2]) ? new Route(EditorScope.IMPORT, false, imports::step) : null;
-                case "npcs" -> n == 3 && (s[2].equals("spawn") || s[2].equals("despawn")) ? new Route(EditorScope.SPAWN, false, this::spawn) : null;
+                case "documents" -> n == 2 && s[1].equals("read") ? new Route(EditorScope.READ, false, documents::read) : null;
+                case "validate" -> n == 1 ? new Route(EditorScope.VALIDATE, this::validate) : null;
+                case "previews" -> n == 1 ? new Route(EditorScope.PREVIEW, this::preview) : null;
+                case "changes" -> n == 1 ? new Route(null, this::apply) : n == 3 && s[2].equals("undo") ? new Route(null, this::undo) : null;
+                case "imports" -> n == 1 ? new Route(EditorScope.IMPORT, imports::upload)
+                        : n == 2 && s[1].equals("stage") ? new Route(EditorScope.IMPORT, imports::stage)
+                        : n == 3 && Set.of("apply", "rollback").contains(s[2]) ? new Route(EditorScope.IMPORT, imports::step) : null;
+                case "npcs" -> n == 3 && (s[2].equals("spawn") || s[2].equals("despawn")) ? new Route(EditorScope.SPAWN, this::spawn) : null;
                 default -> null;
             };
-            case "DELETE" -> first.equals("previews") && n == 2 ? new Route(EditorScope.PREVIEW, false, this::endPreview) : null;
+            case "DELETE" -> first.equals("previews") && n == 2 ? new Route(EditorScope.PREVIEW, this::endPreview) : null;
             default -> null;
         };
         return Optional.ofNullable(route);
@@ -263,29 +281,19 @@ public final class EditorApi implements EditorRequestHandler {
             long now = System.nanoTime();
             bucket[0] = Math.min(capacity, bucket[0] + (now - bucket[1]) / 1e9 * perSecond);
             bucket[1] = now;
-            if (bucket[0] < 1) throw new EditorError(EditorError.Code.RATE_LIMITED, "Too many requests for this token.", (long) Math.ceil((1 - bucket[0]) / perSecond * 1000), null);
+            if (bucket[0] < 1) {
+                parts.warnings().limited(token.id());
+                throw new EditorError(EditorError.Code.RATE_LIMITED, "Too many requests for this token.", (long) Math.ceil((1 - bucket[0]) / perSecond * 1000), null);
+            }
             bucket[0] -= 1;
         }
     }
 
-    /**
-     * Fixed one-minute window per address for unauthenticated pairing and event authentication. Past
-     * {@link #PAIR_WINDOW_ADDRESSES} addresses in one minute, new ones share a single window, so the map stays bounded.
-     */
-    private void pairRate(String address) throws EditorError {
-        long minute = parts.clock().millis() / 60_000;
-        long[] window = pairWindows.get(address);
-        if (window == null) {
-            if (pairWindows.size() >= PAIR_WINDOW_ADDRESSES) pairWindows.entrySet().removeIf((Map.Entry<String, long[]> entry) -> entry.getValue()[0] != minute);
-            String key = pairWindows.size() >= PAIR_WINDOW_ADDRESSES ? SHARED_PAIR_WINDOW : address;
-            window = pairWindows.computeIfAbsent(key, (String unused) -> new long[]{minute, 0});
-        }
-        synchronized (window) {
-            if (window[0] != minute) { window[0] = minute; window[1] = 0; }
-            if (++window[1] > parts.settings().pairAttemptsPerMinute())
-                throw new EditorError(EditorError.Code.RATE_LIMITED, "Too many pairing attempts from this address.", 60_000 - parts.clock().millis() % 60_000, null);
-        }
-    }
+    /** {@code [editor] serverName}, else the platform's name for the server: its MOTD, else its folder. */
+    public String serverName() { return pairing.serverName(); }
+
+    /** Tells the player who made a pairing link, in game, that a browser could not use it. */
+    void pairingRefused(EditorTokens.Open open, String why) { pairing.refused(open, why); }
 
     private static CompletionStage<EditorResponse> done(EditorResponse response) { return CompletableFuture.completedFuture(response); }
 
@@ -299,12 +307,15 @@ public final class EditorApi implements EditorRequestHandler {
         CompletableFuture<EditorResponse> result = new CompletableFuture<>();
         try {
             parts.host().files().execute(() -> {
+                // Documents this work writes are announced with source editor.
+                EditorCatalog.Source outer = EditorCatalog.enter(EditorCatalog.Source.EDITOR);
                 try {
                     parts.tokens().stillValid(token.id());
                     result.complete(work.run());
                 }
                 catch (EditorError refused) { result.complete(EditorReplies.error(refused)); }
                 catch (IOException | RuntimeException failure) { result.complete(internal(failure)); }
+                finally { EditorCatalog.leave(outer); }
             });
         } catch (RejectedExecutionException full) {
             throw new EditorError(EditorError.Code.BUSY, "The file lane is full.", 500, null);
@@ -312,61 +323,10 @@ public final class EditorApi implements EditorRequestHandler {
         return result;
     }
 
-    private JsonObject hello() {
-        JsonObject body = new JsonObject();
-        body.addProperty("protocol", PROTOCOL);
-        JsonArray protocols = new JsonArray();
-        protocols.add(PROTOCOL);
-        body.add("protocols", protocols);
-        body.addProperty("fingerprint", parts.identity().fingerprint());
-        body.addProperty("animus", BuildIdentity.VERSION.length() > 64 ? BuildIdentity.VERSION.substring(0, 64) : BuildIdentity.VERSION);
-        body.addProperty("platform", parts.host().platform());
-        String minecraft = parts.minecraftVersion();
-        body.addProperty("minecraft", minecraft.matches("\\d+\\.\\d+(\\.\\d+)?") ? minecraft : "0.0");
-        String name = parts.host().serverName();
-        if (name != null && !name.isBlank()) body.addProperty("serverName", name.length() > 128 ? name.substring(0, 128) : name);
-        return body;
-    }
-
-    private CompletionStage<EditorResponse> pair(EditorRequest request) throws EditorError {
-        pairRate(EditorReplies.address(request));
-        JsonObject body = EditorMessages.body(request);
-        EditorMessages.fields(body, "$", Set.of("tokenId", "secret", "client"));
-        String tokenId = EditorMessages.string(body, "tokenId", EditorMessages.TOKEN_ID, "$.tokenId");
-        String secret = EditorMessages.string(body, "secret", EditorMessages.SECRET, "$.secret");
-        Optional<String> client = EditorMessages.optionalString(body, "client", 128);
-        Map.Entry<String, EditorTokens.Token> issued;
-        try { issued = parts.tokens().exchange(tokenId, secret, client); }
-        catch (IOException failure) { throw new EditorError(EditorError.Code.INTERNAL, "The token store could not be written."); }
-        catch (EditorError refused) {
-            audit("pair", Optional.of(tokenId), Optional.empty(), request, List.of(), refused.code().wireName());
-            throw refused;
-        }
-        EditorTokens.Token token = issued.getValue();
-        audit("pair", Optional.of(token.id()), token.admin(), request, List.of(), "paired");
-        parts.notices().record(new EditorNotices.Event(EditorNotifySettings.Kind.PAIR, EditorNotices.Who.of(token), "paired", "", List.of(), Optional.empty(), List.of()));
-        JsonObject response = new JsonObject();
-        response.addProperty("token", issued.getKey());
-        response.addProperty("tokenId", token.id());
-        JsonArray scopes = new JsonArray();
-        token.scopes().forEach((EditorScope scope) -> scopes.add(scope.wireName()));
-        response.add("scopes", scopes);
-        if (!token.groups().isEmpty()) {
-            JsonArray groups = new JsonArray();
-            token.groups().forEach(groups::add);
-            response.add("groups", groups);
-        }
-        response.addProperty("expiresAt", EditorMessages.instant(token.expires()));
-        response.addProperty("fingerprint", parts.identity().fingerprint());
-        response.addProperty("counter", token.counter());
-        token.admin().ifPresent((UUID admin) -> response.addProperty("admin", admin.toString()));
-        return done(EditorResponse.json(200, response));
-    }
-
     private CompletionStage<EditorResponse> capabilities(EditorRequest request, EditorTokens.Token token, String[] segments) {
         Map<String, EditorHost.Feature> features = new LinkedHashMap<>();
         features.put("editor.listener", parts.settings().listenerEnabled() ? EditorHost.Feature.yes() : EditorHost.Feature.no("[editor] listenerEnabled is false"));
-        features.put("editor.relay", parts.relayEnabled() ? EditorHost.Feature.yes() : EditorHost.Feature.no("[editor] relayEnabled is false"));
+        features.put("editor.relay", parts.relay().enabled() ? EditorHost.Feature.yes() : EditorHost.Feature.no("[editor] relayEnabled is false"));
         features.put("previews", parts.host().previews().isPresent() ? EditorHost.Feature.yes() : EditorHost.Feature.no(parts.host().previewsUnavailable()));
         features.put("imports", EditorHost.Feature.yes());
         features.put("spawn", EditorHost.Feature.yes());
@@ -412,39 +372,10 @@ public final class EditorApi implements EditorRequestHandler {
         return files(token, () -> EditorResponse.json(200, schemas.response(parts.host().capabilities())));
     }
 
-    private CompletionStage<EditorResponse> catalog(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
-        Map<String, String> query = EditorReplies.query(request);
-        EditorMessages.fields(EditorMessages.queryObject(query), "$query", Set.of("kind", "after"));
-        Set<DocumentKind> kinds = EnumSet.allOf(DocumentKind.class);
-        String kindName = query.get("kind");
-        if (kindName != null && !kindName.isEmpty())
-            kinds = EnumSet.of(DocumentKind.parse(kindName).orElseThrow(() -> EditorMessages.invalid("kind: unknown kind " + kindName)));
-        String rawAfter = query.get("after");
-        Optional<String> after = rawAfter == null || rawAfter.isEmpty() ? Optional.empty() : Optional.of(EditorMessages.cursor(rawAfter));
-        Set<DocumentKind> chosen = kinds;
-        return files(token, () -> {
-            JsonArray documents = new JsonArray();
-            String next = null;
-            int page = 1000;
-            for (EditorDocuments.Location location : parts.documents().list(chosen)) {
-                String key = location.kind().ordinal() + "\n" + location.path();
-                if (after.isPresent() && EditorMessages.compareCursor(key, after.get()) <= 0) continue;
-                if (!visible(token, location.kind(), location.id())) continue;
-                if (documents.size() == page) { next = EditorMessages.encodeCursor(EditorMessages.cursorKey(documents.get(page - 1).getAsJsonObject())); break; }
-                EditorDocuments.Stored stored = parts.documents().read(location);
-                if (!stored.exists()) continue;
-                documents.add(EditorChanges.catalogEntry(location.kind(), location.id(), location.path(), stored.revision(), stored.hash()));
-            }
-            JsonObject body = new JsonObject();
-            body.add("documents", documents);
-            if (next == null) body.add("next", com.google.gson.JsonNull.INSTANCE); else body.addProperty("next", next);
-            return EditorResponse.json(200, body);
-        });
-    }
+    static boolean visible(EditorTokens.Token token, DocumentKind kind, String id) { return kind != DocumentKind.NPC || token.group(folder(id)); }
 
-    private static boolean visible(EditorTokens.Token token, DocumentKind kind, String id) {
-        return kind != DocumentKind.NPC || token.group(id.substring(0, Math.max(0, id.lastIndexOf('/'))));
-    }
+    /** The NPC folder of an NPC id: everything before its last slash. */
+    static String folder(String id) { return id.substring(0, Math.max(0, id.lastIndexOf('/'))); }
 
     /** A change reaches its id and, for a move, the id it leaves. */
     private static void reach(EditorTokens.Token token, EditorMessages.Change change) throws EditorError {
@@ -452,40 +383,13 @@ public final class EditorApi implements EditorRequestHandler {
         if (change.move()) group(token, change.kind(), change.from().orElseThrow());
     }
 
-    private static void group(EditorTokens.Token token, DocumentKind kind, String id) throws EditorError {
-        if (!visible(token, kind, id)) throw new EditorError(EditorError.Code.GROUP_DENIED, "This token cannot reach NPC folder npcs/" + id.substring(0, Math.max(0, id.lastIndexOf('/'))) + ".");
+    static void group(EditorTokens.Token token, DocumentKind kind, String id) throws EditorError {
+        if (!visible(token, kind, id)) throw new EditorError(EditorError.Code.GROUP_DENIED, "This token cannot reach NPC folder npcs/" + folder(id) + ".");
     }
 
-    private static String decode(String segment) throws EditorError {
+    static String decode(String segment) throws EditorError {
         try { return java.net.URLDecoder.decode(segment.replace("+", "%2B"), StandardCharsets.UTF_8); }
         catch (IllegalArgumentException invalid) { throw EditorMessages.invalid("The path is not URL encoded."); }
-    }
-
-    private CompletionStage<EditorResponse> document(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
-        DocumentKind kind = DocumentKind.parse(segments[1]).orElseThrow(() -> new EditorError(EditorError.Code.NOT_FOUND, "Unknown kind " + segments[1] + "."));
-        List<String> pieces = new ArrayList<>();
-        for (int index = 2; index < segments.length; index++) pieces.add(decode(segments[index]));
-        String id = String.join("/", pieces);
-        if (!id.matches(EditorMessages.DOCUMENT_ID)) throw EditorMessages.invalid("'" + id + "' is not a document id.");
-        group(token, kind, id);
-        return files(token, () -> {
-            EditorDocuments.Stored stored = parts.documents().read(parts.documents().locate(kind, id));
-            if (!stored.exists()) throw new EditorError(EditorError.Code.NOT_FOUND, "No " + kind.wireName() + " " + id + ".");
-            JsonObject body = EditorChanges.catalogEntry(kind, id, stored.location().path(), stored.revision(), stored.hash());
-            JsonObject source;
-            JsonArray diagnostics;
-            try {
-                source = JsonDocuments.object(stored.content());
-                diagnostics = parts.documents().validate(kind, id, source);
-            } catch (IOException unreadable) {
-                source = new JsonObject();
-                diagnostics = new JsonArray();
-                diagnostics.add(EditorDocuments.diagnostic("error", "$", "The stored file is not one JSON object: " + unreadable.getMessage(), "json"));
-            }
-            body.add("source", source);
-            if (!diagnostics.isEmpty()) body.add("diagnostics", diagnostics);
-            return EditorResponse.json(200, body);
-        });
     }
 
     private CompletionStage<EditorResponse> skin(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
@@ -601,9 +505,30 @@ public final class EditorApi implements EditorRequestHandler {
         return done(EditorReplies.empty(204));
     }
 
+    /** {@code DELETE /v1/token} takes no scope, counter or rate limit, so a browser forgetting this server can always end its session. */
+    private static boolean forgets(String method, String path) { return method.equals("DELETE") && path.equals("/v1/token"); }
+
+    /** The bearer revokes itself. A token already revoked answers the same 204, so a retried forget succeeds. */
+    private EditorResponse forget(EditorRequest request) throws EditorError {
+        EditorTokens.Token token;
+        try { token = parts.tokens().authenticate(bearer(request)); }
+        catch (EditorError refused) {
+            if (refused.code() == EditorError.Code.TOKEN_REVOKED) return EditorReplies.empty(204);
+            throw refused;
+        }
+        try {
+            if (!revoke(token.id(), "token-revoked", "by its browser").isEmpty())
+                audit("revoke", Optional.of(token.id()), token.admin(), request, List.of(), "revoked by its browser");
+        } catch (IOException failure) { throw new EditorError(EditorError.Code.INTERNAL, "The token store could not be written."); }
+        return EditorReplies.empty(204);
+    }
+
+    /** What {@link EditorCommandGuard} reads: the live registry, the raw text grants and the store. Call on the file lane. */
+    EditorCommandGuard.Rules rules() { return EditorCommandGuard.Rules.of(parts.host(), parts.documents()); }
+
     void scopes(EditorTokens.Token token, Set<DocumentKind> kinds, List<String> npcIds) throws EditorError {
         for (DocumentKind kind : kinds)
-            if (!token.has(kind.applyScope())) throw new EditorError(EditorError.Code.SCOPE_MISSING, "This token lacks " + kind.applyScope().wireName() + ".");
+            if (!token.has(kind.applyScope())) throw lacks(kind.applyScope());
         for (String id : npcIds) if (id.contains("/")) group(token, DocumentKind.NPC, id);
     }
 
@@ -614,13 +539,12 @@ public final class EditorApi implements EditorRequestHandler {
         set.documents().forEach((EditorMessages.Change change) -> kinds.add(change.kind()));
         scopes(token, kinds, set.documents().stream().filter((EditorMessages.Change change) -> change.kind() == DocumentKind.NPC)
                 .flatMap((EditorMessages.Change change) -> java.util.stream.Stream.concat(java.util.stream.Stream.of(change.id()), change.from().stream())).toList());
-        EditorCommandGuard.requireForChanges(token, set.documents(), EditorCommandGuard.Rules.of(parts.host()));
         String requestHash = EditorTokens.sha256(body.toString());
         parts.changes().queued(set.idempotencyKey());
         try {
             return files(token, () -> {
                 try {
-                    EditorChanges.Outcome outcome = parts.changes().apply(set, requestHash, token.id());
+                    EditorChanges.Outcome outcome = parts.changes().apply(set, requestHash, token.id(), EditorCommandGuard.writes(token, rules()));
                     published(outcome, token, EditorNotifySettings.Kind.APPLY, "applied");
                     audit("apply", Optional.of(token.id()), token.admin(), request, names(set.documents()), outcome.body().get("status").getAsString());
                     return EditorResponse.json(outcome.status(), outcome.body());
@@ -641,11 +565,13 @@ public final class EditorApi implements EditorRequestHandler {
         change.addProperty("type", "change");
         change.add("result", outcome.body());
         parts.events().publish(change);
-        JsonObject catalog = new JsonObject();
-        catalog.addProperty("type", "catalog");
-        catalog.add("documents", outcome.catalog());
-        if (!outcome.deleted().isEmpty()) catalog.add("deleted", outcome.deleted());
-        parts.events().publish(catalog);
+        catalogChanged();
+    }
+
+    /** Sends the catalog event for what this file-lane work just wrote, after its change event. */
+    void catalogChanged() {
+        try { parts.catalog().flush(); }
+        catch (IOException failure) { parts.warnings().once("catalog flush", Duration.ofMinutes(1), "Editor catalog event failed: " + failure.getMessage()); }
     }
 
     /** Records the notice once the reload completes, with the problems it reported. */
@@ -678,8 +604,8 @@ public final class EditorApi implements EditorRequestHandler {
         try {
             return files(token, () -> {
                 try {
-                    EditorChanges.Outcome outcome = parts.changes().undo(changeId, key, token.id(), EditorCommandGuard.forUndo(token,
-                            (Set<DocumentKind> kinds, List<String> ids) -> scopes(token, kinds, ids), EditorCommandGuard.Rules.of(parts.host())));
+                    EditorChanges.Outcome outcome = parts.changes().undo(changeId, key, token.id(), (Set<DocumentKind> kinds, List<String> ids) -> scopes(token, kinds, ids),
+                            EditorCommandGuard.writes(token, rules()));
                     published(outcome, token, EditorNotifySettings.Kind.ROLLBACK, "undid");
                     audit("undo", Optional.of(token.id()), token.admin(), request, List.of(changeId), outcome.body().get("status").getAsString());
                     return EditorResponse.json(outcome.status(), outcome.body());
@@ -714,6 +640,8 @@ public final class EditorApi implements EditorRequestHandler {
             if (!current.qualifiedId().equals(id)) throw new EditorError(EditorError.Code.NOT_FOUND, "No NPC " + id + ".");
             JsonObject document = before.document();
             document.addProperty("spawned", spawn);
+            // Switching an NPC on starts whatever it runs, so it is checked like any other write of the document.
+            if (spawn) EditorCommandGuard.require(token, DocumentKind.NPC, id, document, rules());
             NpcDefinition candidate = NpcDefinition.parse(JsonDocuments.write(document));
             NpcRepository.Draft draft = new NpcRepository.Draft(before.path(), before.expectedHash(), before.expectedRevision(), document);
             CompletionStage<List<String>> checks = spawn ? parts.host().activationProblems(candidate) : CompletableFuture.completedFuture(List.of());
@@ -759,11 +687,14 @@ public final class EditorApi implements EditorRequestHandler {
      */
     @Override
     public CompletionStage<EditorEventStream> openEvents(EditorRequest request, EditorEventSink sink) {
+        String address = EditorReplies.address(request);
         try {
             origin(request);
-            pairRate(EditorReplies.address(request));
-            EditorTokens.Token token = parts.tokens().authenticate(bearer(request));
-            if (!token.has(EditorScope.READ)) throw new EditorError(EditorError.Code.SCOPE_MISSING, "This token lacks read.");
+            pairing.guard(address);
+            EditorTokens.Token token;
+            try { token = parts.tokens().authenticate(bearer(request)); }
+            catch (EditorError refused) { pairing.failed(address); throw refused; }
+            if (!token.has(EditorScope.READ)) throw lacks(EditorScope.READ);
             if (parts.events().open() >= parts.settings().openConnections())
                 throw new EditorError(EditorError.Code.BUSY, "The server has its maximum of event streams open.", 5000, null);
             Runnable remove = parts.events().add(token.id(), sink, (String npc) -> visible(token, DocumentKind.NPC, npc));
@@ -776,6 +707,8 @@ public final class EditorApi implements EditorRequestHandler {
                 if (parts.events().open(token.id()) == 0) parts.previews().endToken(token.id());
             }));
         } catch (EditorError refused) {
+            parts.warnings().once("stream " + address + " " + refused.code().wireName(), EditorWarnings.MINUTE,
+                    "Editor refused an event stream from " + address + ": " + refused.code().wireName());
             return CompletableFuture.completedFuture(EditorEventStream.refused(EditorReplies.error(refused)));
         }
     }
@@ -800,6 +733,7 @@ public final class EditorApi implements EditorRequestHandler {
 
     /** Called once a second by the service: event frames are paced by {@link EditorEvents#tick} separately. */
     public void housekeeping() throws IOException {
+        parts.warnings().tick(parts.settings());
         for (String expired : parts.tokens().expire()) {
             parts.events().close(expired, "token-expired");
             parts.previews().endToken(expired);

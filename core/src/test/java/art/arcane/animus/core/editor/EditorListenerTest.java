@@ -43,7 +43,7 @@ class EditorListenerTest {
 
     private static EditorSettings settings(int port, String certificate, String key) {
         EditorSettings d = EditorSettings.DEFAULT;
-        return new EditorSettings(true, d.editorUrl(), true, "127.0.0.1", port, "", certificate, key, d.allowedOrigins(), 7, 30, 4096, 16384, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24, 160, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT);
+        return new EditorSettings(true, "", d.editorUrl(), true, "127.0.0.1", port, "", certificate, key, d.allowedOrigins(), 7, 30, 4096, 16384, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24, 160, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT);
     }
 
     @Test
@@ -76,6 +76,44 @@ class EditorListenerTest {
                     .header("X-Animus-Counter", "1").header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString("{\"documents\":[],\"documents\":[]}")).build(),
                     HttpResponse.BodyHandlers.ofString());
             assertEquals(400, spoofed.statusCode(), "duplicate keys are refused by the strict parser");
+        }
+    }
+
+    @Test
+    void http_documentBody_keepsNullFields() throws Exception {
+        EditorSettings settings = settings(0, "", "");
+        try (EditorHarness harness = new EditorHarness(directory, settings);
+             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+            Files.createDirectories(harness.root.resolve("recordings"));
+            Files.copy(SharedFixtures.fixture("recordings/market-loop.json"), harness.root.resolve("recordings/market-loop.json"));
+            listener.start();
+            HttpResponse<String> document = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + listener.port() + "/animus/v1/documents/recording/market-loop"))
+                    .header("Authorization", "Bearer " + harness.token()).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, document.statusCode(), document.body());
+            assertTrue(document.body().contains("\"slot\":\"main_hand\",\"item\":null"), "an emptied slot keeps its item: null; " + document.body());
+        }
+    }
+
+    @Test
+    void http_forgetTwice_answersNoContentBothTimes() throws Exception {
+        EditorSettings settings = settings(0, "", "");
+        try (EditorHarness harness = new EditorHarness(directory, settings);
+             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+            listener.start();
+            String token = harness.token();
+            HttpClient client = HttpClient.newHttpClient();
+            HttpRequest forget = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + listener.port() + "/animus/v1/token")).header("Origin", EditorHarness.ORIGIN)
+                    .header("Authorization", "Bearer " + token).DELETE().build();
+            for (int attempt = 0; attempt < 2; attempt++) {
+                HttpResponse<String> forgot = client.send(forget, HttpResponse.BodyHandlers.ofString());
+                assertEquals(204, forgot.statusCode(), forgot.body());
+                assertEquals("", forgot.body());
+                assertEquals(EditorHarness.ORIGIN, forgot.headers().firstValue("Access-Control-Allow-Origin").orElseThrow());
+            }
+            HttpResponse<String> after = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + listener.port() + "/animus/v1/catalog?kind=npc"))
+                    .header("Authorization", "Bearer " + token).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(401, after.statusCode());
+            assertEquals("token-revoked", JsonDocuments.object(after.body()).getAsJsonObject("error").get("code").getAsString());
         }
     }
 
@@ -355,7 +393,7 @@ class EditorListenerTest {
                 String status = statusLine(client, "POST /animus/v1/pair HTTP/1.1\r\nHost: x\r\nContent-Length: 8192\r\n\r\n");
                 assertEquals("HTTP/1.1 413 Content Too Large", status, "pairing takes a small body only");
             }
-            String token = harness.token();
+            String token = harness.token(EditorHarness.grant(List.of(EditorScope.READ, EditorScope.APPLY_NPCS)));
             try (Socket client = new Socket("127.0.0.1", listener.port())) {
                 String status = statusLine(client, "POST /animus/v1/imports HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer " + token + "\r\nContent-Length: 4000\r\n\r\n");
                 assertEquals("HTTP/1.1 403 Forbidden", status, "an upload without the import scope is refused before its bytes arrive");
@@ -443,10 +481,10 @@ class EditorListenerTest {
     @Test
     void settings_plainHttpOffLoopback_isRefused() {
         EditorSettings d = EditorSettings.DEFAULT;
-        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> new EditorSettings(true, d.editorUrl(), true, "0.0.0.0", 9797, "", "", "",
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> new EditorSettings(true, "", d.editorUrl(), true, "0.0.0.0", 9797, "", "", "",
                 d.allowedOrigins(), 7, 30, 4096, 16384, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24, 160, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT));
         assertTrue(refused.getMessage().contains("not loopback"));
-        assertThrows(IllegalArgumentException.class, () -> new EditorSettings(true, d.editorUrl(), false, "127.0.0.1", 9797, "", "", "",
+        assertThrows(IllegalArgumentException.class, () -> new EditorSettings(true, "", d.editorUrl(), false, "127.0.0.1", 9797, "", "", "",
                 List.of("http://example.net"), 7, 30, 4096, 16384, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24, 160, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT));
     }
 }

@@ -7,16 +7,20 @@ import 'package:animus_editor/model/document_kind.dart';
 
 import 'protocol.dart';
 
-/// Kinds whose documents carry a `revision` the server increments on apply.
+/// Kinds whose documents carry a `revision` the server increments on apply,
+/// as EditorDocuments.REVISIONED.
 const Set<DocumentKind> revisioned = <DocumentKind>{
   DocumentKind.npc,
+  DocumentKind.group,
   DocumentKind.behavior,
   DocumentKind.shop,
+  DocumentKind.quest,
   DocumentKind.inventory,
   DocumentKind.hologram,
   DocumentKind.presets,
   DocumentKind.rig,
   DocumentKind.animation,
+  DocumentKind.recording,
 };
 
 Set<String> _strings(String key) =>

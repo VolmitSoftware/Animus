@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5",
+  "id": "lamplighter",
+  "group": "harbor",
+  "name": "&f",
+  "type": "minecraft:villager",
+  "spawned": true,
+  "position": {
+    "world": "harbor",
+    "x": 30.5,
+    "y": 64,
+    "z": 6.5,
+    "yaw": 90,
+    "pitch": 0
+  }
+}

@@ -31,7 +31,8 @@ import java.util.UUID;
 
 /**
  * Editor tokens in {@code state/editor/tokens.json}: only a SHA-256 of each token is stored, with its label, issuing admin,
- * scopes, NPC groups, expiry, last use and the last accepted {@code X-Animus-Counter}. Pairing secrets live in memory only.
+ * scopes, NPC groups, expiry, lifetime, last use and the last accepted {@code X-Animus-Counter}. Expiry slides: each use
+ * moves it to one lifetime after that use. Pairing secrets live in memory only.
  */
 public final class EditorTokens {
     public static final String PATH = "state/editor/tokens.json";
@@ -39,17 +40,29 @@ public final class EditorTokens {
     public static final Duration PAIRING_LIFETIME = Duration.ofMinutes(10);
     /** Older stores may list the removed {@code admin} scope, which never granted anything; loading drops it. */
     private static final String RETIRED_SCOPE = "admin";
+    /** A slid expiry is written to the store once it moved this far, so use does not write the file on every request. */
+    static final Duration SLIDE_WRITE = Duration.ofHours(1);
+    private static final System.Logger LOG = System.getLogger("Animus");
 
     /**
      * A stored token. {@code admin} is empty for tokens paired from the console. {@code adminChecked} is when the server last
-     * confirmed that the admin still holds {@code animus.admin}; pairing counts as a confirmation.
+     * confirmed that the admin still holds {@code animus.admin}; pairing counts as a confirmation. {@code expires} is one
+     * {@code lifetime} after the last use.
      */
     public record Token(String id, String hash, String label, Optional<UUID> admin, List<EditorScope> scopes, List<String> groups, Instant created,
-                        Instant expires, Optional<Instant> lastUsed, long counter, Optional<String> client, Instant adminChecked) {
+                        Instant expires, Duration lifetime, Optional<Instant> lastUsed, long counter, Optional<String> client, Instant adminChecked) {
         public Token {
             scopes = List.copyOf(scopes);
             groups = List.copyOf(groups);
         }
+
+        private Token used(Instant now, Instant until) { return new Token(id, hash, label, admin, scopes, groups, created, until, lifetime, Optional.of(now), counter, client, adminChecked); }
+
+        private Token counted(long value) { return new Token(id, hash, label, admin, scopes, groups, created, expires, lifetime, lastUsed, value, client, adminChecked); }
+
+        private Token checked(Instant now) { return new Token(id, hash, label, admin, scopes, groups, created, expires, lifetime, lastUsed, counter, client, now); }
+
+        private Token scoped(List<EditorScope> kept) { return new Token(id, hash, label, admin, kept, groups, created, expires, lifetime, lastUsed, counter, client, adminChecked); }
 
         public boolean has(EditorScope scope) { return scopes.contains(scope); }
 
@@ -71,6 +84,9 @@ public final class EditorTokens {
 
     /** A pairing waiting for its browser. */
     public record Pairing(String tokenId, String secret, Instant expires, Grant grant) {}
+
+    /** A pairing link not yet opened, without its secret. */
+    public record Open(String tokenId, Instant expires, Grant grant) {}
 
     private record Pending(String secretHash, Instant expires, Grant grant) {}
 
@@ -111,7 +127,8 @@ public final class EditorTokens {
         String text = "anm_" + tokenId + "." + tokenSecret;
         Instant created = now();
         Token token = new Token(tokenId, sha256(text), pending.grant().label(), pending.grant().admin(), pending.grant().scopes(), pending.grant().groups(),
-                created, created.plus(pending.grant().lifetime()), Optional.empty(), 0, client.map((String name) -> name.length() > 128 ? name.substring(0, 128) : name), created);
+                created, created.plus(pending.grant().lifetime()), pending.grant().lifetime(), Optional.empty(), 0,
+                client.map((String name) -> name.length() > 128 ? name.substring(0, 128) : name), created);
         tokens.put(tokenId, token);
         save();
         return Map.entry(text, token);
@@ -126,10 +143,15 @@ public final class EditorTokens {
         Token token = tokens.get(id);
         if (token == null || !MessageDigest.isEqual(token.hash().getBytes(StandardCharsets.US_ASCII), sha256(bearer).getBytes(StandardCharsets.US_ASCII)))
             throw new EditorError(EditorError.Code.UNAUTHORIZED, "A valid editor token is required.");
-        if (!now().isBefore(token.expires())) throw new EditorError(EditorError.Code.TOKEN_EXPIRED, "This token expired; pair the browser again.");
-        Token used = new Token(token.id(), token.hash(), token.label(), token.admin(), token.scopes(), token.groups(), token.created(), token.expires(),
-                Optional.of(now()), token.counter(), token.client(), token.adminChecked());
+        Instant now = now();
+        if (!now.isBefore(token.expires())) throw new EditorError(EditorError.Code.TOKEN_EXPIRED, "This token expired; pair the browser again.");
+        Instant slid = now.plus(token.lifetime());
+        Token used = token.used(now, slid.isAfter(token.expires()) ? slid : token.expires());
         tokens.put(id, used);
+        if (slid.isAfter(token.expires().plus(SLIDE_WRITE))) {
+            try { save(); }
+            catch (IOException failure) { LOG.log(System.Logger.Level.WARNING, "Editor token store not written; the new expiry of " + id + " holds until a restart: " + failure.getMessage()); }
+        }
         return used;
     }
 
@@ -145,8 +167,7 @@ public final class EditorTokens {
         Token token = tokens.get(tokenId);
         if (token == null) throw new EditorError(EditorError.Code.TOKEN_REVOKED, "This token was revoked.");
         if (counter <= token.counter()) throw new EditorError(EditorError.Code.COUNTER_REPLAYED, "X-Animus-Counter must exceed " + token.counter() + ".");
-        tokens.put(tokenId, new Token(token.id(), token.hash(), token.label(), token.admin(), token.scopes(), token.groups(), token.created(), token.expires(),
-                token.lastUsed(), counter, token.client(), token.adminChecked()));
+        tokens.put(tokenId, token.counted(counter));
         save();
     }
 
@@ -154,8 +175,7 @@ public final class EditorTokens {
     public synchronized void confirmAdmin(String tokenId) throws IOException {
         Token token = tokens.get(tokenId);
         if (token == null || token.adminChecked().plus(Duration.ofHours(1)).isAfter(now())) return;
-        tokens.put(tokenId, new Token(token.id(), token.hash(), token.label(), token.admin(), token.scopes(), token.groups(), token.created(), token.expires(),
-                token.lastUsed(), token.counter(), token.client(), now()));
+        tokens.put(tokenId, token.checked(now()));
         save();
     }
 
@@ -163,22 +183,33 @@ public final class EditorTokens {
     public synchronized boolean dropScope(String tokenId, EditorScope scope) throws IOException {
         Token token = tokens.get(tokenId);
         if (token == null || !token.has(scope)) return false;
-        List<EditorScope> kept = token.scopes().stream().filter((EditorScope held) -> held != scope).toList();
-        tokens.put(tokenId, new Token(token.id(), token.hash(), token.label(), token.admin(), kept, token.groups(), token.created(), token.expires(),
-                token.lastUsed(), token.counter(), token.client(), token.adminChecked()));
+        tokens.put(tokenId, token.scoped(token.scopes().stream().filter((EditorScope held) -> held != scope).toList()));
         save();
         return true;
     }
 
-    /** Revokes one token, or every token for {@code all}. Returns the revoked ids. */
+    /**
+     * Revokes one token, or every token for {@code all}. A pairing link not opened yet is cancelled the same way, so its
+     * browser can no longer pair. Returns the revoked ids.
+     */
     public synchronized List<String> revoke(String idOrAll) throws IOException {
-        List<String> ids = idOrAll.equals("all") ? new ArrayList<>(tokens.keySet()) : tokens.containsKey(idOrAll) ? List.of(idOrAll) : List.of();
-        if (ids.isEmpty()) return List.of();
+        boolean all = idOrAll.equals("all");
+        List<String> ids = all ? new ArrayList<>(tokens.keySet()) : tokens.containsKey(idOrAll) ? new ArrayList<>(List.of(idOrAll)) : new ArrayList<>();
+        Instant now = now();
+        for (Iterator<Map.Entry<String, Pending>> open = pairings.entrySet().iterator(); open.hasNext(); ) {
+            Map.Entry<String, Pending> pairing = open.next();
+            if (!all && !pairing.getKey().equals(idOrAll)) continue;
+            open.remove();
+            if (now.isBefore(pairing.getValue().expires())) ids.add(pairing.getKey());
+        }
+        boolean stored = false;
         for (String id : ids) {
             Token token = tokens.remove(id);
+            if (token == null) continue;
             revoked.put(id, token.expires());
+            stored = true;
         }
-        save();
+        if (stored) save();
         return List.copyOf(ids);
     }
 
@@ -200,10 +231,21 @@ public final class EditorTokens {
 
     public synchronized Optional<Token> find(String id) { return Optional.ofNullable(tokens.get(id)); }
 
-    public synchronized int pendingPairings() {
+    public synchronized int pendingPairings() { return openPairings().size(); }
+
+    /** Pairing links not opened yet and not expired. */
+    public synchronized List<Open> openPairings() {
         prunePairings();
         Instant now = now();
-        return (int) pairings.values().stream().filter((Pending pending) -> now.isBefore(pending.expires())).count();
+        List<Open> open = new ArrayList<>();
+        pairings.forEach((String id, Pending pending) -> { if (now.isBefore(pending.expires())) open.add(new Open(id, pending.expires(), pending.grant())); });
+        return open;
+    }
+
+    /** The waiting pairing with this id, expired or not, until it is opened or pruned. */
+    public synchronized Optional<Open> pairing(String tokenId) {
+        Pending pending = pairings.get(tokenId);
+        return pending == null ? Optional.empty() : Optional.of(new Open(tokenId, pending.expires(), pending.grant()));
     }
 
     private void prunePairings() {
@@ -239,10 +281,13 @@ public final class EditorTokens {
                 }
                 List<String> groups = new ArrayList<>();
                 for (JsonElement group : entry.getAsJsonArray("groups")) groups.add(group.getAsString());
+                Instant created = Instant.parse(entry.get("created").getAsString()), expires = Instant.parse(entry.get("expires").getAsString());
+                // A store from before sliding expiry has no lifetime; it is the time from pairing to expiry.
+                Duration lifetime = optional(entry, "lifetimeSeconds").map((String seconds) -> Duration.ofSeconds(Long.parseLong(seconds))).orElse(Duration.between(created, expires));
                 Token token = new Token(entry.get("id").getAsString(), entry.get("hash").getAsString(), entry.get("label").getAsString(),
-                        optional(entry, "admin").map(UUID::fromString), scopes, groups, Instant.parse(entry.get("created").getAsString()),
-                        Instant.parse(entry.get("expires").getAsString()), optional(entry, "lastUsed").map(Instant::parse), entry.get("counter").getAsLong(),
-                        optional(entry, "client"), optional(entry, "adminChecked").map(Instant::parse).orElse(Instant.parse(entry.get("created").getAsString())));
+                        optional(entry, "admin").map(UUID::fromString), scopes, groups, created, expires, lifetime,
+                        optional(entry, "lastUsed").map(Instant::parse), entry.get("counter").getAsLong(),
+                        optional(entry, "client"), optional(entry, "adminChecked").map(Instant::parse).orElse(created));
                 tokens.put(token.id(), token);
             }
             if (saved.has("revoked")) for (JsonElement element : saved.getAsJsonArray("revoked")) {
@@ -272,6 +317,7 @@ public final class EditorTokens {
             entry.add("groups", groups);
             entry.addProperty("created", token.created().toString());
             entry.addProperty("expires", token.expires().toString());
+            entry.addProperty("lifetimeSeconds", token.lifetime().toSeconds());
             token.lastUsed().ifPresent((Instant used) -> entry.addProperty("lastUsed", used.toString()));
             entry.addProperty("counter", token.counter());
             token.client().ifPresent((String client) -> entry.addProperty("client", client));

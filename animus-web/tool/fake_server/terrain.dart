@@ -244,7 +244,7 @@ int _int(Map<String, String> query, String key, int min, int max) {
 String _world(Map<String, String> query) {
   final String? world = query['world'];
   if (world == null || world.isEmpty) throw ApiError('invalid-request', 'world is required.');
-  if (world != 'world' && world != 'world_nether') throw ApiError('not-found', 'No loaded world $world.');
+  if (world != 'world' && world != 'world_nether') throw ApiError('world-unloaded', 'World $world is not loaded on the server.');
   return world;
 }
 

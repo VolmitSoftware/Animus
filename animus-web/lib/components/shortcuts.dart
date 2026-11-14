@@ -5,7 +5,7 @@
 library;
 
 /// What a page-wide shortcut does.
-enum ShortcutAction { palette, sheet, search, undo, redo, save, sidebar, newDocument, browseNpcs }
+enum ShortcutAction { palette, sheet, undo, redo, save, newDocument, browseNpcs }
 
 /// One shortcut: the keys (several mean any of them) and what it does.
 class Shortcut {
@@ -32,23 +32,23 @@ class ShortcutGroup {
 
 const List<ShortcutGroup> shortcutGroups = <ShortcutGroup>[
   ShortcutGroup('Anywhere', 'Outside text boxes', <Shortcut>[
-    Shortcut(<String>['Mod+K'], 'Open commands', action: ShortcutAction.palette),
+    Shortcut(<String>['Mod+K', '/'], 'Search', action: ShortcutAction.palette),
     Shortcut(<String>['?'], 'Show these shortcuts', action: ShortcutAction.sheet),
-    Shortcut(<String>['Mod+F', '/'], 'Search documents', action: ShortcutAction.search),
     Shortcut(<String>['Mod+Z'], 'Undo', action: ShortcutAction.undo),
     Shortcut(<String>['Mod+Shift+Z', 'Mod+Y'], 'Redo', action: ShortcutAction.redo),
-    Shortcut(<String>['Mod+S'], 'Save, or Apply on a live server', action: ShortcutAction.save),
-    Shortcut(<String>['Mod+B'], 'Show or hide the sidebar', action: ShortcutAction.sidebar),
     Shortcut(<String>['N'], 'New document', action: ShortcutAction.newDocument),
-    Shortcut(<String>['B'], 'Browse NPCs', action: ShortcutAction.browseNpcs),
+    Shortcut(<String>['B'], 'NPCs', action: ShortcutAction.browseNpcs),
   ]),
-  ShortcutGroup('Commands and lists', 'In the command palette, dropdowns and suggestions', <Shortcut>[
+  ShortcutGroup('Saving', 'Also while typing', <Shortcut>[
+    Shortcut(<String>['Mod+S'], 'Apply to the server, or save in this browser', action: ShortcutAction.save),
+  ]),
+  ShortcutGroup('Search and lists', 'In search, lists, dropdowns and suggestions', <Shortcut>[
     Shortcut(<String>['Up', 'Down'], 'Move through the list'),
     Shortcut(<String>['Enter'], 'Run or pick'),
     Shortcut(<String>['Escape'], 'Close'),
     Shortcut(<String>['Ctrl+Space'], 'Show suggestions in a text box or the code view'),
   ]),
-  ShortcutGroup('Sidebar, tabs and trees', 'On a focused header, tab or row', <Shortcut>[
+  ShortcutGroup('Tabs, sections and trees', 'On a focused header, tab or row', <Shortcut>[
     Shortcut(<String>['Up', 'Down'], 'Move between rows'),
     Shortcut(<String>['Left', 'Right'], 'Close or open a section, or move between tabs'),
     Shortcut(<String>['Home', 'End'], 'First or last'),
@@ -80,6 +80,13 @@ const List<ShortcutGroup> shortcutGroups = <ShortcutGroup>[
   ]),
 ];
 
+/// The groups whose shortcuts the shell handles page-wide.
+List<ShortcutGroup> get pageGroups => shortcutGroups.take(2).toList();
+
+/// Whether [action] runs while focus is in a text box. Only saving does:
+/// Mod+S never reaches the browser's own Save page.
+bool firesWhileTyping(ShortcutAction action) => action == ShortcutAction.save;
+
 /// [keys] as the reader's keyboard labels them: `Mod` is Cmd on a Mac and
 /// Ctrl elsewhere, `Alt` is Option on a Mac.
 String keyLabel(String keys, {required bool mac}) => keys
@@ -110,15 +117,13 @@ ShortcutAction? matchShortcut({required String key, required bool mod, required 
       'k' => ShortcutAction.palette,
       'z' => shift ? ShortcutAction.redo : ShortcutAction.undo,
       'y' => ShortcutAction.redo,
-      'f' => ShortcutAction.search,
       's' => ShortcutAction.save,
-      'b' => ShortcutAction.sidebar,
       _ => null,
     };
   }
   return switch (key) {
     '?' => ShortcutAction.sheet,
-    '/' => ShortcutAction.search,
+    '/' => ShortcutAction.palette,
     'n' || 'N' when !shift => ShortcutAction.newDocument,
     'b' || 'B' when !shift => ShortcutAction.browseNpcs,
     _ => null,

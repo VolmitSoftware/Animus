@@ -1,14 +1,17 @@
+import 'package:animus_editor/logic/change_sets.dart';
 import 'package:animus_editor/logic/gui/gui_json.dart';
 import 'package:animus_editor/logic/shared_schemas.dart';
 import 'package:animus_editor/model/animus_document.dart';
 import 'package:animus_editor/model/document_kind.dart';
 import 'package:animus_editor/model/server_binding.dart';
+import 'package:animus_editor/services/server/connection_status.dart';
 import 'package:animus_editor/services/server/error_copy.dart';
 import 'package:animus_editor/services/server/server_connection.dart';
 import 'package:animus_editor/services/server/transport.dart';
 import 'package:animus_editor/state/editor_store.dart';
 import 'package:animus_editor/state/live_lines.dart';
 import 'package:animus_editor/state/live_session.dart';
+import 'package:animus_editor/state/workspace_records.dart';
 import 'package:animus_editor/state/workspace_repository.dart';
 import 'package:test/test.dart';
 
@@ -22,9 +25,9 @@ class ContestedRepository extends MemoryWorkspaceRepository {
   bool refuse = false;
 
   @override
-  Future<void> save(WorkspaceSnapshot snapshot) async {
+  Future<void> save(WorkspaceSnapshot snapshot, {WorkspaceSnapshot? previous, Set<String>? changed}) async {
     if (refuse) throw WorkspaceConflict(snapshot.id, snapshot.generation + 1, snapshot.generation);
-    await super.save(snapshot);
+    await super.save(snapshot, previous: previous, changed: changed);
   }
 }
 
@@ -55,7 +58,6 @@ void main() {
     session.start();
     await connection.connect();
     await settle();
-    await session.openDocuments(session.catalog);
   });
 
   tearDown(() async {
@@ -72,14 +74,15 @@ void main() {
 
   int sentTo(String method, String path) => network.sent.where(((ConnectionPath, ApiRequest) sent) => sent.$2.method == method && sent.$2.path.startsWith(path)).length;
 
-  test('should leave a tab that does not own the session read-only, then take over', () async {
+  test('should leave a tab that does not own the session read-only and unconnected, then take over', () async {
     await rename('Captain');
     owner.owned = false;
+    await settle();
+    expect(connection.status.phase, ConnectionPhase.offline, reason: 'a waiting tab holds no connection or event stream');
+    expect(network.streams.where(((ConnectionPath, FakeSubscription) stream) => stream.$2.isOpen), isEmpty);
     expect(await session.apply(), isFalse);
     expect(sentTo('POST', '/v1/changes'), 0);
     expect(log().last, LiveSession.otherTab);
-    network.lastStream.emit(<String, Object?>{'type': 'catalog', 'documents': <Object?>[]});
-    await settle();
     owner.owned = true;
     await settle();
     expect(log(), contains('This tab now runs live editing for this server.'));
@@ -171,12 +174,18 @@ void main() {
     expect(validationLine(true, 1, 0), 'The server accepts 1 document.');
   });
 
+  test('should name an apply or undo in plain words, without the change id', () {
+    const ChangeApplied applied = ChangeApplied('key-1', '56d8a4da-1042-4c3e-9e0f-1b2c3d4e5f60', <AppliedDocument>[AppliedDocument(DocumentKind.npc, 'town/baker', 3, 'abc')]);
+    expect(appliedLine(applied, undo: false), 'Applied 1 document.');
+    expect(appliedLine(applied, undo: true), 'Undid 1 document.');
+  });
+
   test('should not report a spawn the connection cut short as a success', () {
     expect(spawnLine(spawn: true, total: 3, sent: 1, accepted: 1, refused: const <String>[]),
         'Spawned 1 of 3 NPCs. Connection failed with 2 unsent. Select them again after reconnecting.');
     expect(spawnLine(spawn: false, total: 2, sent: 2, accepted: 2, refused: const <String>[]), 'Despawned 2 NPCs on the server.');
     expect(spawnLine(spawn: true, total: 2, sent: 2, accepted: 1, refused: const <String>['town/a'], reason: serverErrorCopy['scope-missing']),
-        startsWith('Spawned 1 of 2 NPCs. The server refused town/a: This pairing lacks that scope.'));
+        startsWith('Spawned 1 of 2 NPCs. The server refused town/a: This pairing lacks a permission this needs.'));
   });
 
   test('should report a lost connection once, without a doubled period', () async {

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "id": "court",
+  "description": "Everyone at court",
+  "values": {
+    "tags": [
+      "noble"
+    ],
+    "nameplate": {
+      "visible": true
+    }
+  }
+}

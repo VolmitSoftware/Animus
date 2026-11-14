@@ -1,6 +1,9 @@
-/// Convert Citizens, Shopkeepers, dtlTraders and Denizen data: saves read from disk are converted in this browser to
-/// the same staged imports the server's converter writes, reviewed here, and downloaded as zips that unzip into the
-/// data folder. Converting never uploads; only the Import on a server panel sends files, and only when asked.
+/// Import (`#/citizens`): one wizard for Citizens, Shopkeepers, dtlTraders and
+/// Denizen data, in four steps: Source, Files, Review, Result. Citizens,
+/// Shopkeepers and Denizen convert in this browser and never upload; the
+/// result opens as a workspace, goes to a paired server, or downloads as a
+/// bundle. dtlTraders and "Already on my server" convert on a paired server,
+/// which installs and rolls back the import itself.
 library;
 
 import 'dart:async';
@@ -9,8 +12,8 @@ import 'dart:js_interop';
 import 'dart:typed_data';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
+import 'package:arcane_jaspr/html.dart' show HeadingLevel;
 import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
 import '../config/docs_links.dart';
@@ -19,6 +22,7 @@ import '../logic/citizens/citizens_review.dart';
 import '../logic/citizens/converted_workspace.dart';
 import '../logic/citizens/denizen_folder.dart';
 import '../logic/denizen/denizen_converter.dart';
+import '../logic/plural.dart';
 import '../logic/shopkeepers/shopkeepers_converter.dart';
 import '../model/animus_document.dart';
 import '../services/browser.dart';
@@ -27,10 +31,19 @@ import '../state/editor_store.dart';
 import '../state/server_hub.dart';
 import '../state/workspace_repository.dart';
 import '../state/workspace_route.dart';
-import 'fold.dart';
-import 'info_tip.dart';
+import '../ui/action_row.dart';
+import '../ui/alert.dart';
+import '../ui/confirm_dialog.dart';
+import '../ui/field.dart';
+import '../ui/mode.dart';
+import '../ui/page_header.dart';
+import '../ui/tabs.dart';
+import 'advanced_notice.dart';
+import 'offline/import_plan.dart';
+import 'offline/import_review.dart';
+import 'offline/page_parts.dart';
 import 'server/server_import_panel.dart';
-import '../logic/plural.dart';
+import '../ui/stack.dart';
 
 @JS('animusCitizensResult')
 external set _citizensResult(JSString? value);
@@ -41,21 +54,11 @@ external set _shopkeepersResult(JSString? value);
 @JS('animusDenizenResult')
 external set _denizenResult(JSString? value);
 
-/// The screen's heading, also the label of the home page button that opens it.
-const String converterTitle = 'Import Citizens and others';
-
-/// A field status from a Citizens NPC report, in words.
-String fieldStatusLabel(String status) => switch (status) {
-      'CONVERTED' => 'Converted',
-      'REQUIRES_REVIEW' => 'Converted, check it',
-      'UNSUPPORTED_PRESERVED' => 'Kept, not run',
-      'REQUIRES_INTEGRATION' => 'Needs another plugin',
-      _ => status.toLowerCase().replaceAll('_', ' '),
-    };
+/// The page's heading, also its name in Search.
+const String converterTitle = 'Import';
 
 /// What a failed conversion means and what to do next.
-String conversionProblem(String what, String message) =>
-    '$message${message.endsWith('.') ? '' : '.'} Choose the unedited $what again.';
+String conversionProblem(String what, String message) => '$message${message.endsWith('.') ? '' : '.'} Choose the unedited $what again.';
 
 /// Lets the user pick a folder; every file in it, as text, by its picked path.
 Future<Map<String, String>?> _pickTextFolder() {
@@ -88,24 +91,39 @@ Future<Map<String, String>?> _pickTextFolder() {
   return completer.future;
 }
 
-/// Which converter is running; the others only wait.
-enum _Conversion { citizens, denizen, shops }
+const String _yaml = '.yml,.yaml,application/x-yaml,text/yaml';
+const String _stepId = 'animus-import-step';
+const String _whyId = 'animus-import-why';
+const String _unzipNext = 'Unzip into the Animus data folder, then run /animus import citizens.';
 
 class CitizensScreen extends StatefulWidget {
-  const CitizensScreen({required this.hub, this.store, this.onNavigate, super.key});
+  const CitizensScreen({required this.hub, required this.store, required this.onNavigate, this.announce, this.landmark = true, super.key});
 
   final ServerHub hub;
 
   /// Where Open as workspace and Send to server create the converted
-  /// workspace; without both those next steps are not offered.
-  final EditorStore? store;
-  final void Function(EditorRoute route)? onNavigate;
+  /// workspace.
+  final EditorStore store;
+  final void Function(EditorRoute route) onNavigate;
+
+  /// Says, in Simple, how many converted documents only Advanced lists.
+  final bool Function(Arrival arrival, List<ArrivedDocument> documents, String workspaceId)? announce;
+
+  /// The page's own main landmark; false inside a workspace, whose frame
+  /// is the main.
+  final bool landmark;
 
   @override
   State<CitizensScreen> createState() => _CitizensScreenState();
 }
 
 class _CitizensScreenState extends State<CitizensScreen> {
+  ImportSource _source = ImportSource.citizens;
+  int _step = 0;
+  bool _converting = false;
+  bool _opening = false;
+
+  // Citizens.
   String? _fileName;
   Uint8List? _bytes;
   String _worlds = '';
@@ -114,25 +132,88 @@ class _CitizensScreenState extends State<CitizensScreen> {
   /// The converted NPCs' names by Citizens id, for the warnings.
   Map<String, String> _names = const <String, String>{};
   String? _error;
-  _Conversion? _converting;
 
-  bool get _busy => _converting != null;
+  // Shopkeepers.
   (String, Uint8List)? _shopSave;
   (String, Uint8List)? _shopConfig;
   ShopkeepersPreview? _shops;
   String? _shopError;
+
+  // dtlTraders.
   List<(String, Uint8List)> _traders = const <(String, Uint8List)>[];
   List<String> _tradersSkipped = const <String>[];
+
+  // Denizen.
   String? _denizenName;
   DenizenFolder? _denizen;
   DenizenPreview? _denizenPreview;
   String? _denizenError;
-  String? _importState;
-  bool _opening = false;
 
-  static const String _yaml = '.yml,.yaml,application/x-yaml,text/yaml';
+  late final ServerImportFlow _server = ServerImportFlow(component.hub, _changed);
 
-  Future<void> _choose() async {
+  /// The server answered "nothing to import yet" to Check server.
+  bool _serverEmpty = false;
+
+  @override
+  void initState() {
+    super.initState();
+    component.hub.addListener(_changed);
+  }
+
+  @override
+  void dispose() {
+    component.hub.removeListener(_changed);
+    super.dispose();
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
+
+  bool get _paired => component.hub.servers.isNotEmpty;
+
+  String? _blocked(ImportSource source) => sourceBlocked(source, paired: _paired, canImport: _server.canImport);
+
+  bool _hasResult(ImportSource source) => switch (source) {
+        ImportSource.citizens => _review != null,
+        ImportSource.shopkeepers => _shops != null,
+        ImportSource.denizen => _denizenPreview != null,
+        ImportSource.dtlTraders || ImportSource.server => (_server.review?.state ?? 'none') != 'none',
+      };
+
+  /// The furthest step the current source can show.
+  int get _lastStep {
+    if (_blocked(_source) != null) return 0;
+    if (!_hasResult(_source)) return 1;
+    if (_source.onServer) return _server.review!.state == 'applied' ? 3 : 2;
+    return 3;
+  }
+
+  void _goTo(int step) {
+    setState(() => _step = step.clamp(0, _lastStep));
+    if (_step == 1 && _source.onServer) _server.connectIfIdle();
+    _showStep();
+  }
+
+  /// After the step renders: the page back at its top and focus on the step,
+  /// so a keyboard or screen reader starts at the new content.
+  static void _showStep() => web.window.setTimeout((() {
+        final web.HTMLElement? step = web.document.getElementById(_stepId) as web.HTMLElement?;
+        if (step == null) return;
+        final web.Element? page = step.closest('.ui-page');
+        if (page != null) page.scrollTop = 0;
+        step.focus(web.FocusOptions(preventScroll: true));
+      }).toJS, 0.toJS);
+
+  void _pickSource(ImportSource source) => setState(() {
+        _source = source;
+        _server.error = null;
+        _serverEmpty = false;
+      });
+
+  // Choosing files.
+
+  Future<void> _chooseCitizens() async {
     final (String, Uint8List)? picked = await pickFile(_yaml);
     if (picked == null) return;
     setState(() {
@@ -149,7 +230,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
     _denizenResult = null;
   }
 
-  Future<void> _chooseShops(bool config) async {
+  Future<void> _chooseShops({required bool config}) async {
     final (String, Uint8List)? picked = await pickFile(_yaml);
     if (picked == null) return;
     setState(() {
@@ -162,44 +243,6 @@ class _CitizensScreenState extends State<CitizensScreen> {
       _shopError = null;
     });
     _shopkeepersResult = null;
-  }
-
-  Future<void> _convertShops() async {
-    final (String, Uint8List)? save = _shopSave;
-    if (save == null) return;
-    setState(() {
-      _converting = _Conversion.shops;
-      _shopError = null;
-      _shops = null;
-    });
-    await Future<void>.delayed(const Duration(milliseconds: 16));
-    try {
-      final (String, Uint8List)? config = _shopConfig;
-      final Uint8List? citizens = _bytes;
-      final ShopkeepersPreview preview = convertShopkeepers(
-        decodeShopkeepersSource(save.$2, 'save.yml'),
-        config: config == null ? null : decodeShopkeepersSource(config.$2, 'config.yml'),
-        citizens: citizens == null ? null : decodeShopkeepersSource(citizens, 'saves.yml'),
-      );
-      _shopkeepersResult = jsonEncode(<String, Object?>{
-        'importId': preview.id,
-        'outputHash': preview.outputHash(),
-        'shops': preview.shops,
-        'npcs': preview.npcs,
-        'issues': preview.issueCount,
-        'offers': <String, int>{'trade': preview.tradeOffers, 'static': preview.staticOffers, 'skipped': preview.skippedOffers},
-        'links': <String, int>{'found': preview.linksFound, 'notFound': preview.linksMissing, 'unchecked': preview.linksUnchecked},
-      }).toJS;
-      setState(() => _shops = preview);
-    } on ShopkeepersImportException catch (failure) {
-      _shopkeepersResult = jsonEncode(<String, Object?>{'error': failure.message}).toJS;
-      setState(() => _shopError = conversionProblem('Shopkeepers save.yml', failure.message));
-    } on Object catch (failure) {
-      _shopkeepersResult = jsonEncode(<String, Object?>{'error': '$failure'}).toJS;
-      setState(() => _shopError = conversionProblem('Shopkeepers save.yml', 'The converter could not read the file'));
-    } finally {
-      if (mounted) setState(() => _converting = null);
-    }
   }
 
   Future<void> _chooseTraders() async {
@@ -225,22 +268,123 @@ class _CitizensScreenState extends State<CitizensScreen> {
       _denizenName = first == null ? null : (first.contains('/') ? first.substring(0, first.indexOf('/')) : first);
       _denizen = denizenFolderOf(files);
       _denizenPreview = null;
-      _denizenError = _denizen!.empty
-          ? 'No Denizen scripts or flags in that folder. Choose plugins/Denizen.'
-          : null;
+      _denizenError = _denizen!.empty ? 'No Denizen scripts or flags in that folder. Choose plugins/Denizen.' : null;
     });
     _denizenResult = null;
   }
 
-  Future<void> _convertDenizen() async {
-    final DenizenFolder? folder = _denizen;
-    if (folder == null || folder.empty) return;
-    setState(() {
-      _converting = _Conversion.denizen;
-      _denizenError = null;
-      _denizenPreview = null;
-    });
+  Map<String, String> get _worldMap {
+    try {
+      return parseWorldMappings(_worlds);
+    } on CitizensImportException {
+      return const <String, String>{};
+    }
+  }
+
+  /// The files a server source sends, in upload order: the Citizens save,
+  /// the dtlTraders files, then the Shopkeepers save and config.
+  List<ImportUpload> get _uploads => <ImportUpload>[
+        if (_bytes != null) ImportUpload(ImportFile.citizens, _bytes!),
+        if (_source == ImportSource.dtlTraders)
+          for (final (String name, Uint8List bytes) in _traders) ImportUpload(ImportFile.dtltraders, bytes, name: name),
+        if (_source == ImportSource.server && _shopSave != null) ImportUpload(ImportFile.shopkeepers, _shopSave!.$2),
+        if (_source == ImportSource.server && _shopConfig != null) ImportUpload(ImportFile.shopkeepersConfig, _shopConfig!.$2),
+      ];
+
+  List<String> get _uploadProblems => <String>[
+        for (final ImportUpload upload in _uploads)
+          if (uploadProblem(upload, _server.path) != null) uploadProblem(upload, _server.path)!,
+      ];
+
+  String? get _convertBlocked => convertBlocked(
+        _source,
+        citizens: _bytes != null,
+        shopSave: _shopSave != null,
+        traders: _traders.length,
+        denizen: _denizen != null && !_denizen!.empty,
+        online: _server.online,
+        problems: _uploadProblems,
+      );
+
+  // Converting.
+
+  Future<void> _convert() async {
+    setState(() => _converting = true);
+    // Let the busy state paint before a conversion holds the thread.
     await Future<void>.delayed(const Duration(milliseconds: 16));
+    bool done = false;
+    try {
+      switch (_source) {
+        case ImportSource.citizens:
+          done = _convertCitizens();
+        case ImportSource.shopkeepers:
+          done = _convertShops();
+        case ImportSource.denizen:
+          done = _convertDenizen();
+        case ImportSource.dtlTraders || ImportSource.server:
+          _serverEmpty = false;
+          done = await _server.convert(_uploads, _worldMap, advanced: ModeScope.advanced(context));
+      }
+    } finally {
+      if (mounted) setState(() => _converting = false);
+    }
+    if (done && mounted) _goTo(2);
+  }
+
+  bool _convertCitizens() {
+    try {
+      final CitizensPreview preview = convertCitizens(decodeSaves(_bytes!), parseWorldMappings(_worlds));
+      final CitizensReview review = CitizensReview.of(preview);
+      _citizensResult = jsonEncode(review.aggregate()).toJS;
+      _review = review;
+      _names = citizensNames(preview);
+      _error = null;
+      return true;
+    } on CitizensImportException catch (failure) {
+      _citizensResult = jsonEncode(<String, Object?>{'error': failure.message}).toJS;
+      _error = conversionProblem('Citizens saves.yml', failure.message);
+    } on Object catch (failure) {
+      _citizensResult = jsonEncode(<String, Object?>{'error': '$failure'}).toJS;
+      _error = conversionProblem('Citizens saves.yml', 'The converter could not read the file');
+    }
+    _review = null;
+    return false;
+  }
+
+  bool _convertShops() {
+    try {
+      final (String, Uint8List)? config = _shopConfig;
+      final Uint8List? citizens = _bytes;
+      final ShopkeepersPreview preview = convertShopkeepers(
+        decodeShopkeepersSource(_shopSave!.$2, 'save.yml'),
+        config: config == null ? null : decodeShopkeepersSource(config.$2, 'config.yml'),
+        citizens: citizens == null ? null : decodeShopkeepersSource(citizens, 'saves.yml'),
+      );
+      _shopkeepersResult = jsonEncode(<String, Object?>{
+        'importId': preview.id,
+        'outputHash': preview.outputHash(),
+        'shops': preview.shops,
+        'npcs': preview.npcs,
+        'issues': preview.issueCount,
+        'offers': <String, int>{'trade': preview.tradeOffers, 'static': preview.staticOffers, 'skipped': preview.skippedOffers},
+        'links': <String, int>{'found': preview.linksFound, 'notFound': preview.linksMissing, 'unchecked': preview.linksUnchecked},
+      }).toJS;
+      _shops = preview;
+      _shopError = null;
+      return true;
+    } on ShopkeepersImportException catch (failure) {
+      _shopkeepersResult = jsonEncode(<String, Object?>{'error': failure.message}).toJS;
+      _shopError = conversionProblem('Shopkeepers save.yml', failure.message);
+    } on Object catch (failure) {
+      _shopkeepersResult = jsonEncode(<String, Object?>{'error': '$failure'}).toJS;
+      _shopError = conversionProblem('Shopkeepers save.yml', 'The converter could not read the file');
+    }
+    _shops = null;
+    return false;
+  }
+
+  bool _convertDenizen() {
+    final DenizenFolder folder = _denizen!;
     try {
       final Uint8List? citizens = _bytes;
       final DenizenPreview preview = convertDenizen(DenizenInput(
@@ -260,30 +404,92 @@ class _CitizensScreenState extends State<CitizensScreen> {
         'flagsPreserved': preview.flagsPreserved,
         'skipped': folder.skipped.length,
       }).toJS;
-      setState(() => _denizenPreview = preview);
+      _denizenPreview = preview;
+      _denizenError = null;
+      return true;
     } on DenizenImportException catch (failure) {
       _denizenResult = jsonEncode(<String, Object?>{'error': failure.message}).toJS;
-      setState(() => _denizenError = conversionProblem('Denizen folder', failure.message));
+      _denizenError = conversionProblem('Denizen folder', failure.message);
     } on CitizensImportException catch (failure) {
       _denizenResult = jsonEncode(<String, Object?>{'error': failure.message}).toJS;
-      setState(() => _denizenError = conversionProblem('Citizens saves.yml', failure.message));
+      _denizenError = conversionProblem('Citizens saves.yml', failure.message);
     } on Object catch (failure) {
       _denizenResult = jsonEncode(<String, Object?>{'error': '$failure'}).toJS;
-      setState(() => _denizenError = conversionProblem('Denizen folder', 'The converter could not read the scripts'));
+      _denizenError = conversionProblem('Denizen folder', 'The converter could not read the scripts');
+    }
+    _denizenPreview = null;
+    return false;
+  }
+
+  // Server steps.
+
+  Future<void> _check() async {
+    if (!await _server.refresh() || !mounted) return;
+    final String state = _server.review?.state ?? 'none';
+    setState(() => _serverEmpty = state == 'none');
+    if (state != 'none') _goTo(state == 'applied' ? 3 : 2);
+  }
+
+  Future<void> _install() async {
+    final ImportReview? review = _server.review;
+    if (review == null) return;
+    final String commands = review.commandNamespaces.isEmpty
+        ? ''
+        : ' Their commands run as before, so the server allows commands from ${joinWords(review.commandNamespaces)}.';
+    final bool yes = await askToConfirm(
+      title: 'Install this import on the server?',
+      message: 'NPCs spawn as they were, with their patrols, combat, shops and other converted features on.$commands',
+      confirmLabel: 'Install import',
+    );
+    if (yes && await _server.install() && mounted) _goTo(3);
+  }
+
+  Future<void> _rollback() async {
+    final bool yes = await askToConfirm(
+      title: 'Roll back this import?',
+      message: 'Removes its NPCs, shops and behaviors from the server.',
+      confirmLabel: 'Roll back',
+      destructive: true,
+    );
+    if (yes && await _server.rollback() && mounted) _goTo(2);
+  }
+
+  void _openServer() {
+    final String? id = _server.serverId;
+    if (id != null) component.onNavigate(ServerRoute(id, const <String>[]));
+  }
+
+  // Next steps of a browser conversion.
+
+  Map<String, Uint8List> get _convertedFiles => convertedWorkspaceFiles(citizens: _review?.preview, shops: _shops, denizen: _denizenPreview);
+
+  /// Opens everything converted so far as a new workspace, then shows it, or
+  /// its Send to server page when [send] is set.
+  Future<void> _openWorkspace({required bool send}) async {
+    final EditorStore store = component.store;
+    final void Function(EditorRoute route) navigateTo = component.onNavigate;
+    setState(() => _opening = true);
+    try {
+      final WorkspaceSnapshot made = await store.openFiles(
+        convertedWorkspaceName(citizens: _review != null, shops: _shops != null, denizen: _denizenPreview != null),
+        _convertedFiles,
+      );
+      final int invalid = made.documents.where((AnimusDocument document) => !document.valid).length;
+      final bool told = component.announce?.call(Arrival.imported, arrivedOf(made.documents), made.id) ?? false;
+      if (!told || invalid > 0) ArcaneSonner.success('Opened ${made.name}: ${countOf(made.documents.length, 'document')}${invalid == 0 ? '' : ', $invalid with problems'}.');
+      navigateTo(send ? SyncRoute(made.id) : WorkspaceRoute(made.id));
+      focusMainHeading();
+    } on Object catch (failure) {
+      ArcaneSonner.error('Could not open the conversion ($failure). Download the bundle instead.');
     } finally {
-      if (mounted) setState(() => _converting = null);
+      if (mounted) setState(() => _opening = false);
     }
   }
 
-  /// The chosen files as server uploads: the Citizens save, the dtlTraders files, then the Shopkeepers save and config.
-  List<ImportUpload> get _uploads => <ImportUpload>[
-        if (_bytes != null) ImportUpload(ImportFile.citizens, _bytes!),
-        for (final (String name, Uint8List bytes) in _traders) ImportUpload(ImportFile.dtltraders, bytes, name: name),
-        if (_shopSave != null) ImportUpload(ImportFile.shopkeepers, _shopSave!.$2),
-        if (_shopConfig != null) ImportUpload(ImportFile.shopkeepersConfig, _shopConfig!.$2),
-      ];
-
-  static const String _unzipNext = 'Unzip into the Animus data folder, then run /animus import citizens.';
+  void _downloadCitizens(CitizensReview review) {
+    downloadBytes('animus-citizens-import-${review.preview.id.substring(0, 12)}.zip', citizensBundleZip(review.preview));
+    ArcaneSonner.success(_unzipNext);
+  }
 
   void _downloadShops(ShopkeepersPreview preview) {
     downloadBytes('animus-shopkeepers-import-${preview.id.substring(0, 12)}.zip', shopkeepersBundleZip(preview));
@@ -295,441 +501,251 @@ class _CitizensScreenState extends State<CitizensScreen> {
     ArcaneSonner.success('Unzip into the Animus data folder beside the Citizens import, then run /animus import citizens.');
   }
 
-  Future<void> _convert() async {
-    final Uint8List? bytes = _bytes;
-    if (bytes == null) return;
-    setState(() {
-      _converting = _Conversion.citizens;
-      _error = null;
-      _review = null;
-    });
-    // Let the busy state paint before the conversion holds the thread.
-    await Future<void>.delayed(const Duration(milliseconds: 16));
-    try {
-      final CitizensPreview preview = convertCitizens(decodeSaves(bytes), parseWorldMappings(_worlds));
-      final CitizensReview review = CitizensReview.of(preview);
-      _citizensResult = jsonEncode(review.aggregate()).toJS;
-      setState(() {
-        _review = review;
-        _names = citizensNames(preview);
-      });
-    } on CitizensImportException catch (failure) {
-      _citizensResult = jsonEncode(<String, Object?>{'error': failure.message}).toJS;
-      setState(() => _error = conversionProblem('Citizens saves.yml', failure.message));
-    } on Object catch (failure) {
-      _citizensResult = jsonEncode(<String, Object?>{'error': '$failure'}).toJS;
-      setState(() => _error = conversionProblem('Citizens saves.yml', 'The converter could not read the file'));
-    } finally {
-      if (mounted) setState(() => _converting = null);
-    }
-  }
-
-  ConverterStep get _step => converterNextStep(
-        citizensChosen: _bytes != null,
-        citizensConverted: _review != null,
-        shopsChosen: _shopSave != null,
-        shopsConverted: _shops != null,
-        denizenChosen: _denizen != null && !_denizen!.empty,
-        denizenConverted: _denizenPreview != null,
-        importState: _importState,
-      );
-
-  ButtonVariant _variant(ConverterStep step) => _step == step ? ButtonVariant.primary : ButtonVariant.secondary;
-
-  /// Opens everything converted so far as a new workspace, then shows it, or
-  /// its Sync page when [send] is set and a server is paired.
-  Future<void> _openWorkspace({required bool send}) async {
-    final EditorStore? store = component.store;
-    final void Function(EditorRoute route)? navigateTo = component.onNavigate;
-    if (store == null || navigateTo == null) return;
-    setState(() => _opening = true);
-    try {
-      final WorkspaceSnapshot made = await store.openFiles(
-        convertedWorkspaceName(citizens: _review != null, shops: _shops != null, denizen: _denizenPreview != null),
-        convertedWorkspaceFiles(citizens: _review?.preview, shops: _shops, denizen: _denizenPreview),
-      );
-      final int invalid = made.documents.where((AnimusDocument document) => !document.valid).length;
-      ArcaneSonner.success('Opened ${made.name}: ${countOf(made.documents.length, 'document')}${invalid == 0 ? '' : ', $invalid to repair'}.');
-      if (!send) {
-        navigateTo(WorkspaceRoute(made.id));
-      } else if (component.hub.servers.isEmpty) {
-        ArcaneSonner.info('Pair a server under Servers, then send ${made.name} from its Sync page.');
-        navigateTo(const HomeRoute());
-      } else {
-        navigateTo(SyncRoute(made.id));
-      }
-      focusMainHeading();
-    } on Object catch (failure) {
-      ArcaneSonner.error('Could not open the conversion ($failure). Download the bundle instead.');
-    } finally {
-      if (mounted) setState(() => _opening = false);
-    }
-  }
-
-  void _download(CitizensReview review) {
-    downloadBytes('animus-citizens-import-${review.preview.id.substring(0, 12)}.zip', citizensBundleZip(review.preview));
-    ArcaneSonner.success(_unzipNext);
-  }
+  // The page.
 
   @override
   Widget build(BuildContext context) {
-    final CitizensReview? review = _review;
-    return dom.main_(classes: 'animus-home animus-citizens', <Widget>[
-      dom.section(classes: 'animus-panel animus-home-intro', <Widget>[
-        const dom.h1(<Widget>[
-          InfoTip(
-            tip: 'Files convert in this browser and are never uploaded unless you use Upload and stage. Apply on the server installs the NPCs with everything that converted turned on.',
-            docs: Docs.citizens,
-            child: Component.text(converterTitle),
-          ),
-        ]),
-        dom.div(classes: 'animus-row', <Widget>[
-          Button.secondary(label: 'Choose saves.yml', icon: ArcaneIcon.fileUp(), size: ButtonSize.small, disabled: _busy, onPressed: _choose),
-          dom.span(classes: 'animus-muted animus-citizens-file', <Widget>[Component.text(_fileName ?? 'No Citizens save chosen')]),
-        ]),
-        TextArea(
-          label: 'World mappings (optional)',
-          placeholder: 'old_world=new_world, one per line',
-          rows: 3,
-          value: _worlds,
-          fullWidth: true,
-          onChanged: (String value) => setState(() => _worlds = value),
-        ),
-        dom.div(classes: 'animus-row', <Widget>[
-          Button(
-            label: _converting == _Conversion.citizens ? 'Converting' : 'Convert',
-            icon: ArcaneIcon.play(),
-            variant: _variant(ConverterStep.convertCitizens),
-            size: ButtonSize.small,
-            disabled: _busy || _bytes == null,
-            onPressed: _convert,
-          ),
-          const dom.a(href: '#/', classes: 'animus-muted', <Widget>[Component.text('Back to workspaces')]),
-        ]),
-      ]),
-      if (_error != null)
-        dom.section(classes: 'animus-panel animus-citizens-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[
-          const dom.h2(<Widget>[Component.text('Not converted')]),
-          dom.p(<Widget>[Component.text(_error!)]),
-        ]),
-      if (review != null) ..._report(review),
-      _shopkeepersPanel(),
-      _tradersPanel(),
-      _denizenPanel(),
-      // Without a Citizens review the next steps follow the converted shops or scripts.
-      if (review == null && _canOpen) _nextPanel(null),
-      ServerImportPanel(
-        hub: component.hub,
-        uploads: _uploads,
-        worlds: _worldMap,
-        onState: (String state) => setState(() => _importState = state),
+    final int last = _lastStep;
+    if (_step > last) _step = last;
+    final List<Widget> page = <Widget>[
+      const PageHeader(title: converterTitle),
+      AppTabs(
+        id: 'animus-import-steps',
+        label: 'Import steps',
+        tabs: importSteps,
+        selected: _step,
+        disabled: <int>{for (int step = last + 1; step < importSteps.length; step++) step},
+        onSelect: _goTo,
       ),
-    ]);
+      dom.section(
+        id: _stepId,
+        attributes: <String, String>{'tabindex': '-1', 'aria-label': importSteps[_step]},
+        <Widget>[
+          stack(spacing: 16, switch (_step) {
+            0 => _sourceStep(),
+            1 => _filesStep(context),
+            2 => _reviewStep(),
+            _ => _resultStep(context),
+          }),
+        ],
+      ),
+      _footer(),
+    ];
+    return component.landmark ? dom.main_(classes: 'animus-import', page) : dom.div(classes: 'animus-import', page);
   }
 
-  bool get _canOpen => component.store != null && component.onNavigate != null && (_review != null || _shops != null || _denizenPreview != null);
-
-  /// Open as workspace and Send to server, with the bundle download when a
-  /// Citizens save was converted ([review]).
-  Widget _nextPanel(CitizensReview? review) => dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Next steps', 'data-testid': 'citizens-next'}, <Widget>[
-        const dom.h2(<Widget>[
-          InfoTip(
-            tip: 'Open the converted NPCs, shops, GUIs and behaviors as a workspace in this browser to review and edit them, then send them to a paired server.',
-            docs: Docs.citizensOutput,
-            child: Component.text('Next steps'),
-          ),
-        ]),
-        dom.div(classes: 'animus-row', <Widget>[
-          Button(
-            label: _opening ? 'Opening' : 'Open as workspace',
-            icon: ArcaneIcon.folderOpen(),
-            variant: _variant(ConverterStep.openWorkspace),
-            size: ButtonSize.small,
-            disabled: _busy || _opening,
-            onPressed: () => _openWorkspace(send: false),
-          ),
-          Button.secondary(
-            label: 'Send to server',
-            icon: ArcaneIcon.upload(),
-            size: ButtonSize.small,
-            disabled: _busy || _opening,
-            onPressed: () => _openWorkspace(send: true),
-          ),
-          if (review != null)
-            Button.secondary(label: 'Download data-folder bundle', icon: ArcaneIcon.download(), size: ButtonSize.small, onPressed: () => _download(review)),
-        ]),
-        if (review != null) const dom.p(classes: 'animus-muted', <Widget>[Component.text('With the bundle: $_unzipNext')]),
-      ]);
-
-  Map<String, String> get _worldMap {
-    try {
-      return parseWorldMappings(_worlds);
-    } on CitizensImportException {
-      return const <String, String>{};
-    }
-  }
-
-  Widget _tradersPanel() {
-    return dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'dtlTraders files'}, <Widget>[
-      const dom.h2(<Widget>[
-        InfoTip(
-          tip: 'Only the server converts these, with the Citizens save. Pick guis.yml, config.yml, messages.yml, data.dat and <shop>.yml files.',
-          docs: Docs.dtlTraders,
-          child: Component.text('dtlTraders files'),
+  List<Widget> _sourceStep() => <Widget>[
+        ArcaneRadioGroup<ImportSource>(
+          id: 'animus-import-source',
+          label: 'Import from',
+          value: _source,
+          // The plain radio list: the dot beside its label, no boxes in the page.
+          variant: RadioGroupVariant.standard,
+          options: <RadioOption<ImportSource>>[
+            for (final ImportSource source in ImportSource.values)
+              RadioOption<ImportSource>(
+                value: source,
+                label: source.label,
+                description: _blocked(source) == null ? source.line : '${source.line} ${_blocked(source)}',
+                disabled: _blocked(source) != null,
+              ),
+          ],
+          onChanged: _pickSource,
         ),
-      ]),
-      dom.div(classes: 'animus-row', <Widget>[
-        Button.secondary(label: 'Choose dtlTraders files', icon: ArcaneIcon.fileUp(), size: ButtonSize.small, disabled: _busy, onPressed: _chooseTraders),
-        dom.span(classes: 'animus-muted animus-citizens-file', <Widget>[
-          Component.text(_traders.isEmpty ? 'No dtlTraders files chosen' : _traders.map(((String, Uint8List) file) => file.$1).join(', ')),
-        ]),
-      ]),
-      if (_tradersSkipped.isNotEmpty)
-        dom.p(classes: 'animus-muted', attributes: const <String, String>{'data-testid': 'traders-skipped'}, <Widget>[
-          Component.text('Skipped ${_tradersSkipped.join(', ')}: not ${_tradersSkipped.length == 1 ? 'a dtlTraders file' : 'dtlTraders files'}.'),
-        ]),
-    ]);
-  }
-
-  Widget _denizenPanel() {
-    final DenizenFolder? folder = _denizen;
-    final DenizenPreview? preview = _denizenPreview;
-    return dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Denizen folder'}, <Widget>[
-      const dom.h2(<Widget>[
-        InfoTip(
-          tip: 'Pick plugins/Denizen. Assignments bind to NPCs in the Citizens save above, and apply on the server turns the behaviors on.',
-          docs: Docs.denizen,
-          child: Component.text('Denizen folder'),
-        ),
-      ]),
-      dom.div(classes: 'animus-row', <Widget>[
-        Button.secondary(label: 'Choose Denizen folder', icon: ArcaneIcon.folderOpen(), size: ButtonSize.small, disabled: _busy, onPressed: _chooseDenizen),
-        dom.span(classes: 'animus-muted animus-citizens-file', attributes: const <String, String>{'data-testid': 'denizen-folder'}, <Widget>[
-          Component.text(folder == null
-              ? 'No Denizen folder chosen'
-              : '${_denizenName ?? 'Folder'}: ${folder.scripts} script${folder.scripts == 1 ? '' : 's'}'
-                  '${folder.input.serverFlags == null ? '' : ', server flags'}'
-                  '${folder.input.playerFlags.isEmpty ? '' : ', ${folder.input.playerFlags.length} player flag file${folder.input.playerFlags.length == 1 ? '' : 's'}'}'),
-        ]),
-      ]),
-      if (folder != null && folder.skipped.isNotEmpty)
-        Fold(attributes: const <String, String>{'data-testid': 'denizen-skipped'}, summary: <Widget>[
-          Component.text('${countOf(folder.skipped.length, 'file')} not read'),
-        ], children: <Widget>[
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('Only .dsc and .yml under scripts/, server_flags.dat and player_flags/*.dat are read.')]),
-          dom.ul(classes: 'animus-citizens-lines', <Widget>[for (final String path in folder.skipped.take(50)) dom.li(<Widget>[Component.text(path)])]),
-        ]),
-      if (folder != null && !folder.empty && _bytes == null)
-        const dom.p(classes: 'animus-muted', <Widget>[
-          Component.text('No Citizens save chosen above, so assignments bind to no NPC.'),
-        ]),
-      dom.div(classes: 'animus-row', <Widget>[
-        Button(
-          label: _converting == _Conversion.denizen ? 'Converting' : 'Convert Denizen',
-          icon: ArcaneIcon.play(),
-          variant: _variant(ConverterStep.convertDenizen),
-          size: ButtonSize.small,
-          disabled: _busy || folder == null || folder.empty,
-          onPressed: _convertDenizen,
-        ),
-      ]),
-      if (_denizenError != null)
-        dom.div(classes: 'animus-citizens-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[
-          const dom.h3(<Widget>[Component.text('Denizen not converted')]),
-          dom.p(<Widget>[Component.text(_denizenError!)]),
-        ]),
-      if (preview != null) ...<Widget>[
-        _stats(<(int, String)>[
-          (preview.behaviors, 'behaviors'),
-          (preview.bindings, 'NPCs bound'),
-          (preview.flagsImported, 'flags imported'),
-          (preview.preserved, 'items kept, not run'),
-          (preview.flagsPreserved, 'flags kept, not run'),
-        ]),
-        dom.p(classes: 'animus-muted animus-citizens-id', <Widget>[
-          const Component.text('Import id '),
-          dom.code(<Widget>[Component.text(preview.id)]),
-        ]),
-        dom.div(classes: 'animus-row', <Widget>[
-          Button.secondary(label: 'Download Denizen bundle', icon: ArcaneIcon.download(), size: ButtonSize.small, onPressed: () => _downloadDenizen(preview)),
-        ]),
-      ],
-    ]);
-  }
-
-  Widget _shopkeepersPanel() {
-    final ShopkeepersPreview? shops = _shops;
-    return dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Shopkeepers shops'}, <Widget>[
-      const dom.h2(<Widget>[
-        InfoTip(
-          tip: 'Add config.yml for its currency items. Citizens shopkeepers are checked against the saves.yml above, and shops open once applied.',
-          docs: Docs.shopkeepers,
-          child: Component.text('Shopkeepers shops'),
-        ),
-      ]),
-      dom.div(classes: 'animus-row', <Widget>[
-        Button.secondary(label: 'Choose Shopkeepers save.yml', icon: ArcaneIcon.fileUp(), size: ButtonSize.small, disabled: _busy, onPressed: () => _chooseShops(false)),
-        dom.span(classes: 'animus-muted animus-citizens-file', <Widget>[Component.text(_shopSave?.$1 ?? 'No Shopkeepers save chosen')]),
-      ]),
-      dom.div(classes: 'animus-row', <Widget>[
-        Button.secondary(label: 'Choose config.yml', icon: ArcaneIcon.settings(), size: ButtonSize.small, disabled: _busy, onPressed: () => _chooseShops(true)),
-        dom.span(classes: 'animus-muted animus-citizens-file', <Widget>[Component.text(_shopConfig?.$1 ?? 'Default currency (emerald)')]),
-      ]),
-      dom.div(classes: 'animus-row', <Widget>[
-        Button(
-          label: _converting == _Conversion.shops ? 'Converting' : 'Convert shops',
-          icon: ArcaneIcon.store(),
-          variant: _variant(ConverterStep.convertShops),
-          size: ButtonSize.small,
-          disabled: _busy || _shopSave == null,
-          onPressed: _convertShops,
-        ),
-      ]),
-      if (_shopError != null)
-        dom.div(classes: 'animus-citizens-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[
-          const dom.h3(<Widget>[Component.text('Shops not converted')]),
-          dom.p(<Widget>[Component.text(_shopError!)]),
-        ]),
-      if (shops != null) ...<Widget>[
-        _stats(<(int, String)>[
-          (shops.shops, 'shops'),
-          (shops.tradeOffers, 'trading offers'),
-          (shops.staticOffers, 'shown only'),
-          (shops.skippedOffers, 'kept in source.yml'),
-          (shops.npcs, 'new mob NPCs'),
-          (shops.issueCount, 'issues'),
-          (shops.linksFound, 'Citizens links found'),
-          (shops.linksMissing, 'Citizens links not found'),
-          (shops.linksUnchecked, 'Citizens links unchecked'),
-        ]),
-        dom.p(classes: 'animus-muted animus-citizens-id', <Widget>[
-          const Component.text('Import id '),
-          dom.code(<Widget>[Component.text(shops.id)]),
-        ]),
-        dom.div(classes: 'animus-row', <Widget>[
-          Button.secondary(label: 'Download shops bundle', icon: ArcaneIcon.download(), size: ButtonSize.small, onPressed: () => _downloadShops(shops)),
-        ]),
-      ],
-    ]);
-  }
-
-  List<Widget> _report(CitizensReview review) => <Widget>[
-        dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Conversion summary'}, <Widget>[
-          const dom.h2(<Widget>[
-            InfoTip(
-              tip: 'What the conversion found in saves.yml. The server checks every NPC again when it applies the import.',
-              docs: Docs.citizens,
-              child: Component.text('Review'),
-            ),
-          ]),
-          if (review.warnings.isNotEmpty || review.issues.isNotEmpty)
-            dom.p(classes: 'animus-citizens-lead', <Widget>[
-              Component.text(<String>[
-                if (review.warnings.isNotEmpty) '${review.warnings.length} migration warning${review.warnings.length == 1 ? '' : 's'}',
-                if (review.issues.isNotEmpty) '${review.issues.length} record${review.issues.length == 1 ? '' : 's'} that will not load',
-              ].join(' and ')),
-              const Component.text('. Read them before you install the import.'),
-            ])
-          else
-            const dom.p(classes: 'animus-citizens-lead', <Widget>[Component.text('All records valid, no warnings.')]),
-          _stats(<(int, String)>[
-            (review.preview.records, 'records'),
-            (review.preview.valid, 'valid definitions'),
-            (review.preview.skins, 'unique skins'),
-            (review.resolvedReferences, 'references resolved'),
-            (review.unresolvedReferences, 'references unresolved'),
-            (review.remappedLocations, 'locations remapped'),
-            (review.conversions['routes'] ?? 0, 'patrol routes'),
-            (review.conversions['lookClose'] ?? 0, 'look-close'),
-            (review.conversions['textBehaviors'] ?? 0, 'text behaviors'),
-            (review.conversions['commandBehaviors'] ?? 0, 'command behaviors'),
-            (review.conversions['skinsKept'] ?? 0, 'skins kept for review'),
-          ]),
-          dom.p(classes: 'animus-muted animus-citizens-id', <Widget>[
-            const Component.text('Import id '),
-            dom.code(<Widget>[Component.text(review.preview.id)]),
-          ]),
-        ]),
-        if (_canOpen) _nextPanel(review),
-        _list('Migration warnings', <String>[for (final String warning in review.warnings) plainWarning(warning, _names)], 'None.'),
-        _list('Records that will not load', <String>[for (final String issue in review.issues) plainWarning(issue, _names)], 'None.'),
-        dom.section(classes: 'animus-panel', <Widget>[
-          const dom.h2(<Widget>[
-            InfoTip(
-              tip: 'How each Citizens field carried over: converted, converted but worth checking, kept but not run, or needing another plugin.',
-              docs: Docs.citizensOutput,
-              child: Component.text('Fields by conversion status'),
-            ),
-          ]),
-          _counts(<String, int>{for (final MapEntry<String, int> entry in review.classification.entries) fieldStatusLabel(entry.key): entry.value}, 'Status', 'Fields',
-              code: false),
-        ]),
-        dom.section(classes: 'animus-panel', <Widget>[
-          dom.h2(<Widget>[
-            withTip(Component.text('Traits (${review.traits.length})'), 'The Citizens traits in the save and how many NPCs carry each.', docs: Docs.citizens),
-          ]),
-          _counts(review.traits, 'Trait', 'Records'),
-        ]),
-        dom.section(classes: 'animus-panel', <Widget>[
-          dom.h2(<Widget>[
-            withTip(Component.text('Body types (${review.types.length})'), 'The entity types the NPCs use, such as player or villager.', docs: Docs.citizens),
-          ]),
-          _counts(review.types, 'Type', 'Records'),
-        ]),
-        if (!_canOpen)
-          dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Download the conversion'}, <Widget>[
-            dom.div(classes: 'animus-row', <Widget>[
-              Button.secondary(label: 'Download data-folder bundle', icon: ArcaneIcon.download(), size: ButtonSize.small, onPressed: () => _download(review)),
-              const dom.span(classes: 'animus-muted', <Widget>[Component.text(_unzipNext)]),
-            ]),
-          ]),
       ];
 
-  /// Counts as tiles, the non-zero ones only.
-  Widget _stats(List<(int, String)> counts) {
-    final List<(int, String)> shown = <(int, String)>[for (final (int, String) count in counts) if (count.$1 != 0) count];
-    return dom.div(<Widget>[
-      if (shown.isNotEmpty)
-        dom.div(classes: 'animus-stats', <Widget>[
-          for (final (int value, String label) in shown)
-            dom.div(classes: 'animus-stat', <Widget>[
-              dom.strong(<Widget>[Component.text('$value')]),
-              dom.span(<Widget>[Component.text(label)]),
+  /// A file to choose: what is chosen on the left, the button on the right.
+  Widget _file(String label, {required String? chosen, required String button, required void Function() onPick, String? hint, String? testId}) => Field(
+        label: label,
+        hint: hint,
+        child: ActionRow(
+          leading: <Widget>[
+            Expanded(
+              child: dom.span(attributes: <String, String>{'data-testid': ?testId, 'title': ?chosen}, <Widget>[
+                Text.truncated(chosen ?? 'None chosen', size: FontSize.sm, color: TextColor.muted),
+              ]),
+            ),
+          ],
+          secondary: <RowAction>[RowAction(button, _converting ? null : onPick)],
+        ),
+      );
+
+  Widget _citizensFile({String? hint}) => _file('Citizens save', chosen: _fileName, button: 'Choose saves.yml', onPick: _chooseCitizens, hint: hint, testId: 'citizens-file');
+
+  Widget _worldsField() => Field(
+        label: 'World mappings',
+        forId: 'animus-import-worlds',
+        hint: 'old=new, one per line',
+        tip: 'Moves NPCs from a world that was renamed.',
+        docs: Docs.citizens,
+        child: TextArea(
+          id: 'animus-import-worlds',
+          placeholder: 'old_world=new_world',
+          rows: 3,
+          value: _worlds,
+          onChanged: (String value) => setState(() => _worlds = value),
+        ),
+      );
+
+  String? get _sourceError => switch (_source) {
+        ImportSource.citizens => _error,
+        ImportSource.shopkeepers => _shopError,
+        ImportSource.denizen => _denizenError,
+        _ => _server.error,
+      };
+
+  List<Widget> _filesStep(BuildContext context) {
+    final List<String> problems = _source.onServer ? _uploadProblems : const <String>[];
+    final DenizenFolder? folder = _denizen;
+    return <Widget>[
+      sectionHeading(
+        '${_source.label} files',
+        tip: _source.onServer ? 'Your server converts the files. Nothing installs until you press Install.' : 'Converted in this browser. Nothing is uploaded.',
+        docs: switch (_source) {
+          ImportSource.shopkeepers => Docs.shopkeepers,
+          ImportSource.dtlTraders => Docs.dtlTraders,
+          ImportSource.denizen => Docs.denizen,
+          ImportSource.server => Docs.liveImports,
+          ImportSource.citizens => Docs.citizens,
+        },
+      ),
+      if (_source.onServer) ServerImportFields(flow: _server),
+      ...switch (_source) {
+        ImportSource.citizens => <Widget>[_citizensFile(), MoreFields(children: <Widget>[_worldsField()])],
+        ImportSource.shopkeepers => <Widget>[
+            _file('Shopkeepers save', chosen: _shopSave?.$1, button: 'Choose save.yml', onPick: () => _chooseShops(config: false), testId: 'shops-file'),
+            _file('Shop config', chosen: _shopConfig?.$1, button: 'Choose config.yml', onPick: () => _chooseShops(config: true), hint: 'Optional. Sets the currency.'),
+            _citizensFile(hint: 'Optional. Links shops to NPCs.'),
+          ],
+        ImportSource.denizen => <Widget>[
+            _file(
+              'Denizen folder',
+              chosen: folder == null
+                  ? null
+                  : '${_denizenName ?? 'Folder'}: ${countOf(folder.scripts, 'script')}'
+                      '${folder.input.serverFlags == null ? '' : ', server flags'}'
+                      '${folder.input.playerFlags.isEmpty ? '' : ', ${countOf(folder.input.playerFlags.length, 'player flag file')}'}',
+              button: 'Choose folder',
+              onPick: _chooseDenizen,
+              hint: 'plugins/Denizen',
+              testId: 'denizen-folder',
+            ),
+            _citizensFile(hint: 'Optional. Binds scripts to NPCs.'),
+          ],
+        ImportSource.dtlTraders => <Widget>[
+            _file(
+              'dtlTraders files',
+              chosen: _traders.isEmpty ? null : _traders.map(((String, Uint8List) file) => file.$1).join(', '),
+              button: 'Choose files',
+              onPick: _chooseTraders,
+              testId: 'traders-files',
+            ),
+            if (_tradersSkipped.isNotEmpty)
+              dom.div(attributes: const <String, String>{'data-testid': 'traders-skipped'}, <Widget>[
+                mutedText('Skipped ${_tradersSkipped.join(', ')}: not ${_tradersSkipped.length == 1 ? 'a dtlTraders file' : 'dtlTraders files'}.'),
+              ]),
+            _citizensFile(hint: 'Optional when the server has it.'),
+            MoreFields(children: <Widget>[_worldsField()]),
+          ],
+        ImportSource.server => <Widget>[
+            MoreFields(label: 'Upload instead', children: <Widget>[
+              _citizensFile(),
+              _file('Shopkeepers save', chosen: _shopSave?.$1, button: 'Choose save.yml', onPick: () => _chooseShops(config: false)),
+              _file('Shop config', chosen: _shopConfig?.$1, button: 'Choose config.yml', onPick: () => _chooseShops(config: true)),
+              _worldsField(),
             ]),
+          ],
+      },
+      for (final String problem in problems)
+        dom.div(attributes: const <String, String>{'data-testid': 'import-problem'}, <Widget>[AppAlert(tone: AlertTone.error, message: problem)]),
+      if (_serverEmpty && _source.onServer) const AppAlert(message: 'The server has no import yet. Press Convert to start one.'),
+      if (_sourceError != null)
+        dom.div(attributes: const <String, String>{'data-testid': 'import-error'}, <Widget>[
+          AppAlert(tone: AlertTone.error, title: 'Not converted', message: _sourceError!, live: true),
         ]),
-    ]);
+    ];
   }
 
-  Widget _counts(Map<String, int> counts, String key, String value, {bool code = true}) {
-    final List<String> names = counts.keys.toList()..sort((String a, String b) => counts[b]!.compareTo(counts[a]!) != 0 ? counts[b]!.compareTo(counts[a]!) : a.compareTo(b));
-    return dom.div(classes: 'animus-citizens-table', <Widget>[
-      dom.table(<Widget>[
-        dom.thead(<Widget>[
-          dom.tr(<Widget>[
-            dom.th(<Widget>[Component.text(key)]),
-            dom.th(<Widget>[Component.text(value)]),
-          ]),
-        ]),
-        dom.tbody(<Widget>[
-          for (final String name in names)
-            dom.tr(<Widget>[
-              dom.td(<Widget>[if (code) dom.code(<Widget>[Component.text(name)]) else Component.text(name)]),
-              dom.td(<Widget>[Component.text('${counts[name]}')]),
-            ]),
-        ]),
+  List<Widget> _reviewStep() => <Widget>[
+        switch (_source) {
+          ImportSource.citizens => CitizensImportReview(review: _review!, names: _names),
+          ImportSource.shopkeepers => ShopsImportReview(preview: _shops!, linked: _bytes != null),
+          ImportSource.denizen => DenizenImportReview(folder: _denizen!, preview: _denizenPreview!),
+          _ => ServerImportReview(flow: _server),
+        },
+      ];
+
+  List<Widget> _resultStep(BuildContext context) {
+    if (_source.onServer) return <Widget>[ServerImportReview(flow: _server)];
+    final List<(String, Map<String, String>)> converted = <(String, Map<String, String>)>[
+      if (_review != null) ('Citizens', _review!.preview.files),
+      if (_shops != null) ('Shopkeepers', _shops!.files),
+      if (_denizenPreview != null) ('Denizen', _denizenPreview!.files),
+    ];
+    return <Widget>[
+      rowList(attributes: const <String, String>{'data-testid': 'import-result'}, <Widget>[
+        for (final (String source, Map<String, String> files) in converted) listItem(Text('$source: ${createdLine(kindCounts(files.keys))}.')),
       ]),
-    ]);
+      if (ModeScope.advanced(context)) ...<Widget>[
+        sectionHeading('Bundles', level: HeadingLevel.h3, tip: _unzipNext, docs: Docs.citizensOutput),
+        ActionRow.footer(secondary: <RowAction>[
+          if (_review != null) RowAction('Download Citizens bundle', () => _downloadCitizens(_review!)),
+          if (_shops != null) RowAction('Download Shopkeepers bundle', () => _downloadShops(_shops!)),
+          if (_denizenPreview != null) RowAction('Download Denizen bundle', () => _downloadDenizen(_denizenPreview!)),
+        ]),
+      ],
+    ];
   }
 
-  Widget _list(String title, List<String> lines, String empty) => dom.section(classes: 'animus-panel', <Widget>[
-        Fold(open: lines.length <= 20 && lines.isNotEmpty, summary: <Widget>[Component.text('$title (${lines.length})')], children: <Widget>[
-          if (lines.isEmpty)
-            dom.p(classes: 'animus-empty-line', <Widget>[Component.text(empty)])
-          else
-            dom.ul(classes: 'animus-citizens-lines', <Widget>[
-              for (final String line in lines.take(500)) dom.li(<Widget>[Component.text(line)]),
-              if (lines.length > 500) dom.li(classes: 'animus-muted', <Widget>[Component.text('${lines.length - 500} more in report.json')]),
-            ]),
-        ]),
-      ]);
+  Widget _footer() {
+    final ImportReview? review = _server.review;
+    final String? busy = _server.busy;
+    String? why;
+    final FormFooter footer = switch (_step) {
+      0 => FormFooter(
+          cancel: RowAction('Cancel', () => component.onNavigate(const HomeRoute())),
+          primary: RowAction('Next', _blocked(_source) == null ? () => _goTo(1) : null),
+        ),
+      1 => () {
+          final String? blocked = _convertBlocked;
+          // A refused file has its own alert above.
+          why = _uploadProblems.isEmpty ? blocked : null;
+          return FormFooter(
+            secondary: <RowAction>[
+              if (_source.onServer) RowAction('Check server', _server.online && busy == null ? _check : null, loading: busy == 'Checking'),
+            ],
+            cancel: RowAction('Back', () => _goTo(0)),
+            primary: RowAction(
+              _converting ? 'Converting' : 'Convert',
+              blocked == null && !_converting && busy == null ? _convert : null,
+              loading: _converting,
+              id: 'animus-import-convert',
+              attributes: <String, String>{if (why != null) 'aria-describedby': _whyId},
+            ),
+          );
+        }(),
+      2 when _source.onServer => FormFooter(
+          cancel: RowAction('Back', () => _goTo(1)),
+          primary: review?.state == 'applied'
+              ? RowAction('Next', () => _goTo(3))
+              : RowAction('Install', busy == null && review?.importId != null ? _install : null, loading: busy == 'Installing', id: 'animus-import-install'),
+        ),
+      2 => FormFooter(cancel: RowAction('Back', () => _goTo(1)), primary: RowAction('Next', () => _goTo(3))),
+      _ when _source.onServer => FormFooter(
+          secondary: <RowAction>[RowAction('Roll back', busy == null ? _rollback : null, loading: busy == 'Rolling back', destructive: true, id: 'animus-import-rollback')],
+          primary: RowAction('Open server', _openServer),
+        ),
+      _ => FormFooter(
+          secondary: <RowAction>[
+            RowAction('Add a source', () => _goTo(0)),
+            if (_paired) RowAction('Send to server', _opening ? null : () => _openWorkspace(send: true)),
+          ],
+          primary: RowAction('Open as workspace', _opening ? null : () => _openWorkspace(send: false), loading: _opening),
+        ),
+    };
+    return stack(spacing: 8, <Widget>[
+      if (why != null) dom.div(id: _whyId, <Widget>[mutedText(why!)]),
+      footer,
+    ]);
+  }
 }

@@ -4,9 +4,11 @@ import art.arcane.animus.core.editor.transport.EditorEventSink;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,12 +16,15 @@ import java.util.Objects;
 import java.util.function.Predicate;
 
 /**
- * Event streams of {@code WS /v1/events}. Each stream sends at most {@code framesPerSecond} frames; queued catalog frames
- * merge into one, and a stream that falls 256 frames behind is closed with reason {@code limit}. {@link #tick} drains one
- * frame per stream and is called by the editor service at the frame rate.
+ * Event streams of {@code WS /v1/events}. Each stream sends at most {@code framesPerSecond} frames; queued catalog changes
+ * merge per document and go out in frames of at most {@link #CATALOG_FRAME_BYTES} of entries, and a stream that falls 256
+ * frames behind is closed with reason {@code limit}. {@link #tick} drains one frame per stream and is called by the editor
+ * service at the frame rate.
  */
 public final class EditorEvents {
     public static final int QUEUE_LIMIT = 256;
+    /** The most entry bytes one catalog frame carries, so a frame fits the smallest relay frame limit. */
+    public static final int CATALOG_FRAME_BYTES = 48 * 1024;
 
     /** One authenticated stream. {@code visible} filters NPC documents by the token's groups. */
     private static final class Stream {
@@ -27,7 +32,8 @@ public final class EditorEvents {
         final EditorEventSink sink;
         final Predicate<String> visible;
         final Deque<JsonObject> queue = new ArrayDeque<>();
-        JsonObject catalog;
+        /** Catalog changes waiting to be sent, by {@code kind\nid}: a newer version or a delete replaces the older one. */
+        final Map<String, JsonObject> documents = new LinkedHashMap<>(), deleted = new LinkedHashMap<>();
         boolean closed;
 
         Stream(String tokenId, EditorEventSink sink, Predicate<String> visible) {
@@ -64,9 +70,7 @@ public final class EditorEvents {
         String type = event.get("type").getAsString();
         for (Stream stream : new ArrayList<>(streams)) {
             if (type.equals("catalog")) {
-                JsonObject filtered = filter(event, stream.visible);
-                if (filtered.getAsJsonArray("documents").isEmpty() && (!filtered.has("deleted") || filtered.getAsJsonArray("deleted").isEmpty())) continue;
-                stream.catalog = stream.catalog == null ? filtered : merge(stream.catalog, filtered);
+                merge(stream, filter(event, stream.visible));
                 continue;
             }
             if (type.equals("diagnostics")) {
@@ -101,13 +105,13 @@ public final class EditorEvents {
         }
     }
 
-    /** Sends at most one frame per stream: the oldest queued frame, else the merged catalog frame. */
+    /** Sends at most one frame per stream: the oldest queued frame, else the next catalog frame. */
     public void tick() {
         List<Map.Entry<Stream, JsonObject>> sends = new ArrayList<>();
         synchronized (this) {
             for (Stream stream : streams) {
                 JsonObject next = stream.queue.pollFirst();
-                if (next == null && stream.catalog != null) { next = stream.catalog; stream.catalog = null; }
+                if (next == null) next = catalogFrame(stream);
                 if (next != null) sends.add(Map.entry(stream, next));
             }
         }
@@ -150,32 +154,46 @@ public final class EditorEvents {
     }
 
     /** Later versions replace earlier ones; a delete removes a queued version and the other way round. */
-    private static JsonObject merge(JsonObject earlier, JsonObject later) {
-        Map<String, JsonObject> documents = new LinkedHashMap<>(), deleted = new LinkedHashMap<>();
-        for (JsonObject frame : List.of(earlier, later)) {
-            for (JsonElement element : frame.getAsJsonArray("documents")) {
-                JsonObject document = element.getAsJsonObject();
-                String key = document.get("kind").getAsString() + "\n" + document.get("id").getAsString();
-                deleted.remove(key);
-                documents.put(key, document);
-            }
-            if (frame.has("deleted")) for (JsonElement element : frame.getAsJsonArray("deleted")) {
-                JsonObject reference = element.getAsJsonObject();
-                String key = reference.get("kind").getAsString() + "\n" + reference.get("id").getAsString();
-                documents.remove(key);
-                deleted.put(key, reference);
-            }
+    private static void merge(Stream stream, JsonObject event) {
+        for (JsonElement element : event.getAsJsonArray("documents")) {
+            JsonObject document = element.getAsJsonObject();
+            String key = key(document);
+            stream.deleted.remove(key);
+            stream.documents.remove(key);
+            stream.documents.put(key, document);
         }
-        JsonObject merged = new JsonObject();
-        merged.addProperty("type", "catalog");
-        JsonArray list = new JsonArray();
-        documents.values().forEach(list::add);
-        merged.add("documents", list);
-        if (!deleted.isEmpty()) {
-            JsonArray removed = new JsonArray();
-            deleted.values().forEach(removed::add);
-            merged.add("deleted", removed);
+        if (event.has("deleted")) for (JsonElement element : event.getAsJsonArray("deleted")) {
+            JsonObject reference = element.getAsJsonObject();
+            String key = key(reference);
+            stream.documents.remove(key);
+            stream.deleted.remove(key);
+            stream.deleted.put(key, reference);
         }
-        return merged;
+    }
+
+    private static String key(JsonObject document) { return document.get("kind").getAsString() + "\n" + document.get("id").getAsString(); }
+
+    /** The oldest waiting catalog changes, versions first, up to {@link #CATALOG_FRAME_BYTES}; at least one entry. Null when none wait. */
+    private static JsonObject catalogFrame(Stream stream) {
+        if (stream.documents.isEmpty() && stream.deleted.isEmpty()) return null;
+        JsonArray documents = new JsonArray(), deleted = new JsonArray();
+        int bytes = 0;
+        for (Map<String, JsonObject> waiting : List.of(stream.documents, stream.deleted)) {
+            JsonArray into = waiting == stream.documents ? documents : deleted;
+            for (Iterator<JsonObject> iterator = waiting.values().iterator(); iterator.hasNext(); ) {
+                JsonObject entry = iterator.next();
+                int size = entry.toString().getBytes(StandardCharsets.UTF_8).length;
+                if (bytes > 0 && bytes + size > CATALOG_FRAME_BYTES) break;
+                bytes += size;
+                into.add(entry);
+                iterator.remove();
+            }
+            if (!waiting.isEmpty()) break;
+        }
+        JsonObject frame = new JsonObject();
+        frame.addProperty("type", "catalog");
+        frame.add("documents", documents);
+        if (!deleted.isEmpty()) frame.add("deleted", deleted);
+        return frame;
     }
 }

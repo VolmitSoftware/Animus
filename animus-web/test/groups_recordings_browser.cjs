@@ -1,19 +1,14 @@
 // Opens test/fixtures/groups_recordings in the built site at 1440x900 and
-// 390x844, dark and light, and checks the trait group, recording and random
-// route screens: the NPC browser's group form assigning a group to a folder
-// and undoing it in one step, unassigning by tag and by selection; an NPC's
-// Groups chips and Effective part (each value with its source, a link to the
-// group that set it), reordering by keyboard, "+ New group" from the search
-// text in one undo step; the group editor (description, member chips and
-// picker, values parts); revision read only in the header;
-// the recording view (facts, path, scrub, play keeping time on a throttled
-// CPU, events), its details form
-// (description, tags, playback, speed), trimming the start and end on the
-// scrub, Code Apply refusing a draft that breaks a recording rule and
-// applying a valid one, renaming it, making a route from it with each leg's
-// recorded style, and the recordings list; an NPC playing a recording with its
-// playback mode; and the route editor's ranged waits, seed, start offset,
-// jitter, weights, junctions and the route and point movement styles. No console errors and no sideways scrolling anywhere.
+// 390x844, dark and light, and checks the trait group screens: the NPC
+// list's Trait group action adding a folder's NPCs (filter, Ctrl+A) and
+// undoing it in one step, then taking a picked NPC out; an NPC's trait group
+// chips and what it takes (each value with its source, a link to the group
+// that set it), reordering by keyboard, "+ New group" from a typed name in
+// one undo step; the group's Members tab (description, the member list, Add
+// members); no revision input; and an NPC playing a recording with its
+// playback mode. Routes and recordings are checked by
+// test/movement_browser.cjs. No console errors and no sideways scrolling
+// anywhere.
 //
 //   python3 tool/serve_site.py --port <WEB_PORT> &
 //   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
@@ -23,8 +18,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const {sidebar, topbarAction} = require('./support/shell.cjs');
-const {choose, chooseAndWait, openDropdown, valueOf} = require('./support/select.cjs');
+const {topbarAction, showView, openJob, setMode, workspaceOpen} = require('./support/shell.cjs');
+const {npcTab} = require('./support/npc_tabs.cjs');
+const {choose, chooseAndWait, openDropdown} = require('./support/select.cjs');
 
 const folder = path.resolve(__dirname, 'fixtures/groups_recordings');
 const site = process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })();
@@ -42,27 +38,39 @@ async function noSidewaysScroll(page, where) {
 }
 
 async function codeOf(page) {
-  await page.getByRole('tab', {name: 'Code'}).click();
+  await showView(page, 'code');
   const text = await page.locator('.animus-code textarea').inputValue();
-  await page.getByRole('tab', {name: 'Visual'}).click();
+  await showView(page, 'visual');
   return JSON.parse(text);
 }
 
-/** Reads the Code view until [done] holds, since commits queue behind slower saves under load. */
-async function codeWhen(page, done) {
-  let json = await codeOf(page);
-  for (let tries = 0; !done(json) && tries < 40; tries++) {
-    await page.waitForTimeout(250);
-    json = await codeOf(page);
-  }
-  return json;
+/**
+ * The NPC or group tab that holds an old inspector part, with its section
+ * opened: identity and effective on Basics (Advanced), the group's members
+ * on Members, appearance on Look, routes on Movement.
+ */
+async function part(page, id) {
+  const tab = {identity: 'Basics', effective: 'Basics', group: 'Members', appearance: 'Look', behaviour: 'Movement'}[id];
+  const panel = await npcTab(page, tab);
+  const section = {identity: '[data-npc="trait-groups"]', effective: '[data-npc="effective"]'}[id];
+  if (!section) return panel;
+  const details = panel.locator(`${section} > details`);
+  await details.waitFor();
+  if (!(await details.evaluate((element) => element.open))) await details.locator(':scope > summary').first().click();
+  return panel.locator(section);
 }
 
-/** Opens an inspector part (closed by default on phones) and returns it. */
-async function part(page, id) {
-  const details = page.locator(`details[data-section="${id}"]`);
-  if (!(await details.evaluate((element) => element.open))) await details.locator('summary').first().click();
-  return details;
+/** Runs a bulk bar action of the NPC list, from the bar or its "..." menu when it did not fit. */
+async function bulkAction(page, name) {
+  const bar = page.locator('.ui-library-bulk');
+  await page.waitForTimeout(250);
+  const button = bar.getByRole('button', {name, exact: true});
+  if (await button.isVisible().catch(() => false)) {
+    await button.click();
+    return;
+  }
+  await bar.getByRole('button', {name: 'More actions'}).click();
+  await page.getByRole('menuitem', {name, exact: true}).click();
 }
 
 async function openDocument(page, workspace, kind, id) {
@@ -84,24 +92,28 @@ async function run(browser, viewport, theme, tag) {
   page.on('console', (message) => { if (message.type() === 'error' && !/404|Failed to load resource/.test(message.text())) errors.push(message.text()); });
 
   await page.goto(`${site}/`);
-  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+  await page.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Open folder'}).first().click();
   await (await chooser).setFiles(folder);
-  await page.getByRole('heading', {name: 'Every document passes the shared schemas'}).waitFor();
+  await workspaceOpen(page);
   const workspace = /#\/workspace\/([^/?]+)/.exec(page.url())[1];
 
-  // NPC browser: assign a group to one folder, undo it in one step.
-  await (await sidebar(page)).locator('.animus-tree-browse').first().click();
-  const form = page.locator('[data-npc="group-assign"]');
-  await form.waitFor();
-  await chooseAndWait(page.locator('#animus-group-assign-group'), 'town-guards');
-  await chooseAndWait(page.locator('#animus-group-assign-by'), 'folder');
-  await chooseAndWait(page.locator('#animus-group-assign-folder'), 'town');
-  await form.locator('[data-npc="group-assign-reach"]').getByText('3 NPCs affected', {exact: false}).waitFor();
+  // NPC list (Advanced): filter to one folder, pick them all, add a trait group, undo it in one step.
+  await setMode(page, 'advanced');
+  await openJob(page, 'NPCs');
+  const npcRows = page.locator('#npc-list .ui-library-rows');
+  await npcRows.locator('.ui-library-row').first().waitFor();
+  await chooseAndWait(page.locator('#npc-filter-folder'), 'town');
+  await npcRows.focus();
+  await page.keyboard.press('Control+a');
+  await page.locator('.ui-library-bulk .ui-library-count', {hasText: '3 picked'}).waitFor();
+  await bulkAction(page, 'Trait group');
+  const groupDialog = page.locator('#npc-group-dialog');
+  await chooseAndWait(groupDialog.locator('#npc-group'), 'town-guards');
   await shot(page, `${tag}-01-group-assign`);
   await noSidewaysScroll(page, `${tag} group assign`);
-  await page.locator('#animus-group-assign').click();
+  await groupDialog.getByRole('button', {name: 'Add to group', exact: true}).click();
   await page.getByText('Assigned town-guards: 2 changed, 1 unchanged.', {exact: false}).first().waitFor();
   await openDocument(page, workspace, 'npc', 'town/watchman');
   assert.deepEqual((await codeOf(page)).groups, ['town-guards']);
@@ -111,62 +123,56 @@ async function run(browser, viewport, theme, tag) {
   await openDocument(page, workspace, 'npc', 'town/stall-keeper');
   assert.equal((await codeOf(page)).groups, undefined, 'the same undo step covers every NPC');
 
-  // Unassign by effective tag: gate-guard takes "guard" from town-guards.
-  await page.evaluate((hash) => { location.hash = hash; }, `#/workspace/${workspace}/npcs`);
-  await form.waitFor();
-  await chooseAndWait(page.locator('#animus-group-assign-group'), 'harbor');
-  await chooseAndWait(page.locator('#animus-group-assign-by'), 'tag');
-  await chooseAndWait(page.locator('#animus-group-assign-tag'), 'guard');
-  await page.locator('#animus-group-unassign').click();
-  await page.getByText('Unassigned harbor: 1 changed, 1 unchanged.', {exact: false}).first().waitFor();
-  await topbarAction(page, 'Undo');
-  await settle(page);
-
-  // By selection.
-  await page.getByRole('checkbox', {name: 'Select harbor/porter', exact: true}).check();
-  await chooseAndWait(page.locator('#animus-group-assign-by'), 'selection');
-  await page.locator('#animus-group-unassign').click();
+  // Taking a picked NPC out of a group.
+  await openJob(page, 'NPCs');
+  await page.locator('#npc-list .ui-library-row[data-key="npc:harbor/porter"] .ui-library-pick [role="checkbox"]').click();
+  await page.locator('.ui-library-bulk .ui-library-count', {hasText: '1 picked'}).waitFor();
+  await bulkAction(page, 'Trait group');
+  await groupDialog.getByRole('button', {name: 'Remove', exact: true}).click();
+  await chooseAndWait(groupDialog.locator('#npc-group'), 'harbor');
+  await groupDialog.getByRole('button', {name: 'Remove from group', exact: true}).click();
   await page.getByText('Unassigned harbor: 1 changed, 0 unchanged.', {exact: false}).first().waitFor();
   await topbarAction(page, 'Undo');
   await settle(page);
 
-  // NPC with groups: Groups list and Effective part.
+  // NPC with groups (Advanced Basics): the trait groups and what it takes.
   await openDocument(page, workspace, 'npc', 'town/gate-guard');
   const identity = await part(page, 'identity');
   assert.deepEqual(await identity.locator('[data-npc="groups"] li[data-group]').evaluateAll((items) => items.map((item) => item.dataset.group)), ['town-guards', 'harbor']);
   const effective = await part(page, 'effective');
-  const source = (field) => effective.locator(`tr[data-path="${field}"]`).getAttribute('data-source');
+  const source = (field) => effective.locator(`[data-path="${field}"]`).getAttribute('data-source');
   assert.equal(await source('teamColor'), 'npc');
   assert.equal(await source('equipment'), 'town-guards');
   assert.equal(await source('hologram'), 'harbor');
   assert.equal(await source('modules.animus:look-close'), 'harbor');
   await shot(page, `${tag}-02-effective`);
   await noSidewaysScroll(page, `${tag} effective`);
-  // The revision is shown, never edited.
+  // The revision is never an input.
   assert.equal(await page.getByRole('spinbutton', {name: /revision/i}).count(), 0, 'no revision input');
-  await page.locator('.animus-document-header .animus-document-revision', {hasText: /^revision \d+$/}).waitFor();
   // Moving harbor first (Alt+Left on its chip) makes town-guards win look-close.
-  await identity.getByRole('button', {name: 'Open group harbor'}).focus();
+  await identity.getByRole('button', {name: 'Open group harbor', exact: true}).focus();
   await page.keyboard.press('Alt+ArrowLeft');
   await settle(page);
   assert.equal(await source('modules.animus:look-close'), 'town-guards');
   await topbarAction(page, 'Undo');
   await settle(page);
   await effective.getByRole('button', {name: 'Open group harbor, which sets hologram'}).click();
-  await page.locator('[aria-label="Group inspector"]').waitFor();
+  await page.locator('[data-npc="group-form"]').waitFor();
 
-  // Group editor.
+  // Group editor: Members.
   const group = await part(page, 'group');
-  assert.ok(await group.locator('[data-group="members"] [data-member="town/gate-guard"]').count());
+  const member = (id) => group.locator(`[data-group="members"] .ui-library-row[data-key="${id}"]`);
+  await member('town/gate-guard').waitFor();
   await page.locator('#animus-group-description').fill('Harbor colors only');
   await settle(page);
   assert.equal((await codeOf(page)).description, 'Harbor colors only');
   // Adding a member from the group screen writes the NPC's groups; Undo takes it back.
-  await choose(group.locator('#animus-group-add-member'), 'town/watchman');
-  await group.locator('[data-group="members"] [data-member="town/watchman"]').waitFor();
+  await group.locator('[data-group="add-members"]').click();
+  await page.locator('#animus-group-add-members .ui-library-row[data-key="town/watchman"]').click();
+  await member('town/watchman').waitFor();
   await topbarAction(page, 'Undo');
   await settle(page);
-  assert.equal(await group.locator('[data-group="members"] [data-member="town/watchman"]').count(), 0, 'Undo removes the added member');
+  assert.equal(await member('town/watchman').count(), 0, 'Undo removes the added member');
   await part(page, 'appearance');
   await shot(page, `${tag}-03-group`);
   await noSidewaysScroll(page, `${tag} group`);
@@ -180,178 +186,45 @@ async function run(browser, viewport, theme, tag) {
   await part(page, 'effective');
   await topbarAction(page, 'Undo');
   await settle(page);
-  // "+ New group" makes the group from the search text and lists it, one undo step.
+  // "+ New group" asks for a name, then makes the group and lists it, one undo step.
+  await part(page, 'identity');
   const adder = await openDropdown(page.locator('#animus-npc-add-group'));
-  await page.locator('#animus-npc-add-group-search').fill('Dock crew');
-  await adder.getByText('+ New group "Dock crew"').click();
+  await adder.getByRole('button', {name: /^\+ New/}).click();
+  const naming = page.getByRole('dialog').filter({hasText: 'New trait group'});
+  await naming.getByLabel('Name', {exact: true}).fill('Dock crew');
+  await naming.getByRole('button', {name: 'Create', exact: true}).click();
   const made = (await part(page, 'identity')).getByRole('status').filter({hasText: 'Made group dock-crew.'});
   await made.waitFor();
   await made.getByRole('button', {name: 'Open dock-crew'}).waitFor();
   await shot(page, `${tag}-03b-new-group`);
   assert.deepEqual((await codeOf(page)).groups, ['dock-crew']);
-  assert.equal(await page.locator('#animus-sidebar').getByText('dock-crew', {exact: true}).count(), 1, 'the group document exists');
+  const groupListed = async () => {
+    await page.evaluate((hash) => { location.hash = hash; }, `#/workspace/${workspace}/list/group`);
+    await page.locator('.ui-library').first().waitFor();
+    await page.waitForTimeout(200);
+    const count = await page.locator('.ui-library-row[data-key="group:dock-crew"]').count();
+    await openDocument(page, workspace, 'npc', 'town/watchman');
+    return count;
+  };
+  assert.equal(await groupListed(), 1, 'the group document exists');
   await topbarAction(page, 'Undo');
   await settle(page);
   assert.equal((await codeOf(page)).groups, undefined, 'one undo drops the list entry');
-  assert.equal(await page.locator('#animus-sidebar').getByText('dock-crew', {exact: true}).count(), 0, 'and the group');
-
-  // Random route options on the watchman's inline route.
-  const behaviour = await part(page, 'behaviour');
-  const gridId = async () => (await part(page, 'behaviour')).locator('svg.animus-route-grid').first().getAttribute('id');
-  let grid = await gridId();
-  assert.equal(await page.locator(`#${grid}-wait-range`).getAttribute('aria-pressed'), 'true');
-  assert.equal(await page.locator(`#${grid}-wait`).inputValue(), '20');
-  assert.equal(await page.locator(`#${grid}-wait-max`).inputValue(), '60');
-  await page.locator(`#${grid}-wait-max`).fill('10');
-  await page.locator(`#${grid}-wait-max`).blur();
-  await behaviour.getByText('min above max').first().waitFor();
-  await page.locator(`#${grid}-wait-max`).fill('90');
-  await page.locator(`#${grid}-wait-max`).blur();
-  await settle(page);
-  assert.deepEqual((await codeOf(page)).modules['animus:navigation'].waitTicks, [20, 90]);
-  grid = await gridId();
-  assert.equal(await valueOf(page.locator(`#${grid}-start`)), 'random');
-  await chooseAndWait(page.locator(`#${grid}-seed`), 'random');
-  await settle(page);
-  assert.equal((await codeOf(page)).modules['animus:navigation'].seed, 'random');
-  grid = await gridId();
-  await page.locator(`#${grid}-points-0`).focus();
-  await page.keyboard.press('Enter');
-  await page.locator(`#${grid}-next-0-to`).waitFor();
-  await page.locator(`#${grid}-next-add`).click();
-  await settle(page);
-  assert.equal((await codeOf(page)).modules['animus:navigation'].points[0].next.length, 3);
-  // Movement styles: the picked point's own, then the route's.
-  grid = await gridId();
-  await page.locator(`#${grid}-points-0`).focus();
-  await page.keyboard.press('Enter');
-  await page.locator(`#${grid}-point-style`).waitFor();
-  await chooseAndWait(page.locator(`#${grid}-point-style`), 'sprint');
-  await settle(page);
-  assert.equal((await codeOf(page)).modules['animus:navigation'].points[0].style, 'sprint');
-  grid = await gridId();
-  await chooseAndWait(page.locator(`#${grid}-style`), 'sneak');
-  await settle(page);
-  assert.equal((await codeOf(page)).modules['animus:navigation'].style, 'sneak');
-  await shot(page, `${tag}-04-route`);
-  await noSidewaysScroll(page, `${tag} route`);
+  assert.equal(await groupListed(), 0, 'and the group');
 
   // An NPC playing a recording.
   await openDocument(page, workspace, 'npc', 'town/stall-keeper');
+  assert.equal((await codeOf(page)).modules['animus:navigation'].recording, 'market-loop', 'it plays a recording');
   await part(page, 'behaviour');
-  assert.equal(await valueOf(page.locator('#animus-npc-nav-source')), 'recording');
-  assert.equal(await valueOf(page.locator('#animus-npc-playback')), 'pingpong');
-  await chooseAndWait(page.locator('#animus-npc-playback'), 'once');
+  assert.equal((await codeOf(page)).modules['animus:navigation'].playback, 'pingpong');
+  // Playback is the recording page's toggle group, plus the recording's own.
+  const playback = page.getByRole('group', {name: 'Playback'});
+  assert.deepEqual((await playback.getByRole('button').allInnerTexts()).map(text => text.trim()), ["Recording's", 'Once', 'Loop', 'Back and forth']);
+  await playback.getByRole('button', {name: 'Once', exact: true}).click();
   await settle(page);
   assert.deepEqual((await codeOf(page)).modules['animus:navigation'], {enabled: true, recording: 'market-loop', playback: 'once'});
-  await part(page, 'behaviour');
-  await page.locator('#animus-npc-open-recording').click();
-
-  // The recording view.
-  await page.locator('#animus-recording-path').waitFor();
-  assert.match(await page.locator('[data-recording="facts"]').textContent(), /80 ticks/);
-  await page.locator('#animus-recording-scrub').fill('40');
-  await page.locator('[data-recording="readout"]').getByText('tick 40', {exact: false}).waitFor();
-  const at40 = await page.locator('#animus-recording-path').getAttribute('data-marker-x');
-  assert.equal(Number(at40), 103.7);
-  await page.locator('#animus-recording-play').click();
-  assert.equal(await page.locator('#animus-recording-play').getAttribute('aria-pressed'), 'true');
-  await page.locator('#animus-recording-play').click();
-  assert.equal(await page.locator('#animus-recording-play').getAttribute('aria-pressed'), 'false');
-  // Playback keeps time on a slow page: a 40x slower CPU still plays about 20 ticks a second.
-  await page.locator('#animus-recording-scrub').fill('0');
-  await page.locator('[data-recording="readout"]').getByText('tick 0', {exact: false}).waitFor();
-  const cdp = await context.newCDPSession(page);
-  await cdp.send('Emulation.setCPUThrottlingRate', {rate: 40});
-  const played = await page.evaluate(() => new Promise((resolve) => {
-    const start = performance.now();
-    document.getElementById('animus-recording-play').click();
-    setTimeout(() => resolve({ms: performance.now() - start, tick: Number(/tick (\d+)/.exec(document.querySelector('[data-recording="readout"]').textContent)[1])}), 2000);
-  }));
-  await cdp.send('Emulation.setCPUThrottlingRate', {rate: 1});
-  await cdp.detach();
-  if (await page.locator('#animus-recording-play').getAttribute('aria-pressed') === 'true') await page.locator('#animus-recording-play').click();
-  assert.ok(played.tick >= (played.ms - 400) / 50 && played.tick <= played.ms / 50 + 2, `${tag}: tick ${played.tick} after ${Math.round(played.ms)} ms at speed 1`);
-  await shot(page, `${tag}-05-recording`);
-  await noSidewaysScroll(page, `${tag} recording`);
-  assert.equal(await page.getByRole('button', {name: 'Duplicate'}).count(), 0);
-
-  // Details.
-  const details = page.locator('[data-recording="details"]');
-  await details.waitFor();
-  await page.locator('#animus-recording-description').fill('Stall walk');
-  await page.locator('#animus-recording-tag').fill('market');
-  await page.locator('#animus-recording-add-tag').click();
-  await details.locator('[data-tag="market"]').waitFor();
-  assert.equal(await page.locator('#animus-recording-tag').inputValue(), '');
-  await chooseAndWait(page.locator('#animus-recording-playback'), 'once');
-  await page.locator('#animus-recording-speed').fill('5');
-  await details.getByText('Use 0.25 to 4.').waitFor();
-  await page.locator('#animus-recording-speed').fill('2');
-  await page.locator('#animus-recording-speed').blur();
-  let json = await codeWhen(page, (code) => code.speed === 2);
-  assert.equal(json.description, 'Stall walk');
-  assert.deepEqual(json.tags, ['market']);
-  assert.equal(json.playback, 'once');
-  assert.equal(json.speed, 2);
-  await noSidewaysScroll(page, `${tag} recording details`);
-
-  // Trim to ticks 20..60 from the scrub, keyboard first: focus the scrub,
-  // step it, then press the buttons with Enter.
-  await page.locator('#animus-recording-scrub').fill('19');
-  await page.locator('#animus-recording-trim-start').focus();
-  await page.keyboard.press('Enter');
-  await page.locator('#animus-recording-scrub').fill('62');
-  await page.locator('#animus-recording-trim-end').click();
-  await page.locator('[data-recording="trim-range"]').getByText('Keep tick 20 to 60: 40 ticks, 3 of 5 frames').waitFor();
-  assert.equal(await page.locator('.animus-recording-line.is-kept').count(), 1);
-  await shot(page, `${tag}-05b-recording-trim`);
-  await noSidewaysScroll(page, `${tag} recording trim`);
-  await page.locator('#animus-recording-trim-apply').click();
-  await page.locator('[data-recording="facts"]').getByText('40 ticks', {exact: false}).waitFor();
-  json = await codeOf(page);
-  assert.equal(json.durationTicks, 40);
-  assert.deepEqual(json.frames.map((frame) => frame[0]), [0, 20, 40]);
-  assert.deepEqual(json.origin, {x: 102, y: 64, z: -20.25, yaw: 92.5, pitch: -3});
-  assert.equal(json.events[0].slot, 'main_hand', 'the sword worn at the new start is kept');
-
-  // Code: a draft that breaks a rule is refused with the reason; a valid one applies.
-  await page.getByRole('tab', {name: 'Code'}).click();
-  const code = page.locator('.animus-code textarea');
-  await code.fill(JSON.stringify({...json, frames: json.frames.map((frame, index) => index === 1 ? [0, ...frame.slice(1)] : frame)}, null, 2));
-  await page.locator('[data-recording="code-refusal"]').getByText("$.frames[1][0]: expected a tick above the previous frame's 0", {exact: false}).waitFor();
-  assert.equal(await page.getByRole('button', {name: 'Apply to draft'}).isDisabled(), true);
-  await shot(page, `${tag}-05c-recording-code`);
-  await noSidewaysScroll(page, `${tag} recording code`);
-  await code.fill(JSON.stringify({...json, description: 'Coded'}, null, 2));
-  assert.equal(await page.locator('[data-recording="code-refusal"]').count(), 0);
-  await page.getByRole('button', {name: 'Apply to draft'}).click();
-  await settle(page);
-  await page.getByRole('tab', {name: 'Visual'}).click();
-  assert.equal(await page.locator('#animus-recording-description').inputValue(), 'Coded');
-
-  // Make route: a route along the recording, each leg in its recorded style.
-  await page.locator('#animus-recording-route').fill('market-walk-route');
-  await page.locator('#animus-recording-make-route').click();
-  await page.waitForFunction(() => location.hash.endsWith('/route/market-walk-route'));
-  const madeRoute = await codeOf(page);
-  assert.equal(madeRoute.waitTicks, 0);
-  assert.ok(madeRoute.points.length >= 2, JSON.stringify(madeRoute));
-  assert.ok(madeRoute.points.some((point) => point.style === 'sprint'), `the sprinted stretch keeps its style: ${JSON.stringify(madeRoute.points)}`);
-  await openDocument(page, workspace, 'recording', 'market-loop');
-
-  // Rename from the id field carries the NPC that plays it.
-  await page.locator('#animus-recording-id').fill('market-walk');
-  await page.locator('#animus-recording-rename').click();
-  await page.waitForFunction(() => location.hash.endsWith('/recording/market-walk'));
-  await openDocument(page, workspace, 'npc', 'town/stall-keeper');
-  assert.equal((await codeOf(page)).modules['animus:navigation'].recording, 'market-walk');
-
-  // The recordings list.
-  await page.evaluate((hash) => { location.hash = hash; }, `#/workspace/${workspace}/recordings`);
-  await page.locator('[data-recording="list"] tr[data-recording-id="market-walk"]').waitFor();
-  await shot(page, `${tag}-06-recordings`);
-  await noSidewaysScroll(page, `${tag} recordings list`);
+  await shot(page, `${tag}-04-playback`);
+  await noSidewaysScroll(page, `${tag} playback`);
 
   assert.deepEqual(errors, [], `${tag}: console errors`);
   await context.close();

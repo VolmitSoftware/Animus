@@ -24,9 +24,16 @@ import '../../logic/suggest/completion_item.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../logic/suggest/text_completion.dart';
 import '../../logic/suggest/text_hints.dart';
+import '../../model/animus_document.dart' show DiagnosticSeverity;
+import '../../logic/gui/gui_text.dart' show guiPlainText;
+import '../../ui/mode.dart';
+import '../../ui/stack.dart';
+import '../inspect/inspect_lines.dart';
 import '../select/select_popup.dart' show fitBelowTopBar, sheetWidth;
 import 'suggest_list.dart';
 import 'suggest_scope.dart';
+import '../../ui/problem_text.dart';
+import '../../ui/density.dart';
 
 int _nextId = 0;
 
@@ -41,11 +48,13 @@ class AutocompleteInput extends StatefulWidget {
     this.multiline = false,
     this.rows = 3,
     this.oneLine = false,
+    this.code = false,
     this.behavior,
     this.gui,
-    this.classes = 'animus-gui-input',
+    this.classes = '',
     this.invalid = false,
     this.describedBy,
+    this.preview,
     this.onKey,
     this.attributes = const <String, String>{},
     super.key,
@@ -76,18 +85,25 @@ class AutocompleteInput extends StatefulWidget {
   /// A wrapping text area that never takes a line break (expressions).
   final bool oneLine;
 
+  /// Monospace text (a mask, an expression); a code profile is always.
+  final bool code;
+
   /// Behavior names for this field; the scope's when null.
   final BehaviorNames? behavior;
 
   /// GUI names for this field (list entries, animations).
   final ExpressionNames? gui;
 
-  /// Classes of the input element.
+  /// Classes of the input element beside the library's.
   final String classes;
   final bool invalid;
 
   /// Ids of elements that describe the field (a problem line).
   final String? describedBy;
+
+  /// Drawn under the field from its text (a GUI template's formatted sample);
+  /// null draws nothing.
+  final Widget? Function(String text)? preview;
 
   @override
   State<AutocompleteInput> createState() => _AutocompleteInputState();
@@ -116,6 +132,10 @@ class _AutocompleteInputState extends State<AutocompleteInput> {
 
   String get _text => _typed ?? component.value;
 
+  /// Whether the field has focus. Formatted text (colour codes, MiniMessage)
+  /// shows as it reads in game in Simple until the field is edited.
+  bool _focused = false;
+
   @override
   void didUpdateWidget(AutocompleteInput oldComponent) {
     super.didUpdateWidget(oldComponent);
@@ -126,6 +146,16 @@ class _AutocompleteInputState extends State<AutocompleteInput> {
   }
 
   bool get _textArea => component.multiline || component.oneLine;
+
+  /// GUI templates and expressions are checked whole; the first problem shows
+  /// under the field.
+  bool get _checked => identical(component.profile, FieldProfile.guiText) || identical(component.profile, FieldProfile.guiExpression);
+
+  String? _problem(String text) {
+    if (text.isEmpty) return null;
+    final ExpressionNames names = component.gui ?? ExpressionNames.standard;
+    return identical(component.profile, FieldProfile.guiText) ? checkTemplate(text, names: names).firstOrNull : checkExpression(text, names: names);
+  }
 
   CompletionEnv _env(BuildContext context) {
     final CompletionEnv scoped = SuggestScope.of(context, behavior: component.behavior);
@@ -329,17 +359,31 @@ class _AutocompleteInputState extends State<AutocompleteInput> {
         break;
       }
     }
-    if (element.getAttribute('title') != tip) element.setAttribute('title', tip);
+    // The browser's own tip follows the pointer from mark to mark; the
+    // library's tooltip would keep the first one.
+    if (element.getAttribute('title') != tip) {
+      element.setAttribute('title', tip);
+      element.setAttribute('data-no-tooltip', '');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final String text = _text;
+    // Simple shows formatted text without its codes until it is edited; only
+    // the field being edited shows them (and only it ever writes them).
+    final bool plain = component.profile.miniMessage && !_focused && !ModeScope.advanced(context);
+    final String text = plain && _text.isNotEmpty ? guiPlainText(_text) : _text;
     final CompletionEnv env = _env(context);
     final List<TextHint> hints = component.profile.isNone || text.isEmpty ? const <TextHint>[] : textHints(text, component.profile, env);
     final bool open = _open && _result.items.isNotEmpty;
     if (hints.isNotEmpty) _syncMirror();
-    final String describedBy = <String>[if (component.describedBy != null) component.describedBy!, if (hints.isNotEmpty) _hintsId].join(' ');
+    final String? problem = _checked ? _problem(text) : null;
+    final bool invalid = component.invalid || problem != null;
+    final String describedBy = <String>[
+      if (component.describedBy != null) component.describedBy!,
+      if (problem != null) '$_id-problem',
+      if (hints.isNotEmpty) _hintsId,
+    ].join(' ');
     final bool completes = !component.profile.isNone;
     final Map<String, String> attributes = <String, String>{
       'autocomplete': 'off',
@@ -351,12 +395,39 @@ class _AutocompleteInputState extends State<AutocompleteInput> {
       if (completes) 'aria-expanded': '$open',
       if (completes) 'aria-controls': _listId,
       if (open) 'aria-activedescendant': suggestOptionId(_listId, _active),
-      if (component.invalid) 'aria-invalid': 'true',
+      if (invalid) 'aria-invalid': 'true',
       if (describedBy.isNotEmpty) 'aria-describedby': describedBy,
       ...component.attributes,
     };
     final Map<String, void Function(web.Event)> events = <String, void Function(web.Event)>{
       'input': _onInput,
+      'focus': (web.Event event) {
+        if (_focused) return;
+        _focused = true;
+        if (!plain) return;
+        // The codes come back a moment after focus, before any keystroke:
+        // select() focuses first and selects after, so a swap inside focus
+        // would lose a select-all. A selection over the whole shown text
+        // stays one over the whole real text. No rebuild: the next build
+        // reads _focused and finds the same text. A box that shows nothing
+        // (a name made only of codes) selects its codes, so typing replaces
+        // them.
+        final web.EventTarget? target = event.target;
+        scheduleMicrotask(() {
+          if (!_focused || target == null) return;
+          if (target.isA<web.HTMLInputElement>()) {
+            final web.HTMLInputElement input = target as web.HTMLInputElement;
+            final bool all = input.selectionStart == 0 && input.selectionEnd == input.value.length;
+            input.value = _text;
+            if (all) input.select();
+          } else if (target.isA<web.HTMLTextAreaElement>()) {
+            final web.HTMLTextAreaElement area = target as web.HTMLTextAreaElement;
+            final bool all = area.selectionStart == 0 && area.selectionEnd == area.value.length;
+            area.value = _text;
+            if (all) area.select();
+          }
+        });
+      },
       'keydown': _onKey,
       'click': (web.Event _) {
         _close();
@@ -365,10 +436,13 @@ class _AutocompleteInputState extends State<AutocompleteInput> {
       'scroll': (web.Event _) => _syncMirror(),
       'mousemove': (web.Event event) => _onPointer(event, hints),
       'blur': (web.Event _) {
-        // A row's mousedown keeps focus; this covers leaving the field.
+        // A row's mousedown keeps focus; this covers leaving the field. The
+        // text turns plain again only then, never between the press and the
+        // click of whatever took the focus.
         Future<void>.delayed(const Duration(milliseconds: 150), () {
           if (!mounted || web.document.activeElement?.id == _id) return;
           setState(() {
+            _focused = false;
             _open = false;
             _typed = null;
             _stops = const <TabStop>[];
@@ -377,19 +451,23 @@ class _AutocompleteInputState extends State<AutocompleteInput> {
         });
       },
     };
-    final String classes = '${component.classes}${component.profile.code ? ' is-code' : ''}${component.invalid ? ' is-invalid' : ''}';
-    return dom.div(classes: 'animus-ac${hints.isNotEmpty ? ' has-hints' : ''}', <Widget>[
+    // The library's class draws the field; an input keeps its row's height.
+    final String classes = '${_textArea ? 'arcane-textarea' : 'arcane-text-input'}${component.classes.isEmpty ? '' : ' ${component.classes}'}';
+    // On the field's box, so the text and its hint layer share it.
+    final bool code = component.code || component.profile.code;
+    final Widget field = dom.div(classes: 'animus-ac', styles: code ? codeFont : null, <Widget>[
       if (_textArea)
         dom.textarea(
           id: _id,
           classes: classes,
+          styles: component.oneLine ? _oneLine : null,
           rows: component.oneLine ? 1 : component.rows,
           attributes: attributes,
           events: events,
           <Widget>[Component.text(text)],
         )
       else
-        dom.input(id: _id, classes: classes, value: text, attributes: attributes, events: events),
+        dom.input(id: _id, classes: classes, styles: rowControlHeight, value: text, attributes: attributes, events: events),
       if (hints.isNotEmpty) _mirror(text, hints),
       if (hints.isNotEmpty)
         dom.span(id: _hintsId, classes: 'animus-sr-only', <Widget>[
@@ -407,6 +485,13 @@ class _AutocompleteInputState extends State<AutocompleteInput> {
           onHover: (int index) => setState(() => _active = index),
         ),
       if (completes) dom.span(classes: 'animus-sr-only', attributes: const <String, String>{'aria-live': 'polite'}, <Widget>[Component.text(_status)]),
+    ]);
+    final Widget? sample = component.preview?.call(text);
+    if (!_checked && sample == null) return field;
+    return stack(spacing: 4, <Widget>[
+      field,
+      if (sample != null) dom.div(classes: 'animus-gui-sample', <Widget>[sample]),
+      if (problem != null) problemLine(DiagnosticSeverity.error, problem, id: '$_id-problem'),
     ]);
   }
 
@@ -430,3 +515,12 @@ class _AutocompleteInputState extends State<AutocompleteInput> {
     );
   }
 }
+
+/// One line of the row's height that wraps and grows as it is typed in.
+const dom.Styles _oneLine = dom.Styles(raw: <String, String>{
+  'min-height': 'var(--animus-control-h)',
+  'padding-block': 'calc((var(--animus-control-h) - 1.25rem - 2px) / 2)',
+  'resize': 'none',
+  'overflow': 'hidden',
+  'field-sizing': 'content',
+});

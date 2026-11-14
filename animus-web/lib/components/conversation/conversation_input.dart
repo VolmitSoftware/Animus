@@ -18,7 +18,6 @@ typedef ConversationKey = bool Function(web.KeyboardEvent event, web.HTMLInputEl
 
 class ConversationInput extends StatefulWidget {
   const ConversationInput({
-    required this.id,
     required this.value,
     required this.label,
     required this.onChanged,
@@ -26,13 +25,14 @@ class ConversationInput extends StatefulWidget {
     this.placeholder,
     this.code = false,
     this.profile = FieldProfile.none,
+    this.id,
     super.key,
   });
 
   /// What the field completes (placeholders, tags, ids).
   final FieldProfile profile;
 
-  final String id;
+  final String? id;
   final String value;
 
   /// The accessible name.
@@ -59,7 +59,9 @@ class _ConversationInputState extends State<ConversationInput> {
   void didUpdateWidget(ConversationInput oldComponent) {
     super.didUpdateWidget(oldComponent);
     if (_typed == null) return;
-    if (component.value == _typed || !_sent.contains(component.value)) {
+    // A reused state may hold another field now (a line turned question),
+    // whose value can be one of the texts typed on the way.
+    if (component.id != oldComponent.id || component.value == _typed || !_sent.contains(component.value)) {
       _typed = null;
       _sent.clear();
     }
@@ -70,7 +72,7 @@ class _ConversationInputState extends State<ConversationInput> {
     final ConversationKey? handle = component.onKey;
     return AutocompleteInput(
       id: component.id,
-      classes: 'animus-gui-input animus-conv-input${component.code ? ' is-code' : ''}',
+      code: component.code,
       value: _typed ?? component.value,
       profile: component.profile,
       label: component.label,
@@ -86,6 +88,21 @@ class _ConversationInputState extends State<ConversationInput> {
     );
   }
 }
+
+/// The one field for formatted step text: a line, a question, an answer
+/// and its hover, the text of a message, action bar or title step, and a
+/// text value a step stores. Every one of them is built here, so changing
+/// how formatted text is edited is a change to this function alone.
+Widget formattedTextInput({
+  required String value,
+  required String label,
+  required void Function(String value) onChanged,
+  String? id,
+  ConversationKey? onKey,
+  String? placeholder,
+  FieldProfile profile = FieldProfile.richText,
+}) =>
+    ConversationInput(id: id, value: value, label: label, onChanged: onChanged, onKey: onKey, placeholder: placeholder, profile: profile);
 
 /// Inserts [text] at the caret of the field [id] and reports it as typed.
 void insertAtCaret(String id, String text) {

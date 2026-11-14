@@ -551,6 +551,36 @@
       "schema": "editor-v1.schema.json"
     },
     {
+      "path": "editor/messages/catalog-response.1.json",
+      "definition": "catalog-response",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/event.3.json",
+      "definition": "event",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/documents-read-request.0.json",
+      "definition": "documents-read-request",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/documents-read-response.0.json",
+      "definition": "documents-read-response",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/error-response.2.json",
+      "definition": "error-response",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
       "path": "editor/messages/invalid/change-set.0.json",
       "definition": "change-set",
       "valid": false,
@@ -717,6 +747,18 @@
       "definition": "relay-register",
       "valid": false,
       "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/documents-read-request.0.json",
+      "definition": "documents-read-request",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/event.1.json",
+      "definition": "event",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
     }
   ],
   "pairing": "editor/pairing.json",
@@ -727,6 +769,7 @@
     "animation/samples/bow-hold.json",
     "animation/samples/layers.json"
   ],
+  "textRows": "text/display-rows.json",
   "exports": [
     {
       "root": "export",

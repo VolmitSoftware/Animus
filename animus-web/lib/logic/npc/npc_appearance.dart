@@ -5,6 +5,13 @@
 library;
 
 import '../gui/gui_json.dart';
+import '../inspect/named_ids.dart' show idName;
+
+/// Body traits drawn as plain schema fields.
+const List<String> npcTraits = <String>['glowing', 'teamColor', 'baby', 'usingItem', 'listed', 'gravity'];
+
+/// The player a click on the NPC is passed on to.
+const String clickRedirectField = 'clickRedirect';
 
 /// Every body pose; only standing applies to bodies other than players.
 const List<String> npcPoses = <String>['standing', 'sneaking', 'sleeping', 'swimming', 'sitting'];
@@ -19,6 +26,10 @@ const List<int> inventorySizes = <int>[9, 18, 27, 36, 45, 54, 63, 72];
 const int hologramMaxLines = 16;
 
 final RegExp _owner = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
+
+/// A body type as people read it: `minecraft:iron_golem` reads "Iron golem",
+/// and another namespace follows in brackets ("Dragon (mymod)").
+String bodyLabel(String type) => idName(type);
 
 /// The poses a body of [type] may take.
 List<String> posesFor(String type) => type == 'minecraft:player' ? npcPoses : const <String>['standing'];
@@ -53,12 +64,12 @@ final class MisplacedField {
 /// Fields that only another body type shows: what is left behind when an
 /// NPC changes type. The server refuses each of them on this body.
 List<MisplacedField> misplacedBodyFields(JsonMap doc, String type) => <MisplacedField>[
-      if (doc.containsKey('skin') && type != 'minecraft:player') const MisplacedField('skin', 'Skins show only on minecraft:player bodies.'),
+      if (doc.containsKey('skin') && type != 'minecraft:player') const MisplacedField('skin', 'Skins show only on player bodies.'),
       if (doc['pose'] != null && doc['pose'] != 'standing' && type != 'minecraft:player')
-        MisplacedField('pose', 'The ${asString(doc['pose']) ?? 'pose'} pose shows only on minecraft:player bodies.'),
-      if (doc.containsKey('armorStand') && type != 'minecraft:armor_stand') const MisplacedField('armorStand', 'Only for minecraft:armor_stand bodies.'),
+        MisplacedField('pose', 'The ${asString(doc['pose']) ?? 'pose'} pose shows only on player bodies.'),
+      if (doc.containsKey('armorStand') && type != 'minecraft:armor_stand') const MisplacedField('armorStand', 'Only for armor stand bodies.'),
       for (final MapEntry<String, String> settings in bodySettingsTypes.entries)
-        if (doc.containsKey(settings.key) && settings.value != type) MisplacedField(settings.key, 'Only for ${settings.value} bodies.'),
+        if (doc.containsKey(settings.key) && settings.value != type) MisplacedField(settings.key, 'Only for ${bodyLabel(settings.value).toLowerCase()} bodies.'),
     ];
 
 /// [doc] without the fields [misplacedBodyFields] names.

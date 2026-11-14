@@ -150,6 +150,26 @@ public final class DenizenImporter {
     }
 
     /**
+     * The behaviors and chest GUIs {@link #apply} installs, at their installed paths, and the server behavior list it
+     * writes, read from the staged preview; nothing is installed. Flag and quest state files are left out.
+     */
+    public static Map<String, String> documents(DocumentStore store, String id) throws IOException {
+        if (!id.matches("[a-f0-9]{64}")) throw new IOException("Invalid import ID");
+        Path staged = store.resolve(IMPORTS + "/" + id);
+        Preview preview = read(staged, id);
+        Map<String, String> documents = new TreeMap<>();
+        for (String relative : preview.report().getAsJsonObject("documents").keySet()) {
+            if (!relative.matches(STAGED_PATH) || !(relative.startsWith("behaviors/") || relative.startsWith(STAGED_GUIS))) continue;
+            documents.put(relative.startsWith(STAGED_GUIS) ? INSTALLED_GUIS + relative.substring(STAGED_GUIS.length()) : relative, JsonDocuments.read(staged.resolve(relative)));
+        }
+        List<String> servers = new ArrayList<>();
+        for (JsonElement server : serverBehaviors(preview.report())) servers.add(server.getAsString());
+        String before = store.read(ServerBehaviorList.PATH), after = ServerBehaviorList.append(before, servers);
+        if (!after.equals(before)) documents.put(ServerBehaviorList.PATH, after);
+        return documents;
+    }
+
+    /**
      * {@link #apply} under {@code transaction}. When the import is already installed, returns what its receipt recorded,
      * with the transaction that installed it, so a retried apply records the real id.
      */

@@ -11,6 +11,7 @@ import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 
 import '../../logic/terrain/terrain_access.dart';
+import '../server/connection_status.dart';
 import '../server/server_connection.dart';
 import 'terrain_client.dart';
 
@@ -64,8 +65,12 @@ abstract final class TerrainLink {
   static StreamSubscription<Object?>? _statuses;
   static final List<void Function()> _listeners = <void Function()>[];
 
+  /// Whether this tab waits while another holds the connection.
+  static bool Function() _elsewhere = () => false;
+
   /// Follows [connection] as the open workspace's server.
-  static void attach(String server, ServerConnection connection) {
+  static void attach(String server, ServerConnection connection, {bool Function()? elsewhere}) {
+    _elsewhere = elsewhere ?? () => false;
     if (!_listening) {
       _listening = true;
       TerrainWorlds.listen((Set<String>? names) => _client?.worlds = names);
@@ -92,11 +97,15 @@ abstract final class TerrainLink {
   static TerrainClient? get client {
     final ServerConnection? connection = _connection;
     if (connection == null || _absence(connection) != null) return null;
-    return _client ??= TerrainClient(server: _server!, send: connection.request, cache: IndexedDbTerrainCache())..worlds = TerrainWorlds.names;
+    return _client ??= TerrainClient(server: _server!, send: connection.requestRetrying, cache: IndexedDbTerrainCache())..worlds = TerrainWorlds.names;
   }
 
   /// True while the open workspace belongs to a paired server.
   static bool get attached => _connection != null;
+
+  /// Where the open workspace's server connection stands, or null without
+  /// one.
+  static ConnectionStatus? get status => _connection?.status;
 
   /// Why there is no terrain, for the stage and grid notes; empty when it
   /// is there or when no server is paired (the views stay as they were).
@@ -106,7 +115,7 @@ abstract final class TerrainLink {
   }
 
   static String? _absence(ServerConnection connection) =>
-      terrainAbsence(online: connection.status.online, capabilities: connection.capabilities, scopes: connection.token?.scopes ?? const <String>[]);
+      terrainAbsence(online: connection.status.online, capabilities: connection.capabilities, scopes: connection.token?.scopes ?? const <String>[], elsewhere: _elsewhere());
 
   static void addListener(void Function() listener) => _listeners.add(listener);
 

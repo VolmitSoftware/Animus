@@ -181,6 +181,9 @@ public final class CitizensDropIn {
 
     public List<String> reviewApplied() throws IOException { return review(); }
 
+    /** Every document the next apply writes, by data folder path, read from the staged previews; see {@link StagedWrites}. */
+    public Map<String, String> stagedWrites() throws IOException { return StagedWrites.of(store, state()); }
+
     /** The Denizen behaviors held because a guard did not convert, with those lines; none is bound or enabled until released. */
     public List<String> heldDenizen() throws IOException {
         List<DenizenDropIn.Held> held = DenizenDropIn.held(store, state());
@@ -871,7 +874,7 @@ public final class CitizensDropIn {
     static String shortId(String transaction) { return transaction.substring(0, Math.min(8, transaction.length())); }
 
     private void refuseWhileCitizensRuns() throws IOException { if (host.citizensEnabled().getAsBoolean()) throw new IOException(CITIZENS_RUNNING); }
-    private static boolean applied(JsonObject state) { return state.has("state") && state.get("state").getAsString().equals("applied"); }
+    static boolean applied(JsonObject state) { return state.has("state") && state.get("state").getAsString().equals("applied"); }
     /** An apply that committed something and stopped before it finished. */
     private static boolean interrupted(JsonObject state) { return state.has(APPLYING); }
     private void finished(JsonObject state) throws IOException { state.remove(APPLYING); writeState(state); }

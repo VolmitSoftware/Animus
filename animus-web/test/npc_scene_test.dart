@@ -10,7 +10,9 @@ import 'package:animus_editor/mc/npc/npc_playground.dart';
 import 'package:animus_editor/mc/npc/npc_scene.dart';
 import 'package:animus_editor/mc/npc/npc_skin.dart';
 import 'package:animus_editor/mc/npc/route_overlay.dart';
+import 'package:animus_editor/mc/mesh/mc_mesh.dart';
 import 'package:animus_editor/mc/rigs/mc_player_rig.dart';
+import 'package:animus_editor/mc/rigs/mc_rig_mesher.dart';
 import 'package:animus_editor/mc/rigs/mc_rigs.dart';
 import 'package:animus_editor/mc/scene/mc_camera.dart';
 import 'package:animus_editor/mc/scene/mc_math.dart';
@@ -129,7 +131,7 @@ void main() {
       expect(main.pose, McDisplayPose.thirdPersonRightHand);
       expect(off.leftHand, isTrue);
       expect(scene.notes, hasLength(2));
-      expect(scene.notes.join(' '), allOf(contains('body: minecraft:white_carpet'), contains('saddle: minecraft:saddle')));
+      expect(scene.notes.join(' '), allOf(contains('White carpet'), contains('Saddle'), isNot(contains('minecraft:'))));
     });
 
     test('a held item sits at the hand, in front of the body, on its right', () {
@@ -208,7 +210,7 @@ void main() {
         'equipment': <String, Object?>{'head': <String, Object?>{'id': 'minecraft:iron_helmet'}},
       }));
       expect(byKey(armadillo).keys, <String>['body']);
-      expect(armadillo.notes.single, contains('minecraft:armadillo'));
+      expect(armadillo.notes.single, 'Iron helmet is not drawn on armadillo bodies.');
     });
 
     test('armor stands: armour on the stand pivots, invisible hides only the body', () {
@@ -227,6 +229,27 @@ void main() {
       expect((tiny['equipment:head']! as McRigNode).rig.id, 'armor_head_small');
     });
 
+    test('the framing holds the armour a body wears, not just the body', () {
+      final NpcScene dressed = npcScene(NpcLook.fromDefinition(<String, Object?>{
+        'type': 'minecraft:armor_stand',
+        'name': 'Dummy',
+        'equipment': <String, Object?>{
+          'head': <String, Object?>{'id': 'minecraft:iron_helmet'},
+          'feet': <String, Object?>{'id': 'minecraft:iron_boots'},
+        },
+      }));
+      final McBounds frame = McBounds.of(dressed.scene.frame);
+      for (final String slot in <String>['equipment:head', 'equipment:feet']) {
+        final McRigNode worn = byKey(dressed)[slot]! as McRigNode;
+        final McMesh mesh = mcMeshRig(worn.rig, pose: worn.pose);
+        for (int v = 0; v < mesh.vertexCount; v++) {
+          final McVec3 point = worn.transform.transformPoint(McVec3(mesh.positions[v * 3], mesh.positions[v * 3 + 1], mesh.positions[v * 3 + 2]));
+          expect(point.y, inInclusiveRange(frame.min.y - 1e-9, frame.max.y + 1e-9), reason: '$slot at $point is outside the framing');
+          expect(point.x, inInclusiveRange(frame.min.x - 1e-9, frame.max.x + 1e-9), reason: '$slot at $point is outside the framing');
+        }
+      }
+    });
+
     test('armour in the wrong slot is not drawn; a non-armour head item is', () {
       final NpcScene scene = npcScene(NpcLook.fromDefinition(<String, Object?>{
         'type': 'minecraft:player',
@@ -238,7 +261,7 @@ void main() {
       }));
       expect(byKey(scene)['equipment:head'], isA<McItemNode>());
       expect(byKey(scene)['equipment:chest'], isNull);
-      expect(scene.notes.single, contains('chest: minecraft:iron_helmet'));
+      expect(scene.notes.single, startsWith('Iron helmet is not drawn'));
     });
 
     test('every sample renders; an unknown type is not presentable', () {
@@ -325,7 +348,7 @@ void main() {
       }));
       expect((byKey(turtle)['equipment:head']! as McRigNode).textureId, 'entity/equipment/humanoid/turtle_scute');
       expect(byKey(turtle).containsKey('equipment:legs'), isFalse);
-      expect(turtle.notes.single, contains('legs: minecraft:iron_boots'));
+      expect(turtle.notes.single, startsWith('Iron boots is not drawn'));
     });
 
     test('layers ride the body: the player layer scale and pivots, the stand its own', () {
@@ -383,7 +406,18 @@ void main() {
       );
       expect(routed.scene.nodes.length, greaterThan(body.scene.nodes.length));
       expect(routed.scene.glow!.keys, body.scene.glow!.keys);
+      // Points count from 1, as the route map and its list do.
+      expect(<String>[for (final NpcText text in routed.texts) ...text.lines], containsAll(<String>['1', '2']));
+      expect(<String>[for (final NpcText text in routed.texts) ...text.lines], isNot(contains('0')));
     });
+  });
+
+  test('a text its scene placed stays placed when moved', () {
+    const NpcText text = NpcText(anchor: McVec3(0, 2, 0), lines: <String>['Close'], nameplate: false, placed: true);
+    final NpcText moved = text.moved(const McVec3(1, 0, 0));
+    expect(moved.placed, isTrue);
+    expect(moved.anchor, const McVec3(1, 2, 0));
+    expect(const NpcText(anchor: McVec3(0, 0, 0), lines: <String>[], nameplate: true).placed, isFalse);
   });
 
   group('framing', () {
@@ -456,6 +490,25 @@ void main() {
       expect(mcFrameTexts(heroHome, hero.texts, hero.scene.frame, widthPx: 800, heightPx: 600), heroHome);
     });
 
+    test('a long name on a phone stage is framed on one line, clear of the head', () {
+      const double w = 358, h = 268;
+      final NpcScene merchant = sceneOf('npcs/players/merchant.json');
+      final NpcText name = merchant.texts.single;
+      final McCamera home = mcCameraFraming(merchant.scene.frame, yawDeg: 180, aspect: w / h);
+      final McCamera fitted = mcFrameTexts(home, merchant.texts, merchant.scene.frame, widthPx: w, heightPx: h);
+      final McVec3 at = mcProjectToPixels(fitted, name.anchor, widthPx: w, heightPx: h)!;
+      final double font = mcCrispFontPx(mcTextFontPx(h, at.z));
+      expect(mcTextLineWidthPx(name.lines.single, font), lessThanOrEqualTo(w - 2 * mcTextInsetPx), reason: 'the name fits the stage without wrapping');
+      expect(at.y - 1.25 * font, greaterThanOrEqualTo(h * (1 - mcFramingFill) / 2 - 1), reason: 'the name clears the top');
+    });
+
+    test('should snap text to the pixel font grid', () {
+      expect(mcCrispFontPx(13), 16);
+      expect(mcCrispFontPx(21), 24);
+      expect(mcCrispFontPx(43.4), 43);
+      expect(mcTextLineWidthPx('Baker', 16), closeTo(5 * 12, 1e-9));
+    });
+
     test('every body fills the view about as much as the player does', () {
       final double player = fill(sceneOf('npcs/players/hero.json'));
       expect(player, greaterThan(0.6));
@@ -463,6 +516,16 @@ void main() {
         expect(fill(sceneOf(path)), closeTo(player, 0.15), reason: path);
       }
     });
+  });
+
+  test('should bound the subject\'s own name plates, not other NPCs\' names', () {
+    const NpcText hologram = NpcText(anchor: McVec3(0, 2, 0), lines: <String>['Charts & Clocks', 'The Cartographer'], nameplate: false);
+    const NpcText neighbour = NpcText(anchor: McVec3(4, 2, 4), lines: <String>['brickworks'], nameplate: true, yields: true);
+    final McBounds plates = npcPlates(<NpcText>[hologram, neighbour])!;
+    expect(plates.min.y, 2);
+    expect(plates.max.y, closeTo(2.5, 1e-9), reason: 'two lines of ten font pixels, 40 to a block');
+    expect(plates.max.x, closeTo(16 * 3 / 40, 1e-9), reason: 'half of sixteen characters of six pixels');
+    expect(npcPlates(<NpcText>[neighbour]), isNull);
   });
 
   test('should write a run colour as CSS', () {

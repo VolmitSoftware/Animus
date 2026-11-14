@@ -1,6 +1,6 @@
 import 'package:animus_editor/logic/shared_schemas.dart';
 import 'package:animus_editor/services/server/pairing.dart';
-import 'package:animus_editor/services/server/server_connection.dart';
+import 'package:animus_editor/services/server/server_pairing.dart';
 import 'package:animus_editor/services/server/server_profiles.dart';
 import 'package:animus_editor/services/server/transport.dart';
 import 'package:test/test.dart';
@@ -55,7 +55,7 @@ void main() {
       });
     }));
     final PairingPayload payload = fakePayload(relayUrl: 'ws://127.0.0.1:9797');
-    final (ServerToken token, ConnectionPath path) = await ServerConnection.pair(payload, network.open, client: 'test');
+    final (ServerToken token, ConnectionPath path, String? _) = await pairServer(payload, network.open, client: 'test');
     expect(path, ConnectionPath.relay);
     expect(token.tokenId, 'tok_0001AbCd');
     expect(token.has('validate'), isTrue);
@@ -67,7 +67,7 @@ void main() {
   test('should refuse to pair with a server that answers with another fingerprint', () async {
     final FakeNetwork network = FakeNetwork(serverHandler(fingerprint: 'sha256:${'1' * 64}'));
     final PairingPayload payload = decodePairingCode(((pairing['valid']! as List<Object?>)[0]! as Map<String, Object?>)['code']! as String, schemas);
-    await expectLater(ServerConnection.pair(payload, network.open), throwsA(isA<PairingRefused>()));
+    await expectLater(pairServer(payload, network.open), throwsA(isA<PairingRefused>()));
     expect(network.sent.where((( ConnectionPath, ApiRequest) sent) => sent.$2.path == '/v1/pair'), isEmpty);
   });
 

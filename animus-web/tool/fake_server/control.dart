@@ -9,6 +9,7 @@ import 'documents.dart';
 import 'messages.dart';
 import 'protocol.dart';
 import 'server.dart';
+import 'tokens.dart';
 
 /// Test controls under `http://127.0.0.1:<port>/__fake/`: no auth, loopback
 /// callers only, CORS-allowed for the configured origins.
@@ -63,6 +64,19 @@ class ControlPath {
     return body;
   }
 
+  static DocumentKind _kind(Map<String, Object?> body) {
+    final String name = body['kind'] is String ? body['kind']! as String : '';
+    return DocumentKind.parse(name) ?? (throw invalid('kind: unknown kind $name'));
+  }
+
+  /// What a server-side change reports as its source: `server` unless the
+  /// body says `"origin": "file"`.
+  static String _origin(Map<String, Object?> body) {
+    final Object origin = body['origin'] ?? 'server';
+    if (origin != 'server' && origin != 'file') throw invalid('origin: server or file');
+    return origin as String;
+  }
+
   static Duration _seconds(Map<String, Object?> body) {
     final Object? seconds = body['seconds'];
     if (seconds is! num || seconds < 0) throw invalid('seconds: expected a non-negative number');
@@ -81,25 +95,43 @@ class ControlPath {
           'relay' => PairPaths.relay,
           _ => throw invalid('paths: both, direct or relay'),
         };
-        final List<String> extra = <String>[
+        final List<String> named = <String>[
           for (final String scope in (uri.queryParameters['scopes'] ?? '').split(','))
             if (scope.isNotEmpty) scope,
         ];
-        for (final String scope in extra) {
-          if (!const <String>{'import', 'spawn', 'admin'}.contains(scope)) throw invalid('scopes: import, spawn or admin, comma separated');
+        for (final String scope in named) {
+          if (!allScopes.contains(scope)) throw invalid('scopes: comma separated scopes from editor-v1.schema.json');
         }
         final num? days = uri.queryParameters['days'] == null ? null : num.tryParse(uri.queryParameters['days']!);
         if (uri.queryParameters['days'] != null && (days == null || days <= 0)) throw invalid('days: a positive token lifetime in days');
-        return FakeResponse(200, body: server.pair(chosen, extra, days));
+        final List<String> folders = <String>[
+          for (final String folder in (uri.queryParameters['folders'] ?? '').split(','))
+            if (folder.isNotEmpty) folder,
+        ];
+        if (!folders.every(npcFolderPattern.hasMatch)) throw invalid('folders: comma separated NPC folders below npcs/, such as town or town/market');
+        return FakeResponse(200, body: server.pair(chosen, grantedScopes(named), days, folders));
       case 'POST /edit':
         final Map<String, Object?> edit = _object(body);
-        fields(edit, r'$', <String>{'kind', 'id', 'source'});
-        final String kindName = edit['kind'] is String ? edit['kind']! as String : '';
-        final DocumentKind kind = DocumentKind.parse(kindName) ?? (throw invalid('kind: unknown kind $kindName'));
+        fields(edit, r'$', <String>{'kind', 'id', 'source', 'origin'});
+        final DocumentKind kind = _kind(edit);
         final String id = stringField(edit, 'id', documentIdPattern, r'$.id');
         final Object? source = edit['source'];
         if (source is! Map<String, Object?>) throw invalid('source: expected an object');
-        return FakeResponse(200, body: server.api.serverEdit(kind, id, source));
+        return FakeResponse(200, body: server.api.serverEdit(kind, id, source, _origin(edit)));
+      case 'POST /delete':
+        final Map<String, Object?> delete = _object(body);
+        fields(delete, r'$', <String>{'kind', 'id', 'origin'});
+        final DocumentKind kind = _kind(delete);
+        final String id = stringField(delete, 'id', documentIdPattern, r'$.id');
+        if (!server.api.serverDelete(kind, id, _origin(delete))) return const FakeResponse(404, body: <String, Object?>{'error': 'no such document'});
+        return FakeResponse(200, body: <String, Object?>{'deleted': <String, Object?>{'kind': kind.wireName, 'id': id}});
+      case 'POST /touch':
+        final Map<String, Object?> touch = body == null ? const <String, Object?>{} : _object(body);
+        fields(touch, r'$', <String>{'kind', 'count', 'origin'});
+        final Object? count = touch['count'];
+        if (count != null && (count is! int || count < 1)) throw invalid('count: a positive whole number of documents');
+        final DocumentKind? kind = touch.containsKey('kind') ? _kind(touch) : null;
+        return FakeResponse(200, body: <String, Object?>{'touched': server.api.touch(kind, count as int?, _origin(touch))});
       case 'POST /drop':
         final Map<String, Object?> drop = _object(body);
         final Object? path = drop['path'];
@@ -131,12 +163,34 @@ class ControlPath {
         final String code = uri.queryParameters['code'] ?? '';
         final int times = int.tryParse(uri.queryParameters['times'] ?? '1') ?? -1;
         if (times < 1) throw invalid('times: a positive whole number');
+        final String? retry = uri.queryParameters['retryAfterMillis'];
+        final int? retryAfterMillis = retry == null ? null : int.tryParse(retry);
+        if (retry != null && (retryAfterMillis == null || retryAfterMillis < 0)) throw invalid('retryAfterMillis: a non-negative whole number of milliseconds');
         try {
-          server.api.failNext(code, times, route: uri.queryParameters['route'], message: uri.queryParameters['message']);
+          server.api.failNext(code, times,
+              route: uri.queryParameters['route'], message: uri.queryParameters['message'], retryAfterMillis: retryAfterMillis, scope: uri.queryParameters['scope']);
         } on Object {
-          throw invalid('code: an error-code from editor-v1.schema.json');
+          throw invalid('code: an error-code from editor-v1.schema.json; only rate-limited and busy take retryAfterMillis, only scope-missing takes scope');
         }
-        return FakeResponse(200, body: <String, Object?>{'code': code, 'times': times, 'route': ?uri.queryParameters['route']});
+        return FakeResponse(200, body: <String, Object?>{
+          'code': code,
+          'times': times,
+          'route': ?uri.queryParameters['route'],
+          'retryAfterMillis': ?retryAfterMillis,
+          'scope': ?uri.queryParameters['scope'],
+        });
+      case 'POST /name':
+        final Map<String, Object?> rename = _object(body);
+        fields(rename, r'$', <String>{'name'});
+        final Object? name = rename['name'];
+        if (name is! String || name.trim().isEmpty || name.length > 128) throw invalid('name: 1 to 128 characters, as a MOTD');
+        server.api.renamed = name;
+        return FakeResponse(200, body: <String, Object?>{'name': name});
+      case 'POST /slow':
+        final int? millis = int.tryParse(uri.queryParameters['ms'] ?? '');
+        if (millis == null || millis < 0 || millis > 60000) throw invalid('ms: 0 to 60000 milliseconds each request waits before it runs');
+        server.api.slowMillis = millis;
+        return FakeResponse(200, body: <String, Object?>{'slowMillis': millis});
       case 'POST /drop-answer':
         server.api.dropNextApply = true;
         return const FakeResponse(200, body: <String, Object?>{'dropNextApply': true});

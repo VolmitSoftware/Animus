@@ -34,6 +34,16 @@ void main() {
       expect(const FieldSpec(key: 'long', kind: FieldKind.integer, minimum: 0, maximum: 9007199254740991).digits, isNull);
     });
 
+    test('should leave bounds of a million or more out of hints and still check them', () {
+      const FieldSpec x = FieldSpec(key: 'x', kind: FieldKind.number, minimum: -30000000, maximum: 30000000);
+      expect(x.boundsHint, isNull);
+      expect(x.help, isEmpty);
+      expect(x.check(40000000), contains('at most'));
+      expect(const FieldSpec(key: 'radius', kind: FieldKind.number, minimum: 1, maximum: 64).boundsHint, '1 to 64');
+      expect(const FieldSpec(key: 'delay', kind: FieldKind.integer, minimum: 0, maximum: 2000000).boundsHint, 'At least 0');
+      expect(const FieldSpec(key: 'ticks', kind: FieldKind.integer, minimum: 1, maximum: 72000).boundsHint, '1 to 72000');
+    });
+
     test('npc fields carry kinds, required markers, bounds and descriptions', () {
       final JsonMap npc = _fixture('npcs/examples/greeter.json');
       final List<FieldSpec> fields = schemas.npc.fields(schemas.npc.root, npc);

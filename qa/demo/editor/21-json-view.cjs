@@ -1,17 +1,17 @@
-// The Code (JSON) and Split views of an NPC: the name is edited in the JSON,
-// Apply to draft, and the preview's name tag and the Visual name field follow.
-// Offline: no fake server needed. The example packs workspace is made before filming.
+// The Code and Split views of an NPC (Advanced): the name is edited in the JSON,
+// Use this code takes it in, and the form's name field and, back in Form, the
+// preview's name tag follow.
+// Offline: no fake server needed. The examples workspace is made before filming.
 module.exports = async (L) => {
   const f = await L.session({id: '21-json-view'});
-  await f.setup.goto(`${L.SITE}/#/`);
-  await f.setup.getByRole('button', {name: 'Create with example packs'}).click();
-  await f.setup.waitForFunction(() => location.hash.startsWith('#/workspace/'));
-  const ws = f.setup.url().split('#')[1].split('/').slice(0, 3).join('/');
-  const page = await f.start(`${L.SITE}/#${ws}/npc/examples%2Finnkeeper`);
+  await f.context.addInitScript(() => { try { localStorage.setItem('animus.mode', 'advanced'); } catch (e) {} });
+  const ws = await L.examplesWorkspace(f.setup);
+  const page = await f.start(`${L.SITE}/${ws}/npc/examples%2Finnkeeper`);
   const h = L.human(f);
   await page.getByRole('heading', {name: 'Innkeeper', level: 1}).waitFor();
+  await L.clearToasts(page);
   await page.waitForTimeout(2000);
-  const views = page.getByRole('tablist', {name: 'View'});
+  const views = page.getByRole('toolbar', {name: 'Page actions'}).getByRole('group', {name: 'View'});
   const code = page.getByRole('combobox', {name: 'Document JSON'});
   /** Viewport point of [needle]'s end in the JSON text area (a plain monospace textarea). */
   const endOf = (needle) => code.evaluate((area, n) => {
@@ -28,9 +28,10 @@ module.exports = async (L) => {
     };
   }, needle);
   f.mark();
-  await h.click(views.getByRole('tab', {name: 'Code'}), {noReveal: true, after: 900});
+  await h.hover(page.getByRole('img', {name: /^Preview of/}), 900);
+  await h.click(views.getByRole('button', {name: 'Code'}), {noReveal: true, after: 900});
   await h.result(1500);
-  await h.click(views.getByRole('tab', {name: 'Split'}), {noReveal: true, after: 1200});
+  await h.click(views.getByRole('button', {name: 'Split'}), {noReveal: true, after: 1200});
   const p = await endOf('"&6Innkeeper');
   // A caret position inside the textarea has no locator, so this is h.click's glide, rest and press by hand.
   await h.glide(p.x, p.y);
@@ -41,10 +42,11 @@ module.exports = async (L) => {
   await page.keyboard.type('Landlady', {delay: L.slow(70)});
   await page.keyboard.press('Escape');
   await h.pause(L.TYPED_HOLD_MS);
-  await h.click(page.getByRole('button', {name: 'Apply to draft'}), {after: 1200});
+  await h.click(page.getByRole('button', {name: 'Use this code'}), {after: 1200});
   await page.getByRole('heading', {name: 'Landlady', level: 1}).waitFor();
+  await h.hover(page.getByRole('tabpanel', {name: 'Basics'}).getByRole('combobox', {name: 'Name', exact: true}), 1500);
+  await h.click(views.getByRole('button', {name: 'Form'}), {noReveal: true, after: 1200});
+  await h.moveTo(page.getByRole('img', {name: /^Preview of/}), {ox: 0.15, oy: 0.85, noReveal: true});
   await h.result(2200);
-  await h.click(views.getByRole('tab', {name: 'Visual'}), {noReveal: true, after: 900});
-  await h.result(2000);
-  return L.finish(f, {closing: 'Renamed Landlady in the JSON; the preview and Visual follow'});
+  return L.finish(f, {closing: 'Renamed Landlady in the JSON; the form and the preview follow'});
 };

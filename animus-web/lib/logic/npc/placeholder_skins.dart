@@ -122,6 +122,10 @@ PlaceholderLook defaultPlaceholderLook(String npcId) {
   return placeholderLooks[hash % placeholderLooks.length];
 }
 
+/// The placeholder NPC [npcId] wears without a skin texture, in [slim]
+/// arms: the stage and the NPC lists both draw this one.
+PlaceholderSkin npcPlaceholderSkin(String npcId, {required bool slim}) => placeholderSkinFor(defaultPlaceholderLook(npcId), slim: slim);
+
 /// The PNG of [look] in the arm model the stage draws.
 PlaceholderSkin placeholderSkinFor(PlaceholderLook look, {required bool slim}) =>
     placeholderSkins.firstWhere((PlaceholderSkin skin) => skin.look == look.id && skin.slim == slim);

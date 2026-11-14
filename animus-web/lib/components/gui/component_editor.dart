@@ -5,8 +5,6 @@
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
-import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../config/docs_links.dart';
 import '../../logic/gui/gui_catalog.dart';
@@ -15,9 +13,20 @@ import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_validation.dart';
 import '../../model/animus_document.dart';
 import '../mc/item_picker.dart';
+import '../../ui/action_row.dart';
+import '../../ui/alert.dart';
+import '../../ui/section.dart';
 import 'actions_editor.dart';
+import 'gui_rows.dart';
 import 'gui_fields.dart';
 import 'style_editor.dart';
+import '../select/animus_select.dart';
+import '../suggest/autocomplete_input.dart';
+import '../../ui/field.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../../ui/number_input.dart';
+import 'gui_stack.dart';
+import '../../ui/stack.dart';
 
 /// Writes [value] at [key] of [map], removing the key for null or empty text.
 JsonMap withField(JsonMap map, String key, Object? value) {
@@ -47,11 +56,29 @@ Object? conditionValue(String text) {
 /// Easings a menu button or toggle may hover with (core's MenuDocument).
 const List<String> hoverEasings = <String>['linear', 'ease_out_cubic', 'ease_in_out_cubic', 'back_out'];
 
+const Map<String, String> hoverEasingLabels = <String, String>{'linear': 'Linear', 'ease_out_cubic': 'Ease out', 'ease_in_out_cubic': 'Ease in and out', 'back_out': 'Overshoot'};
+
+/// Component and icon types by plain name.
+const Map<String, String> componentTypeLabels = <String, String>{
+  'decoration': 'Decoration',
+  'button': 'Button',
+  'toggle': 'Toggle',
+  'list': 'List',
+  'slider': 'Slider',
+  'tabs': 'Tabs',
+};
+
+const Map<String, String> iconTypeLabels = <String, String>{'item': 'Item', 'playerHead': 'Player head', 'text': 'Text', 'block': 'Block', 'entity': 'Entity'};
+
+/// The helper under every "Show when" field.
+const String showWhenHelp = 'Empty shows it to everyone.';
+const String showWhenTip = 'An expression such as viewer.level > 5. Type to see the names you can use.';
+
 /// A labelled row whose label points at the control by a path-based id;
 /// with [labelled] false (a list of lines) the label is plain text.
-Widget guiFieldRow(String label, String path, List<Diagnostic> diagnostics, Widget Function(String id) child, {String? help, bool nested = false, bool labelled = true}) {
+Widget guiFieldRow(String label, String path, List<Diagnostic> diagnostics, Widget Function(String id) child, {String? help, String? tip, bool nested = false, bool labelled = true}) {
   final String id = guiPathId(path);
-  return GuiRow(label: label, forId: labelled ? id : null, help: help, problems: diagnosticsAt(diagnostics, path, nested: nested), child: child(id));
+  return Field(label: label, forId: labelled ? id : null, help: help, tip: tip, problems: diagnosticsAt(diagnostics, path, nested: nested), child: child(id));
 }
 
 class IconEditor extends StatelessWidget {
@@ -84,11 +111,12 @@ class IconEditor extends StatelessWidget {
           childPath(path, key),
           diagnostics,
           help: help,
-          (String id) => GuiTextInput(
+          (String id) => AutocompleteInput(
             id: id,
             value: asString(icon[key]) ?? '',
-            mode: mode,
-            names: names,
+            profile: guiTextProfile(mode),
+            preview: mode == GuiTextMode.template ? templateSample : null,
+            gui: names,
             multiline: multiline,
             label: label,
             onChanged: (String value) => onChanged(withField(icon, key, value)),
@@ -99,7 +127,7 @@ class IconEditor extends StatelessWidget {
           childPath(path, key),
           diagnostics,
           help: help,
-          (String id) => GuiNumberInput(
+          (String id) => NumberInput(
             id: id,
             value: integer ? asInt(icon[key]) : asDouble(icon[key]),
             integer: integer,
@@ -109,12 +137,12 @@ class IconEditor extends StatelessWidget {
         );
     final String chestIgnored = chest ? ' Ignored in chest windows.' : '';
     final JsonMap box = asMap(icon['box']);
-    return dom.div(classes: 'animus-gui-icon', <Widget>[
-      guiFieldRow('Icon', childPath(path, 'type'), diagnostics, (String id) => GuiSelect(
+    return stack(<Widget>[
+      guiFieldRow('Kind', childPath(path, 'type'), diagnostics, (String id) => AnimusSelect.values(
             id: id,
             value: type,
-            options: types,
-            labels: <String, String>{if (refused) type: '$type (not available here)'},
+            values: types,
+            labels: <String, String>{...iconTypeLabels, if (refused) type: '$type (not available here)'},
             onChanged: (String? next) {
               if (next == null) return;
               onChanged(<String, Object?>{
@@ -131,21 +159,14 @@ class IconEditor extends StatelessWidget {
             },
           )),
       if (refused)
-        dom.p(
-          classes: 'animus-gui-refused',
-          attributes: const <String, String>{'role': 'alert'},
-          <Widget>[
-            dom.code(<Widget>[Component.text(childPath(path, 'type'))]),
-            Component.text(' ${refusedIconMessage(type, chest: chest)}.'),
-          ],
-        )
+        GuiNote(tone: AlertTone.error, message: '${refusedIconMessage(type, chest: chest)}.')
       else ...<Widget>[
         if (type == 'item') ...<Widget>[
           guiFieldRow(
             'Item',
             childPath(path, 'item'),
             diagnostics,
-            help: 'Item id or expression',
+            help: 'An item, or an expression giving one',
             (String id) => ItemPicker(id: id, value: asString(icon['item']) ?? '', label: 'Item', onChanged: (String value) => onChanged(withField(icon, 'item', value))),
           ),
           number('count', 'Count', help: '1 to 99'),
@@ -174,17 +195,15 @@ class IconEditor extends StatelessWidget {
             diagnostics,
             nested: true,
             labelled: false,
-            (String _) => GuiLinesEditor(lines: stringList(icon['lore']), names: names, onChanged: (List<String> lines) => onChanged(withField(icon, 'lore', lines))),
+            (String _) => GuiLines(label: 'Lore', lines: stringList(icon['lore']), names: names, onChanged: (List<String> lines) => onChanged(withField(icon, 'lore', lines))),
           ),
         ],
         if (type == 'text' && box.isNotEmpty)
-          dom.p(classes: box['enabled'] == true ? 'animus-gui-refused' : 'animus-gui-note', <Widget>[
-            dom.code(<Widget>[Component.text(childPath(path, 'box'))]),
-            Component.text(box['enabled'] == true
-                ? ' box panels are unsupported; use style.backgroundArgb. '
-                : ' is off and has no effect. '),
-            Button.ghost(label: 'Remove box', size: ButtonSize.small, onPressed: () => onChanged(withField(icon, 'box', null))),
-          ]),
+          GuiNote(
+            tone: box['enabled'] == true ? AlertTone.error : AlertTone.warning,
+            message: box['enabled'] == true ? 'Box panels are not supported; use a background colour in Style.' : 'The box is off and has no effect.',
+            action: Button.outline(label: 'Remove box', size: ButtonSize.sm, onPressed: () => onChanged(withField(icon, 'box', null))),
+          ),
         if (!chest && type != 'entity')
           DisplayStyleEditor(
             style: asMap(icon['style']),
@@ -230,8 +249,8 @@ class ComponentEditor extends StatelessWidget {
     final List<String> types = chest ? chestComponentTypes : menuComponentTypes;
     final bool refused = !types.contains(type);
     void set(String key, Object? value) => onChanged(withField(data, key, value));
-    Widget actions(String key, String title) => GuiSection(
-          title: title,
+    Widget actions(String key, String title) => AppSection(
+      title: title,
           count: asList(data[key]).length,
           tip: 'Run in order when the viewer clicks. A failed condition stops the rest.',
           docs: Docs.guiActions,
@@ -247,8 +266,8 @@ class ComponentEditor extends StatelessWidget {
             ),
           ],
         );
-    Widget icon(String key, String title) => GuiSection(
-          title: title,
+    Widget icon(String key, String title) => AppSection(
+      title: title,
           tip: chest ? 'The item shown in the slot, with its name and lore.' : 'The item or block shown for this component.',
           docs: chest ? Docs.chestGuis : Docs.menus,
           children: <Widget>[
@@ -267,38 +286,30 @@ class ComponentEditor extends StatelessWidget {
           childPath(path, key),
           diagnostics,
           help: help,
-          (String id) => GuiTextInput(id: id, value: asString(data[key]) ?? '', mode: mode, names: scope ?? names, label: label, onChanged: (String value) => set(key, value)),
+          (String id) => AutocompleteInput(id: id, value: asString(data[key]) ?? '', profile: guiTextProfile(mode), preview: mode == GuiTextMode.template ? templateSample : null, gui: scope ?? names, label: label, onChanged: (String value) => set(key, value)),
         );
     Widget number(String key, String label, {bool integer = false, String? help}) => guiFieldRow(
           label,
           childPath(path, key),
           diagnostics,
           help: help,
-          (String id) => GuiNumberInput(id: id, value: integer ? asInt(data[key]) : asDouble(data[key]), integer: integer, label: label, onChanged: (num? value) => set(key, value)),
+          (String id) => NumberInput(id: id, value: integer ? asInt(data[key]) : asDouble(data[key]), integer: integer, label: label, onChanged: (num? value) => set(key, value)),
         );
-    return dom.div(classes: 'animus-gui-component', <Widget>[
-      guiFieldRow('Type', childPath(path, 'type'), diagnostics, (String id) => GuiSelect(
+    return stack(<Widget>[
+      guiFieldRow('Type', childPath(path, 'type'), diagnostics, (String id) => AnimusSelect.values(
             id: id,
             value: type,
-            options: types,
-            labels: <String, String>{if (refused) type: '$type (not available here)'},
+            values: types,
+            labels: <String, String>{...componentTypeLabels, if (refused) type: '$type (not available here)'},
             onChanged: (String? next) {
               if (next == null || next == type) return;
               onChanged(_convert(data, next));
             },
           )),
       if (refused)
-        dom.p(
-          classes: 'animus-gui-refused',
-          attributes: const <String, String>{'role': 'alert'},
-          <Widget>[
-            dom.code(<Widget>[Component.text(childPath(path, 'type'))]),
-            Component.text(
-              chest
-                  ? " component '$type' is a holographic menu component and has no meaning in a chest window."
-                  : " component '$type' is not available in Animus.",
-            ),
-          ],
+        GuiNote(
+          tone: AlertTone.error,
+          message: chest ? "'$type' is a menu component and has no meaning in a chest window." : "'$type' is not available in Animus.",
         )
       else ...<Widget>[
         // A menu component carries show beside its data, edited by the menu editor.
@@ -307,12 +318,13 @@ class ComponentEditor extends StatelessWidget {
             'Show when',
             childPath(path, 'show'),
             diagnostics,
-            help: 'Blank always shows. false hides it; an expression such as viewer.level > 5 decides per viewer.',
-            (String id) => GuiTextInput(
+            help: showWhenHelp,
+            tip: showWhenTip,
+            (String id) => AutocompleteInput(
               id: id,
               value: conditionText(data['show']),
-              mode: GuiTextMode.expression,
-              names: names,
+              profile: FieldProfile.guiExpression,
+              gui: names,
               label: 'Show when',
               placeholder: 'always',
               onChanged: (String value) => onChanged(withField(data, 'show', conditionValue(value))),
@@ -322,13 +334,14 @@ class ComponentEditor extends StatelessWidget {
         if (type == 'button') actions('actions', 'Actions'),
         if (type == 'toggle') ...<Widget>[
           text('condition', 'Condition *', mode: GuiTextMode.expression),
-          GuiRow(
+          Field(
             label: 'Expected',
             help: 'Value that shows the true side',
-            child: GuiSwitch(
+            child: ArcaneToggleSwitch(
               value: data['expectedValue'] != false && data['expectedValue'] != 'false',
               label: 'true',
               onChanged: (bool on) => onChanged(<String, Object?>{...data, 'expectedValue': chest ? on : '$on'}),
+              size: ComponentSize.sm,
             ),
           ),
           icon('trueIcon', 'True icon'),
@@ -343,8 +356,8 @@ class ComponentEditor extends StatelessWidget {
           text('source', 'Source *', mode: GuiTextMode.expression, help: 'Expression giving a list'),
           number('pageSize', 'Page size', integer: true, help: '1 to 64, default 6'),
           _flow(data),
-          GuiSection(
-            title: 'Template',
+          AppSection(
+      title: 'Template',
             tip: 'The component drawn once per entry. The entry is named by Variable.',
             docs: chest ? Docs.chestGuis : Docs.menus,
             children: <Widget>[
@@ -391,39 +404,35 @@ class ComponentEditor extends StatelessWidget {
 
     final JsonList offset = asList(hitbox['offset']);
     double axis(int i) => asDouble(offset.elementAtOrNull(i)) ?? 0;
-    return GuiSection(
+    return AppSection(
       title: 'Hover and click box',
       tip: 'How the component reacts when looked at, and the box that takes the click.',
       docs: Docs.menus,
       open: data.containsKey('hitbox') || data.containsKey('highlightModifier') || data.containsKey('hoverEasing'),
       children: <Widget>[
         guiFieldRow('Highlight', childPath(path, 'highlightModifier'), diagnostics, help: 'Hover growth, -64 to 64',
-            (String id) => GuiNumberInput(id: id, value: asDouble(data['highlightModifier']), integer: false, label: 'Highlight', onChanged: (num? v) => set('highlightModifier', v))),
+            (String id) => NumberInput(id: id, value: asDouble(data['highlightModifier']), integer: false, label: 'Highlight', onChanged: (num? v) => set('highlightModifier', v))),
         guiFieldRow('Hover time', childPath(path, 'hoverDurationTicks'), diagnostics, help: '0 to 40 ticks, default 4',
-            (String id) => GuiNumberInput(id: id, value: asInt(data['hoverDurationTicks']), label: 'Hover time in ticks', onChanged: (num? v) => set('hoverDurationTicks', v))),
+            (String id) => NumberInput(id: id, value: asInt(data['hoverDurationTicks']), label: 'Hover time in ticks', onChanged: (num? v) => set('hoverDurationTicks', v))),
         guiFieldRow('Hover easing', childPath(path, 'hoverEasing'), diagnostics,
-            (String id) => GuiSelect(id: id, value: asString(data['hoverEasing']), options: hoverEasings, allowNone: true, noneLabel: 'ease_out_cubic', onChanged: (String? v) => set('hoverEasing', v))),
+            (String id) => AnimusSelect.values(id: id, value: asString(data['hoverEasing']), values: hoverEasings, labels: hoverEasingLabels, allowNone: true, noneLabel: 'Ease out', onChanged: (String? v) => set('hoverEasing', v))),
         guiFieldRow('Box width', childPath(hitboxPath, 'width'), diagnostics, help: '0.01 to 64 blocks.',
-            (String id) => GuiNumberInput(id: id, value: asDouble(hitbox['width']), integer: false, label: 'Click box width', onChanged: (num? v) => setHitbox('width', v))),
+            (String id) => NumberInput(id: id, value: asDouble(hitbox['width']), integer: false, label: 'Click box width', onChanged: (num? v) => setHitbox('width', v))),
         guiFieldRow('Box height', childPath(hitboxPath, 'height'), diagnostics, help: '0.01 to 64 blocks.',
-            (String id) => GuiNumberInput(id: id, value: asDouble(hitbox['height']), integer: false, label: 'Click box height', onChanged: (num? v) => setHitbox('height', v))),
-        GuiRow(
+            (String id) => NumberInput(id: id, value: asDouble(hitbox['height']), integer: false, label: 'Click box height', onChanged: (num? v) => setHitbox('height', v))),
+        Field(
           label: 'Box offset',
           help: 'From the anchor, within 64 blocks',
           problems: diagnosticsAt(diagnostics, childPath(hitboxPath, 'offset'), nested: true),
-          child: dom.div(classes: 'animus-row animus-gui-xyz', <Widget>[
-            for (int i = 0; i < 3; i++)
-              GuiNumberInput(
-                value: offset.isEmpty ? null : axis(i),
-                integer: false,
-                label: 'Click box offset ${'xyz'[i]}',
-                placeholder: 'xyz'[i],
-                onChanged: (num? v) => setHitbox('offset', <double>[axis(0), axis(1), axis(2)]..[i] = (v ?? 0).toDouble()),
-              ),
-          ]),
+          child: axisLine(
+            label: 'Click box offset',
+            id: guiPathId(childPath(hitboxPath, 'offset')),
+            values: <num?>[for (int i = 0; i < 3; i++) offset.isEmpty ? null : axis(i)],
+            onChanged: (int i, num? v) => setHitbox('offset', <double>[axis(0), axis(1), axis(2)]..[i] = (v ?? 0).toDouble()),
+          ),
         ),
-        guiFieldRow('Box anchor', childPath(hitboxPath, 'anchor'), diagnostics, help: 'button: on the component. menu: menu center.',
-            (String id) => GuiSelect(id: id, value: asString(hitbox['anchor']), options: const <String>['button', 'menu'], allowNone: true, noneLabel: 'button', onChanged: (String? v) => setHitbox('anchor', v))),
+        guiFieldRow('Box from', childPath(hitboxPath, 'anchor'), diagnostics,
+            (String id) => AnimusSelect.values(id: id, value: asString(hitbox['anchor']), values: const <String>['button', 'menu'], labels: const <String, String>{'button': 'The button', 'menu': 'The menu center'}, allowNone: true, noneLabel: 'The button', onChanged: (String? v) => setHitbox('anchor', v))),
       ],
     );
   }
@@ -436,11 +445,11 @@ class ComponentEditor extends StatelessWidget {
       onChanged(withField(data, 'tooltip', next.isEmpty ? null : next));
     }
 
-    return GuiSection(title: 'Tooltip', open: tooltip.isNotEmpty, tip: 'Text shown beside the button while the viewer looks at it.', docs: Docs.menus, children: <Widget>[
+    return AppSection(title: 'Tooltip', open: tooltip.isNotEmpty, tip: 'Text shown beside the button while the viewer looks at it.', docs: Docs.menus, children: <Widget>[
       guiFieldRow('Lines', childPath(tooltipPath, 'lines'), diagnostics, nested: true, labelled: false,
-          (String _) => GuiLinesEditor(lines: stringList(tooltip['lines']), names: names, onChanged: (List<String> lines) => setTooltip('lines', lines))),
+          (String _) => GuiLines(label: 'Tooltip', lines: stringList(tooltip['lines']), names: names, onChanged: (List<String> lines) => setTooltip('lines', lines))),
       guiFieldRow('Delay', childPath(tooltipPath, 'delayTicks'), diagnostics, help: 'Ticks before showing, default 10',
-          (String id) => GuiNumberInput(id: id, value: asInt(tooltip['delayTicks']), label: 'Tooltip delay in ticks', onChanged: (num? v) => setTooltip('delayTicks', v))),
+          (String id) => NumberInput(id: id, value: asInt(tooltip['delayTicks']), label: 'Tooltip delay in ticks', onChanged: (num? v) => setTooltip('delayTicks', v))),
       DisplayStyleEditor(title: 'Tooltip style', style: asMap(tooltip['style']), path: childPath(tooltipPath, 'style'), diagnostics: diagnostics, onChanged: (JsonMap? next, String _) => setTooltip('style', next)),
     ]);
   }
@@ -454,8 +463,8 @@ class ComponentEditor extends StatelessWidget {
     }
 
     Widget number(String key, String label, String help, {bool integer = false}) => guiFieldRow(label, childPath(flowPath, key), diagnostics, help: help,
-        (String id) => GuiNumberInput(id: id, value: integer ? asInt(flow[key]) : asDouble(flow[key]), integer: integer, label: 'Flow $label', onChanged: (num? v) => setFlow(key, v)));
-    return GuiSection(title: 'Flow', open: flow.isNotEmpty, tip: 'The grid the list lays its entries on, in blocks.', docs: Docs.menus, children: <Widget>[
+        (String id) => NumberInput(id: id, value: integer ? asInt(flow[key]) : asDouble(flow[key]), integer: integer, label: 'Flow $label', onChanged: (num? v) => setFlow(key, v)));
+    return AppSection(title: 'Flow', open: flow.isNotEmpty, tip: 'The grid the list lays its entries on, in blocks.', docs: Docs.menus, children: <Widget>[
       number('columns', 'Columns', '1 to 64, default 3', integer: true),
       number('spacingX', 'Spacing X', 'Column gap, default 1'),
       number('spacingY', 'Spacing Y', 'Row gap, default 0.5'),
@@ -470,45 +479,53 @@ class ComponentEditor extends StatelessWidget {
     final JsonList tabs = asList(data['tabs']);
     final String tabsPath = childPath(path, 'tabs');
     void setTabs(JsonList next) => onChanged(<String, Object?>{...data, 'tabs': next});
-    return GuiSection(title: 'Tabs', count: tabs.length, tip: 'Each tab stores its id in Variable when picked. The label defaults to the id.', docs: Docs.menus, children: <Widget>[
-      for (final Diagnostic problem in diagnosticsAt(diagnostics, tabsPath))
-        dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
-      for (int index = 0; index < tabs.length; index++)
-        dom.div(classes: 'animus-gui-line', attributes: <String, String>{'data-path': indexPath(tabsPath, index)}, <Widget>[
-          GuiTextInput(
-            value: asString(asMap(tabs[index])['id']) ?? '',
-            label: 'Tab ${index + 1} id',
-            placeholder: 'id',
-            onChanged: (String v) => setTabs(<Object?>[...tabs]..[index] = withField(asMap(tabs[index]), 'id', v)),
-          ),
-          GuiTextInput(
-            value: asString(asMap(tabs[index])['label']) ?? '',
-            mode: GuiTextMode.template,
-            names: names,
-            label: 'Tab ${index + 1} label',
-            placeholder: 'label (defaults to id)',
-            onChanged: (String v) => setTabs(<Object?>[...tabs]..[index] = withField(asMap(tabs[index]), 'label', v)),
-          ),
-          ...guiMoveButtons(index: index, length: tabs.length, noun: 'tab ${index + 1}', onMove: (int to) => setTabs(moveItem(tabs, index, to))),
-          GuiIconButton(
-            icon: ArcaneIcon.trash(size: IconSize.sm),
-            label: 'Remove tab ${index + 1}',
-            disabled: tabs.length <= 1,
-            onPressed: () => setTabs(<Object?>[...tabs]..removeAt(index)),
-          ),
-        ]),
-      Button.ghost(
-        label: 'Add tab',
-        size: ButtonSize.small,
-        disabled: tabs.length >= 32,
-        onPressed: () {
-          final Set<String> ids = <String>{for (final Object? tab in tabs) ?asString(asMap(tab)['id'])};
-          int n = tabs.length + 1;
-          while (ids.contains('tab$n')) {
-            n++;
-          }
-          setTabs(<Object?>[...tabs, <String, Object?>{'id': 'tab$n', 'label': 'Tab $n'}]);
-        },
+    return AppSection(title: 'Tabs', count: tabs.length, tip: 'Each tab stores its id in Variable when picked. The label defaults to the id.', docs: Docs.menus, children: <Widget>[
+      for (final Diagnostic problem in diagnosticsAt(diagnostics, tabsPath)) GuiNote(tone: AlertTone.warning, message: problem.message),
+      OrderedRows(
+        label: 'Tabs',
+        dense: false,
+        rows: <OrderedRow>[
+          for (int index = 0; index < tabs.length; index++)
+            OrderedRow(
+              key: '$index',
+              name: 'tab ${index + 1}',
+              attributes: <String, String>{'data-path': indexPath(tabsPath, index)},
+              line: fieldLine(<Widget>[
+                AutocompleteInput(
+                  value: asString(asMap(tabs[index])['id']) ?? '',
+                  label: 'Tab ${index + 1} id',
+                  placeholder: 'id',
+                  onChanged: (String v) => setTabs(<Object?>[...tabs]..[index] = withField(asMap(tabs[index]), 'id', v)),
+                  profile: FieldProfile.none,
+                ),
+                AutocompleteInput(
+                  value: asString(asMap(tabs[index])['label']) ?? '',
+                  profile: FieldProfile.guiText,
+                  preview: templateSample,
+                  gui: names,
+                  label: 'Tab ${index + 1} label',
+                  placeholder: 'Label (the id when empty)',
+                  onChanged: (String v) => setTabs(<Object?>[...tabs]..[index] = withField(asMap(tabs[index]), 'label', v)),
+                ),
+              ]),
+            ),
+        ],
+        onMove: (int from, int to) => setTabs(moveItem(tabs, from, to)),
+        onDelete: tabs.length <= 1 ? null : (int index) => setTabs(<Object?>[...tabs]..removeAt(index)),
+      ),
+      ActionRow(
+        dense: true,
+        label: 'Tabs',
+        secondary: <RowAction>[
+          RowAction('Add tab', tabs.length >= 32 ? null : () {
+            final Set<String> ids = <String>{for (final Object? tab in tabs) ?asString(asMap(tab)['id'])};
+            int n = tabs.length + 1;
+            while (ids.contains('tab$n')) {
+              n++;
+            }
+            setTabs(<Object?>[...tabs, <String, Object?>{'id': 'tab$n', 'label': 'Tab $n'}]);
+          }, icon: ArcaneIcon.plus()),
+        ],
       ),
     ]);
   }

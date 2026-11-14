@@ -19,7 +19,12 @@ const REPO = path.resolve(__dirname, '..', '..', '..');
 const SITE = (process.env.ANIMUS_WEB_URL || 'http://127.0.0.1:8191').replace(/\/+$/, '');
 const FAKE = (process.env.ANIMUS_FAKE_URL || 'http://127.0.0.1:9991').replace(/\/+$/, '');
 const OUT = path.resolve(process.env.ANIMUS_DEMO_OUT || path.join(REPO, 'build', 'demo', 'editor'));
-const W = 1440, H = 900;
+// Clips are 1920x1080 like the in-game ones (qa/demo/clip_check.py).
+const W = 1920, H = 1080;
+/** The nav column's width; targets left of it sit in the nav, which does not scroll with the page. */
+const NAV_W = 240;
+/** The top bar's and the save bar's height; the page body scrolls between them. */
+const BAR_H = 48;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Playwright's bundled ffmpeg (it has libvpx), else ffmpeg on PATH. */
@@ -71,13 +76,13 @@ const CURSOR = () => {
   window.addEventListener('mouseup', () => { dot.style.transform = 'translate(-50%,-50%)'; }, true);
 };
 
-/** Shows [text] as the closing caption, bottom left, like the in-game clips. */
+/** Shows [text] as the closing caption, bottom left like the in-game clips, above the save bar. */
 const CAPTION = (text) => {
   let box = document.getElementById('__caption');
   if (!box) {
     box = document.createElement('div');
     box.id = '__caption';
-    box.style.cssText = 'position:fixed;left:32px;bottom:32px;z-index:2147483646;pointer-events:none;max-width:calc(100vw - 64px);padding:10px 16px;background:rgba(16,16,16,.82);color:#fff;font:600 22px/1.3 system-ui,-apple-system,Segoe UI,sans-serif;border-radius:6px';
+    box.style.cssText = 'position:fixed;left:32px;bottom:80px;z-index:2147483646;pointer-events:none;max-width:calc(100vw - 64px);padding:10px 16px;background:rgba(16,16,16,.82);color:#fff;font:600 22px/1.3 system-ui,-apple-system,Segoe UI,sans-serif;border-radius:6px';
     document.documentElement.appendChild(box);
   }
   box.textContent = text;
@@ -187,41 +192,76 @@ async function session({id, theme = 'dark', w = W, h = H}) {
   return film;
 }
 
-/** Pairs [page] with [code] (default: a fresh code from the fake server). */
+/** The editor's own frame helpers from its browser checks (Search, Mode, tabs, the start page). */
+const shell = require(path.join(REPO, 'animus-web', 'test', 'support', 'shell.cjs'));
+
+/**
+ * Pairs [page] with [code] (default: a fresh code from the fake server) and
+ * waits for the server's Home, online. [remember] is the pairing card's Stay paired.
+ */
 async function pair(page, {code, remember = true} = {}) {
   if (!code) code = (await control('pair?paths=both', {})).code;
   await page.goto(`${SITE}/#/pair/${code}`);
-  await page.getByTestId('pair-fingerprint').filter({hasText: 'sha256:'}).waitFor();
-  // Remember this browser is on by default; flip it only when it differs from [remember].
-  const sw = page.getByRole('switch', {name: 'Remember this browser'});
+  const sw = page.getByRole('switch', {name: 'Stay paired'});
+  await sw.waitFor();
   if ((await sw.getAttribute('aria-checked')) !== String(remember)) await sw.click();
   await page.getByRole('button', {name: 'Pair', exact: true}).click();
-  await page.waitForFunction(() => location.hash.startsWith('#/server/'));
+  await page.waitForFunction(() => /^#\/(server|workspace)\//.test(location.hash));
+  await shell.waitOnline(page, 30000);
   return code;
 }
 
-/** Opens every document the fake server lists, with the sidebar's Open all button on the server page. */
-async function openAll(page) {
-  if (!/#\/server\//.test(page.url())) await page.getByRole('link', {name: 'Animus fake server'}).first().click();
-  await page.getByRole('complementary', {name: 'Documents'}).getByRole('button', {name: /^Open all \d+/}).click();
-  await page.getByText(/Opened \d+ documents/).first().waitFor();
+/**
+ * The open workspace's address, such as #/workspace/server-a18112b0b7b4225f,
+ * read from the nav's Home link (a server's Home is also reachable as #/server/<id>).
+ */
+async function workspaceHash(page) {
+  const home = page.getByRole('complementary').getByRole('navigation').getByRole('link', {name: 'Home', exact: true});
+  await home.waitFor();
+  return home.getAttribute('href');
 }
 
-/** Closes the first toast if one is showing; only buttons inside the Notifications region, never document controls. */
-async function dismiss(page) {
-  await page.getByRole('region', {name: 'Notifications'}).getByRole('button', {name: 'Dismiss'}).first().click({timeout: 3000}).catch(() => {});
+/** Closes every toast that is showing, so none sits in the clip. */
+async function clearToasts(page) {
+  const toasts = page.getByRole('region', {name: 'Notifications'}).getByRole('button', {name: 'Dismiss'});
+  for (let i = 0; i < 8 && await toasts.count(); i++) await toasts.first().click({timeout: 3000}).catch(() => {});
 }
 
-/** A collapsible NPC section; NpcSection exposes its id only as data-section. */
-const section = (page, id) => page.locator(`details[data-section="${id}"]`);
+/**
+ * A dropdown option by value, in whichever list is open; data-arcane-value is
+ * the select component's contract (see animus-web/test/support/select.cjs).
+ */
+const option = (page, value) => page.locator(`[role="option"][data-arcane-value="${value.replace(/"/g, '\\"')}"]:visible`);
 
-/** A dropdown option by value; data-value is the select component's contract (see animus-web/test/support/select.cjs). */
-const option = (page, value) => page.locator(`[role="option"][data-value="${value}"]`);
+/** A dropdown option by its label (data-label), in whichever list is open. */
+const optionLabelled = (page, label) => page.locator(`[role="option"][data-label="${label.replace(/"/g, '\\"')}"]:visible`);
 
-/** The open listbox of a dropdown trigger. */
+/** The list of a dropdown trigger, open or not. */
 async function listboxOf(trigger) {
   const id = await trigger.first().getAttribute('aria-controls');
   return trigger.first().page().locator(`[id="${id}"]`);
+}
+
+/**
+ * Makes a workspace from the start page's Try the examples (unfilmed) and
+ * returns its address. The film page reopens it from browser storage.
+ */
+async function examplesWorkspace(page) {
+  await page.goto(`${SITE}/#/`);
+  await shell.startAction(page, 'Open examples');
+  await shell.workspaceOpen(page);
+  const ws = await workspaceHash(page);
+  await page.waitForTimeout(1200);
+  return ws;
+}
+
+/** Makes a blank workspace named [name] (unfilmed) and returns its address. */
+async function blankWorkspace(page, name) {
+  await page.goto(`${SITE}/#/`);
+  await shell.blankWorkspace(page, name);
+  const ws = await workspaceHash(page);
+  await page.waitForTimeout(1200);
+  return ws;
 }
 
 /** Clicks rest on their target this long before pressing (the in-game default is 400 ms). */
@@ -251,15 +291,21 @@ function human(film) {
       for (let i = 0; i < 60; i++) {
         const b = await loc.first().boundingBox();
         if (!b) break;
-        if (b.x < 320) { await loc.first().scrollIntoViewIfNeeded(); return; }
+        if (b.x < NAV_W) { await loc.first().scrollIntoViewIfNeeded(); return; }
         const mid = b.y + b.height / 2;
-        if (mid > 170 && mid < H - 120) return;
+        // A target that fits between the top bar and the save bar must show whole, not just its middle.
+        const fits = b.height <= H - 2 * BAR_H - 140;
+        const under = fits && b.y < BAR_H + 8, over = fits && b.y + b.height > H - BAR_H - 8;
+        if (mid > 170 && mid < H - 120 && !under && !over) return;
         // Already fully visible and the wheel has stopped moving it (top bar, tabs, a page that cannot scroll): stop.
         if (i > 0 && b.y >= 0 && b.y + b.height <= H && last !== null && Math.abs(last - b.y) < 1) return;
         last = b.y;
-        const dy = mid <= 170 ? -(170 - mid + 100) : (mid - (H - 120) + 150);
+        const dy = under ? b.y - BAR_H - 60 : over ? b.y + b.height - (H - BAR_H - 60) : mid <= 170 ? -(170 - mid + 100) : (mid - (H - 120) + 150);
         const step = Math.max(-220, Math.min(220, dy));
-        if (film.pos.x < 400) await h.glide(700, film.pos.y);
+        // The wheel scrolls only the page body: come off the nav, the top bar and the save bar first.
+        if (film.pos.x < NAV_W + 80 || film.pos.y < BAR_H + 40 || film.pos.y > H - BAR_H - 40) {
+          await h.glide(Math.max(NAV_W + 500, film.pos.x), Math.max(BAR_H + 120, Math.min(H - BAR_H - 120, film.pos.y)));
+        }
         await page.mouse.wheel(0, step);
         await sleep(110);
       }
@@ -280,12 +326,33 @@ function human(film) {
     },
     async type(loc, text, {delay = 50, clear = false, after = 500} = {}) {
       await h.click(loc, {after: 150});
-      if (clear) { await film.page.keyboard.press('ControlOrMeta+a'); await film.page.keyboard.press('Backspace'); }
+      // Typing over the selection replaces it; a field emptied first may put its default back before the typing lands.
+      if (clear) await film.page.keyboard.press('ControlOrMeta+a');
       await loc.first().pressSequentially(text, {delay: slow(delay)});
       await sleep(Math.max(after, TYPED_HOLD_MS));
     },
     async key(k, after = 500) { await film.page.keyboard.press(k); await sleep(after); },
     async hover(loc, after = 900) { await h.moveTo(loc); await sleep(after); },
+    /**
+     * Opens the dropdown [trigger] and clicks the option whose value is [value]
+     * ({label} picks by its text instead), resting on it first.
+     */
+    async pick(trigger, value, {after = 700} = {}) {
+      await h.click(trigger, {after: 500});
+      const opt = typeof value === 'string' ? option(film.page, value) : optionLabelled(film.page, value.label);
+      await opt.first().waitFor();
+      await opt.first().scrollIntoViewIfNeeded();
+      await h.click(opt, {after, noReveal: true});
+    },
+    /** Opens a nav job (Home, NPCs, Shops, Movement...) by its label. */
+    async job(label, {after = 900} = {}) {
+      await h.click(film.page.getByRole('complementary').getByRole('navigation').getByRole('link', {name: new RegExp(`^${label}( \\d+)?$`)}), {after});
+    },
+    /** Switches the Mode in the top bar (simple or advanced). */
+    async mode(mode, {after = 900} = {}) {
+      const label = mode === 'advanced' ? 'Advanced' : 'Simple';
+      await h.click(film.page.getByRole('banner').getByRole('group', {name: 'Mode'}).getByRole('button', {name: label, exact: true}), {after, noReveal: true});
+    },
     /** The closing caption: one line naming what changed, held for [ms]. */
     async caption(text, ms = 3000) {
       await film.page.evaluate(CAPTION, text);
@@ -295,17 +362,24 @@ function human(film) {
   return h;
 }
 
-/** Resets the fake server, pairs a remembered browser and opens every document, all before filming. */
-async function pairedSession(id) {
-  await resetFake();
+/**
+ * Pairs a remembered browser before filming: with a fresh fake server code, or
+ * with [real] the server link from ANIMUS_PAIR_LINK. The film page opens on the
+ * server's Home (or [path] under the workspace, such as /npcs), online and with
+ * no toasts. The catalog lists every document, so nothing needs opening first.
+ */
+async function pairedSession(id, {path: sub = '', mode = 'simple', real = false} = {}) {
+  if (!real) await resetFake();
   const film = await session({id});
-  await pair(film.setup);
-  const page = await film.start(`${SITE}/#/`);
-  await openAll(page);
-  // Toasts close with a button named Dismiss; clear them so they do not sit in the clip.
-  const toasts = page.getByRole('region', {name: 'Notifications'}).getByRole('button', {name: 'Dismiss'});
-  for (let i = 0; i < 5 && await toasts.count(); i++) await toasts.first().click({timeout: 3000}).catch(() => {});
-  return {film, page, h: human(film)};
+  if (mode === 'advanced') await film.context.addInitScript(() => { try { localStorage.setItem('animus.mode', 'advanced'); } catch (e) {} });
+  await pair(film.setup, real ? {code: pairCodeFromEnv()} : {});
+  const ws = await workspaceHash(film.setup);
+  const page = await film.start(`${SITE}/${ws}${sub}`);
+  if (real) page.setDefaultTimeout(30000);
+  await shell.waitOnline(page, 30000);
+  await page.getByRole('main').first().waitFor();
+  await clearToasts(page);
+  return {film, page, h: human(film), ws};
 }
 
 /** Duration in seconds of a video file, read from ffmpeg's banner. */
@@ -335,32 +409,31 @@ async function finish(film, {closing, maxLen = null} = {}) {
   const args = ['-y', '-v', 'error', '-ss', String(trimStart), '-i', raw];
   const secs = Math.min(shown, dur - trimStart, maxLen || Infinity);
   args.push('-t', String(secs));
-  args.push('-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '34', '-an', out);
+  args.push('-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '34', '-deadline', 'good', '-cpu-used', '2', '-row-mt', '1', '-an', out);
   execFileSync(FFMPEG, args);
   return {out, secs, errors: film.errors};
 }
 
 /**
- * Quest clips: pairs with the real server from ANIMUS_PAIR_LINK, opens the
- * two NPCs the quest refers to (the town's baker and a live/qhealer made
- * from the console), and starts a new quest draft. Nothing here
- * is filmed; the clip calls film.mark() after.
+ * Quest clips (11, 12): a real server from ANIMUS_PAIR_LINK in Advanced, filmed from
+ * its Quests list, then New quest is filled on camera: the title and the giver
+ * (the town's baker). Returns once the new quest is open.
  */
-async function openQuestDraft(film, page, npcs = ['town/baker', 'live/qhealer']) {
-  await pair(page, {code: pairCodeFromEnv(), remember: false});
-  // The connection pill and live log have no accessible name; they are found by class.
-  await page.locator('.animus-live .animus-pill[data-phase="online"]').waitFor({timeout: 30000});
-  await page.getByText(/documents on the server/).waitFor();
-  for (const npc of npcs) await page.getByRole('checkbox', {name: npc, exact: true}).check();
-  await page.getByRole('button', {name: new RegExp(`^Open ${npcs.length}`)}).click();
-  await page.locator('.animus-live-log li', {hasText: `Opened ${npcs.length} documents`}).first().waitFor({state: 'attached'});
-  const ws = await page.evaluate(() => location.hash.split('/').slice(0, 3).join('/'));
-  await page.goto(`${SITE}/${ws}/new/quest`);
-  await page.getByLabel('Title', {exact: true}).waitFor();
-  // The pairing and open toasts would sit over the form at the start of the clip.
-  const toasts = page.getByRole('region', {name: 'Notifications'}).getByRole('button', {name: 'Dismiss'});
-  while (await toasts.count()) await toasts.first().click();
-  await sleep(800);
+async function questSession(id) {
+  const {film, page, h} = await pairedSession(id, {real: true, mode: 'advanced', path: '/list/quest'});
+  await page.getByRole('button', {name: 'New quest'}).waitFor();
+  await page.mouse.move(film.pos.x, film.pos.y);
+  await sleep(1200);
+  film.mark();
+  await h.pause(300);
+  await h.click(page.getByRole('button', {name: 'New quest'}), {after: 700});
+  const dialog = page.getByRole('dialog', {name: 'New quest'});
+  await h.type(dialog.getByRole('textbox', {name: 'Title'}), '&6Bread for the baker', {delay: 40, after: 250});
+  await h.pick(dialog.getByRole('combobox', {name: /Giver/}), 'baker', {after: 300});
+  await h.click(dialog.getByRole('button', {name: 'Create', exact: true}), {after: 900});
+  await page.waitForFunction(() => location.hash.includes('/quest/'));
+  await clearToasts(page);
+  return {film, page, h};
 }
 
 /** Typing runs 25% slower than the raw delays in the clip scripts. */
@@ -369,58 +442,9 @@ const TYPE_SLOW = 1.25;
 const TYPED_HOLD_MS = 1000;
 function slow(delay) { return Math.round(delay * TYPE_SLOW); }
 
-/**
- * human(film) for the GUI editors, whose side panels scroll on their own: click, type and hover
- * glide into the column that holds the target and wheel it until the target sits inside that
- * column. Targets with noReveal, and targets outside such a column, use h.reveal() as usual.
- */
-function panelHuman(film) {
-  const h = human(film);
-  const column = (loc) => loc.first().evaluate((el) => {
-    for (let p = el.parentElement; p; p = p.parentElement) {
-      if (/(auto|scroll)/.test(getComputedStyle(p).overflowY) && p.scrollHeight > p.clientHeight + 1) {
-        const b = p.getBoundingClientRect();
-        return {x: b.left, y: b.top, w: b.width, h: b.height};
-      }
-    }
-    return null;
-  });
-  /** True when [loc] is in a scrolling column, after wheeling it into that column's view. */
-  const enter = async (loc) => {
-    await loc.first().waitFor({state: 'attached'});
-    let r = await column(loc);
-    if (!r) return false;
-    const band = () => [Math.max(r.y + 60, 180), Math.min(r.y + r.h - 60, H - 130)];
-    let [top, bottom] = band();
-    if (!(film.pos.x > r.x && film.pos.x < r.x + r.w && film.pos.y > top && film.pos.y < bottom)) {
-      await h.glide(r.x + r.w * 0.6, Math.max(top, Math.min(bottom, film.pos.y)));
-    }
-    let last = null;
-    for (let i = 0; i < 60; i++) {
-      const b = await loc.first().boundingBox();
-      r = await column(loc);
-      if (!b || !r || (last !== null && Math.abs(b.y - last) < 1)) break; // in band, or the column cannot scroll further
-      last = b.y;
-      [top, bottom] = band();
-      const mid = b.y + b.height / 2;
-      if (mid > top && mid < bottom) break;
-      const dy = mid <= top ? mid - top - 80 : mid - bottom + 120;
-      await film.page.mouse.wheel(0, Math.max(-220, Math.min(220, dy)));
-      await sleep(110);
-    }
-    await sleep(150);
-    return true;
-  };
-  return {
-    ...h,
-    async click(loc, opts = {}) { return h.click(loc, {...opts, noReveal: opts.noReveal || await enter(loc)}); },
-    async type(loc, text, opts = {}) { if (await enter(loc)) await h.moveTo(loc, {noReveal: true}); return h.type(loc, text, opts); },
-    async hover(loc, after) { return (await enter(loc)) ? h.moveTo(loc, {noReveal: true}).then(() => sleep(after ?? 900)) : h.hover(loc, after); },
-  };
-}
-
 module.exports = {
-  panelHuman, slow, TYPED_HOLD_MS, CLICK_REST_MS, glidePath, glideMillis, seeded,
-  REPO, SITE, FAKE, OUT, FFMPEG, W, H, sleep,
-  control, resetFake, session, pair, openAll, dismiss, section, option, listboxOf, human, pairedSession, finish, openQuestDraft,
+  slow, TYPED_HOLD_MS, CLICK_REST_MS, glidePath, glideMillis, seeded,
+  REPO, SITE, FAKE, OUT, FFMPEG, W, H, sleep, shell,
+  control, resetFake, pairCodeFromEnv, session, pair, workspaceHash, clearToasts, option, optionLabelled, listboxOf,
+  examplesWorkspace, blankWorkspace, human, pairedSession, finish, questSession,
 };

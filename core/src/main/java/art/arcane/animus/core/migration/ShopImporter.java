@@ -49,6 +49,7 @@ public final class ShopImporter {
     public static final int VERSION = 1;
     private static final long MAXIMUM_FILE = 4L * 1024 * 1024, MAXIMUM_DATA = 64L * 1024 * 1024;
     private static final int MAXIMUM_SHOPS = 512, MAXIMUM_LIMIT_PLAYERS = 1_000_000;
+    private static final String SHOP_FILE = "shops/dtltraders/[a-z0-9_-]{1,64}\\.json";
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
 
     public record Preview(String id, Path directory, int shops, int entries, int notes, JsonObject summary) {
@@ -197,6 +198,16 @@ public final class ShopImporter {
         return apply(store, id, UUID.randomUUID().toString());
     }
 
+    /** The shop files {@link #apply} installs, by path, read from the staged preview; nothing is installed. */
+    public Map<String, String> documents(DocumentStore store, String id) throws IOException {
+        if (!id.matches("[a-f0-9]{64}")) throw new IOException("Invalid import ID");
+        Path staged = store.resolve("imports/shops/" + id);
+        Map<String, String> documents = new TreeMap<>();
+        for (String relative : read(staged, id).summary().getAsJsonObject("documents").keySet())
+            if (relative.matches(SHOP_FILE)) documents.put(relative, JsonDocuments.read(staged.resolve(relative)));
+        return documents;
+    }
+
     /**
      * Installs the staged shops under {@code transaction}. When the import is already installed, returns the transaction
      * its receipt names, so a retried apply records the real id.
@@ -219,7 +230,7 @@ public final class ShopImporter {
             String content = JsonDocuments.read(staged.resolve(relative));
             if (!JsonDocuments.hash(content).equals(document.getValue().getAsString())) throw new IOException("Preview changed: " + relative + "; make a new preview");
             if (relative.equals("limits.json")) { changes.add(new DocumentStore.Change("state/shops/imports/" + id + ".json", "missing", content)); continue; }
-            if (!relative.matches("shops/dtltraders/[a-z0-9_-]{1,64}\\.json")) throw new IOException("Invalid bundle path: " + relative);
+            if (!relative.matches(SHOP_FILE)) throw new IOException("Invalid bundle path: " + relative);
             String before = store.read(relative);
             if (before != null && before.equals(content)) continue;
             if (before != null) throw new IOException("Shop collision: " + relative + " already exists with other content");

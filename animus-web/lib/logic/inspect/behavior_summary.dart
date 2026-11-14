@@ -5,9 +5,14 @@ library;
 import 'dart:convert';
 
 import '../../mc/npc/mc_text.dart';
+import '../../model/display_name.dart';
+import '../../model/document_kind.dart';
 import '../gui/gui_json.dart';
 import '../gui/gui_text.dart';
+import '../item_ids.dart';
 import 'behavior_operands.dart';
+import 'behavior_words.dart' show soundName;
+import 'named_ids.dart' show particleName;
 
 const int _maximumLength = 72;
 
@@ -46,11 +51,22 @@ String argumentWords(JsonMap node, String key) {
 /// Placeholders stay as written.
 String _plain(String text) => guiTextRuns(text, sample: false).map((McTextRun run) => run.text).join();
 
+/// A flag or quest name and whose it is, in words.
 String _flagName(JsonMap node) {
   final String name = argumentWords(node, 'name');
-  final String scope = asString(asMap(node['arguments'])['scope']) ?? 'player';
-  return scope == 'player' ? name : '$name ($scope)';
+  return switch (asString(asMap(node['arguments'])['scope'])) {
+    'npc' => '$name of the NPC',
+    'global' => '$name for everyone',
+    'relationship' => '$name with this NPC',
+    _ => name,
+  };
 }
+
+final RegExp _literalId = RegExp(r'^[a-z0-9_.-]+(:[a-z0-9_./-]+)?$');
+
+/// [value] read by [name] when it is a written id; a template or
+/// expression stays as written.
+String _named(String value, String Function(String id) name) => _literalId.hasMatch(value) ? name(value) : value;
 
 String _ticks(Object? value) {
   if (value is! num) return '$value ticks';
@@ -62,15 +78,17 @@ String _ticks(Object? value) {
 String capabilityWords(String? id) {
   if (id == null || id.isEmpty) return 'No capability chosen';
   final String name = id.contains(':') ? id.substring(id.indexOf(':') + 1) : id;
-  final String spaced = name.replaceAll('-', ' ').replaceAll('_', ' ');
+  final String spaced = name.replaceAll('-', ' ').replaceAll('_', ' ').replaceAll('actionbar', 'action bar');
   return spaced.isEmpty ? id : '${spaced[0].toUpperCase()}${spaced.substring(1)}';
 }
 
-String _action(JsonMap node) {
+String _action(JsonMap node, DocumentNames names) {
   final String? id = asString(node['capability']);
   final JsonMap arguments = asMap(node['arguments']);
   String argument(String key) => argumentWords(node, key);
   String shown(String key) => _plain(argument(key));
+  String document(DocumentKind kind, String key) => _named(argument(key), (String value) => names(kind, value));
+  String item(String key) => _named(argument(key), (String value) => itemName(value).toLowerCase());
   return switch (id) {
     'animus:say' => 'Say: ${shown('text')}',
     'animus:message' => 'Message: ${shown('text')}',
@@ -80,15 +98,15 @@ String _action(JsonMap node) {
     'animus:set-quest-state' => 'Set quest ${_flagName(node)} to ${argument('value')}',
     'animus:advance-quest-state' => 'Advance quest ${_flagName(node)} by ${arguments.containsKey('by') ? argument('by') : '1'}',
     'animus:choices' => 'Ask: ${shown('prompt')}',
-    'animus:navigate' => arguments['route'] != null ? 'Walk route ${argument('route')}' : 'Walk to ${argument('x')}, ${argument('y')}, ${argument('z')}',
+    'animus:navigate' => arguments['route'] != null ? 'Walk route ${document(DocumentKind.route, 'route')}' : 'Walk to ${argument('x')}, ${argument('y')}, ${argument('z')}',
     'animus:command' => 'Run command /${argument('command')}',
-    'animus:give-item' => 'Give ${arguments.containsKey('amount') ? '${argument('amount')} ' : ''}${argument('item')}',
-    'animus:take-item' => 'Take ${arguments.containsKey('amount') ? '${argument('amount')} ' : ''}${argument('item')}',
-    'animus:open-gui' => 'Open GUI ${argument('gui')}',
-    'animus:open-shop' => 'Open shop ${argument('shop')}',
-    'animus:play-sound' => 'Play sound ${argument('sound')}',
-    'animus:spawn-particle' => 'Show particle ${argument('particle')}',
-    'animus:play-animation' => 'Play animation ${argument('animation')}',
+    'animus:give-item' => 'Give ${arguments.containsKey('amount') ? '${argument('amount')} ' : ''}${item('item')}',
+    'animus:take-item' => 'Take ${arguments.containsKey('amount') ? '${argument('amount')} ' : ''}${item('item')}',
+    'animus:open-gui' => 'Open GUI ${document(DocumentKind.inventory, 'gui')}',
+    'animus:open-shop' => 'Open shop ${document(DocumentKind.shop, 'shop')}',
+    'animus:play-sound' => 'Play sound ${soundName(argument('sound')).toLowerCase()}',
+    'animus:spawn-particle' => 'Show particle ${_named(argument('particle'), (String value) => particleName(value).toLowerCase())}',
+    'animus:play-animation' => 'Play animation ${document(DocumentKind.animation, 'animation')}',
     'animus:teleport' => 'Teleport the player',
     'animus:look' => arguments['target'] == 'player' ? 'Look at the player' : 'Look at ${argument('x')}, ${argument('y')}, ${argument('z')}',
     _ => <String>[
@@ -117,14 +135,15 @@ String _condition(JsonMap node) {
   };
 }
 
-/// One plain line about [node]; [variables] gives `set` its target type.
-String nodeSummary(Object? raw, {JsonMap variables = const <String, Object?>{}}) {
+/// One plain line about [node]; [variables] gives `set` its target type,
+/// [names] the documents it opens or plays.
+String nodeSummary(Object? raw, {JsonMap variables = const <String, Object?>{}, DocumentNames names = idDocumentName}) {
   final JsonMap node = asMap(raw);
   final String? type = asString(node['type']);
   final String line = switch (type) {
     'sequence' => '${asList(node['steps']).length} step${asList(node['steps']).length == 1 ? '' : 's'} in order',
     'parallel' => '${asList(node['branches']).length} branch${asList(node['branches']).length == 1 ? '' : 'es'} at once',
-    'action' => _action(node),
+    'action' => _action(node, names),
     'condition' => _condition(node),
     'wait' => 'Wait ${_ticks(node['ticks'])}',
     'repeat' => 'Repeat ${operandWords(node['count'], type: 'integer')} time${node['count'] == 1 ? '' : 's'}',

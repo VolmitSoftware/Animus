@@ -1,34 +1,35 @@
-// A behavior's Preview dry run: start the innkeeper's dialogue from its
-// click trigger, step through what it says and asks, answer a prompt.
-// Offline: no fake server needed. The example packs workspace is made before filming.
+// A behavior's Test pane: run the example innkeeper from its click start,
+// read what it says on the stage and in the chat, answer its questions, then
+// Run again to start over.
+// Offline: no fake server needed. The examples workspace is made before filming.
 module.exports = async (L) => {
   const f = await L.session({id: '16-dry-run'});
-  await f.setup.goto(`${L.SITE}/#/`);
-  await f.setup.getByRole('button', {name: 'Create with example packs'}).click();
-  await f.setup.waitForFunction(() => location.hash.startsWith('#/workspace/'));
-  const ws = f.setup.url().split('#')[1].split('/').slice(0, 3).join('/');
-  const page = await f.start(`${L.SITE}/#${ws}`);
+  const ws = await L.examplesWorkspace(f.setup);
+  const page = await f.start(`${L.SITE}/${ws}/list/behavior`);
   const h = L.human(f);
-  await page.getByRole('heading', {name: 'Example packs', level: 1}).waitFor();
+  const list = page.getByRole('listbox', {name: 'Behaviors'});
+  await list.waitFor();
   await page.waitForTimeout(1500);
   f.mark();
-  await h.click(page.getByRole('link', {name: 'Dry-run dialogue:innkeeper'}), {after: 1200});
-  const run = page.getByRole('region', {name: 'Dry run'});
-  await run.getByRole('group', {name: 'Start the dry run'}).waitFor();
-  await h.hover(run.getByRole('group', {name: 'Start the dry run'}), 1000);
-  await h.click(run.getByRole('button', {name: /^click: /}), {after: 1000});
-  const step = run.getByRole('toolbar', {name: 'Dry run controls'}).getByRole('button', {name: 'Step', exact: true});
-  await h.click(step, {after: 1000});
-  await h.click(step, {after: 1000});
-  await run.getByRole('group', {name: 'Answer topic'}).waitFor();
+  await h.click(list.getByRole('option', {name: /^Innkeeper/}), {after: 1200});
+  await page.getByRole('heading', {name: 'Innkeeper', level: 1}).waitFor();
+  const test = page.getByRole('region', {name: 'Test'});
+  await h.pick(test.getByRole('combobox', {name: 'Starts'}), 'click', {after: 600});
+  await h.click(test.getByRole('button', {name: 'Run'}), {after: 1200});
+  const chat = test.getByRole('list', {name: 'Chat'});
+  await chat.getByRole('group', {name: 'Answers'}).waitFor();
   await h.result(2000);
-  await h.click(run.getByRole('button', {name: 'Heard any rumours?'}), {after: 1200});
-  await h.click(step, {after: 1000});
-  await run.getByRole('group', {name: 'Answer mine'}).waitFor();
+  await h.click(chat.getByRole('button', {name: 'Heard any rumours?'}), {after: 1500});
   await h.result(1800);
-  await h.click(run.getByRole('button', {name: 'Tell me more'}), {after: 1000});
-  for (let i = 0; i < 4 && await step.isEnabled().catch(() => false); i++) await h.click(step, {after: 900});
-  await h.hover(run.getByRole('list', {name: 'Steps'}).getByRole('listitem').last(), 400);
-  await h.result(2200);
+  // Follow the newest question's first answer while the conversation keeps asking.
+  for (let i = 0; i < 2; i++) {
+    const answers = chat.getByRole('group', {name: 'Answers'}).last().getByRole('button');
+    if (!(await answers.count())) break;
+    await h.click(answers.first(), {after: 1500});
+  }
+  await h.hover(chat.getByRole('listitem').last(), 900);
+  await h.result(1800);
+  await h.click(test.getByRole('button', {name: 'Run'}), {after: 1200});
+  await h.result(1600);
   return L.finish(f, {closing: 'The innkeeper ran in the browser, answers and all'});
 };

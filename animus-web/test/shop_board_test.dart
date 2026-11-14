@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:animus_editor/logic/gui/gui_json.dart';
 import 'package:animus_editor/logic/gui/shop_board.dart';
+import 'package:animus_editor/model/animus_document.dart';
+import 'package:animus_editor/model/document_kind.dart';
 import 'package:test/test.dart';
 
 JsonMap _item(String id, [int? count]) => <String, Object?>{'id': id, 'count': ?count};
@@ -63,15 +65,32 @@ void main() {
   });
 
   group('reading offers', () {
-    test('should read a two-ingredient trade as a sentence', () {
+    test('should read a trade as what the player gets for what it costs', () {
       final JsonMap entry = asMap(readIn(_shop(), const <JsonStep>['pages', 0, 'trade', '11']));
-      expect(offerSentence(entry), '2 emerald + 1 book → 1 enchanted book');
+      expect(offerSentence(entry), '1 enchanted book for 2 emeralds + 1 book');
+    });
+
+    test('should name many of an item in the plural, and goods counted as a mass as they are', () {
+      String trade(String item, int amount) => offerSentence(<String, Object?>{
+            'type': 'trade',
+            'needs': <Object?>[_goods('minecraft:emerald', 6)],
+            'gives': <Object?>[_goods(item, amount)],
+          });
+      expect(trade('minecraft:lead', 3), '3 leads for 6 emeralds');
+      expect(trade('minecraft:hay_block', 8), '8 hay blocks for 6 emeralds');
+      expect(trade('minecraft:torch', 4), '4 torches for 6 emeralds');
+      expect(trade('minecraft:sweet_berries', 4), '4 sweet berries for 6 emeralds');
+      expect(trade('minecraft:shears', 2), '2 shears for 6 emeralds');
+      expect(trade('minecraft:iron_horse_armor', 2), '2 iron horse armor for 6 emeralds');
+      expect(trade('minecraft:wheat', 16), '16 wheat for 6 emeralds');
+      expect(trade('minecraft:potato', 5), '5 potatoes for 6 emeralds');
+      expect(trade('minecraft:saddle', 1), '1 saddle for 6 emeralds');
     });
 
     test('should read money, sales, commands and decorations', () {
       final JsonMap page = asMap(asList(_shop()['pages']).first);
-      expect(offerSentence(asMap(asMap(page['buy'])['4'])), '12.5 money → 1 cake');
-      expect(offerSentence(asMap(asMap(page['sell'])['0'])), '16 wheat → 4 money');
+      expect(offerSentence(asMap(asMap(page['buy'])['4'])), '1 cake for 12.5 money');
+      expect(offerSentence(asMap(asMap(page['sell'])['0'])), '4 money for 16 wheat');
       expect(offerSentence(asMap(asMap(page['trade'])['15'])), 'Decoration: glass pane');
       expect(
         offerSentence(<String, Object?>{
@@ -80,7 +99,7 @@ void main() {
           'price': 0,
           'commands': <Object?>[<String, Object?>{'command': 'say hi'}],
         }),
-        'free → 1 paper, runs 1 command',
+        '1 paper for free, runs 1 command',
       );
     });
 
@@ -213,5 +232,31 @@ void main() {
     expect(freshEntryId(_shop(), 'Book'), 'book-2');
     expect(freshEntryId(_shop(), '  '), 'offer');
     expect(freshEntryId(_shop(), 'Iron Sword!'), 'iron-sword');
+  });
+
+  group('the Shops list', () {
+    AnimusDocument npc(String id, String name, String? shop) {
+      final JsonMap json = <String, Object?>{
+        'name': name,
+        if (shop != null) 'modules': <String, Object?>{'animus:shop': <String, Object?>{'shop': shop}},
+      };
+      return AnimusDocument(kind: DocumentKind.npc, id: id, path: 'npcs/$id.json', source: jsonEncode(json), json: json, diagnostics: const <Diagnostic>[]);
+    }
+
+    test('should name the NPCs that open each shop by their plain names', () {
+      final Map<String, List<String>> openers = shopOpeners(<AnimusDocument>[
+        npc('town/baker', '&6Baker', 'town:bakery'),
+        npc('town/helper', '', 'town:bakery'),
+        npc('town/guard', 'Guard', null),
+      ]);
+      expect(openers, <String, List<String>>{'town:bakery': <String>['Baker', 'town/helper']});
+    });
+
+    test('should read a shop row as its offers and who opens it', () {
+      expect(shopListLine(12, const <String>['Baker']), '12 offers, opened by Baker');
+      expect(shopListLine(1, const <String>['Baker', 'Smith', 'Guard']), '1 offer, opened by Baker and 2 more');
+      expect(shopListLine(null, const <String>[]), isNull);
+      expect(shopListLine(0, const <String>[]), 'No offers');
+    });
   });
 }

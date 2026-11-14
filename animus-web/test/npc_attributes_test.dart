@@ -33,25 +33,63 @@ void main() {
       expect(attributeTable(npc)['luck']!.carriedBy(null), isTrue);
     });
 
-    test('the add dropdown groups every attribute and orders it for the body', () {
+    test('the add dropdown groups every attribute but the Combat tab ones and orders it for the body', () {
       final List<SelectOption> horse = attributeOptions(attributeSpecs(npc), <String, Object?>{'scale': 2}, 'minecraft:horse');
-      expect(horse.length, attributeSpecs(npc).length);
+      expect(horse.length, attributeSpecs(npc).length - combatHomeAttributes.length);
+      expect(horse.map((SelectOption option) => option.value), isNot(anyElement(isIn(combatHomeAttributes))), reason: 'max health and armor live in Combat');
+      expect(attributeTable(npc).keys, containsAll(combatHomeAttributes));
       expect(<String?>{for (final SelectOption option in horse) option.group}.toList(),
           <String>['Size and movement', 'Combat', 'Senses', 'Other', 'Player only']);
       final SelectOption scale = horse.firstWhere((SelectOption option) => option.value == 'scale');
       expect(scale.disabled, isTrue);
-      expect(scale.description, '0.0625..16, vanilla 1');
+      expect(scale.description, '0.0625 to 16, vanilla 1');
+      expect(scale.label, 'Size');
+      expect(scale.keywords, contains('scale'));
       expect(horse.first.value, 'scale');
       final SelectOption damage = horse.firstWhere((SelectOption option) => option.value == 'attack_damage');
       expect(damage.disabled, isFalse);
       expect(damage.description, endsWith('no effect on this body'));
       final List<String> combat = <String>[for (final SelectOption option in horse) if (option.group == 'Combat') option.value];
-      expect(combat.indexOf('max_health'), lessThan(combat.indexOf('attack_damage')), reason: 'carried attributes come first');
+      expect(combat.indexOf('knockback_resistance'), lessThan(combat.indexOf('attack_damage')), reason: 'carried attributes come first');
       expect(horse.where((SelectOption option) => option.group == 'Player only').map((SelectOption option) => option.value), containsAll(<String>['luck', 'attack_speed']));
       final List<SelectOption> player = attributeOptions(attributeSpecs(npc), const <String, Object?>{}, 'minecraft:player');
       expect(<String?>{for (final SelectOption option in player) option.group}.toList(),
           <String>['Size and movement', 'Combat', 'Senses', 'Player only', 'Other']);
       expect(player.where((SelectOption option) => option.description!.contains('no effect')).map((SelectOption option) => option.value), containsAll(<String>['flying_speed', 'spawn_reinforcements']));
+    });
+
+    test('every attribute in the schema has a label in words, its id kept for search', () {
+      for (final AttributeSpec spec in attributeSpecs(npc)) {
+        final String label = attributeLabels[spec.id] ?? '';
+        expect(label, isNotEmpty, reason: '${spec.id} has a label');
+        expect(label, matches(RegExp(r'^[A-Z][a-z -]*$')), reason: '${spec.id}: "$label" is sentence case words');
+        expect(label.split(' ').length, lessThanOrEqualTo(3), reason: '${spec.id}: "$label"');
+      }
+      expect(attributeLabels.keys.toSet().difference(attributeTable(npc).keys.toSet()), isEmpty, reason: 'no label for an id the schema dropped');
+      expect(attributeLabel('max_health'), 'Max health');
+      expect(attributeLabel('minecraft:movement_speed'), 'Speed');
+      expect(attributeLabel('new_thing'), 'New thing');
+    });
+
+    test('names the attributes a module setting overrides', () {
+      expect(attributeOverrides(const <String, Object?>{}), isEmpty);
+      expect(attributeOverrides(<String, Object?>{
+        'animus:health': <String, Object?>{'killable': true, 'maximumHealth': 40, 'armorFromEquipment': true},
+        'animus:combat': <String, Object?>{
+          'melee': <String, Object?>{'damage': 4, 'cooldownTicks': 10},
+          'targeting': <String, Object?>{'scanRange': 20},
+        },
+      }).keys, unorderedEquals(<String>['max_health', 'armor', 'armor_toughness', 'attack_damage', 'attack_speed', 'follow_range']));
+      expect(attributeOverrides(<String, Object?>{
+        'animus:health': <String, Object?>{'maximumHealth': 40},
+      })['max_health'], 'Not used: Combat sets max health');
+    });
+
+    test('reads an attribute value or its vanilla default', () {
+      expect(attributeValue(<String, Object?>{'minecraft:max_health': 40}, 'max_health'), 40);
+      expect(attributeValue(<String, Object?>{'max_health': 0}, 'max_health'), 20, reason: 'out of range');
+      expect(attributeValue(null, 'max_health'), 20);
+      expect(attributeValue(null, 'not_an_attribute'), 0);
     });
 
     test('a schema without attributes lists none', () {

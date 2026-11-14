@@ -1,0 +1,31 @@
+{
+  "type": "catalog",
+  "documents": [
+    {
+      "kind": "npc",
+      "id": "world/citizens-101",
+      "path": "npcs/world/citizens-101.json",
+      "revision": 4,
+      "hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "summary": {
+        "name": "brickworks console",
+        "type": "minecraft:player",
+        "world": "world",
+        "x": 10,
+        "y": 64,
+        "z": -3,
+        "spawned": true,
+        "folder": "world",
+        "features": []
+      },
+      "source": "server"
+    }
+  ],
+  "deleted": [
+    {
+      "kind": "npc",
+      "id": "world/citizens-7",
+      "source": "file"
+    }
+  ]
+}

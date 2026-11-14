@@ -32,7 +32,7 @@
     "documentRef": {
       "type": "object",
       "required": ["kind", "id"],
-      "properties": {"kind": {"$ref": "#/$defs/kind"}, "id": {"$ref": "#/$defs/documentId"}}
+      "properties": {"kind": {"$ref": "#/$defs/kind"}, "id": {"$ref": "#/$defs/documentId"}, "source": {"$ref": "#/$defs/changeSource"}}
     },
     "documentVersion": {
       "type": "object",
@@ -43,7 +43,44 @@
         "id": {"$ref": "#/$defs/documentId"},
         "path": {"type": "string", "minLength": 1, "maxLength": 1024, "description": "Path under the plugin data folder, with / separators."},
         "revision": {"$ref": "#/$defs/revision"},
-        "hash": {"$ref": "#/$defs/hash"}
+        "hash": {"$ref": "#/$defs/hash"},
+        "summary": {"$ref": "#/$defs/documentSummary"},
+        "source": {"$ref": "#/$defs/changeSource", "description": "Catalog events only: who made this version."}
+      }
+    },
+    "changeSource": {
+      "enum": ["editor", "server", "file"],
+      "description": "Who changed a document. editor: the editor API (apply, undo, import steps, spawn, despawn). server: Animus itself (commands such as animus edit, the in-game tools, imports run in game, schema upgrades on reload or hotload). file: the file changed on disk outside Animus, reported whether or not hotload or /animus reload loaded it yet."
+    },
+    "documentSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What a list shows before the document is read, from the stored file only; values a trait group gives an NPC are not merged in. A field is present only when the document has it. Text is plain, at most 64 characters. Show the id when name is absent.",
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 64, "description": "The display name: NPC name, shop, chest GUI and quest title, first hologram line, pack name, recording description."},
+        "type": {"type": "string", "maxLength": 64, "description": "NPC: the entity type as written."},
+        "world": {"type": "string", "maxLength": 64, "description": "NPC position, hologram anchor or recording world."},
+        "x": {"type": "number"}, "y": {"type": "number"}, "z": {"type": "number"},
+        "spawned": {"type": "boolean"},
+        "folder": {"type": "string", "maxLength": 512, "description": "NPC: its folder under npcs/, empty for npcs/ itself."},
+        "tags": {"type": "array", "maxItems": 16, "items": {"type": "string", "maxLength": 64}},
+        "features": {"type": "array", "items": {"enum": ["route", "recording", "schedule", "combat", "shop", "behavior", "rig", "hologram", "mount"]}, "description": "NPC: what it has, in this order."},
+        "skin": {"type": "string", "pattern": "^[a-f0-9]{64}$", "description": "NPC: the id of its skin document."},
+        "texture": {"type": "string", "pattern": "^https://textures\\.minecraft\\.net/texture/[0-9a-f]{1,128}$", "description": "Skin: its texture URL."},
+        "slim": {"type": "boolean", "description": "Skin: the slim arm model."},
+        "offers": {"type": "integer", "minimum": 0, "description": "Shop: offers on all pages and modes."},
+        "pages": {"type": "integer", "minimum": 0},
+        "rows": {"type": "integer", "minimum": 0, "description": "Chest GUI rows."},
+        "lines": {"type": "integer", "minimum": 0, "description": "Hologram lines, or the first page's."},
+        "frames": {"type": "integer", "minimum": 0, "description": "Text animation frames."},
+        "triggers": {"type": "array", "maxItems": 8, "items": {"type": "string", "maxLength": 64}, "description": "Behavior: distinct trigger events in order."},
+        "behaviors": {"type": "integer", "minimum": 0, "description": "Server behaviors: how many the list runs."},
+        "version": {"type": "string", "maxLength": 64, "description": "Pack version."},
+        "points": {"type": "integer", "minimum": 0, "description": "Route points. NPC: the points of its own route, present only when its animus:navigation has points and names no route or recording."},
+        "seconds": {"type": "number", "minimum": 0, "description": "Recording or animation length."},
+        "fields": {"type": "integer", "minimum": 0, "description": "Trait group: how many NPC fields it sets."},
+        "stages": {"type": "integer", "minimum": 0, "description": "Quest stages."},
+        "bones": {"type": "integer", "minimum": 0, "description": "Rig bones."}
       }
     },
     "documentDiagnostics": {
@@ -57,7 +94,7 @@
       }
     },
     "error-code": {
-      "enum": ["unauthorized", "token-expired", "token-revoked", "scope-missing", "group-denied", "origin-not-allowed", "counter-replayed", "pairing-invalid", "pairing-expired", "not-found", "invalid-request", "too-large", "rate-limited", "busy", "conflict", "preview-refused", "player-offline", "gloss-unavailable", "unsupported-protocol", "server-offline", "timeout", "internal"]
+      "enum": ["unauthorized", "token-expired", "token-revoked", "scope-missing", "group-denied", "origin-not-allowed", "counter-replayed", "pairing-invalid", "pairing-expired", "not-found", "invalid-request", "too-large", "rate-limited", "busy", "conflict", "preview-refused", "player-offline", "gloss-unavailable", "unsupported-protocol", "server-offline", "timeout", "internal", "world-unloaded"]
     },
     "error-response": {
       "type": "object",
@@ -72,7 +109,8 @@
             "code": {"$ref": "#/$defs/error-code"},
             "message": {"type": "string", "minLength": 1, "maxLength": 2048},
             "diagnostics": {"type": "array", "items": {"$ref": "#/$defs/diagnostic"}},
-            "retryAfterMillis": {"type": "integer", "minimum": 0}
+            "retryAfterMillis": {"type": "integer", "minimum": 0},
+            "scope": {"$ref": "#/$defs/scope", "description": "On scope-missing: the scope the request needs and the token lacks."}
           }
         }
       }
@@ -87,7 +125,7 @@
         "animus": {"type": "string", "minLength": 1, "maxLength": 64},
         "platform": {"enum": ["paper", "folia", "spigot", "purpur", "fabric", "forge", "neoforge", "other"]},
         "minecraft": {"type": "string", "pattern": "^\\d+\\.\\d+(\\.\\d+)?$"},
-        "serverName": {"type": "string", "maxLength": 128}
+        "serverName": {"type": "string", "minLength": 1, "maxLength": 128, "description": "[editor] serverName, else the MOTD without colour codes, else the server folder's name."}
       }
     },
     "pairing-payload": {
@@ -126,11 +164,12 @@
         "token": {"type": "string", "pattern": "^anm_[A-Za-z0-9_-]{8,64}\\.[A-Za-z0-9_-]{43}$", "description": "anm_<tokenId>.<32 random bytes base64url>. The server stores only its SHA-256."},
         "tokenId": {"$ref": "#/$defs/tokenId"},
         "scopes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/scope"}},
-        "groups": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"}, "description": "NPC groups the token may touch; absent means all."},
+        "groups": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}(/[a-z0-9][a-z0-9_-]{0,63}){0,7}$"}, "description": "NPC folders under npcs/ the token may touch, nested ones as town/market; absent means all."},
         "expiresAt": {"$ref": "#/$defs/instant"},
         "fingerprint": {"$ref": "#/$defs/fingerprint"},
         "counter": {"type": "integer", "minimum": 0, "description": "The last X-Animus-Counter value accepted for this token."},
-        "admin": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "description": "The UUID of the player who issued the pairing; absent when it came from the console. The editor makes it the owner of NPCs it creates."}
+        "admin": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "description": "The UUID of the player who issued the pairing; absent when it came from the console. The editor makes it the owner of NPCs it creates."},
+        "serverName": {"type": "string", "minLength": 1, "maxLength": 128, "description": "As hello-response."}
       }
     },
     "capabilities-response": {
@@ -242,6 +281,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["documents"],
+      "description": "A page ends at 1000 entries or 512 KiB of entries, on the relay at most its frame limit less 16 KiB. Every entry carries summary.",
       "properties": {
         "documents": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/documentVersion"}},
         "next": {"type": ["string", "null"], "description": "Pass as after= for the next page; null on the last page."}
@@ -258,7 +298,41 @@
         "revision": {"$ref": "#/$defs/revision"},
         "hash": {"$ref": "#/$defs/hash"},
         "source": {"type": "object", "description": "The stored document, parsed."},
+        "summary": {"$ref": "#/$defs/documentSummary"},
         "diagnostics": {"type": "array", "items": {"$ref": "#/$defs/diagnostic"}}
+      }
+    },
+    "documents-read-request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["refs"],
+      "description": "POST /v1/documents/read. Reads only, so it takes no X-Animus-Counter. Each ref at most once.",
+      "properties": {
+        "refs": {"type": "array", "minItems": 1, "maxItems": 200, "items": {
+          "type": "object", "additionalProperties": false, "required": ["kind", "id"],
+          "properties": {"kind": {"type": "string", "minLength": 1, "maxLength": 512}, "id": {"type": "string", "minLength": 1, "maxLength": 512}}
+        }}
+      }
+    },
+    "documents-read-response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["documents", "errors", "remaining"],
+      "description": "Documents in request order, together at most 512 KiB (on the relay its frame limit less 16 KiB); one larger document comes alone. Send remaining again.",
+      "properties": {
+        "documents": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/document-response"}},
+        "errors": {"type": "array", "maxItems": 200, "items": {
+          "type": "object", "additionalProperties": false, "required": ["kind", "id", "code", "message"],
+          "properties": {
+            "kind": {"type": "string", "minLength": 1, "maxLength": 512}, "id": {"type": "string", "minLength": 1, "maxLength": 512},
+            "code": {"enum": ["not-found", "group-denied", "invalid-request", "too-large"]},
+            "message": {"type": "string", "minLength": 1, "maxLength": 2048}
+          }
+        }},
+        "remaining": {"type": "array", "maxItems": 200, "items": {
+          "type": "object", "additionalProperties": false, "required": ["kind", "id"],
+          "properties": {"kind": {"type": "string", "minLength": 1, "maxLength": 512}, "id": {"type": "string", "minLength": 1, "maxLength": 512}}
+        }}
       }
     },
     "change": {
@@ -492,7 +566,7 @@
       "description": "The first frame a browser sends on WS /v1/events, within 10 seconds."
     },
     "event": {
-      "description": "Frames the server sends on WS /v1/events. At most 20 frames per second per connection; catalog changes coalesce.",
+      "description": "Frames the server sends on WS /v1/events. At most 20 frames per second per connection. A catalog frame goes out for every created, changed or deleted document, whatever changed it; changes to one document coalesce, and one frame carries at most 48 KiB of entries.",
       "oneOf": [
         {
           "type": "object", "additionalProperties": false, "required": ["type", "documents"],

@@ -1,6 +1,7 @@
 package art.arcane.animus.core.editor.relay;
 
 import art.arcane.animus.core.config.EditorRelaySettings;
+import art.arcane.animus.core.editor.EditorError;
 import art.arcane.animus.core.editor.EditorIdentity;
 import art.arcane.animus.core.editor.EditorReplies;
 import art.arcane.animus.core.editor.transport.EditorEventSink;
@@ -61,7 +62,8 @@ public final class EditorRelayClient implements AutoCloseable {
     public static final String PROOF_HEADER = "X-Animus-Proof";
     private static final Pattern NONCE = Pattern.compile("[A-Za-z0-9_-]{43}");
     private static final System.Logger LOG = System.getLogger("Animus");
-    private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
+    /** Keeps null members: documents carry them on purpose, such as an emptied slot's {@code "item": null}. */
+    private static final Gson GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().create();
     private static final int MAX_QUEUED_FRAMES = 1024;
     private static final long MAX_ID = 9007199254740991L;
 
@@ -76,6 +78,8 @@ public final class EditorRelayClient implements AutoCloseable {
     private final Object lock = new Object();
     private boolean running;
     private int attempt;
+    /** The relay could not be reached since the last registration, and the log said so once. */
+    private boolean unreachable;
     private Connection current;
     private ScheduledFuture<?> reconnect;
 
@@ -269,7 +273,7 @@ public final class EditorRelayClient implements AutoCloseable {
                     case "registered" -> {
                         if (!identity.fingerprint().equals(string(frame, "fingerprint"))) throw new IllegalArgumentException("registered under another fingerprint");
                         registered = true;
-                        synchronized (lock) { attempt = 0; }
+                        synchronized (lock) { attempt = 0; unreachable = false; }
                         LOG.log(System.Logger.Level.INFO, "Editor relay registered {0} at {1}", identity.fingerprint(), settings.url());
                     }
                     case "error" -> refused(frame);
@@ -313,7 +317,7 @@ public final class EditorRelayClient implements AutoCloseable {
             }
             if (active.incrementAndGet() > settings.concurrentRequests()) {
                 active.decrementAndGet();
-                respond(id, EditorResponse.error(503, "busy", "too many relayed requests"));
+                respond(id, EditorReplies.error(new EditorError(EditorError.Code.BUSY, "too many relayed requests", 1000, null)));
                 return;
             }
             Route route = new Route(id, proof(request));
@@ -412,7 +416,14 @@ public final class EditorRelayClient implements AutoCloseable {
 
         private void fail(String why) {
             if (end(false)) {
-                LOG.log(System.Logger.Level.DEBUG, "Editor relay connection ended: {0}", why);
+                boolean first;
+                synchronized (lock) {
+                    first = !registered && !unreachable;
+                    if (!registered) unreachable = true;
+                }
+                // Once per outage: a browser pairing over the relay cannot reach this server until it registers.
+                if (first) LOG.log(System.Logger.Level.WARNING, "Editor relay unreachable at {0}: {1}; retrying in the background", settings.url(), why);
+                else LOG.log(System.Logger.Level.DEBUG, "Editor relay connection ended: {0}", why);
                 WebSocket target = socket;
                 if (target != null) target.abort();
                 scheduleReconnect(this);

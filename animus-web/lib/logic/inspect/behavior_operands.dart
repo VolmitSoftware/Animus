@@ -102,7 +102,7 @@ const List<String> slotFields = <String>['bindings', 'expressions', 'templates']
 
 /// Where an action or condition argument comes from.
 enum ArgumentSource {
-  literal('As written'),
+  literal('A value'),
   binding('From a variable'),
   expression('From an expression'),
   template('From a template');

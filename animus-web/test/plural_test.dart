@@ -10,4 +10,13 @@ void main() {
     });
     test('should use the given plural', () => expect(countOf(3, 'entry', plural: 'entries'), '3 entries'));
   });
+
+  group('namesLine', () {
+    test('should name one, two, or two and how many more', () {
+      expect(namesLine(const <String>['Baker']), 'Baker');
+      expect(namesLine(const <String>['Baker', 'Smith']), 'Baker and Smith');
+      expect(namesLine(const <String>['Baker', 'Smith', 'Guard']), 'Baker, Smith and 1 more');
+      expect(namesLine(const <String>['Baker', 'Smith', 'Guard', 'Crier']), 'Baker, Smith and 2 more');
+    });
+  });
 }

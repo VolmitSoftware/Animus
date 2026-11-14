@@ -12,7 +12,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const {closeDrawer, sidebar, topbarAction} = require('./support/shell.cjs');
+const {topbarAction, workspaceOpen} = require('./support/shell.cjs');
+const {showPreview, stageDrawn} = require('./support/stage.cjs');
 
 const folder = path.resolve(__dirname, 'fixtures/preview_look');
 const site = process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })();
@@ -44,11 +45,9 @@ async function purple(page) {
 }
 
 async function open(page, workspace, id) {
-  await page.goto(`${site}/#${workspace}/npc/${encodeURIComponent(id)}?view=preview`);
-  await page.waitForFunction(() => {
-    const element = document.querySelector('.animus-mc-gl-host');
-    return element && Number(element.getAttribute('data-frames')) > 0 && element.getAttribute('data-unbuilt') === '0';
-  });
+  await page.goto(`${site}/#${workspace}/npc/${encodeURIComponent(id)}`);
+  await showPreview(page);
+  await stageDrawn(page);
   // A frame after the stage settles its size.
   const frames = Number(await page.locator('.animus-mc-gl-host').getAttribute('data-frames'));
   await page.locator('.animus-mc-stage').hover();
@@ -64,12 +63,11 @@ async function run(browser, viewport, dark) {
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto(site);
-  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+  await page.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Open folder'}).first().click();
   await (await chooser).setFiles(folder);
-  await (await sidebar(page)).getByText('Ferryman', {exact: true}).waitFor();
-  await closeDrawer(page);
+  await workspaceOpen(page);
   const isDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
   if (isDark !== dark) await topbarAction(page, dark ? 'Use dark theme' : 'Use light theme');
   const workspace = page.url().split('#')[1].split('?')[0];

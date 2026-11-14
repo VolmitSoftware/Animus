@@ -22,9 +22,26 @@ async function noSideways(page, where) {
   assert.ok(overflow <= 0, `${where} scrolls sideways by ${overflow}px`);
 }
 
+/**
+ * Waits until no edit waits to be stored: the editor's beforeunload guard
+ * stops asking. Playwright accepts that dialog on its own, so a reload
+ * any sooner drops the last edit.
+ */
+async function stored(page) {
+  await page.waitForFunction(() => {
+    const unload = new Event('beforeunload', {cancelable: true});
+    window.dispatchEvent(unload);
+    return !unload.defaultPrevented;
+  });
+}
+
 /** The document's JSON as the Code view shows it. */
 async function code(page, workspace, id) {
+  await stored(page);
+  await page.evaluate(() => window.localStorage.setItem('animus.mode', 'advanced'));
   await page.goto(`${site}/#/workspace/${workspace}/animation/${encodeURIComponent(id)}?view=code`);
+  // Code views are Advanced; the mode is read when the page loads.
+  await page.reload();
   const text = await page.locator('.animus-code textarea').first().inputValue();
   return JSON.parse(text);
 }
@@ -37,6 +54,8 @@ async function visual(page, workspace, id) {
 async function run(browser, viewport, theme) {
   const label = `${viewport.width}px ${theme}`;
   const context = await browser.newContext({viewport, colorScheme: theme});
+  // The editor starts dark whatever the system says; the light runs pick light.
+  await context.addInitScript(mode => { try { window.localStorage.setItem('animus.theme', mode); } catch (error) { /* storage off */ } }, theme);
   const page = await context.newPage();
   page.setDefaultTimeout(10000);
   const errors = [];
@@ -44,7 +63,7 @@ async function run(browser, viewport, theme) {
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
 
   await page.goto(site);
-  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+  await page.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Open folder'}).first().click();
   await (await chooser).setFiles(folder);
@@ -82,7 +101,7 @@ async function run(browser, viewport, theme) {
   json.note = 'draft';
   const area = page.locator('.animus-code textarea').first();
   await area.fill(JSON.stringify(json, null, 2));
-  await page.getByRole('button', {name: 'Apply to draft'}).click();
+  await page.getByRole('button', {name: 'Use this code'}).click();
   await visual(page, workspace, id);
   const other = form.getByRole('group', {name: 'Other fields'});
   const key = other.getByLabel('Other fields key 1', {exact: true});
@@ -94,8 +113,8 @@ async function run(browser, viewport, theme) {
   await number.waitFor();
   await number.fill('3');
   await number.blur();
-  await other.getByRole('button', {name: 'Advanced'}).click();
-  assert.equal(await other.getByRole('button', {name: 'Advanced'}).getAttribute('aria-pressed'), 'true');
+  await other.getByRole('button', {name: 'Edit as JSON'}).click();
+  assert.equal(await other.getByRole('button', {name: 'Edit as JSON'}).getAttribute('aria-pressed'), 'true');
   assert.match(await other.locator('textarea').inputValue(), /"notes": 3/);
   await noSideways(page, `${label} other fields`);
 

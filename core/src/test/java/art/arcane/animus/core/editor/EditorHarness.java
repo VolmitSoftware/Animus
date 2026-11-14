@@ -146,6 +146,10 @@ final class EditorHarness implements AutoCloseable {
     /** The notice clock; {@link #flushNotices} moves it past the quiet window. */
     volatile long nanos;
     final EditorNotices notices;
+    final EditorCatalog catalog;
+    /** Console lines the API logged. */
+    final List<String> warnings = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final AutoCloseable writes;
     /** Whether the drop-in import sees Citizens as still running. */
     volatile boolean citizensRunning;
     final art.arcane.animus.core.migration.CitizensDropIn.Host importHost =
@@ -179,8 +183,12 @@ final class EditorHarness implements AutoCloseable {
             events.publish(event);
         });
         notices = new EditorNotices(settings::notices, host.notices(), (String line) -> {}, () -> nanos, () -> false);
-        api = new EditorApi(new EditorApi.Parts(settings, false, host, EditorIdentity.loadOrCreate(store), new EditorTokens(store, clock), new EditorAudit(store, clock), documents,
-                new EditorChanges(documents, clock, Duration.ofHours(settings.idempotencyHours())), previews, events, notices, () -> npcs, () -> importHost, timers, clock, "26.1.2"));
+        catalog = new EditorCatalog(documents, events);
+        writes = art.arcane.animus.core.storage.WriteNotices.listen(catalog);
+        catalog.prime();
+        api = new EditorApi(new EditorApi.Parts(settings, art.arcane.animus.core.config.EditorRelaySettings.DEFAULT, host, EditorIdentity.loadOrCreate(store),
+                new EditorTokens(store, clock), new EditorAudit(store, clock), documents, catalog, new EditorChanges(documents, clock, Duration.ofHours(settings.idempotencyHours())),
+                previews, events, notices, new EditorWarnings(warnings::add, clock), () -> npcs, () -> importHost, timers, clock, "26.1.2"));
     }
 
     /** Pairs and returns the bearer token. */
@@ -242,6 +250,8 @@ final class EditorHarness implements AutoCloseable {
     String read(String path) throws IOException { return store.read(path); }
 
     @Override public void close() throws IOException {
+        try { writes.close(); }
+        catch (Exception ignored) { /* Removing a listener does not fail. */ }
         lane.shutdownNow();
         timers.shutdownNow();
         store.close();

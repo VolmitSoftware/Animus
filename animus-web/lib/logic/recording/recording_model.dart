@@ -83,14 +83,6 @@ class RecordingEvent {
   /// The equipment item id, or null for an emptied slot.
   String? get item => asString(asMap(json['item'])['id']);
   String? get block => asString(json['block']);
-
-  /// A one-line description for lists.
-  String describe() => switch (type) {
-        'swing' => 'Arm swing',
-        'equipment' => item == null ? 'Emptied ${slot ?? 'a slot'}' : '${slot ?? 'slot'}: $item',
-        'use' => 'Used ${block ?? 'a block'} at ${json['x']}, ${json['y']}, ${json['z']}',
-        _ => 'Unknown event type $type',
-      };
 }
 
 /// A pose in world space at one tick.

@@ -2,16 +2,21 @@
 // wide, dark and light, and fails on a layout fault: boxes that overlap a
 // sibling, content clipped by its container, sideways scrolling, a border
 // or divider running through a control, an input too narrow for its value
-// or placeholder, text running out of its box, and a row label that
-// focuses no control. Every inspector part is opened first, so closed parts
+// or placeholder, text running out of its box, a row label that focuses
+// no control, a page header whose actions wrap under its title and a
+// preview band above the form taller than 240 px, a page title or a shop
+// offer cut on one line. Every inspector part is opened first, so closed parts
 // are checked too.
-// Screens: home, the example-packs workspace and each of its documents,
+// Screens: the start page, the example-packs workspace and each of its documents,
 // every document in the gui_editors, rig_editor, groups_recordings,
 // npc_browser, npc_preview and health_part fixtures and ../schema/fixtures/export (NPCs,
 // behaviors, routes, groups, recordings, shops, chest GUIs, menus,
 // holograms, text animations, rigs, animations), one document per kind in
 // the preview, code and split views, New document, the NPC and recording
-// lists, Send to a server and the converter.
+// lists, Send to a server and the converter. The real_shapes fixture adds
+// what real data showed: a Movement list longer than the page (its tabs
+// keep their height), an NPC named only "&f" (its heading is not blank)
+// and an imported module with many settings (the Modules tab stays short).
 // ANIMUS_LAYOUT_WIDTHS (optional, comma separated) limits the widths;
 // ANIMUS_LAYOUT_SCREENS (optional, a regular expression) checks only the
 // screens whose name matches, such as "shop|broken"; ANIMUS_SCREENSHOTS
@@ -24,6 +29,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {documentHrefs, openSearch, pickTab, searchBox, startAction} = require('./support/shell.cjs');
 
 const url = process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })();
 const shots = process.env.ANIMUS_SCREENSHOTS;
@@ -117,7 +123,7 @@ async function scan(page) {
         out.push(`clipped ${describe(el)} hides ${extra}px`);
       } else if (style.overflowX === 'auto' || style.overflowX === 'scroll') {
         // Tab strips and the animation timeline scroll sideways by design.
-        if (el.matches('.animus-tabs, [role="tablist"], .animus-rig-lanes')) continue;
+        if (el.matches('.animus-tabs, .ui-tabs, [role="tablist"], .animus-rig-lanes')) continue;
         out.push(`side scroll ${describe(el)} by ${extra}px`);
       }
     }
@@ -225,6 +231,33 @@ async function scan(page) {
     if (document.documentElement.scrollWidth > document.documentElement.clientWidth) {
       out.push(`page scrolls sideways by ${document.documentElement.scrollWidth - document.documentElement.clientWidth}px`);
     }
+    // A page header is one line: the title and its actions side by side,
+    // never wrapped onto a second or third row.
+    for (const row of document.querySelectorAll('.ui-page-head-row')) {
+      const [title, actions] = row.children;
+      if (!title || !actions) continue;
+      const a = title.getBoundingClientRect(), b = actions.getBoundingClientRect();
+      // A phone's Advanced header (with Form / Code) has its action row
+      // under the title: two lines, title and one action row, never more.
+      const phoneViews = window.innerWidth <= 760 && row.querySelector('.ui-toggle-choice');
+      if (b.height > 0 && b.top >= a.bottom - 2 && !phoneViews) out.push(`page header wraps: its actions sit under the title (${Math.round(b.top - a.top)}px down)`);
+      if (b.height > 60) out.push(`page header action row wraps (${Math.round(b.height)}px tall)`);
+    }
+    // A page title and a shop offer's sentence too long for their line wrap
+    // to a second one before they are cut.
+    const wrapsFirst = '.ui-page-head-row .ui-title > *, .animus-shop-sentence > *';
+    for (const text of document.querySelectorAll(wrapsFirst)) {
+      const cut = text.scrollWidth > text.clientWidth + 1 || text.scrollHeight > text.clientHeight + 1;
+      const style = getComputedStyle(text);
+      const line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2;
+      const lines = Math.round(text.getBoundingClientRect().height / line);
+      if (cut && lines < 2) out.push(`text cut on one line: "${text.textContent.slice(0, 28)}"`);
+    }
+    // The preview band above the form (761-1099 px) stays at most 240 px,
+    // a behavior's Test stage too.
+    for (const canvas of document.querySelectorAll('.ui-doc-body.is-band :is(.ui-stage-canvas.is-box, .animus-mc-stage)')) {
+      if (canvas.getBoundingClientRect().height > 241) out.push(`preview band ${Math.round(canvas.getBoundingClientRect().height)}px tall (cap 240)`);
+    }
     // The shop's chest window shrinks to fit its nine columns rather than
     // scroll (a pinned tooltip may still reach past it).
     for (const grid of document.querySelectorAll('.animus-shop-chest .animus-chest-screen > .animus-chest')) {
@@ -261,6 +294,8 @@ async function openParts(page) {
 async function run(browser, width, theme, failures) {
   const viewport = {width, height: width <= 390 ? 844 : 900};
   const context = await browser.newContext({viewport, colorScheme: theme});
+  // The editor starts dark whatever the system says; the light runs pick light.
+  await context.addInitScript(mode => { try { window.localStorage.setItem('animus.theme', mode); } catch (error) { /* storage off */ } }, theme);
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   const errors = [];
@@ -270,6 +305,9 @@ async function run(browser, width, theme, failures) {
     if (screens && !screens.test(name)) return;
     await settle(page);
     await openParts(page);
+    // A pointer resting where the last part opened would hold a tip open.
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(250);
     for (const problem of await scan(page)) failures.push(`${width} ${theme} ${name} | ${problem}`);
     if (shots) {
       fs.mkdirSync(shots, {recursive: true});
@@ -287,7 +325,7 @@ async function run(browser, width, theme, failures) {
   // Every document in the open workspace in the visual view, and the first
   // of each kind in the other views too.
   const walk = async label => {
-    const hrefs = await page.locator('#animus-sidebar a[href*="/workspace/"]').evaluateAll(links => links.map(link => link.getAttribute('href')));
+    const hrefs = await documentHrefs(page);
     const kinds = new Set();
     for (const href of hrefs) {
       const match = /#\/workspace\/[^/]+\/([^/?]+)\/([^?]+)$/.exec(href);
@@ -300,18 +338,30 @@ async function run(browser, width, theme, failures) {
         await page.waitForTimeout(view === 'preview' || view === 'split' ? 400 : 100);
         const opened = await page.evaluate(() => new URLSearchParams(location.hash.split('?')[1] || '').get('view') || 'visual');
         await visit(`${label} ${match[1]} ${decodeURIComponent(match[2])} ${opened}`);
+        // An NPC or trait group form is cut into tabs: every tab is a screen.
+        if (opened === 'visual' && (match[1] === 'npc' || match[1] === 'group')) {
+          const tabs = page.locator('.animus-npc-tabs [role="tab"]');
+          const first = await tabs.evaluateAll(all => all.findIndex(tab => tab.getAttribute('aria-selected') === 'true'));
+          for (let index = 0; index < await tabs.count(); index++) {
+            if (index === first) continue;
+            const name = (await tabs.nth(index).innerText()).trim();
+            await tabs.nth(index).click();
+            await page.locator(`[data-npc-tab="${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}"]`).waitFor();
+            await visit(`${label} ${match[1]} ${decodeURIComponent(match[2])} ${opened} tab ${name}`);
+          }
+        }
       }
     }
   };
 
   await page.goto(url);
-  await page.evaluate(mode => window.localStorage.setItem('animus.theme', mode), theme);
+  await page.evaluate(mode => { window.localStorage.setItem('animus.theme', mode); window.localStorage.setItem('animus.mode', 'advanced'); }, theme);
   await page.reload();
-  await page.getByRole('heading', {name: 'Start a workspace'}).waitFor();
+  await page.getByRole('heading', {name: 'Animus web editor'}).waitFor();
   await visit('home');
 
-  await page.getByRole('button', {name: 'Create with example packs'}).click();
-  await page.getByRole('heading', {name: 'Try it in the browser'}).waitFor();
+  await page.getByRole('button', {name: 'Open examples'}).click();
+  await page.locator('[data-testid="home-count"]').first().waitFor();
   const workspace = /#\/workspace\/([^/?]+)/.exec(page.url())[1];
   await visit('workspace');
   await walk('examples');
@@ -321,6 +371,10 @@ async function run(browser, width, theme, failures) {
   await visit('new npc');
   await hash(`#/workspace/${workspace}/npcs`);
   await visit('npc list');
+  await hash(`#/workspace/${workspace}/list/shop`);
+  await visit('list shops');
+  await hash(`#/workspace/${workspace}/list/route`);
+  await visit('list movement');
   await hash(`#/workspace/${workspace}/sync`);
   await visit('sync');
   await hash('#/citizens');
@@ -328,12 +382,12 @@ async function run(browser, width, theme, failures) {
 
   for (const folder of folders) {
     await page.goto(url);
-    await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+    await page.getByRole('heading', {name: 'Continue'}).waitFor();
     const chooser = page.waitForEvent('filechooser');
-    await page.getByRole('button', {name: 'Open folder'}).first().click();
+    await startAction(page, 'Open folder');
     await (await chooser).setFiles(folder);
     await page.waitForFunction(() => /#\/workspace\//.test(location.hash));
-    await page.locator('#animus-sidebar a[href*="/workspace/"]').first().waitFor({state: 'attached'});
+    await page.locator('.ui-save-bar').waitFor();
     const label = path.basename(folder);
     await walk(label);
     const opened = /#\/workspace\/([^/?]+)/.exec(page.url())[1];
@@ -341,9 +395,48 @@ async function run(browser, width, theme, failures) {
     await visit(`${label} npc list`);
     if (label === 'groups_recordings') {
       await hash(`#/workspace/${opened}/recordings`);
-      await page.locator('[data-recording="list"]').waitFor();
+      await page.locator('#movement-list').waitFor();
       await visit(`${label} recordings list`);
     }
+  }
+
+  // Shapes real server data had (fixtures/real_shapes): a Movement list
+  // longer than the page, whose tabs keep their height; an NPC named only
+  // "&f", whose heading falls back to its id and whose id Search lists
+  // first; an imported module with many settings, one closed row rather
+  // than a tall tree.
+  {
+    await page.goto(url);
+    await page.getByRole('heading', {name: 'Continue'}).waitFor();
+    const chooser = page.waitForEvent('filechooser');
+    await startAction(page, 'Open folder');
+    await (await chooser).setFiles(path.resolve(__dirname, 'fixtures', 'real_shapes'));
+    await page.waitForFunction(() => /#\/workspace\//.test(location.hash));
+    await page.locator('.ui-save-bar').waitFor();
+    const opened = /#\/workspace\/([^/?]+)/.exec(page.url())[1];
+    await hash(`#/workspace/${opened}/list/route`);
+    await page.locator('#movement-list').waitFor();
+    const strip = await page.locator('#movement-tabs').boundingBox();
+    if (!strip || strip.height < 30) failures.push(`${width} ${theme} real_shapes list movement | the Routes and Recordings tabs are ${strip ? Math.round(strip.height) : 0}px tall`);
+    await visit('real_shapes list movement');
+    await hash(`#/workspace/${opened}/npc/${encodeURIComponent('world/citizens-60')}`);
+    await page.locator('.animus-npc-tabs').waitFor();
+    if (!(await page.locator('#animus-main-heading').innerText()).trim()) failures.push(`${width} ${theme} real_shapes npc world/citizens-60 | the page heading is blank`);
+    await visit('real_shapes npc world/citizens-60 visual');
+    await openSearch(page);
+    await searchBox(page).fill('citizens-60');
+    const first = page.locator('[data-arcane-command="ui-search"] [data-arcane-command-item]:not([hidden])').first();
+    await first.waitFor();
+    if (!/citizens-60/.test(await first.innerText())) failures.push(`${width} ${theme} real_shapes search citizens-60 | the first result is "${(await first.innerText()).trim()}"`);
+    await page.keyboard.press('Escape');
+    await searchBox(page).waitFor({state: 'hidden'});
+    await hash(`#/workspace/${opened}/npc/${encodeURIComponent('world/imported')}`);
+    await pickTab(page, page.locator('.animus-npc-tabs'), 'Modules');
+    const modules = page.locator('[data-npc-tab="modules"]');
+    await modules.waitFor();
+    const tall = await modules.boundingBox();
+    if (tall && tall.height > 1200) failures.push(`${width} ${theme} real_shapes npc world/imported tab Modules | the tab is ${Math.round(tall.height)}px tall`);
+    await visit('real_shapes npc world/imported visual tab Modules');
   }
 
   for (const error of errors) failures.push(`${width} ${theme}: console ${error}`);

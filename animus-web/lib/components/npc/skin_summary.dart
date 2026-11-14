@@ -1,8 +1,8 @@
-/// A skin document's Visual view: the face once its PNG is loaded, the
-/// label, the hash, the arm model (switching it writes a new document and moves every
-/// NPC and group wearing it there, see `skin_edits.dart`), the signature, the
-/// NPCs and groups that wear it, and loading the PNG into the preview from a
-/// file or a CORS-enabled URL.
+/// A skin document's form: the face once its PNG is loaded, the label, the
+/// hash, the arm model (switching it writes a new document and moves every
+/// NPC and group wearing it there, see `skin_edits.dart`), the signature,
+/// loading the PNG into the preview from a file or a CORS-enabled URL, and
+/// the NPCs and groups that wear it.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -19,7 +19,15 @@ import '../../mc/npc/npc_skin.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../../services/skin_images.dart';
-import '../gui/gui_fields.dart';
+import '../../services/skin_textures.dart' show SkinTextureStatus;
+import '../../ui/action_row.dart';
+import '../../ui/alert.dart';
+import '../../ui/field.dart';
+import '../../ui/section.dart';
+import '../suggest/autocomplete_input.dart';
+import 'npc_layout.dart';
+import 'skin_face.dart';
+import '../../ui/stack.dart';
 
 class SkinSummary extends StatefulWidget {
   const SkinSummary({required this.document, required this.workspaceDocuments, this.onOpen, this.onLoaded, this.editing, super.key});
@@ -81,86 +89,83 @@ class _SkinSummaryState extends State<SkinSummary> {
     final LoadedSkin? loaded = SkinImages.forKeyOrWorkspace(hash, component.editing?.resources[skinImagePath(hash)]);
     final List<AnimusDocument> wearers = skinWearers(component.workspaceDocuments, hash);
     final String? block = skinEditBlock(component.document.json);
+    final bool modelEditable = component.editing != null && block == null && info != null;
+    final SkinTextureStatus? texture = SkinImages.textures.stateOf(hash)?.status;
+    if (loaded == null && info?.textureUrl != null && texture == null) {
+      SkinImages.textures.load(hash, info!.textureUrl).then((_) {
+        if (mounted) setState(() {});
+      });
+    }
+    final SkinTextureStatus? status = loaded == null ? SkinImages.textures.stateOf(hash)?.status : null;
+    final bool loading = status == SkinTextureStatus.loading;
     return dom.section(
-      classes: 'animus-panel animus-inspector animus-skin-summary',
+      styles: stackStyles(gap: Gap.md),
       attributes: const <String, String>{'aria-label': 'Skin'},
       <Widget>[
-        dom.div(classes: 'animus-skin-summary-head', <Widget>[
-          if (loaded != null)
-            dom.span(
-              classes: 'animus-skin-face is-large',
-              attributes: const <String, String>{'role': 'img', 'aria-label': 'Skin face'},
-              styles: dom.Styles(raw: <String, String>{'background-image': 'url("${loaded.dataUrl}")'}),
-              const <Widget>[],
-            )
-          else
-            const dom.span(classes: 'animus-skin-face is-blank is-large', attributes: <String, String>{'aria-hidden': 'true'}, <Widget>[]),
-          dom.dl(classes: 'animus-skin-facts', <Widget>[
-            const dom.dt(<Widget>[Component.text('Label')]),
-            dom.dd(<Widget>[Component.text(skinDocumentLabel(component.document.json) ?? 'None')]),
-            const dom.dt(<Widget>[Component.text('Hash')]),
-            dom.dd(<Widget>[
-              dom.code(<Widget>[Component.text(hash)]),
-            ]),
-            const dom.dt(<Widget>[Component.text('Model')]),
-            dom.dd(<Widget>[Component.text(info == null ? 'Unreadable texture data' : (info.slim ? 'Slim arms (Alex)' : 'Classic arms (Steve)'))]),
-            const dom.dt(<Widget>[Component.text('Signature')]),
-            dom.dd(<Widget>[Component.text(info?.signed == true ? 'Signed by Mojang' : 'Unsigned; the server signs it')]),
-            const dom.dt(<Widget>[Component.text('Preview')]),
-            dom.dd(<Widget>[Component.text(loaded == null ? 'Not loaded' : 'PNG loaded from ${loaded.source}')]),
-          ]),
-        ]),
-        if (component.editing != null && block == null && info != null)
-          GuiRow(
-            label: 'Arms',
-            tip: 'Writes a new skin document, since the id is the hash of its text. Every NPC and group wearing this one moves to it.',
-            child: GuiSwitch(value: info.slim, label: 'Slim arms (Alex)', onChanged: _model),
-          )
-        else if (block != null)
-          GuiRow(label: 'Arms', tip: block, child: dom.span(<Widget>[Component.text(info?.slim == true ? 'Slim (Alex)' : 'Classic (Steve)')])),
-        GuiSection(
-          title: 'Load the PNG',
-          tip: 'Load the skin image to see it on the preview. The skin document holds only its hash, so this stays in the browser.',
+        // The face from the texture the document names, a skeleton while it
+        // loads. The hash is the page's id, so it is not repeated here.
+        SkinFace(skinId: hash, texture: info?.textureUrl, png: component.editing?.resources[skinImagePath(hash)], size: SkinFaceSize.large, label: 'Skin face'),
+        Field(label: 'Label', child: dom.span(<Widget>[Component.text(skinDocumentLabel(component.document.json) ?? 'None')])),
+        Field(
+          label: 'Arms',
+          tip: modelEditable ? 'Writes a new skin document, since the id is the hash of its text. Every NPC and group wearing this one moves to it.' : block,
+          child: modelEditable
+              ? ArcaneToggleSwitch(value: info.slim, label: 'Slim arms (Alex)', onChanged: _model, size: ComponentSize.sm)
+              : dom.span(<Widget>[Component.text(info == null ? 'Unreadable texture data' : (info.slim ? 'Slim arms (Alex)' : 'Classic arms (Steve)'))]),
+        ),
+        Field(label: 'Signature', child: dom.span(<Widget>[Component.text(info?.signed == true ? 'Signed by Mojang' : 'Unsigned; the server signs it')])),
+        AppSection(
+          title: 'Preview PNG',
+          // Opens once the texture failed to load, closed while it loads.
+          key: ValueKey<String>('skin-png:${loaded != null}:$status'),
+          open: loaded == null && !loading,
+          tip: 'Load the skin image to see it in the preview. The skin document holds only its hash, so the PNG stays in this browser.',
           docs: Docs.npcAppearance,
           children: <Widget>[
-            const dom.p(classes: 'animus-gui-help', <Widget>[
-              Component.text('Preview only. The document stores no image.'),
-            ]),
-            dom.div(classes: 'animus-row', <Widget>[
-              Button.secondary(label: 'Load skin PNG', size: ButtonSize.small, disabled: _loading, onPressed: () => _load(SkinImages.pickFile)),
-            ]),
-            dom.div(classes: 'animus-gui-line', <Widget>[
-              GuiTextInput(value: _url, label: 'Skin PNG URL', profile: skinAddressProfile, placeholder: 'https://.../skin.png', onChanged: (String text) => setState(() => _url = text)),
-              Button.ghost(
-                label: 'Load URL',
-                size: ButtonSize.small,
-                disabled: _loading || _url.trim().isEmpty,
-                onPressed: () => _load((String key) => SkinImages.fetchUrl(key, _url.trim())),
-              ),
-            ]),
-            if (_loading) const dom.p(classes: 'animus-muted', attributes: <String, String>{'role': 'status'}, <Widget>[Component.text('Loading the PNG...')]),
-            if (_failure != null)
-              dom.p(classes: 'animus-gui-problem is-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(_failure!)]),
+            Field(
+              label: 'Image',
+              child: dom.span(<Widget>[
+                Component.text(switch (status) {
+                  _ when loaded != null => 'From ${loaded.source}',
+                  SkinTextureStatus.loading => 'Loading',
+                  SkinTextureStatus.failed => 'Did not load from textures.minecraft.net. Load the PNG here.',
+                  _ => 'Not loaded. Load the PNG here.',
+                }),
+              ]),
+            ),
+            ActionRow(
+              label: 'Load the PNG',
+              leading: <Widget>[
+                wrapItem('1 1 16rem', AutocompleteInput(value: _url, label: 'Skin PNG URL', profile: skinAddressProfile, placeholder: 'https://.../skin.png', onChanged: (String text) => setState(() => _url = text))),
+              ],
+              secondary: <RowAction>[
+                RowAction('Load URL', _loading || _url.trim().isEmpty ? null : () => _load((String key) => SkinImages.fetchUrl(key, _url.trim()))),
+                RowAction('Load file', _loading ? null : () => _load(SkinImages.pickFile), icon: ArcaneIcon.upload()),
+              ],
+            ),
+            if (_loading) dom.div(attributes: const <String, String>{'role': 'status'}, <Widget>[mutedText('Loading the PNG...')]),
+            if (_failure != null) AppAlert(tone: AlertTone.error, message: _failure!, live: true),
           ],
         ),
-        GuiSection(
+        AppSection(
           title: 'Worn by',
           tip: 'NPCs and trait groups whose skin or skin pool uses this skin.',
           docs: Docs.npcAppearance,
           count: wearers.length,
           children: <Widget>[
             if (wearers.isEmpty)
-              const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No NPC or group wears this skin. Set it under Appearance.')])
+              mutedLine('No NPC or trait group wears it.')
             else
-              dom.ul(classes: 'animus-skin-wearers', <Widget>[
-                for (final AnimusDocument wearer in wearers)
-                  dom.li(<Widget>[
-                    if (component.onOpen != null)
-                      Button.ghost(label: _wearerName(wearer), size: ButtonSize.small, onPressed: () => component.onOpen!(wearer.kind, wearer.id))
-                    else
-                      Component.text(_wearerName(wearer)),
-                  ]),
-              ]),
+              for (final AnimusDocument wearer in wearers)
+                if (component.onOpen != null)
+                  ActionRow(
+                    key: ValueKey<String>('wearer:${wearer.kind.name}:${wearer.id}'),
+                    label: _wearerName(wearer),
+                    leading: <Widget>[dom.span(<Widget>[Component.text(_wearerName(wearer))])],
+                    secondary: <RowAction>[RowAction('Open', () => component.onOpen!(wearer.kind, wearer.id), attributes: <String, String>{'aria-label': _wearerName(wearer)})],
+                  )
+                else
+                  dom.p(<Widget>[Component.text(_wearerName(wearer))]),
           ],
         ),
       ],

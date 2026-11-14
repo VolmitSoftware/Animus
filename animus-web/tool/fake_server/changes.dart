@@ -6,15 +6,15 @@ import 'protocol.dart';
 import 'validation.dart';
 
 /// What a change did. [status] is the HTTP status; [committed] is true when
-/// documents were written.
+/// documents were written: [written] stored, [removed] deleted.
 class Outcome {
-  const Outcome(this.status, this.body, {this.committed = false, this.catalog = const <Map<String, Object?>>[], this.deleted = const <Map<String, Object?>>[]});
+  const Outcome(this.status, this.body, {this.committed = false, this.written = const <StoredDocument>[], this.removed = const <Located>[]});
 
   final int status;
   final Map<String, Object?> body;
   final bool committed;
-  final List<Map<String, Object?>> catalog;
-  final List<Map<String, Object?>> deleted;
+  final List<StoredDocument> written;
+  final List<Located> removed;
 }
 
 /// How to reverse one written document: its content before (null when the
@@ -77,8 +77,6 @@ class FakeChanges {
     final List<Map<String, Object?>> conflicts = <Map<String, Object?>>[];
     final List<Map<String, Object?>> invalidDocuments = <Map<String, Object?>>[];
     final List<Map<String, Object?>> applied = <Map<String, Object?>>[];
-    final List<Map<String, Object?>> catalog = <Map<String, Object?>>[];
-    final List<Map<String, Object?>> deleted = <Map<String, Object?>>[];
     final List<_Write> writes = <_Write>[];
     final List<_Inverse> inverses = <_Inverse>[];
     for (final Change change in set.documents) {
@@ -102,13 +100,11 @@ class FakeChanges {
       if (origin != null) {
         writes.add(_Write(origin, null));
         inverses.add(_Inverse(origin, base!.content, base.revision, null));
-        deleted.add(<String, Object?>{'kind': change.kind.wireName, 'id': origin.id});
       }
       if (change.delete) {
         writes.add(_Write(location, null));
         inverses.add(_Inverse(location, current!.content, current.revision, null));
         applied.add(_version(change.kind, change.id, current.revision, null));
-        deleted.add(<String, Object?>{'kind': change.kind.wireName, 'id': change.id});
         continue;
       }
       final Map<String, Object?> source = copyJson(change.source)! as Map<String, Object?>;
@@ -123,7 +119,6 @@ class FakeChanges {
       writes.add(_Write(location, content));
       inverses.add(_Inverse(location, current?.content, revision, hash));
       applied.add(<String, Object?>{..._version(change.kind, change.id, revision, hash), if (origin != null) 'from': <String, Object?>{'id': origin.id}});
-      catalog.add(_entry(location, revision, hash));
     }
     if (conflicts.isNotEmpty) {
       final Map<String, Object?> body = <String, Object?>{'status': 'conflict', 'idempotencyKey': set.idempotencyKey, 'conflicts': conflicts};
@@ -135,11 +130,12 @@ class FakeChanges {
       _remember(_Record(set.idempotencyKey, requestHash, 'invalid', null, body, const <_Inverse>[]));
       return Outcome(422, body);
     }
-    return _commit(set.idempotencyKey, requestHash, writes, inverses, applied, catalog, deleted);
+    return _commit(set.idempotencyKey, requestHash, writes, inverses, applied);
   }
 
-  /// Undoes an applied change. A later edit to one of its documents comes
-  /// back as a conflict. [scopes] checks the token may apply every kind.
+  /// Undoes an applied change as a new write: each document comes back with
+  /// the next revision. A later edit to one of its documents comes back as a
+  /// conflict. [scopes] checks the token may apply every kind.
   Outcome undo(String changeId, String key, void Function(Set<DocumentKind> kinds) scopes) {
     final String? original = _byChangeId[changeId];
     final _Record? record = original == null ? null : _load(original);
@@ -152,8 +148,6 @@ class FakeChanges {
     if (replayed != null) return replayed;
     final List<Map<String, Object?>> conflicts = <Map<String, Object?>>[];
     final Map<String, Map<String, Object?>> result = <String, Map<String, Object?>>{};
-    final List<Map<String, Object?>> catalog = <Map<String, Object?>>[];
-    final List<Map<String, Object?>> deleted = <Map<String, Object?>>[];
     final List<_Write> writes = <_Write>[];
     final List<_Inverse> inverses = <_Inverse>[];
     // A move's old id is answered with from naming the id it leaves again.
@@ -169,17 +163,24 @@ class FakeChanges {
         conflicts.add(_conflict(location.kind, location.id, inverse.afterHash == null ? null : inverse.afterRevision, inverse.afterHash, current));
         continue;
       }
-      writes.add(_Write(location, inverse.before));
       final String? before = inverse.before;
-      final int revision = before == null ? inverse.afterRevision : revisionOf(before);
-      final String? hash = before == null ? null : 'sha256:${sha256Text(before)}';
+      String? content = before;
+      final int revision;
+      if (before == null) {
+        revision = inverse.afterRevision;
+      } else if (revisioned.contains(location.kind)) {
+        // An undo is a new write: revisions only go up, so an open editor never sees one go back.
+        final String? partner = movedBack['${location.kind.wireName}\n${location.id}'];
+        final int last = current?.revision ?? (partner == null ? inverse.afterRevision : _afterRevision(record, location.kind, partner) ?? inverse.afterRevision);
+        revision = (last > revisionOf(before) ? last : revisionOf(before)) + 1;
+        content = _revised(before, revision);
+      } else {
+        revision = revisionOf(before);
+      }
+      writes.add(_Write(location, content));
+      final String? hash = content == null ? null : 'sha256:${sha256Text(content)}';
       inverses.add(_Inverse(location, current?.content, revision, hash));
       result['${location.kind.wireName}\n${location.id}'] = _version(location.kind, location.id, revision, hash);
-      if (hash == null) {
-        deleted.add(<String, Object?>{'kind': location.kind.wireName, 'id': location.id});
-      } else {
-        catalog.add(_entry(location, revision, hash));
-      }
     }
     if (conflicts.isNotEmpty) {
       final Map<String, Object?> body = <String, Object?>{'status': 'conflict', 'idempotencyKey': key, 'conflicts': conflicts};
@@ -195,7 +196,22 @@ class FakeChanges {
       result.remove('$kind\n$leaving');
       restored['from'] = <String, Object?>{'id': leaving};
     });
-    return _commit(key, requestHash, writes, inverses, <Map<String, Object?>>[...result.values], catalog, deleted);
+    return _commit(key, requestHash, writes, inverses, <Map<String, Object?>>[...result.values]);
+  }
+
+  /// The revision [record] left document [id] of [kind] at.
+  static int? _afterRevision(_Record record, DocumentKind kind, String id) {
+    for (final _Inverse inverse in record.inverses) {
+      if (inverse.location.kind == kind && inverse.location.id == id) return inverse.afterRevision;
+    }
+    return null;
+  }
+
+  /// [content] with [revision] in place of its own, written as an apply
+  /// writes it; text that is not one JSON object stays as it is.
+  static String _revised(String content, int revision) {
+    final Map<String, Object?>? json = parseObject(content).json;
+    return json == null ? content : prettyJson(<String, Object?>{...json, 'revision': revision});
   }
 
   /// `GET /v1/changes/{key}`.
@@ -205,21 +221,23 @@ class FakeChanges {
     return <String, Object?>{'idempotencyKey': key, 'status': record.status, 'result': record.result};
   }
 
-  Outcome _commit(String key, String requestHash, List<_Write> writes, List<_Inverse> inverses, List<Map<String, Object?>> applied,
-      List<Map<String, Object?>> catalog, List<Map<String, Object?>> deleted) {
+  Outcome _commit(String key, String requestHash, List<_Write> writes, List<_Inverse> inverses, List<Map<String, Object?>> applied) {
     final String changeId = randomUuid();
     final Map<String, Object?> body = <String, Object?>{'status': 'applied', 'changeId': changeId, 'idempotencyKey': key, 'documents': applied};
+    final List<StoredDocument> written = <StoredDocument>[];
+    final List<Located> removed = <Located>[];
     for (final _Write write in writes) {
       final String? content = write.content;
       if (content == null) {
         documents.delete(write.location.path);
+        removed.add(write.location);
       } else {
-        documents.write(write.location, content);
+        written.add(documents.write(write.location, content));
       }
     }
     _remember(_Record(key, requestHash, 'applied', changeId, body, inverses));
     _byChangeId[changeId] = key;
-    return Outcome(200, body, committed: true, catalog: catalog, deleted: deleted);
+    return Outcome(200, body, committed: true, written: written, removed: removed);
   }
 
   Outcome? _replay(String key, String requestHash) {
@@ -250,7 +268,7 @@ class FakeChanges {
   void _identity(Located location, StoredDocument? current, Map<String, Object?> source, List<Map<String, Object?>> diagnostics, {Located? leaving}) {
     final Object? uuid = source['uuid'];
     if (current != null) {
-      final Object? before = sourceOf(current.content)['uuid'];
+      final Object? before = current.json?['uuid'];
       if (uuid is String && before is String && before != uuid) {
         diagnostics.add(diagnostic('error', r'$.uuid', 'an NPC keeps its uuid; clone it to make a new one', 'identity'));
       }
@@ -264,7 +282,7 @@ class FakeChanges {
         diagnostics.add(diagnostic('error', r'$.id', 'NPC id $shortId is already used by ${other.id}', 'identity'));
         return;
       }
-      if (uuid is String && uuid.isNotEmpty && sourceOf(other.content)['uuid'] == uuid) {
+      if (uuid is String && uuid.isNotEmpty && other.json?['uuid'] == uuid) {
         diagnostics.add(diagnostic('error', r'$.uuid', 'uuid $uuid is already used by ${other.id}', 'identity'));
         return;
       }
@@ -279,12 +297,9 @@ class FakeChanges {
         'baseHash': baseHash,
         'current': current == null
             ? null
-            : <String, Object?>{'revision': current.revision, 'hash': current.hash, 'source': sourceOf(current.content)},
+            : <String, Object?>{'revision': current.revision, 'hash': current.hash, 'source': current.json ?? const <String, Object?>{}},
       };
 
   static Map<String, Object?> _version(DocumentKind kind, String id, int revision, String? hash) =>
       <String, Object?>{'kind': kind.wireName, 'id': id, 'revision': revision, 'hash': hash};
-
-  static Map<String, Object?> _entry(Located location, int revision, String hash) =>
-      <String, Object?>{'kind': location.kind.wireName, 'id': location.id, 'path': location.path, 'revision': revision, 'hash': hash};
 }

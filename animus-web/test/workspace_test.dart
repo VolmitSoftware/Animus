@@ -9,6 +9,7 @@ import 'package:animus_editor/model/document_kind.dart';
 import 'package:animus_editor/state/editor_store.dart';
 import 'package:animus_editor/state/session_owner.dart';
 import 'package:animus_editor/state/workspace_coordination.dart';
+import 'package:animus_editor/state/workspace_records.dart';
 import 'package:animus_editor/state/workspace_repository.dart';
 import 'package:animus_editor/state/workspace_route.dart';
 import 'package:test/test.dart';
@@ -20,10 +21,10 @@ class RefusingRepository extends MemoryWorkspaceRepository {
   Object? refusal;
 
   @override
-  Future<void> save(WorkspaceSnapshot snapshot) async {
+  Future<void> save(WorkspaceSnapshot snapshot, {WorkspaceSnapshot? previous, Set<String>? changed}) async {
     final Object? refused = refusal;
     if (refused != null) throw refused;
-    return super.save(snapshot);
+    return super.save(snapshot, previous: previous, changed: changed);
   }
 }
 
@@ -32,9 +33,9 @@ class SlowRepository extends MemoryWorkspaceRepository {
   Completer<void>? hold;
 
   @override
-  Future<void> save(WorkspaceSnapshot snapshot) async {
+  Future<void> save(WorkspaceSnapshot snapshot, {WorkspaceSnapshot? previous, Set<String>? changed}) async {
     await hold?.future;
-    return super.save(snapshot);
+    return super.save(snapshot, previous: previous, changed: changed);
   }
 }
 
@@ -46,6 +47,8 @@ void main() {
         const WorkspaceRoute('ws-1'),
         const DocumentRoute('ws-1', DocumentKind.behavior, 'town:greet/morning'),
         const DocumentRoute('ws 2', DocumentKind.npc, 'town/guard', ViewMode.split),
+        const DocumentRoute('ws-1', DocumentKind.npc, 'town/guard', ViewMode.visual, 'movement'),
+        const DocumentRoute('ws-1', DocumentKind.npc, 'town/guard', ViewMode.code, 'movement'),
         const PairRoute('ANM1.eyJ2IjoxfQ'),
         const ServerRoute('sha256:ab', <String>['npcs', 'town/guard']),
       ];
@@ -169,14 +172,14 @@ void main() {
       final AnimusDocument greeter = store.document(DocumentKind.npc, 'examples/greeter')!;
       await store.commit(documents: <DocumentChange>[DocumentChange(DocumentKind.npc, greeter.id, '${greeter.source} ')], label: 'rename examples/greeter');
       expect(store.undoLabel, 'rename examples/greeter');
-      expect(await store.undo(), 'rename examples/greeter');
+      expect((await store.undo())?.label, 'rename examples/greeter');
       expect(store.document(DocumentKind.npc, greeter.id)!.source, greeter.source);
       expect(store.canRedo, isTrue);
       expect(store.redoLabel, 'rename examples/greeter');
       final EditorStore reloaded = EditorStore(repository: repository, schemas: SharedSchemas.embedded);
       await reloaded.openWorkspace(snapshot.id);
       expect(reloaded.redoLabel, 'rename examples/greeter');
-      expect(await store.redo(), 'rename examples/greeter');
+      expect((await store.redo())?.label, 'rename examples/greeter');
       expect(store.document(DocumentKind.npc, greeter.id)!.source, '${greeter.source} ');
       expect(store.canRedo, isFalse);
       expect(await store.redo(), isNull);
@@ -186,12 +189,13 @@ void main() {
       expect(await repository.loadHistory(snapshot.id, HistoryStack.redo), isEmpty);
     });
 
-    test('should describe a change that has no label', () {
-      bool none(DocumentChange _) => false;
-      bool all(DocumentChange _) => true;
-      expect(describeChanges(const <DocumentChange>[DocumentChange(DocumentKind.npc, 'a/b', null)], const <String>[], all), 'delete a/b');
-      expect(describeChanges(const <DocumentChange>[DocumentChange(DocumentKind.npc, 'a/b', '{}')], const <String>[], all), 'edit a/b');
-      expect(describeChanges(const <DocumentChange>[DocumentChange(DocumentKind.npc, 'a/b', '{}')], const <String>[], none), 'create a/b');
+    test('should describe a change that has no label by the names the library shows', () {
+      String? none(DocumentChange _) => null;
+      String? all(DocumentChange _) => 'Carpenter';
+      expect(describeChanges(const <DocumentChange>[DocumentChange(DocumentKind.npc, 'world/citizens-102', null)], const <String>[], all), 'delete Carpenter');
+      expect(describeChanges(const <DocumentChange>[DocumentChange(DocumentKind.npc, 'world/citizens-102', '{}')], const <String>[], all), 'edit Carpenter');
+      expect(describeChanges(const <DocumentChange>[DocumentChange(DocumentKind.npc, 'a/b', '{"name": "Baker"}')], const <String>[], none), 'create Baker');
+      expect(describeChanges(const <DocumentChange>[DocumentChange(DocumentKind.shop, 'town:fish_stall', '{}')], const <String>[], none), 'create Fish stall');
       expect(describeChanges(const <DocumentChange>[], const <String>['pack/assets/x.png'], none), 'change pack/assets/x.png');
       expect(
         describeChanges(const <DocumentChange>[DocumentChange(DocumentKind.npc, 'a/b', '{}'), DocumentChange(DocumentKind.npc, 'a/c', '{}')], const <String>[], all),

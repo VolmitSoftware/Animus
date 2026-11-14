@@ -117,6 +117,16 @@ class EditorRelayClientTest {
     }
 
     @Test
+    void shouldKeepNullFieldsInAResponseBody() throws Exception {
+        FakeRelay.Session session = connect();
+        session.send(request(7, "GET", "/v1/documents/recording/market-loop"));
+        FakeHandler.Call call = handler.calls.poll(5, TimeUnit.SECONDS);
+        call.response().complete(EditorResponse.json(200, JsonParser.parseString("{\"source\":{\"events\":[{\"slot\":\"head\",\"item\":null}]}}")));
+        JsonObject event = session.next(WAIT).getAsJsonObject("body").getAsJsonObject("source").getAsJsonArray("events").get(0).getAsJsonObject();
+        assertEquals(JsonParser.parseString("{\"slot\":\"head\",\"item\":null}"), event);
+    }
+
+    @Test
     void shouldAnswerConcurrentRequestsInCompletionOrder() throws Exception {
         FakeRelay.Session session = connect();
         session.send(request(1, "GET", "/v1/catalog?kind=npc"));
@@ -268,7 +278,7 @@ class EditorRelayClientTest {
     }
 
     @Test
-    void shouldAnswerBusyBeyondTheConcurrencyBound() throws Exception {
+    void shouldAnswerBusyWithARetryHintBeyondTheConcurrencyBound() throws Exception {
         FakeRelay.Session session = connect(settings(1024 * 1024, 1), Duration.ofSeconds(90));
         session.send(request(1, "GET", "/v1/capabilities"));
         handler.calls.poll(5, TimeUnit.SECONDS);
@@ -276,7 +286,10 @@ class EditorRelayClientTest {
         JsonObject busy = session.next(WAIT);
         assertEquals(2, busy.get("id").getAsLong());
         assertEquals(503, busy.get("status").getAsInt());
-        assertEquals("busy", busy.getAsJsonObject("body").getAsJsonObject("error").get("code").getAsString());
+        JsonObject error = busy.getAsJsonObject("body").getAsJsonObject("error");
+        assertEquals("busy", error.get("code").getAsString());
+        assertEquals(1000, error.get("retryAfterMillis").getAsLong());
+        assertEquals("1", busy.getAsJsonObject("headers").get("Retry-After").getAsString());
     }
 
     @Test
@@ -298,6 +311,21 @@ class EditorRelayClientTest {
         handler.calls.poll(5, TimeUnit.SECONDS).response().complete(EditorResponse.json(200, body));
         JsonObject answer = session.next(WAIT);
         assertEquals(413, answer.get("status").getAsInt());
+    }
+
+    @Test
+    void shouldAnswerAReplyOverTheRelaysLimitWithTooLargeEvenWhenConfiguredHigher() throws Exception {
+        FakeRelay.Session session = connect(settings(8 * 1024 * 1024, 64), Duration.ofSeconds(90));
+        session.send(request(1, "GET", "/v1/catalog"));
+        JsonObject body = new JsonObject();
+        body.addProperty("padding", "x".repeat(1024 * 1024 + 1));
+        handler.calls.poll(5, TimeUnit.SECONDS).response().complete(EditorResponse.json(200, body));
+        JsonObject answer = session.next(WAIT);
+        assertEquals(413, answer.get("status").getAsInt());
+        assertEquals("too-large", answer.getAsJsonObject("body").getAsJsonObject("error").get("code").getAsString());
+        session.send(request(2, "GET", "/v1/catalog"));
+        handler.calls.poll(5, TimeUnit.SECONDS).response().complete(EditorResponse.json(200, new JsonObject()));
+        assertEquals(200, session.next(WAIT).get("status").getAsInt(), "the connection stays up for the next request");
     }
 
     @Test

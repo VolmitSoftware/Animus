@@ -14,7 +14,9 @@ import java.util.Set;
 public record EditorRelaySettings(boolean enabled, String url, int reconnectMinSeconds, int reconnectMaxSeconds, int frameBytes,
                                   int concurrentRequests) {
     public static final String DEFAULT_URL = "wss://animus-relay-823521865655.us-central1.run.app";
-    public static final EditorRelaySettings DEFAULT = new EditorRelaySettings(true, DEFAULT_URL, 1, 60, 1024 * 1024, 64);
+    /** The relay's own {@code MAX_FRAME_BYTES}: a larger frame makes it drop the whole server connection. */
+    public static final int RELAY_FRAME_BYTES = 1024 * 1024;
+    public static final EditorRelaySettings DEFAULT = new EditorRelaySettings(true, DEFAULT_URL, 1, 60, RELAY_FRAME_BYTES, 64);
     private static final Set<String> LOOPBACK = Set.of("127.0.0.1", "localhost", "[::1]", "::1");
 
     public EditorRelaySettings {
@@ -23,6 +25,7 @@ public record EditorRelaySettings(boolean enabled, String url, int reconnectMinS
         require("relayReconnectMinSeconds", reconnectMinSeconds, 1, 3600);
         require("relayReconnectMaxSeconds", reconnectMaxSeconds, reconnectMinSeconds, 3600);
         require("relayFrameBytes", frameBytes, 64 * 1024, 16 * 1024 * 1024);
+        frameBytes = Math.min(frameBytes, RELAY_FRAME_BYTES);
         require("relayConcurrentRequests", concurrentRequests, 1, 1024);
     }
 

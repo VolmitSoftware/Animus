@@ -1,16 +1,22 @@
 /// The display style shared by menu icons and holograms (core's HoloParts
-/// iconDisplayStyle): eighteen fields in four collapsed groups. Unset fields
-/// keep the surface's default, which the help line names.
+/// iconDisplayStyle): eighteen fields in four groups, folded into one
+/// section inside a larger form, or laid out open as a tab of their own.
+/// Unset fields keep the surface's default, which the help line names.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
-import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
 import '../../model/animus_document.dart';
 import 'component_editor.dart';
+import '../../ui/section.dart';
 import 'gui_fields.dart';
+import '../select/animus_select.dart';
+import '../suggest/autocomplete_input.dart';
+import '../../ui/field.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../../ui/number_input.dart';
+import '../../ui/stack.dart';
 
 enum _StyleKind { choice, boolean, integer, number, color }
 
@@ -59,7 +65,16 @@ List<String> get displayStyleKeys => <String>[
     ];
 
 class DisplayStyleEditor extends StatelessWidget {
-  const DisplayStyleEditor({required this.style, required this.onChanged, required this.path, required this.diagnostics, this.title = 'Style', this.note, super.key});
+  const DisplayStyleEditor({
+    required this.style,
+    required this.onChanged,
+    required this.path,
+    required this.diagnostics,
+    this.title = 'Style',
+    this.note,
+    this.whole = false,
+    super.key,
+  });
 
   final JsonMap style;
 
@@ -73,6 +88,10 @@ class DisplayStyleEditor extends StatelessWidget {
   /// A line on what the surface's defaults are.
   final String? note;
 
+  /// The style is a tab of its own: the groups sit on the page, the common
+  /// two and any in use open, instead of inside one folded section.
+  final bool whole;
+
   void _set(String key, Object? value) {
     final JsonMap next = withField(style, key, value);
     onChanged(next.isEmpty ? null : next, key);
@@ -84,42 +103,51 @@ class DisplayStyleEditor extends StatelessWidget {
     final Object? value = style[field.key];
     final String label = humanizeKey(field.key);
     final Widget child = switch (field.kind) {
-      _StyleKind.choice => GuiSelect(id: id, value: asString(value), options: field.choices, allowNone: true, noneLabel: 'default', onChanged: (String? v) => _set(field.key, v)),
-      _StyleKind.boolean => GuiSelect(
+      _StyleKind.choice => AnimusSelect.values(
+          id: id,
+          value: asString(value),
+          values: field.choices,
+          labels: <String, String>{for (final String choice in field.choices) choice: '${choice[0].toUpperCase()}${choice.substring(1)}'},
+          allowNone: true,
+          noneLabel: 'Default',
+          onChanged: (String? v) => _set(field.key, v),
+        ),
+      _StyleKind.boolean => AnimusSelect.values(
           id: id,
           value: value == null ? null : '$value',
-          options: const <String>['true', 'false'],
+          values: const <String>['true', 'false'],
           allowNone: true,
-          noneLabel: 'default',
+          noneLabel: 'Default',
           labels: const <String, String>{'true': 'On', 'false': 'Off'},
           onChanged: (String? v) => _set(field.key, v == null ? null : v == 'true'),
         ),
-      _StyleKind.integer => GuiNumberInput(id: id, value: asInt(value), label: label, onChanged: (num? v) => _set(field.key, v)),
-      _StyleKind.number => GuiNumberInput(id: id, value: asDouble(value), integer: false, label: label, onChanged: (num? v) => _set(field.key, v)),
-      _StyleKind.color => GuiTextInput(id: id, value: asString(value) ?? '', label: label, placeholder: '#AARRGGBB', onChanged: (String v) => _set(field.key, v.trim().isEmpty ? null : v.trim())),
+      _StyleKind.integer => NumberInput(id: id, value: asInt(value), label: label, onChanged: (num? v) => _set(field.key, v)),
+      _StyleKind.number => NumberInput(id: id, value: asDouble(value), integer: false, label: label, onChanged: (num? v) => _set(field.key, v)),
+      _StyleKind.color => AutocompleteInput(id: id, value: asString(value) ?? '', label: label, placeholder: '#AARRGGBB', onChanged: (String v) => _set(field.key, v.trim().isEmpty ? null : v.trim()), profile: FieldProfile.none),
     };
-    return GuiRow(label: label, forId: id, help: field.help, problems: diagnosticsAt(diagnostics, fieldPath), child: child);
+    return Field(label: label, forId: id, help: field.help, problems: diagnosticsAt(diagnostics, fieldPath), child: child);
   }
 
   @override
   Widget build(BuildContext context) {
+    final List<Widget> groups = <Widget>[
+      for (final (int index, (String group, String tip, List<_StyleField> fields)) in _groups.indexed)
+        AppSection(
+          title: group,
+          tip: tip,
+          count: fields.where((_StyleField field) => style.containsKey(field.key)).length,
+          open: whole && (index < 2 || fields.any((_StyleField field) => style.containsKey(field.key) || diagnosticsAt(diagnostics, childPath(path, field.key)).isNotEmpty)),
+          children: <Widget>[for (final _StyleField field in fields) _field(field)],
+        ),
+    ];
+    if (whole) return stack(spacing: 16, <Widget>[if (note != null) mutedText(note!), ...groups]);
     final int set = style.length;
-    return GuiSection(
+    return AppSection(
       title: title,
-      tip: 'How the display entity is drawn. Unset fields keep the default each help line names.',
+      tip: note == null ? 'How it is drawn. Empty fields keep the default.' : 'How it is drawn. Empty fields keep the default. ${note!}',
       count: set == 0 ? null : set,
       open: diagnosticsAt(diagnostics, path, nested: true).isNotEmpty,
-      children: <Widget>[
-        if (note != null) dom.p(classes: 'animus-muted', <Widget>[Component.text(note!)]),
-        for (final (String group, String tip, List<_StyleField> fields) in _groups)
-          GuiSection(
-            title: group,
-            tip: tip,
-            count: fields.where((_StyleField field) => style.containsKey(field.key)).length,
-            open: false,
-            children: <Widget>[for (final _StyleField field in fields) _field(field)],
-          ),
-      ],
+      children: groups,
     );
   }
 }

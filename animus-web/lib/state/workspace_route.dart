@@ -9,7 +9,7 @@
 /// #/workspace/<id>/new[/<kind>][?folder=&name=]  create a document, prefilled
 /// #/workspace/<id>/list/<kind>               every document of one kind
 /// #/workspace/<id>/sync                      push to or pull from a server
-/// #/workspace/<id>/<kind>/<docId>?view=code  one document (docId URI-encoded)
+/// #/workspace/<id>/<kind>/<docId>?view=code&tab=movement  one document (docId URI-encoded), opened on a tab
 /// #/citizens                                 convert a Citizens save locally
 /// #/pair/<code>                              a pairing link
 /// #/server/<serverId>/<rest>                 a connected server
@@ -51,6 +51,7 @@ sealed class EditorRoute {
         if (parts.length == 3 && parts[2] == 'recordings') return RecordingListRoute(decode(parts[1]));
         if (parts.length == 3 && parts[2] == 'new') return NewDocumentRoute(decode(parts[1]));
         if (parts.length == 3 && parts[2] == 'sync') return SyncRoute(decode(parts[1]));
+        if (parts.length == 3 && parts[2] == 'import') return CitizensRoute(workspaceId: decode(parts[1]));
         if (parts.length == 4 && parts[2] == 'new' && parts[3] == NewDocumentRoute.conversationPath) return NewDocumentRoute.conversation(decode(parts[1]));
         if (parts.length == 4 && parts[2] == 'new') {
           String? folder;
@@ -70,12 +71,15 @@ sealed class EditorRoute {
           final DocumentKind? kind = DocumentKind.parse(parts[2]);
           if (kind == null) return WorkspaceRoute(decode(parts[1]));
           ViewMode view = ViewMode.visual;
+          String? tab;
           for (final String pair in query.split('&')) {
             if (pair.startsWith('view=')) {
               view = ViewMode.values.asNameMap()[pair.substring(5)] ?? ViewMode.visual;
+            } else if (pair.startsWith('tab=') && pair.length > 4) {
+              tab = decode(pair.substring(4));
             }
           }
-          return DocumentRoute(decode(parts[1]), kind, decode(parts[3]), view);
+          return DocumentRoute(decode(parts[1]), kind, decode(parts[3]), view, tab);
         }
         return const HomeRoute();
       case 'citizens':
@@ -106,18 +110,21 @@ class HomeRoute extends EditorRoute {
   int get hashCode => 0;
 }
 
-/// The local Citizens save converter.
+/// The import wizard (Citizens, Shopkeepers, Denizen saves). Opened from a
+/// workspace's nav it stays in that workspace's frame.
 class CitizensRoute extends EditorRoute {
-  const CitizensRoute();
+  const CitizensRoute({this.workspaceId});
+
+  final String? workspaceId;
 
   @override
-  String format() => '#/citizens';
+  String format() => workspaceId == null ? '#/citizens' : '#/workspace/${Uri.encodeComponent(workspaceId!)}/import';
 
   @override
-  bool operator ==(Object other) => other is CitizensRoute;
+  bool operator ==(Object other) => other is CitizensRoute && other.workspaceId == workspaceId;
 
   @override
-  int get hashCode => 1;
+  int get hashCode => Object.hash(1, workspaceId);
 }
 
 class WorkspaceRoute extends EditorRoute {
@@ -261,27 +268,32 @@ class SyncRoute extends EditorRoute {
 }
 
 class DocumentRoute extends EditorRoute {
-  const DocumentRoute(this.workspaceId, this.kind, this.documentId, [this.view = ViewMode.visual]);
+  const DocumentRoute(this.workspaceId, this.kind, this.documentId, [this.view = ViewMode.visual, this.tab]);
 
   final String workspaceId;
   final DocumentKind kind;
   final String documentId;
   final ViewMode view;
 
-  DocumentRoute withView(ViewMode next) => DocumentRoute(workspaceId, kind, documentId, next);
+  /// The form tab the page opens on (an NPC's `movement`); null keeps the
+  /// one last used.
+  final String? tab;
+
+  DocumentRoute withView(ViewMode next) => DocumentRoute(workspaceId, kind, documentId, next, tab);
 
   @override
   String format() {
     final String base = '#/workspace/${Uri.encodeComponent(workspaceId)}/${kind.wireName}/${Uri.encodeComponent(documentId)}';
-    return view == ViewMode.visual ? base : '$base?view=${view.name}';
+    final List<String> query = <String>[if (view != ViewMode.visual) 'view=${view.name}', if (tab != null) 'tab=${Uri.encodeComponent(tab!)}'];
+    return query.isEmpty ? base : '$base?${query.join('&')}';
   }
 
   @override
   bool operator ==(Object other) =>
-      other is DocumentRoute && other.workspaceId == workspaceId && other.kind == kind && other.documentId == documentId && other.view == view;
+      other is DocumentRoute && other.workspaceId == workspaceId && other.kind == kind && other.documentId == documentId && other.view == view && other.tab == tab;
 
   @override
-  int get hashCode => Object.hash(workspaceId, kind, documentId, view);
+  int get hashCode => Object.hash(workspaceId, kind, documentId, view, tab);
 }
 
 class PairRoute extends EditorRoute {

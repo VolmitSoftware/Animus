@@ -26,6 +26,7 @@ import '../../mc/mesh/mc_mesh.dart';
 import '../../mc/rigs/mc_rig_mesher.dart';
 import '../../mc/scene/mc_camera.dart';
 import '../../mc/scene/mc_math.dart';
+import '../../mc/scene/mc_occlusion.dart';
 import '../../mc/scene/mc_scene.dart';
 import '../../mc/terrain/terrain_models.dart';
 import '../terrain/terrain_assets.dart';
@@ -114,8 +115,17 @@ final class McGlRenderer {
   }
 
   /// Draws one frame. Returns the number of scene nodes still waiting for a
-  /// texture or model, so the stage can say what is missing.
-  int render(McScene scene, McCamera camera, {required double widthPx, required double heightPx, required double dpr}) {
+  /// texture or model, so the stage can say what is missing. Nodes whose
+  /// [occluders] box is in [culled] (a neighbour in the way) are not drawn.
+  int render(
+    McScene scene,
+    McCamera camera, {
+    required double widthPx,
+    required double heightPx,
+    required double dpr,
+    Map<String, McOccluder> occluders = const <String, McOccluder>{},
+    Set<McOccluder> culled = const <McOccluder>{},
+  }) {
     if (_gl.lost) return 0;
     final web.WebGL2RenderingContext gl = _gl.gl;
     final int w = (widthPx * dpr).round(), h = (heightPx * dpr).round();
@@ -154,11 +164,12 @@ final class McGlRenderer {
     final McGlow? glow = scene.glow;
     if (glow != null) _outline(glow, projection, widthPx: widthPx, heightPx: heightPx);
 
-    // Blended terrain (water, stained glass) last, over everything opaque.
-    for (final bool blended in <bool>[false, true]) {
-      if (blended) gl.depthMask(false);
+    // Blended terrain (water, stained glass) after everything opaque.
+    for (final int pass in const <int>[0, 1]) {
+      if (pass == 1) gl.depthMask(false);
       for (final McSceneNode node in scene.nodes) {
-        if ((node is McMeshNode && node.translucent) != blended) continue;
+        if (culled.isNotEmpty && culled.contains(occluders[node.key])) continue;
+        if (pass != (node is McMeshNode && node.translucent ? 1 : 0)) continue;
         final _Drawable? d = _nodes[node.key];
         if (d == null) continue;
         _setDraw(d.model, d.glint ? _glint : _noOverlay, opacity: d.opacity);

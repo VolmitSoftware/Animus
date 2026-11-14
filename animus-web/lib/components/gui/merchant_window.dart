@@ -1,5 +1,7 @@
-/// A native shop drawn as the villager trading screen: the title and the
-/// offer column, each offer as cost A, the optional cost B, an arrow and
+/// A native shop drawn as the villager trading screen at GUI scale 3 and
+/// fitted to its frame's width and height ([WindowFit]): the title and the
+/// offers given (one page of them, as the client lists a few at a time), each
+/// offer as cost A, the optional cost B, an arrow and
 /// the result. Money shows as a gold nugget with its price beside it. An
 /// offer that ran out or that the player may not take is crossed out, as
 /// the client draws it. With [MerchantWindow.onOffer] each offer is a
@@ -11,12 +13,10 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
-import '../../config/docs_links.dart';
 import '../../logic/gui/shop_offers.dart';
-import '../info_tip.dart';
 import '../mc/mc_item_icons.dart';
-import 'chest_window.dart';
 import 'gui_fields.dart';
+import 'window_fit.dart';
 
 class MerchantWindow extends StatefulWidget {
   const MerchantWindow({
@@ -26,8 +26,12 @@ class MerchantWindow extends StatefulWidget {
     this.selected,
     this.crossed = const <String>{},
     this.onOffer,
+    this.band = false,
     super.key,
   });
+
+  /// The frame sits in the short band above a form.
+  final bool band;
 
   final String title;
   final List<ShopOffer> offers;
@@ -65,15 +69,18 @@ class _MerchantWindowState extends State<MerchantWindow> {
 
   @override
   Widget build(BuildContext context) {
-    return dom.div(classes: 'animus-merchant-screen', attributes: <String, String>{'role': 'group', 'aria-label': component.label}, <Widget>[
-      dom.div(classes: 'animus-chest-title', <Widget>[
-        withTip(GuiStyledText(component.title, defaultColor: mcInventoryTitleColor), 'The villager trading screen. Static entries and offers whose mode is off do not show here.', docs: Docs.shops),
+    return WindowFit(
+      band: component.band,
+      child: dom.div(classes: 'animus-merchant-screen', attributes: <String, String>{'role': 'group', 'aria-label': component.label}, <Widget>[
+        dom.div(classes: 'animus-chest-title', <Widget>[
+          GuiStyledText(component.title, defaultColor: mcInventoryTitleColor),
+        ]),
+        if (component.offers.isEmpty)
+          const dom.p(classes: 'animus-merchant-empty', <Widget>[Component.text('No trades to show.')])
+        else
+          dom.ol(classes: 'animus-merchant-offers', <Widget>[for (final ShopOffer offer in component.offers) _offer(offer)]),
       ]),
-      if (component.offers.isEmpty)
-        const dom.p(classes: 'animus-merchant-empty', <Widget>[Component.text('No offers: every entry is static or its mode is off.')])
-      else
-        dom.ol(classes: 'animus-merchant-offers animus-inset-focus', <Widget>[for (final ShopOffer offer in component.offers) _offer(offer)]),
-    ]);
+    );
   }
 
   Widget _offer(ShopOffer offer) {

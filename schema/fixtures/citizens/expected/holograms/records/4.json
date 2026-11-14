@@ -1,0 +1,19 @@
+{
+  "name": "Whitewasher",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000704",
+  "traits": {
+    "type": "VILLAGER",
+    "location": {
+      "world": "world",
+      "x": 8.5,
+      "y": 64,
+      "z": 0.5
+    },
+    "hologramtrait": {
+      "lines": {
+        "0": "Plain",
+        "1": "&fWhite"
+      }
+    }
+  }
+}

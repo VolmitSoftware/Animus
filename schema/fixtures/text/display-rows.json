@@ -1,0 +1,526 @@
+{
+  "description": "Legacy colour and format codes as the client draws them, read by core's HologramCodesContractTest and animus-web's display rows test. Each vector's lines are one text display (separate false: joined with newlines) or one entity each (separate true). rows lists every drawn row's runs, top first; color null is the display's default colour.",
+  "vectors": [
+    {
+      "name": "a colour and a format carry over a newline",
+      "lines": [
+        "&cA&lB\nC"
+      ],
+      "separate": false,
+      "rows": [
+        [
+          {
+            "text": "A",
+            "color": "#ff5555",
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          },
+          {
+            "text": "B",
+            "color": "#ff5555",
+            "bold": true,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ],
+        [
+          {
+            "text": "C",
+            "color": "#ff5555",
+            "bold": true,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ]
+      ]
+    },
+    {
+      "name": "two lines of one text display carry",
+      "lines": [
+        "&cA&lB",
+        "C"
+      ],
+      "separate": false,
+      "rows": [
+        [
+          {
+            "text": "A",
+            "color": "#ff5555",
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          },
+          {
+            "text": "B",
+            "color": "#ff5555",
+            "bold": true,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ],
+        [
+          {
+            "text": "C",
+            "color": "#ff5555",
+            "bold": true,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ]
+      ]
+    },
+    {
+      "name": "two lines as separate entities start fresh",
+      "lines": [
+        "&cA&lB",
+        "C"
+      ],
+      "separate": true,
+      "rows": [
+        [
+          {
+            "text": "A",
+            "color": "#ff5555",
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          },
+          {
+            "text": "B",
+            "color": "#ff5555",
+            "bold": true,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ],
+        [
+          {
+            "text": "C",
+            "color": null,
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ]
+      ]
+    },
+    {
+      "name": "a line holding a newline carries inside its own entity",
+      "lines": [
+        "&cA\nB",
+        "C"
+      ],
+      "separate": true,
+      "rows": [
+        [
+          {
+            "text": "A",
+            "color": "#ff5555",
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ],
+        [
+          {
+            "text": "B",
+            "color": "#ff5555",
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ],
+        [
+          {
+            "text": "C",
+            "color": null,
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ]
+      ]
+    },
+    {
+      "name": "a colour clears the format before it",
+      "lines": [
+        "&l&cA"
+      ],
+      "separate": false,
+      "rows": [
+        [
+          {
+            "text": "A",
+            "color": "#ff5555",
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ]
+      ]
+    },
+    {
+      "name": "a reset returns to the default style",
+      "lines": [
+        "&cA&rB"
+      ],
+      "separate": false,
+      "rows": [
+        [
+          {
+            "text": "A",
+            "color": "#ff5555",
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          },
+          {
+            "text": "B",
+            "color": null,
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ]
+      ]
+    },
+    {
+      "name": "a colour on the next row replaces the carried one",
+      "lines": [
+        "&cA\n&eB"
+      ],
+      "separate": false,
+      "rows": [
+        [
+          {
+            "text": "A",
+            "color": "#ff5555",
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ],
+        [
+          {
+            "text": "B",
+            "color": "#ffff55",
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ]
+      ]
+    },
+    {
+      "name": "a reset mid-line holds over the newline",
+      "lines": [
+        "&c&lA&rB\nC"
+      ],
+      "separate": false,
+      "rows": [
+        [
+          {
+            "text": "A",
+            "color": "#ff5555",
+            "bold": true,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          },
+          {
+            "text": "B",
+            "color": null,
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ],
+        [
+          {
+            "text": "C",
+            "color": null,
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ]
+      ]
+    },
+    {
+      "name": "a format before any colour keeps the default colour and carries",
+      "lines": [
+        "&oA",
+        "B"
+      ],
+      "separate": false,
+      "rows": [
+        [
+          {
+            "text": "A",
+            "color": null,
+            "bold": false,
+            "italic": true,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ],
+        [
+          {
+            "text": "B",
+            "color": null,
+            "bold": false,
+            "italic": true,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ]
+      ]
+    },
+    {
+      "name": "formats add to each other",
+      "lines": [
+        "&e&nA&mB",
+        "C"
+      ],
+      "separate": false,
+      "rows": [
+        [
+          {
+            "text": "A",
+            "color": "#ffff55",
+            "bold": false,
+            "italic": false,
+            "underline": true,
+            "strikethrough": false,
+            "obfuscated": false
+          },
+          {
+            "text": "B",
+            "color": "#ffff55",
+            "bold": false,
+            "italic": false,
+            "underline": true,
+            "strikethrough": true,
+            "obfuscated": false
+          }
+        ],
+        [
+          {
+            "text": "C",
+            "color": "#ffff55",
+            "bold": false,
+            "italic": false,
+            "underline": true,
+            "strikethrough": true,
+            "obfuscated": false
+          }
+        ]
+      ]
+    },
+    {
+      "name": "obfuscated carries until a colour",
+      "lines": [
+        "&kA\nB&aC"
+      ],
+      "separate": false,
+      "rows": [
+        [
+          {
+            "text": "A",
+            "color": null,
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": true
+          }
+        ],
+        [
+          {
+            "text": "B",
+            "color": null,
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": true
+          },
+          {
+            "text": "C",
+            "color": "#55ff55",
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ]
+      ]
+    },
+    {
+      "name": "an &x hex colour carries with its formats",
+      "lines": [
+        "&x&1&d&9&7&6&cA&lB",
+        "C"
+      ],
+      "separate": false,
+      "rows": [
+        [
+          {
+            "text": "A",
+            "color": "#1d976c",
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          },
+          {
+            "text": "B",
+            "color": "#1d976c",
+            "bold": true,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ],
+        [
+          {
+            "text": "C",
+            "color": "#1d976c",
+            "bold": true,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ]
+      ]
+    },
+    {
+      "name": "an &# hex colour clears formats like any colour",
+      "lines": [
+        "&l&nA&#ff8800B",
+        "C"
+      ],
+      "separate": false,
+      "rows": [
+        [
+          {
+            "text": "A",
+            "color": null,
+            "bold": true,
+            "italic": false,
+            "underline": true,
+            "strikethrough": false,
+            "obfuscated": false
+          },
+          {
+            "text": "B",
+            "color": "#ff8800",
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ],
+        [
+          {
+            "text": "C",
+            "color": "#ff8800",
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ]
+      ]
+    },
+    {
+      "name": "a section-sign line carries the same way",
+      "lines": [
+        "§cA§lB",
+        "C"
+      ],
+      "separate": false,
+      "rows": [
+        [
+          {
+            "text": "A",
+            "color": "#ff5555",
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          },
+          {
+            "text": "B",
+            "color": "#ff5555",
+            "bold": true,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ],
+        [
+          {
+            "text": "C",
+            "color": "#ff5555",
+            "bold": true,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "obfuscated": false
+          }
+        ]
+      ]
+    }
+  ]
+}

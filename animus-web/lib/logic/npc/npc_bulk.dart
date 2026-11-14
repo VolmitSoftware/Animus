@@ -1,5 +1,5 @@
-/// Bulk edits on selected NPCs. Each operation returns every document it
-/// writes, so the browser commits them as one change set (one undo step,
+/// Bulk edits on picked NPCs. Each operation returns every document it
+/// writes, so the list commits them as one change set (one undo step,
 /// one server apply), and says which NPCs it left alone and why.
 library;
 
@@ -132,16 +132,15 @@ class NpcFolderEdit {
 
 /// Renames folder [from] to [to]: every NPC in [from] and the folders below
 /// it moves along, so `town/market/baker` becomes `<to>/market/baker` for a
-/// rename of `town`. All of them move or none. [entries] is every NPC of the
-/// workspace.
-NpcFolderEdit renameNpcFolder(List<NpcEntry> entries, String from, String to) {
+/// rename of `town`. All of them move or none. [entries] holds at least the
+/// NPCs inside [from]; [taken] is every NPC key of the workspace.
+NpcFolderEdit renameNpcFolder(List<NpcEntry> entries, String from, String to, Set<String> taken) {
   if (from.isEmpty) return NpcFolderEdit.refused('npcs/ itself cannot be renamed or moved.');
   if (to == from) return NpcFolderEdit.refused('npcs/$from/ already has that name.');
   if (to.isEmpty) return NpcFolderEdit.refused('Give the folder a name.');
   final String? problem = npcFolderProblem(to);
   if (problem != null) return NpcFolderEdit.refused(problem);
   if (npcFolderWithin(to, from)) return NpcFolderEdit.refused('npcs/$from/ cannot move into itself.');
-  final Set<String> keys = <String>{for (final NpcEntry entry in entries) entry.key};
   final List<NpcEntry> inside = <NpcEntry>[
     for (final NpcEntry entry in entries)
       if (npcFolderWithin(entry.folder, from)) entry,
@@ -152,16 +151,11 @@ NpcFolderEdit renameNpcFolder(List<NpcEntry> entries, String from, String to) {
     final String? deeper = npcFolderProblem(folder);
     if (deeper != null) return NpcFolderEdit.refused('${entry.key} would land in $deeper');
     final String key = npcIdIn(folder, entry.localId);
-    if (keys.contains(key)) return NpcFolderEdit.refused('$key already exists.');
+    if (taken.contains(key)) return NpcFolderEdit.refused('$key already exists.');
     changes.addAll(_moveChanges(entry, folder));
   }
   return NpcFolderEdit(changes, inside.length);
 }
-
-/// Moves folder [from] (with its subtree) into [parent]; the empty parent
-/// is `npcs/` itself.
-NpcFolderEdit moveNpcFolder(List<NpcEntry> entries, String from, String parent) =>
-    renameNpcFolder(entries, from, npcIdIn(parent, npcFolderName(from)));
 
 /// Switches a module on or off. A module the NPC lacks is added only when
 /// `{"enabled": true}` is a whole valid setting ([creatableModules]).
@@ -232,6 +226,17 @@ List<String> moduleKeys(Iterable<NpcEntry> entries, {Set<String> plugins = const
       if (used.contains(module) || offersModule(module, plugins)) module,
   ];
   return <String>[...toggleable, ...(used.difference(toggleable.toSet()).toList()..sort())];
+}
+
+/// The modules [entries] carry, the ones with an on/off switch first (in
+/// [toggleableModules] order), then the rest by key.
+List<String> selectionModules(Iterable<NpcEntry> entries) {
+  final Set<String> used = <String>{for (final NpcEntry entry in entries) ...entry.modules.keys};
+  return <String>[
+    for (final String module in toggleableModules)
+      if (used.contains(module)) module,
+    ...(used.difference(toggleableModules.toSet()).toList()..sort()),
+  ];
 }
 
 /// One line for a toast: what changed and what was skipped.

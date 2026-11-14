@@ -6,16 +6,22 @@
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
-import 'package:jaspr/dom.dart' as dom;
 
 import '../../logic/npc/route_model.dart';
+import '../../logic/plural.dart';
 import '../../logic/terrain/terrain_path.dart';
 import '../../logic/terrain/terrain_volume.dart';
 import '../../mc/npc/npc_scene.dart';
 import '../../mc/npc/route_overlay.dart';
 import '../../mc/scene/mc_math.dart';
 import '../../mc/scene/mc_scene.dart';
+import '../../logic/stage/stage_status.dart';
+import '../../logic/terrain/terrain_access.dart';
+import '../../ui/action_row.dart';
+import '../../ui/toggle_choice.dart' show ChoiceOption;
 import '../mc/mc_stage.dart';
+import '../mc/mc_stage_frame.dart';
+import '../terrain/terrain_controls.dart';
 import '../terrain/stage_terrain.dart';
 
 class RouteView3d extends StatefulWidget {
@@ -42,6 +48,7 @@ class _RouteView3dState extends State<RouteView3d> {
   late final StageTerrain _terrain = StageTerrain(_loaded, radius: 16, keyPrefix: 'route-terrain');
   TerrainVolume? _reported;
   (double, double, double)? _framed;
+  bool _layersFit = true;
 
   @override
   void initState() {
@@ -88,21 +95,55 @@ class _RouteView3dState extends State<RouteView3d> {
       presentable: true,
     );
     // Points are block coordinates; markers stand at the block centre.
-    final NpcScene routed = withRoute(base, component.spec, (origin.x - 0.5, origin.y, origin.z - 0.5));
+    final List<RouteEntry> nodes = component.spec.nodes;
+    final int picked = nodes.indexWhere((RouteEntry node) => node is RouteNode && node.x == focus.$1 && node.y == focus.$2 && node.z == focus.$3);
+    final NpcScene routed = withRoute(base, component.spec, (origin.x - 0.5, origin.y, origin.z - 0.5), selected: picked < 0 ? null : picked);
     // The camera frames the focus alone; framing the whole route would put it far back behind the hills of a long one.
     final McScene scene = McScene(routed.scene.nodes, frame: base.scene.frame, glow: routed.scene.glow, ground: routed.scene.ground);
     _stage.show(_terrain.apply(scene), routed.texts, yawDeg: 0, frame: _framed != focus, reach: _terrain.reach);
     _framed = focus;
   }
 
+  static const List<ChoiceOption<String>> _layers = <ChoiceOption<String>>[ChoiceOption<String>('terrain', 'Terrain')];
+
+  void _show(Set<String> next) => _terrain.toggle(next.contains('terrain'));
+
   @override
   Widget build(BuildContext context) {
-    return dom.div(classes: 'animus-route-3d', attributes: <String, String>{'data-route-3d': '', 'data-terrain-meshes': '${_terrain.on ? _terrain.result?.nodes.length ?? 0 : 0}'}, <Widget>[
-      dom.div(classes: 'animus-npc-preview-bar', <Widget>[
-        Button.ghost(label: 'Reset view', onPressed: _stage.resetCamera),
-        _terrain.controls('route-3d-terrain'),
-      ]),
-      McStage(controller: _stage, label: '3D route view', terrainNote: _terrain.note),
-    ]);
+    final TerrainLine? terrain = _terrain.line(near: 'this route');
+    return McStageFrame(
+      title: '3D view',
+      controller: _stage,
+      label: '3D route view',
+      attributes: <String, String>{'data-route-3d': '', 'data-terrain-meshes': '${_terrain.on ? _terrain.result?.nodes.length ?? 0 : 0}'},
+      toggles: <Widget>[
+        if (_terrain.available)
+          StageShowControls(
+            id: 'route-3d',
+            options: _layers,
+            values: <String>{if (_terrain.on) 'terrain'},
+            onChanged: _show,
+            fits: _layersFit,
+            onFits: (bool fits) => setState(() => _layersFit = fits),
+          ),
+      ],
+      more: stageShowEntries(
+        options: _terrain.available ? _layers : const <ChoiceOption<String>>[],
+        values: <String>{if (_terrain.on) 'terrain'},
+        onChanged: _show,
+        layers: !_layersFit,
+        radius: _terrain.available && _terrain.on ? _terrain.radius : null,
+        onRadius: _terrain.setRadius,
+      ),
+      actions: <RowAction>[
+        if (terrain?.line == 'Terrain did not load') RowAction('Retry terrain', _terrain.retry, icon: ArcaneIcon.refreshCw(), iconOnly: true),
+      ],
+      status: <StageNote>[
+        if (terrain?.line case final String line) StageNote(line, terrain?.detail),
+        StageNote(countOf(component.spec.placed.length, 'point')),
+      ],
+      empty: component.spec.placed.isEmpty,
+      emptyMessage: 'No points yet',
+    );
   }
 }

@@ -9,6 +9,7 @@ import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 
 import 'error_copy.dart';
+import 'page_activity.dart';
 import 'transport.dart';
 
 /// Opens [path] at [url] in this browser.
@@ -23,17 +24,25 @@ Future<ServerTransport> openBrowserTransport(ConnectionPath path, String url, St
   }
 }
 
-/// Calls [wake] when the browser comes back online or the tab becomes visible.
+/// Calls [wake] when the browser comes back online or the tab becomes
+/// visible, and keeps [PageActivity.hidden] current.
 void onBrowserWake(void Function() wake) {
+  PageActivity.hidden = web.document.visibilityState == 'hidden';
   web.window.addEventListener('online', ((web.Event _) => wake()).toJS);
   web.document.addEventListener('visibilitychange', ((web.Event _) {
-    if (web.document.visibilityState == 'visible') wake();
+    PageActivity.hidden = web.document.visibilityState == 'hidden';
+    if (!PageActivity.hidden) wake();
   }).toJS);
 }
 
 String _trimSlash(String url) => url.endsWith('/') ? url.substring(0, url.length - 1) : url;
 
 Duration requestTimeout = const Duration(seconds: 15);
+
+/// How long an event stream or the relay subscription may take to open: a
+/// path that hangs (a pending Local Network Access prompt, a dead proxy)
+/// fails over instead of stalling the connection.
+Duration openTimeout = const Duration(seconds: 10);
 
 /// `<directUrl>/animus/v1/...` over fetch, events over a WebSocket whose
 /// first frame is `event-auth`.
@@ -102,7 +111,12 @@ class DirectTransport implements ServerTransport {
     final String socketUrl = '${_base.replaceFirst(RegExp('^http'), 'ws')}/v1/events';
     final _DirectSubscription subscription = _DirectSubscription(socketUrl, token, _open.remove);
     _open.add(subscription);
-    await subscription.opened;
+    try {
+      await subscription.opened.timeout(openTimeout);
+    } on TimeoutException {
+      await subscription.cancel();
+      throw const TransportFailure(ConnectionPath.direct, 'timeout', 'the event stream did not open');
+    }
     return subscription;
   }
 
@@ -179,8 +193,10 @@ class _DirectSubscription implements EventSubscription {
 }
 
 /// One WebSocket to `<relayUrl>/app`, subscribed to the server's
-/// fingerprint. Requests and the event stream are relay frames.
-class RelayTransport implements ServerTransport {
+/// fingerprint. Requests and the event stream are relay frames. The socket
+/// stays open while the server is away from the relay: requests and streams
+/// in flight fail, and [serverBack] completes when the relay says it is back.
+class RelayTransport implements ServerTransport, RelayLink {
   RelayTransport(String url, this.fingerprint) : _url = '${_trimSlash(url)}/app';
 
   final String _url;
@@ -192,9 +208,19 @@ class RelayTransport implements ServerTransport {
   int _nextId = 1;
   bool _closed = false;
   bool _online = false;
+  Completer<void> _back = Completer<void>();
 
   @override
   ConnectionPath get path => ConnectionPath.relay;
+
+  @override
+  bool get serverOnline => _online && !_closed;
+
+  @override
+  bool get isClosed => _closed;
+
+  @override
+  Future<void> get serverBack => _back.future;
 
   Future<void> open() {
     try {
@@ -216,23 +242,39 @@ class RelayTransport implements ServerTransport {
       }
     }).toJS);
     _socket.addEventListener('close', ((web.CloseEvent event) => _fail(_subscribed.isCompleted ? 'dropped' : 'relay-unreachable', 'close ${event.code}')).toJS);
-    final Timer timer = Timer(requestTimeout, () => _fail('relay-unreachable', 'no subscribed frame'));
+    final Timer timer = Timer(openTimeout, () => _fail('relay-unreachable', 'no subscribed frame'));
     return _subscribed.future.whenComplete(timer.cancel);
+  }
+
+  /// The server left the relay: what was in flight fails, the socket stays.
+  void _serverLeft() {
+    const TransportFailure failure = TransportFailure(ConnectionPath.relay, 'server-left');
+    for (final Completer<ApiResponse> waiting in _pending.values) {
+      waiting.completeError(failure);
+    }
+    _pending.clear();
+    for (final _RelaySubscription stream in _streams.values.toList()) {
+      stream.finish(failure);
+    }
+    _streams.clear();
+    if (_back.isCompleted) _back = Completer<void>();
   }
 
   void _frame(Map<String, Object?> frame) {
     switch (frame['type']) {
       case 'subscribed':
         _online = frame['online'] == true;
-        if (_subscribed.isCompleted) return;
-        if (_online) {
-          _subscribed.complete();
-        } else {
-          _fail('server-offline');
-        }
+        if (!_online && _back.isCompleted) _back = Completer<void>();
+        if (!_subscribed.isCompleted) _subscribed.complete();
       case 'status':
-        _online = frame['online'] == true;
-        if (!_online) _fail('server-left');
+        final bool online = frame['online'] == true;
+        if (online == _online) return;
+        _online = online;
+        if (!online) {
+          _serverLeft();
+        } else if (!_back.isCompleted) {
+          _back.complete();
+        }
       case 'response':
         final int id = (frame['id']! as num).toInt();
         final Completer<ApiResponse>? waiting = _pending.remove(id);
@@ -258,6 +300,7 @@ class RelayTransport implements ServerTransport {
   void _fail(String code, [String? detail]) {
     if (_closed) return;
     _closed = true;
+    if (!_back.isCompleted) _back.complete();
     final TransportFailure failure = TransportFailure(ConnectionPath.relay, code, detail);
     if (!_subscribed.isCompleted) _subscribed.completeError(failure);
     for (final Completer<ApiResponse> waiting in _pending.values) {
@@ -308,14 +351,14 @@ class RelayTransport implements ServerTransport {
     _streams[id] = stream;
     final Completer<ApiResponse> answer = Completer<ApiResponse>();
     _pending[id] = answer;
-    final ApiResponse response = await answer.future.timeout(requestTimeout, onTimeout: () {
+    final ApiResponse response = await answer.future.timeout(openTimeout, onTimeout: () {
       _pending.remove(id);
       throw const TransportFailure(ConnectionPath.relay, 'timeout', 'the event stream did not open');
     });
     if (!response.ok) {
       _streams.remove(id);
       stream.refused('${response.status} ${response.errorCode ?? ''}'.trim());
-      throw StreamRefused(response.status, response.errorCode ?? 'refused');
+      throw StreamRefused(response.status, response.errorCode ?? 'refused', retryAfter: response.retryAfter);
     }
     return stream;
   }

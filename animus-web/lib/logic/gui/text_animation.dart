@@ -12,6 +12,7 @@ import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import 'gui_expression.dart';
 import 'gui_json.dart';
+import 'gui_text.dart';
 
 final RegExp _token = RegExp(r'\|animation\.([a-z0-9_:/-]{1,256})\|');
 
@@ -78,6 +79,36 @@ String textAnimationFrame(String id, JsonMap document, int nowMs) {
   if (frames.isEmpty) return '';
   final Object? frame = frames[textAnimationFrameIndex(id, document, nowMs)];
   return frame is String ? frame : '';
+}
+
+/// What the preview draws for [frame]: a frame of codes alone (`[FF0000]`)
+/// styles the text after it in game, so [sample] follows it, as Gloss Web
+/// shows such frames. An empty frame stays empty.
+String textAnimationPreviewText(String frame, {String sample = 'Sample text'}) =>
+    frame.isEmpty || guiPlainText(frame).trim().isNotEmpty ? frame : '$frame$sample';
+
+/// The colour a frame of codes alone (`[FF3300]`, `&6`) gives the text
+/// after it, as 0xRRGGBB; null for an empty frame or one with text of its
+/// own.
+int? textAnimationFrameColour(String frame) {
+  if (frame.isEmpty || guiPlainText(frame).trim().isNotEmpty) return null;
+  return guiTextRuns(textAnimationPreviewText(frame)).firstOrNull?.color;
+}
+
+/// Whether every frame of [frames] is a colour, so the editor shows them as
+/// swatches.
+bool colourFramesOnly(List<String> frames) => frames.isNotEmpty && frames.every((String frame) => textAnimationFrameColour(frame) != null);
+
+/// Frames on one page of the frame list.
+const int framesPerPage = 30;
+
+/// The frames [page] of a list of [count] shows, [start] to [end] (end not
+/// included), with the page clamped into the [pages] there are.
+({int start, int end, int page, int pages}) framePage(int count, int page) {
+  final int pages = count == 0 ? 1 : (count + framesPerPage - 1) ~/ framesPerPage;
+  final int shown = page.clamp(0, pages - 1);
+  final int start = shown * framesPerPage;
+  return (start: start, end: (start + framesPerPage).clamp(0, count), page: shown, pages: pages);
 }
 
 /// The frame index at [nowMs]: `tick = floorDiv(nowMs, frameIntervalMs)`,

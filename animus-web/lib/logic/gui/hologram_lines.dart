@@ -65,3 +65,8 @@ Object? withHologramLineKind(Object? line, String kind) {
   if (kind == 'text' && kept.isEmpty) return hologramLineDefault(kind);
   return <String, Object?>{kind: hologramLineDefault(kind), ...kept};
 }
+
+/// [value] as a position or angle field shows it: two decimals, so an anchor
+/// copied from a player's exact spot reads -22.41. The document keeps every
+/// digit until the field is edited.
+num? shownCoordinate(num? value) => value == null ? null : (value * 100).round() / 100;

@@ -1,357 +1,54 @@
-/* Trait groups: the group editor, the NPC groups list, the Effective view and
-   bulk assignment in the NPC browser. Grey chrome throughout; a value set by
-   a group reads in normal text and one the NPC sets itself in muted text, so
-   the source column never relies on colour alone. */
-.animus-npc-groups,
-.animus-group-skins {
-  display: grid;
-  gap: 0.375rem;
-  min-width: 0;
-}
+/* Movement: the recording drawing and the route map are hand-drawn
+   surfaces in shadcn tokens, grey chrome with pink only for the picked
+   point and the scrub's dot. Fields and lists around them are the kit's. */
 
-.animus-chip-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.375rem;
-  min-width: 0;
-}
-
-.animus-chip-line > .animus-select {
-  flex: 0 1 11rem;
-  min-width: 8rem;
-}
-
-.animus-chip-row {
-  display: contents;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.animus-chip {
-  min-height: var(--animus-control-h);
-  padding: 0;
-}
-
-.animus-chip[draggable='true'] {
-  cursor: grab;
-}
-
-.animus-chip.is-dragging {
-  opacity: 0.5;
-}
-
-.animus-chip.is-warning::after {
-  border-style: dashed;
-  border-color: var(--animus-warning);
-}
-
-.animus-chip-label {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--animus-control-h);
-  padding: 0 var(--animus-control-pad-sm);
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  overflow-wrap: anywhere;
-}
-
-button.animus-chip-label {
-  cursor: pointer;
-}
-
-button.animus-chip-label:hover {
-  text-decoration: underline;
-}
-
-.animus-made-note {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.375rem;
-  margin: 0;
-}
-
-.animus-effective-wrap {
-  min-width: 0;
-  overflow-x: auto;
-}
-
-.animus-effective-table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-  font-size: var(--animus-text-sm);
-}
-
-.animus-effective-table th,
-.animus-effective-table td {
-  padding: 0.375rem 0.5rem;
-  border: 1px solid var(--animus-border);
-  text-align: left;
-  vertical-align: top;
-  overflow-wrap: anywhere;
-}
-
-.animus-effective-table thead th {
-  color: var(--animus-muted);
-  font-weight: 500;
-}
-
-.animus-effective-table th:first-child {
-  width: 34%;
-}
-
-.animus-effective-table th:last-child {
-  width: 9rem;
-}
-
-.animus-effective-table tr.is-own td code {
-  color: var(--animus-muted);
-}
-
-.animus-effective-json pre {
-  margin: 0.5rem 0 0;
-  max-height: 24rem;
-  overflow: auto;
-  padding: 0.5rem;
-  border: 1px solid var(--animus-border);
-  background: var(--animus-panel);
-  font-size: var(--animus-text-xs);
-}
-
-.animus-npc-group-assign {
-  display: grid;
-  gap: 0.5rem;
-  padding: 0.5rem;
-  border: 1px solid var(--animus-border);
-  background: var(--animus-panel);
-  min-width: 0;
-}
-
-.animus-npc-group-assign h3 {
-  margin: 0;
-  font-size: var(--animus-text-md);
-}
-
-.animus-npc-group-assign-fields {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 1rem;
-  min-width: 0;
-}
-
-.animus-npc-group-assign .animus-row {
-  flex-wrap: wrap;
-}
-
-@media (max-width: 760px) {
-  .animus-npc-group-assign-fields {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .animus-npc-group-assign-fields .animus-npc-filter-select {
-    display: grid;
-    grid-template-columns: 4rem minmax(0, 1fr);
-  }
-
-  .animus-npc-group-assign-fields .animus-select {
-    width: 100%;
-    min-width: 0;
-  }
-
-  /* Phone: each row becomes a block (field, then value and source on one
-     line) instead of three columns too narrow for a group button. */
-  .animus-effective-table,
-  .animus-effective-table tbody,
-  .animus-effective-table tr {
-    display: block;
-  }
-
-  .animus-effective-table thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-  }
-
-  .animus-effective-table tr {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.25rem 0.5rem;
-    padding: 0.375rem 0.5rem;
-    border: 1px solid var(--animus-border);
-    border-top-width: 0;
-  }
-
-  .animus-effective-table tbody tr:first-child {
-    border-top-width: 1px;
-  }
-
-  .animus-effective-table tbody th,
-  .animus-effective-table tbody td {
-    display: block;
-    padding: 0;
-    border: 0;
-  }
-
-  .animus-effective-table tbody th {
-    flex-basis: 100%;
-  }
-
-  .animus-effective-table tbody td:nth-child(2) {
-    flex: 1 1 8rem;
-    min-width: 0;
-  }
-}
-
-/* Recordings: the recording view, its path preview and scrub, and the list.
-   The path is grey chrome like the route grid; pink marks only the scrub
-   position, its facing and the played part of the scrub track. */
+/* Recording: the preview beside the details when there is room for both,
+   above them otherwise. */
 .animus-recording {
+  container-type: inline-size;
+}
+
+.animus-recording-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 34rem);
-  grid-template-areas: 'facts stage' 'events stage';
-  align-items: start;
-  gap: var(--animus-gap) 1.5rem;
+  grid-template-areas: 'preview' 'form';
+  gap: 1rem 1.5rem;
   min-width: 0;
 }
 
-.animus-recording.is-preview {
-  grid-template-columns: minmax(0, 34rem);
-  grid-template-areas: 'stage';
-}
-
-/* Split view gives the recording half the width: one column, as on a
-   narrow screen. */
-.animus-views.is-split .animus-recording:not(.is-preview) {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: 'facts' 'stage' 'events';
-}
-
-.animus-recording-facts {
-  grid-area: facts;
-  display: grid;
-  gap: 0.5rem;
+.animus-recording-preview {
+  grid-area: preview;
   min-width: 0;
 }
 
-.animus-recording-facts p {
-  margin: 0;
-}
-
-.animus-recording-facts dl {
-  display: grid;
-  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
-  gap: 0.375rem 1rem;
-  margin: 0;
-}
-
-.animus-recording-facts dt {
-  color: var(--animus-muted);
-}
-
-.animus-recording-facts dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.animus-recording-stage {
-  grid-area: stage;
-  display: grid;
-  gap: 0.5rem;
+.animus-recording-form {
+  grid-area: form;
   min-width: 0;
+}
+
+@container (min-width: 68rem) {
+  .animus-recording-body {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 32rem);
+    grid-template-areas: 'form preview';
+    align-items: start;
+  }
 }
 
 .animus-recording-path {
-  display: block;
-  width: 100%;
+  align-self: center;
+  width: min(100%, 50vh);
   aspect-ratio: 1 / 1;
-  border: 1px solid var(--animus-border);
-  background: var(--animus-panel);
 }
 
-.animus-recording-line {
+.animus-recording-line,
+.animus-recording-start,
+.animus-recording-event,
+.animus-recording-marker,
+.animus-recording-heading {
   fill: none;
-  stroke: var(--animus-muted);
+  stroke: var(--muted-foreground);
   stroke-width: 2px;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
-}
-
-.animus-recording-start {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2px;
-  vector-effect: non-scaling-stroke;
-}
-
-.animus-recording-event {
-  fill: var(--animus-panel);
-  stroke: var(--animus-muted);
-  stroke-width: 1px;
-  vector-effect: non-scaling-stroke;
-}
-
-.animus-recording-marker {
-  fill: var(--primary);
-  stroke: #0d0d0f;
-  stroke-width: 1px;
-  vector-effect: non-scaling-stroke;
-}
-
-html.light .animus-recording-marker {
-  stroke: #ffffff;
-}
-
-.animus-recording-heading {
-  stroke: var(--primary);
-  stroke-width: 2px;
-  vector-effect: non-scaling-stroke;
-}
-
-.animus-recording-legend {
-  margin: 0;
-  font-size: var(--animus-text-sm);
-}
-
-.animus-recording-scrub {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 0.5rem 0.75rem;
-}
-
-.animus-recording-range {
-  width: 100%;
-  min-height: var(--animus-control-h);
-  margin: 0;
-  accent-color: var(--primary);
-}
-
-.animus-recording-readout {
-  grid-column: 1 / -1;
-  font-family: var(--font-mono);
-  font-size: var(--animus-text-sm);
-  overflow-wrap: anywhere;
-}
-
-/* Details form above the facts, and the trim controls under the scrub. The
-   cut part of the path and of the trim bar stays grey; the kept part is the
-   foreground colour, not pink, so pink still marks only the scrub. */
-.animus-recording-details {
-  display: grid;
-  gap: 0.75rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--animus-border);
-  min-width: 0;
 }
 
 .animus-recording-line.is-cut {
@@ -359,172 +56,189 @@ html.light .animus-recording-marker {
   opacity: 0.6;
 }
 
-.animus-recording-line.is-kept {
-  stroke: currentColor;
+.animus-recording-line.is-kept,
+.animus-recording-start {
+  stroke: var(--foreground);
 }
 
-.animus-recording-trim {
+.animus-recording-event {
+  fill: var(--card);
+  stroke-width: 1px;
+}
+
+.animus-recording-marker {
+  fill: var(--primary);
+  stroke: var(--background);
+  stroke-width: 1px;
+}
+
+.animus-recording-heading {
+  stroke: var(--primary);
+}
+
+/* Route editor: the map (or 3D) first; the points list beside it when the
+   editor is wide, under the picked point when it is narrow. The list is as
+   tall as its points up to the library's cap. */
+.animus-route-editor {
+  container-type: inline-size;
   display: grid;
-  gap: 0.5rem;
+  gap: 0.75rem;
   min-width: 0;
 }
 
-.animus-recording-trim-bar {
-  position: relative;
-  height: 0.5rem;
-  border: 1px solid var(--animus-border);
-  background: var(--animus-panel);
-}
-
-.animus-recording-trim-bar span {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: var(--trim-from, 0%);
-  right: calc(100% - var(--trim-to, 100%));
-  background: currentColor;
-}
-
-.animus-recording-trim-actions {
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.animus-recording-events {
-  grid-area: events;
+.animus-route-body {
   display: grid;
-  gap: 0.5rem;
+  grid-template-areas: 'view' 'point' 'points';
+  gap: 0.75rem;
   min-width: 0;
 }
 
-.animus-recording-events h2 {
-  margin: 0;
-  font-size: var(--animus-text-lg);
+.animus-route-view {
+  grid-area: view;
+  min-width: 0;
 }
 
-.animus-recording-events ol {
+.animus-route-point {
+  grid-area: point;
+  min-width: 0;
+}
+
+.animus-route-points {
+  grid-area: points;
+  min-width: 0;
+}
+
+@container (min-width: 52rem) {
+  .animus-route-body {
+    grid-template-columns: minmax(0, 60vh) minmax(18rem, 24rem);
+    grid-template-areas: 'view points' 'point points';
+    justify-content: start;
+  }
+}
+
+/* The map, shared by the route editor and the NPC position grid: grid lines,
+   surface tiles (one image pixel per block), links, points and labels. */
+.animus-route-grid-wrap {
   display: grid;
   gap: 0.25rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  max-width: 34rem;
 }
 
-.animus-recording-events li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem 0.5rem;
-  min-width: 0;
-}
-
-.animus-recording-events li:not(.is-past) {
-  color: var(--animus-muted);
-}
-
-.animus-recording-event-text {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.animus-recording-list {
-  display: grid;
-  gap: var(--animus-gap);
-}
-
-.animus-recording-list h1 {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  margin: 0;
-}
-
-.animus-recording-table-wrap {
-  overflow-x: auto;
-  min-width: 0;
-}
-
-.animus-recording-table {
+.animus-route-grid {
   width: 100%;
-  border-collapse: collapse;
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--border);
+  background: var(--card);
+  touch-action: none;
+  user-select: none;
 }
 
-.animus-recording-table :is(th, td) {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--animus-border);
-  text-align: left;
-  vertical-align: top;
-  overflow-wrap: anywhere;
+/* The route map: 1.5rem a block, so a short route is small, up to the
+   width and half the window's height. */
+.animus-route-grid.animus-route-map {
+  width: min(100%, 45vh, calc(var(--route-span) * 1.5rem));
 }
 
-.animus-recording-table thead th {
-  color: var(--animus-muted);
-  font-weight: 400;
+.animus-route-grid.is-adding {
+  cursor: crosshair;
 }
 
-.animus-recording-table tbody th {
-  font-weight: 400;
+.animus-route-gridline {
+  stroke: var(--border);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
 }
 
-.animus-recording-table tbody th a {
+.animus-route-gridline.is-axis {
+  stroke: var(--muted-foreground);
+}
+
+.animus-route-terrain {
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+.animus-route-link,
+.animus-route-wander {
+  fill: none;
+  stroke: var(--muted-foreground);
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+}
+
+.animus-route-link.is-mesh,
+.animus-route-wander {
+  stroke-width: 1px;
+  stroke-dasharray: 4 3;
+}
+
+.animus-route-wander {
+  fill: color-mix(in srgb, var(--muted-foreground) 10%, transparent);
+}
+
+.animus-route-link.is-junction {
+  stroke-width: 1.5px;
+  stroke-dasharray: 2 3;
+}
+
+/* A leg the straight walk cannot climb, or drops too far on. */
+.animus-route-link.is-steep {
+  stroke: var(--warning);
+  stroke-dasharray: 2 2;
+}
+
+.animus-route-npc {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+}
+
+.animus-route-dot {
+  fill: var(--foreground);
+  stroke: var(--background);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+  cursor: grab;
+}
+
+.animus-route-dot:focus {
+  outline: none;
+}
+
+.animus-route-dot:focus-visible {
+  stroke: var(--ring);
+  stroke-width: 4px;
+}
+
+.animus-route-node.is-guide .animus-route-dot {
+  fill: var(--muted-foreground);
+}
+
+.animus-route-node.is-selected .animus-route-dot {
+  fill: var(--primary);
+  stroke-width: 2px;
+}
+
+/* A point inside a block, below the surface, floating or in water. */
+.animus-route-node.is-flagged .animus-route-dot {
+  stroke: var(--destructive);
+  stroke-width: 3px;
+}
+
+.animus-route-label {
+  fill: var(--background);
   font-family: var(--font-mono);
+  font-weight: 600;
+  pointer-events: none;
 }
 
-.animus-recording-table .animus-badge {
-  margin-left: 0.5rem;
+.animus-route-label.is-npc {
+  fill: currentColor;
 }
 
-@media (max-width: 1100px) {
-  .animus-recording {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'facts' 'stage' 'events';
+@media (max-width: 760px) {
+  .animus-route-grid-wrap {
+    max-width: none;
   }
-}
-
-/* Phones: facts label above value, a 44 px scrub track, and the table as
-   one labelled block per recording. */
-@media (max-width: 520px) {
-  .animus-recording-facts dl {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.125rem;
-  }
-
-  .animus-recording-facts dd + dt {
-    margin-top: 0.5rem;
-  }
-
-  .animus-recording-table thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-  }
-
-  .animus-recording-table tr {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    margin-bottom: 0.5rem;
-    border: 1px solid var(--animus-border);
-  }
-
-  .animus-recording-table :is(th, td) {
-    border: 0;
-    padding: 0.25rem 0.75rem;
-  }
-
-  .animus-recording-table td::before {
-    color: var(--animus-muted);
-    margin-right: 0.5rem;
-  }
-
-  .animus-recording-table td:nth-of-type(1)::before { content: 'Length'; }
-  .animus-recording-table td:nth-of-type(2)::before { content: 'Frames'; }
-  .animus-recording-table td:nth-of-type(3)::before { content: 'Events'; }
-  .animus-recording-table td:nth-of-type(4)::before { content: 'World'; }
-  .animus-recording-table td:nth-of-type(5)::before { content: 'Size'; }
-}
-
-.animus-npc-group-assign [data-npc='group-assign-reach'] {
-  font-size: var(--animus-text-sm);
 }

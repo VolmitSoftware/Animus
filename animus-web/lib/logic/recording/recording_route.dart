@@ -39,6 +39,23 @@ JsonMap? recordingRoute(Recording recording) {
   return <String, Object?>{'schemaVersion': 1, 'waitTicks': 0, 'points': points};
 }
 
+/// The path an NPC playing the recording [json] walks, as a route the
+/// preview draws ([recordingRoute]); null when it has fewer than two frames.
+/// Kept per JSON object, as the preview asks on every build.
+JsonMap? recordingPathOf(Object? json) {
+  if (json is! Map<String, Object?>) return null;
+  final JsonMap path = _paths[json] ??= _path(Recording.parse(json));
+  return path.isEmpty ? null : path;
+}
+
+/// [recordingRoute], empty for no path (an [Expando] holds no null).
+JsonMap _path(Recording? recording) {
+  final JsonMap? route = recording == null ? null : recordingRoute(recording);
+  return route ?? const <String, Object?>{};
+}
+
+final Expando<JsonMap> _paths = Expando<JsonMap>('recording paths');
+
 List<JsonMap> _points(Recording recording, double spacing) {
   final List<RecordingFrame> frames = recording.frames;
   final RecordingOrigin origin = recording.origin;

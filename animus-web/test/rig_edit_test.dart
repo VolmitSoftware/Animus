@@ -269,7 +269,7 @@ void main() {
     });
 
     test('should keep resources through a stored round trip', () async {
-      final WorkspaceSnapshot decoded = WorkspaceSnapshot.decode(store.workspace!.encode());
+      final WorkspaceSnapshot decoded = (await store.repository.load(store.workspace!.id))!;
       expect(decoded.resources.keys, store.workspace!.resources.keys);
       expect(isResourcePath('pack/assets/animus/textures/item/a.png'), isTrue);
       expect(isResourcePath('pack/out/pack.zip'), isFalse);

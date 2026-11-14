@@ -6,7 +6,6 @@ library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/schema_fields.dart';
@@ -17,6 +16,12 @@ import '../gui/gui_fields.dart';
 import '../info_tip.dart';
 import '../inspect/inspect_fields.dart';
 import 'item_slots.dart';
+import '../select/animus_select.dart';
+import '../../ui/field.dart';
+import 'npc_layout.dart';
+import '../../ui/action_row.dart';
+import '../../ui/stack.dart';
+import '../../ui/problem_text.dart';
 
 const List<String> _stored = <String>['minecraft:arrow', 'minecraft:bread', 'minecraft:emerald'];
 
@@ -30,21 +35,19 @@ class NpcInventorySlots extends StatelessWidget {
   /// The `inventory` object, or null.
   final Object? value;
 
-  /// The whole new `inventory`, null to remove it.
-  final void Function(Object? value) onChanged;
+  /// The whole new `inventory`, null to remove it, and [from], the object
+  /// the slot editor worked it out from when that is ahead of [value].
+  final void Function(Object? value, {Object? from}) onChanged;
   final List<Diagnostic> diagnostics;
 
   @override
   Widget build(BuildContext context) {
     if (value == null) {
-      return dom.div(classes: 'animus-row', <Widget>[
-        const dom.span(classes: 'animus-gui-help', <Widget>[Component.text('No stored items.')]),
-        Button.secondary(
-          label: 'Add an inventory',
-          size: ButtonSize.small,
-          onPressed: () => onChanged(<String, Object?>{'size': 9, 'slots': <String, Object?>{}}),
-        ),
-      ]);
+      return ActionRow(
+        label: 'Inventory',
+        leading: <Widget>[mutedText('No stored items.')],
+        secondary: <RowAction>[RowAction('Add an inventory', () => onChanged(<String, Object?>{'size': 9, 'slots': <String, Object?>{}}))],
+      );
     }
     final JsonMap inventory = asMap(value);
     final JsonMap slots = asMap(inventory['slots']);
@@ -53,52 +56,53 @@ class NpcInventorySlots extends StatelessWidget {
     const String sizeId = 'animus-npc-inventory-size';
     return dom.div(
       classes: 'animus-npc-inventory',
+      styles: stackStyles(),
       attributes: const <String, String>{'role': 'group', 'aria-label': 'Inventory'},
       <Widget>[
-        InspectRow(
+        Field(
           label: 'Size',
-          labelFor: sizeId,
+          forId: sizeId,
           help: 'Slots, in whole rows of 9.',
           problems: diagnosticsAt(diagnostics, r'$.inventory.size'),
-          child: GuiSelect(
+          child: AnimusSelect.values(
             id: sizeId,
             value: '$size',
-            options: <String>[for (final int option in inventorySizes) '$option'],
+            values: <String>[for (final int option in inventorySizes) '$option'],
             labels: <String, String>{for (final int option in inventorySizes) '$option': '$option slots, ${option ~/ 9} row${option == 9 ? '' : 's'}'},
             onChanged: (String? next) => onChanged(<String, Object?>{...inventory, 'size': int.parse(next ?? '9')}),
           ),
         ),
-        ItemSlots(
-          id: 'animus-npc-inventory',
-          label: 'Inventory slots',
-          tip: 'An item id and its stack count. Drag a slot onto another to trade them; right click empties one.',
-          cells: <ItemSlotCell>[
-            for (final int slot in inventoryGrid(inventory))
-              ItemSlotCell(
-                key: '$slot',
-                column: slot % inventoryColumns,
-                row: slot ~/ inventoryColumns,
-                name: 'Slot $slot',
-                fieldLabel: 'Slot $slot item',
-                item: slots['$slot'] is Map<String, Object?> ? asMap(slots['$slot']) : null,
-                placeholder: 'minecraft:bread',
-                preferred: _stored,
-                problems: <SlotProblem>[
-                  if (outside.contains(slot)) (severity: 'error', message: 'Slot $slot is past the size of $size; raise the size or empty it.'),
-                  ..._problems(diagnostics, childPath(r'$.inventory.slots', '$slot')),
-                ],
-              ),
-          ],
-          onPut: (String key, JsonMap? item) => onChanged(putInventoryItem(inventory, int.parse(key), item)),
-          onMove: (String from, String to) => onChanged(swapInventorySlots(inventory, int.parse(from), int.parse(to))),
+        // In the field column, under Size.
+        Field(
+          label: 'Slots',
+          child: ItemSlots(
+            id: 'animus-npc-inventory',
+            label: 'Inventory slots',
+            tip: 'An item id and its stack count. Drag a slot onto another to trade them; right click empties one.',
+            cells: <ItemSlotCell>[
+              for (final int slot in inventoryGrid(inventory))
+                ItemSlotCell(
+                  key: '$slot',
+                  column: slot % inventoryColumns,
+                  row: slot ~/ inventoryColumns,
+                  name: 'Slot $slot',
+                  fieldLabel: 'Slot $slot item',
+                  item: slots['$slot'] is Map<String, Object?> ? asMap(slots['$slot']) : null,
+                  placeholder: 'minecraft:bread',
+                  preferred: _stored,
+                  problems: <SlotProblem>[
+                    if (outside.contains(slot)) (severity: 'error', message: 'Slot $slot is past the size of $size; raise the size or empty it.'),
+                    ..._problems(diagnostics, childPath(r'$.inventory.slots', '$slot')),
+                  ],
+                ),
+            ],
+            onPut: (String key, JsonMap? item, JsonMap? seen) => onChanged(putInventoryItem(inventory, int.parse(key), item), from: putInventoryItem(inventory, int.parse(key), seen)),
+            onMove: (String from, String to) => onChanged(swapInventorySlots(inventory, int.parse(from), int.parse(to))),
+          ),
         ),
         if (outside.isNotEmpty)
-          dom.span(classes: 'animus-gui-problem is-error', <Widget>[
-            Component.text('Slot${outside.length == 1 ? '' : 's'} ${outside.join(', ')} ${outside.length == 1 ? 'is' : 'are'} past the size of $size.'),
-          ]),
-        dom.div(classes: 'animus-row', <Widget>[
-          Button.ghost(label: 'Remove inventory', size: ButtonSize.small, onPressed: () => onChanged(null)),
-        ]),
+          problemText('Slot${outside.length == 1 ? '' : 's'} ${outside.join(', ')} ${outside.length == 1 ? 'is' : 'are'} past the size of $size.'),
+        ActionRow(label: 'Inventory', secondary: <RowAction>[RowAction('Remove inventory', () => onChanged(null))]),
       ],
     );
   }
@@ -121,20 +125,22 @@ class HireModuleFields extends StatelessWidget {
   final Map<String, Object?> node;
   final JsonMap value;
   final String path;
-  final void Function(JsonMap value) onChanged;
+
+  /// The new module value, and [from], the value the item slots worked it
+  /// out from when that is ahead of [value].
+  final void Function(JsonMap value, {JsonMap? from}) onChanged;
   final List<Diagnostic> diagnostics;
 
   @override
   Widget build(BuildContext context) {
     final List<Object?> items = asList(value['items']);
     final String itemsPath = childPath(path, 'items');
-    void putItems(List<Object?> next) => onChanged(asMap(writeIn(value, <JsonStep>['items'], next.isEmpty ? null : next)));
-    return dom.div(classes: 'animus-hire-fields', <Widget>[
+    JsonMap withItems(List<Object?> next) => asMap(writeIn(value, <JsonStep>['items'], next.isEmpty ? null : next));
+    void putItems(List<Object?> next, {List<Object?>? from}) => onChanged(withItems(next), from: from == null ? null : withItems(from));
+    return fieldStack(<Widget>[
       InspectObject(schema: schema, node: node, value: value, path: path, diagnostics: diagnostics, skip: const <String>{'items'}, onChanged: onChanged),
-      dom.div(classes: 'animus-hire-items', <Widget>[
-        dom.span(classes: 'animus-gui-label', <Widget>[
-          withTip(const Component.text('Items'), 'Items one hire costs, at most $hireItemLimit. They fill from the left.'),
-        ]),
+      dom.div(classes: 'animus-hire-items', styles: stackStyles(), <Widget>[
+        withTip(const Text('Items', size: FontSize.sm, weight: FontWeight.w500), 'Items one hire costs, at most $hireItemLimit. They fill from the left.'),
         ItemSlots(
           id: 'animus-hire-items',
           label: 'Hire items',
@@ -155,11 +161,11 @@ class HireModuleFields extends StatelessWidget {
           ],
           // The list has no gaps: an empty slot edits the next free one.
           selectAs: (String key) => int.parse(key) > items.length ? '${items.length}' : key,
-          onPut: (String key, JsonMap? item) => putItems(putHireItem(items, int.parse(key), item)),
+          onPut: (String key, JsonMap? item, JsonMap? seen) => putItems(putHireItem(items, int.parse(key), item), from: putHireItem(items, int.parse(key), seen)),
           onMove: (String from, String to) => putItems(moveHireItem(items, int.parse(from), int.parse(to))),
         ),
         for (final Diagnostic problem in diagnosticsAt(diagnostics, itemsPath))
-          dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
+          problemText(problem.message, severity: problem.severity),
       ]),
     ]);
   }

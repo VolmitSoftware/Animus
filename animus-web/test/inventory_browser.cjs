@@ -1,5 +1,6 @@
-// The NPC item slots in the built site, at 1440x900 and 390x844 in the dark
-// and light themes. Writes its own data folder (no fake server): a player
+// The NPC item slots in the built site (equipment on Look, the stored
+// inventory on Talk and trade and hire items on Modules, both Advanced), at
+// 1440x900 and 390x844 in the dark and light themes. Writes its own data folder (no fake server): a player
 // NPC with a sword and helmet, five bread in a stored inventory and a hire
 // module costing three emeralds. Then:
 //   1. equipment shows the six player slots; a click selects a slot and
@@ -26,8 +27,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const {topbarAction} = require('./support/shell.cjs');
-const {choose} = require('./support/select.cjs');
+const {topbarAction, showView, setMode} = require('./support/shell.cjs');
+const {npcTab} = require('./support/npc_tabs.cjs');
+const {choose, chooseAndWait} = require('./support/select.cjs');
 
 const site = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })()).replace(/\/$/, '');
 const shots = process.env.ANIMUS_SCREENSHOTS;
@@ -56,17 +58,17 @@ async function noSidewaysScroll(page, where) {
 }
 
 async function codeOf(page) {
-  await page.getByRole('tab', {name: 'Code'}).click();
+  await showView(page, 'code');
   const text = await page.locator('.animus-code textarea').first().inputValue();
-  await page.getByRole('tab', {name: 'Visual'}).click();
-  await page.locator('details[data-section="appearance"]').waitFor();
+  await showView(page, 'visual');
+  await page.locator('.animus-npc-tabs').waitFor();
   return JSON.parse(text);
 }
 
+/** The NPC tab that holds [id]: equipment on Look, the body on Basics, the inventory on Talk and trade, hire items on Modules. */
 async function part(page, id) {
-  const details = page.locator(`details[data-section="${id}"]`);
-  if (!(await details.evaluate((element) => element.open))) await details.locator('summary').first().click();
-  return details;
+  const tab = {appearance: 'Look', body: 'Basics', behaviour: 'Talk and trade', modules: 'Modules'}[id];
+  return npcTab(page, tab);
 }
 
 const settle = (page) => page.waitForTimeout(300);
@@ -105,7 +107,7 @@ async function suggestionsStayBelowTopBar(page, field, viewport, tag) {
   const placed = await popup.evaluate((element) => ({
     top: element.getBoundingClientRect().top,
     bottom: element.getBoundingClientRect().bottom,
-    bar: document.querySelector('.animus-topbar').getBoundingClientRect().bottom,
+    bar: document.querySelector('.ui-topbar').getBoundingClientRect().bottom,
     height: window.innerHeight,
   }));
   assert.ok(placed.top >= placed.bar && placed.bottom <= placed.height, `${tag}: item suggestions stay below the top bar, got ${JSON.stringify(placed)}`);
@@ -130,7 +132,7 @@ async function run(browser, folder, viewport, theme, tag) {
   page.on('console', (message) => { if (message.type() === 'error' && !/404|Failed to load resource/.test(message.text())) errors.push(message.text()); });
 
   await page.goto(`${site}/`);
-  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+  await page.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Open folder'}).first().click();
   await (await chooser).setFiles(folder);
@@ -138,11 +140,14 @@ async function run(browser, folder, viewport, theme, tag) {
   const workspace = /#\/workspace\/([^/?]+)/.exec(page.url())[1];
   await page.evaluate((hash) => { location.hash = hash; }, `#/workspace/${workspace}/npc/${encodeURIComponent('town/smith')}?view=visual`);
   await page.locator('#animus-main h1').waitFor();
+  // The stored inventory and the hire module are Advanced.
+  await setMode(page, 'advanced');
+  await page.locator('.animus-npc-tabs').waitFor();
 
   // 1. Equipment: six player slots, select, pick, count.
   let look = await part(page, 'appearance');
   const eq = 'animus-equipment';
-  assert.deepEqual(await keys(look, eq), ['head', 'chest', 'legs', 'feet', 'off_hand', 'main_hand'], `${tag}: player slots, armor first`);
+  assert.deepEqual(await keys(look, eq), ['head', 'chest', 'legs', 'feet', 'main_hand', 'off_hand'], `${tag}: player slots, armor first`);
   await slot(look, eq, 'off_hand').scrollIntoViewIfNeeded();
   await slot(look, eq, 'off_hand').click();
   await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'animus-equipment-item');
@@ -190,19 +195,16 @@ async function run(browser, folder, viewport, theme, tag) {
   await noSidewaysScroll(page, `${tag} equipment`);
 
   // 3. A llama shows its body slot and the set slots it cannot draw.
-  const body = await part(page, 'body');
-  const type = body.getByLabel('Body type', {exact: true});
-  await type.fill('minecraft:llama');
-  await type.press('Enter');
-  await page.keyboard.press('Escape');
-  await body.locator(':scope > summary', {hasText: 'llama'}).waitFor();
+  await part(page, 'body');
+  await chooseAndWait(page.locator('button#animus-npc-body'), 'minecraft:llama');
   look = await part(page, 'appearance');
   await look.locator(`[data-slot-grid="${eq}"] [data-slot="body"]`).waitFor();
-  const hands = ['off_hand', 'main_hand'].filter((key) => undone[key]);
-  assert.deepEqual(await keys(look, eq), ['head', 'body', ...hands], `${tag}: llama slots`);
+  const hands = ['main_hand', 'off_hand'].filter((key) => undone[key]);
+  // Column by column: the head, then the hands and the body beside it.
+  assert.deepEqual(await keys(look, eq), ['head', ...hands, 'body'], `${tag}: llama slots`);
   // Flagged as warnings here; the definition's own check makes them errors.
   assert.equal(await look.locator('.animus-item-slot.is-warning, .animus-item-slot.is-error').count(), hands.length + 1, `${tag}: the set player slots are flagged`);
-  await look.getByText('minecraft:llama bodies do not show', {exact: false}).waitFor();
+  await look.getByText('Llama bodies do not show', {exact: false}).waitFor();
   await slot(look, eq, 'body').click();
   assert.equal(await look.getByLabel('equipment.body', {exact: true}).getAttribute('placeholder'), 'minecraft:white_carpet', `${tag}: llama body placeholder`);
   await shot(page, `${tag}-02-llama`);

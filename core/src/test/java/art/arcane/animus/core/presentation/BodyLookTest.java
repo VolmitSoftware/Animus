@@ -45,7 +45,7 @@ class BodyLookTest {
     @Test void hologramLinesStackAboveTheNameWithFormattingCodes() {
         BodyLook native_ = BodyLook.of(ID, "minecraft:player", "Guard", appearance(List.of("&aQuest", "Talk to me"), true, NpcPose.STANDING));
         assertEquals("Guard", native_.profileName());
-        assertEquals(Optional.of("§aQuest\n§rTalk to me"), native_.text());
+        assertEquals(Optional.of("§aQuest\nTalk to me"), native_.text(), "lines in one display carry their style on, as the client draws it");
         assertFalse(native_.hideProfileName());
         assertTrue(native_.aboveNativeNameplate());
         BodyLook shown = BodyLook.of(ID, "minecraft:horse", "Old Bess", appearance(List.of("For hire"), true, NpcPose.STANDING));
@@ -132,9 +132,16 @@ class BodyLookTest {
         assertEquals(0x10 | 0x08, BodyLook.SEAT_FLAGS);
     }
 
-    @Test void hologramLinesAcceptHexAndTagsAndNeverTintTheNextLine() {
+    @Test void hologramLinesAcceptHexAndTagsAndTheNameStartsUnstyled() {
         BodyLook look = BodyLook.of(ID, "minecraft:horse", "&#ffaa00Old Bess", appearance(List.of("<green>Ride me", "plain"), true, NpcPose.STANDING));
-        assertEquals(Optional.of("§aRide me\n§rplain\n§r§x§f§f§a§a§0§0Old Bess"), look.text());
+        assertEquals(Optional.of("§aRide me\nplain\n§r§x§f§f§a§a§0§0Old Bess"), look.text());
+        assertEquals(Optional.of("§l§cShop\n§rGuard"), BodyLook.of(ID, "minecraft:horse", "Guard", appearance(List.of("&l&cShop"), true, NpcPose.STANDING)).text(),
+                "the name is its own field, never tinted by the lines above it");
+        HologramStyle separate = new HologramStyle("center", false, false, OptionalDouble.empty(), OptionalDouble.of(0.3), 0, 0,
+                List.of(HologramStyle.Margin.NONE, HologramStyle.Margin.NONE));
+        NpcAppearance rows = new NpcAppearance(Map.of(), List.of("&cRide me", "plain"), true, NpcPose.STANDING, Optional.empty(), separate, BodyTraits.DEFAULT);
+        assertEquals(List.of("§cRide me", "plain", "Old Bess"), BodyLook.of(ID, "minecraft:horse", "Old Bess", rows).rows().stream().map(BodyLook.TextRow::text).toList(),
+                "each row of its own display starts unstyled without a reset");
         assertTrue(BodyLook.of(ID, "minecraft:player", "<red>Guard", NpcAppearance.PLAIN).hideProfileName());
     }
 

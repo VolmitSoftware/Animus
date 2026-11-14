@@ -78,3 +78,23 @@ ShopOffer? _offer(JsonMap entry, String key) {
 ShopGoods _goods(JsonMap item, int? amount) => ShopGoods(asString(item['id']) ?? 'minecraft:barrier', amount ?? asInt(item['count']) ?? 1);
 
 String _money(double value) => value == value.roundToDouble() ? value.toInt().toString() : value.toString();
+
+/// Offers the trading screen shows at once: seven, as the client's list
+/// does; three in the band above a form, so the window stays readable at
+/// the band's height.
+int tradeOffersPerPage({required bool band}) => band ? 3 : 7;
+
+/// Page [page] (clamped) of [offers], [size] to a page, with the page count
+/// (at least one).
+({List<ShopOffer> offers, int page, int pages}) tradePage(List<ShopOffer> offers, {required int page, required int size}) {
+  final int pages = offers.isEmpty ? 1 : (offers.length + size - 1) ~/ size;
+  final int shown = page.clamp(0, pages - 1);
+  final int start = shown * size;
+  return (offers: offers.isEmpty ? const <ShopOffer>[] : offers.sublist(start, (start + size).clamp(0, offers.length)), page: shown, pages: pages);
+}
+
+/// The page of [size] offers that holds the offer at [key], or null.
+int? tradePageOf(List<ShopOffer> offers, String key, int size) {
+  final int index = offers.indexWhere((ShopOffer offer) => offer.key == key);
+  return index < 0 ? null : index ~/ size;
+}

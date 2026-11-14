@@ -1,12 +1,16 @@
 /// The blocks a stage draws along a path: every chunk slice within the
 /// radius of the path's points and legs ([terrainPathPlan]), 32 blocks tall
-/// around the path beside it, each chunk meshed on its own and its mesh
-/// kept while neither its slice, its cut nor a neighbour changed. Loads run
+/// around the path beside it and read from a taller slice on the slice grid
+/// ([terrainSliceFor]), each chunk meshed on its own and its mesh
+/// kept while neither its slice, its cut nor a neighbour changed. Slices
+/// arrive at the client's pace, nearest the start of the path first; a long
+/// path shows what has arrived every [terrainWindowBatch] slices. Loads run
 /// one at a time per window; a newer request makes an older one's result
 /// stale and it is dropped.
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import '../../logic/terrain/terrain_data.dart';
 import '../../logic/terrain/terrain_path.dart';
@@ -21,6 +25,9 @@ import 'terrain_assets.dart';
 
 /// Radii the stage and the 3D route view offer, blocks.
 const List<int> terrainRadii = <int>[8, 16, 24];
+
+/// Slices a long load shows at a time while the rest arrive.
+const int terrainWindowBatch = 32;
 
 /// The meshed window and what it knows, for drawing and for snapping.
 final class TerrainWindowResult {
@@ -60,21 +67,43 @@ final class TerrainWindow {
   final Map<(int, int), _ChunkMeshes> _meshes = <(int, int), _ChunkMeshes>{};
 
   /// Reads and meshes [plan] in [world]; positions in the meshes are
-  /// relative to [origin]. Null when a newer load started.
-  Future<TerrainWindowResult?> load(TerrainClient client, String world, TerrainPathPlan plan, {required McVec3 origin, required String keyPrefix}) async {
+  /// relative to [origin]. [onPart] gets what has arrived while a long load
+  /// goes on. Null when a newer load started.
+  Future<TerrainWindowResult?> load(TerrainClient client, String world, TerrainPathPlan plan,
+      {required McVec3 origin, required String keyPrefix, void Function(TerrainWindowResult part)? onPart}) async {
     final int generation = ++_generation;
     final TerrainAssets assets = await TerrainAssets.load();
+    Future<TerrainSlice?> read(TerrainPathChunk chunk) {
+      final ({int y, int height}) slice = terrainSliceFor(chunk);
+      return client.slice(world, chunk.cx, chunk.cz, slice.y, slice.height);
+    }
+
+    final List<Future<TerrainSlice?>> asked = plan.chunks.map(read).toList();
+    final List<TerrainSlice?> slices = <TerrainSlice?>[];
+    for (int start = 0; start < asked.length; start += terrainWindowBatch) {
+      slices.addAll(await Future.wait(asked.sublist(start, math.min(start + terrainWindowBatch, asked.length))));
+      if (generation != _generation) return null;
+      if (slices.length == asked.length || onPart == null) continue;
+      final TerrainWindowResult? part = await _mesh(slices, plan, assets, world, origin, keyPrefix, generation);
+      if (part == null) return null;
+      onPart(part);
+    }
+    return _mesh(slices, plan, assets, world, origin, keyPrefix, generation);
+  }
+
+  /// [slices] (the first of [plan]'s chunks) meshed; null when a newer load
+  /// started meanwhile.
+  Future<TerrainWindowResult?> _mesh(List<TerrainSlice?> slices, TerrainPathPlan plan, TerrainAssets assets, String world, McVec3 origin, String keyPrefix, int generation) async {
     const int height = terrainPathBelow + terrainPathAbove;
-    final List<TerrainSlice?> slices = await Future.wait(<Future<TerrainSlice?>>[
-      for (final TerrainPathChunk chunk in plan.chunks) client.slice(world, chunk.cx, chunk.cz, chunk.y, height),
-    ]);
-    if (generation != _generation) return null;
     final TerrainVolume volume = TerrainVolume();
     final Map<(int, int), String> cuts = <(int, int), String>{};
-    for (final TerrainSlice? slice in slices) {
+    for (int index = 0; index < slices.length; index++) {
+      final TerrainSlice? slice = slices[index];
       if (slice == null || slice.state != TerrainChunkState.ok) continue;
-      volume.add(slice, keep: plan.covers);
-      cuts[(slice.cx, slice.cz)] = '${slice.hash}@${slice.y}:${plan.mask(slice.cx, slice.cz)}';
+      // The slice reaches past the layers drawn; draw only those.
+      final int bottom = plan.chunks[index].y;
+      volume.add(slice, keep: plan.covers, minY: bottom, maxY: bottom + height);
+      cuts[(slice.cx, slice.cz)] = '${slice.hash}@$bottom:${plan.mask(slice.cx, slice.cz)}';
     }
     final String at = '$world:${origin.x}:${origin.y}:${origin.z}';
     final List<McMeshNode> nodes = <McMeshNode>[];

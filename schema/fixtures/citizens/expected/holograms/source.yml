@@ -1,0 +1,56 @@
+# Synthetic: hologram lines Citizens draws as one entity each. In one Animus text display a line that would take on the style of the line above starts with a reset; lines with their own displays stay as written.
+npc:
+  '0':
+    name: Shopkeeper
+    uuid: 0a1b2c3d-0000-4000-8000-000000000700
+    traits:
+      type: VILLAGER
+      location: {world: world, x: 0.5, y: 64, z: 0.5}
+      hologramtrait:
+        lines:
+          '0': '&oOpen daily'
+          '1': '&eGold accepted'
+          '2': 'Right click to trade'
+          '3': '&c&lShop'
+  '1':
+    name: Lamplighter
+    uuid: 0a1b2c3d-0000-4000-8000-000000000701
+    traits:
+      type: VILLAGER
+      location: {world: world, x: 2.5, y: 64, z: 0.5}
+      hologramtrait:
+        lines:
+          '0': 'Lights at dusk'
+          '1': ''
+          '2': '&aLamps'
+  '2':
+    name: Ferryman
+    uuid: 0a1b2c3d-0000-4000-8000-000000000702
+    traits:
+      type: VILLAGER
+      location: {world: world, x: 4.5, y: 64, z: 0.5}
+      hologramtrait:
+        lines:
+          '0': 'Right click to cross'
+          '1': {text: '&b&lFerry', margin: {top: 0.25, bottom: 0.0}}
+  '3':
+    name: Bellringer
+    uuid: 0a1b2c3d-0000-4000-8000-000000000703
+    traits:
+      type: VILLAGER
+      location: {world: world, x: 6.5, y: 64, z: 0.5}
+      hologramtrait:
+        lineHeight: 0.3
+        lines:
+          '0': 'Rings at noon'
+          '1': '&d&nBells'
+  '4':
+    name: Whitewasher
+    uuid: 0a1b2c3d-0000-4000-8000-000000000704
+    traits:
+      type: VILLAGER
+      location: {world: world, x: 8.5, y: 64, z: 0.5}
+      hologramtrait:
+        lines:
+          '0': 'Plain'
+          '1': '&fWhite'

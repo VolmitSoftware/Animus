@@ -3,16 +3,18 @@
 // skins (classic, kept PNG under editor/skins/; slim, no PNG), two player
 // NPCs wearing the classic one, a group giving the slim one and an NPC in
 // that group. Then:
-//   1. an NPC's skin dropdown shows the faces of loaded skins and "+ New skin"
-//      and "Manage skins"; picking the slim skin and removing it write `skin`;
-//   2. the Arms switch writes a new skin document (its id the hash of its
-//      text) worn by that NPC alone, and one Undo reverts it;
+//   1. an NPC's skin field (Basics) shows the worn skin's face and name;
+//      Change lists the saved skins with the faces of loaded ones; picking
+//      the slim skin and Remove skin write `skin`;
+//   2. the Arms switch (Look, Skin layers, Advanced) writes a new skin
+//      document (its id the hash of its text) worn by that NPC alone, and
+//      one Undo reverts it;
 //   3. the skin document's Arms switch moves both wearers to the new document,
 //      the old one goes, the page follows to the new id, Undo brings it back;
-//   4. Delete on a skin lists its wearers;
-//   5. a body type of minecraft:llama on a skinned NPC asks first: Cancel
-//      keeps the player body, Remove skin changes both in one step; for an
-//      NPC whose skin comes from its group the group loses it too.
+//   4. Delete on a skin (page menu) lists its wearers;
+//   5. a Llama body on a skinned NPC asks first: Cancel keeps the player
+//      body, Remove skin changes both in one step; for an NPC whose skin
+//      comes from its group the group loses it too.
 // No console errors, no sideways scrolling.
 //
 //   python3 tool/serve_site.py --port <WEB_PORT> --directory <site> &
@@ -26,8 +28,9 @@ const os = require('node:os');
 const path = require('node:path');
 const zlib = require('node:zlib');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const {topbarAction} = require('./support/shell.cjs');
-const {choose, openDropdown, valueOf} = require('./support/select.cjs');
+const {topbarAction, showView, setMode} = require('./support/shell.cjs');
+const {choose, valueOf} = require('./support/select.cjs');
+const {npcTab} = require('./support/npc_tabs.cjs');
 
 const site = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })()).replace(/\/$/, '');
 const shots = process.env.ANIMUS_SCREENSHOTS;
@@ -104,16 +107,17 @@ async function noSidewaysScroll(page, where) {
 }
 
 async function codeOf(page) {
-  await page.getByRole('tab', {name: 'Code'}).click();
+  await showView(page, 'code');
   const text = await page.locator('.animus-code textarea').inputValue();
-  await page.getByRole('tab', {name: 'Visual'}).click();
+  await showView(page, 'visual');
   return JSON.parse(text);
 }
 
-async function part(page, id) {
-  const details = page.locator(`details[data-section="${id}"]`);
-  if (!(await details.evaluate((element) => element.open))) await details.locator('summary').first().click();
-  return details;
+/** Picks [type] in the Body select; a skinned NPC asks before it changes. */
+async function pickBody(page, type) {
+  await npcTab(page, 'Basics');
+  await choose(page.locator('button#animus-npc-body'), type);
+  return page.getByRole('alertdialog');
 }
 
 async function openDocument(page, workspace, kind, id) {
@@ -133,32 +137,31 @@ async function run(browser, folder, viewport, theme, tag) {
   page.on('console', (message) => { if (message.type() === 'error' && !/404|Failed to load resource/.test(message.text())) errors.push(message.text()); });
 
   await page.goto(`${site}/`);
-  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+  await page.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Open folder'}).first().click();
   await (await chooser).setFiles(folder);
   await page.waitForFunction(() => /#\/workspace\/[^/?]+/.test(location.hash));
   const workspace = /#\/workspace\/([^/?]+)/.exec(page.url())[1];
 
-  // 1. Pick with faces, remove.
+  // 1. The worn skin's face; Change lists the saved skins; pick, remove.
   await openDocument(page, workspace, 'npc', 'town/anna');
-  let look = await part(page, 'appearance');
-  const pick = look.locator('#animus-skin-pick');
-  await pick.scrollIntoViewIfNeeded();
-  assert.equal(await valueOf(pick), classic.id);
-  assert.equal(await pick.locator('.animus-select-thumb').count(), 1, 'the trigger shows the chosen face');
-  const listbox = await openDropdown(pick);
-  await listbox.locator(`[role="option"][data-value="${classic.id}"] .animus-select-thumb`).waitFor();
-  assert.equal(await listbox.locator(`[role="option"][data-value="${slim.id}"] .animus-select-thumb`).count(), 0, 'no face without a PNG');
-  await listbox.getByText('+ New skin').waitFor();
-  await listbox.getByText('Manage skins').waitFor();
-  await shot(page, `${tag}-01-dropdown`);
-  await page.keyboard.press('Escape');
-  await choose(pick, slim.id);
+  let basics = await npcTab(page, 'Basics');
+  const field = basics.locator('[data-skin="field"]');
+  await field.scrollIntoViewIfNeeded();
+  await field.locator('.animus-skin-face:not(.is-blank)').waitFor();
+  await field.locator('[data-skin="change"]').click();
+  const picker = page.getByRole('dialog', {name: 'Choose a skin'});
+  const row = (skin) => picker.locator(`.ui-library-row[data-key="${skin.id}"]`);
+  await row(classic).locator('.animus-skin-face:not(.is-blank)').waitFor();
+  assert.equal(await row(slim).locator('.animus-skin-face.is-blank').count(), 1, 'no face without a PNG');
+  await shot(page, `${tag}-01-chooser`);
+  await row(slim).click();
+  await picker.waitFor({state: 'hidden'});
   await settle(page);
   assert.equal((await codeOf(page)).skin, slim.id);
-  look = await part(page, 'appearance');
-  await look.getByRole('button', {name: 'Remove skin'}).click();
+  basics = await npcTab(page, 'Basics');
+  await basics.getByRole('button', {name: 'Remove skin'}).click();
   await settle(page);
   assert.equal((await codeOf(page)).skin, undefined, 'Remove skin drops the field');
   // Successive edits of one field share an undo step.
@@ -166,9 +169,13 @@ async function run(browser, folder, viewport, theme, tag) {
   await settle(page);
   assert.equal((await codeOf(page)).skin, classic.id);
 
-  // 2. Arms from the NPC: a new document for Anna only.
-  look = await part(page, 'appearance');
-  const arms = look.getByRole('checkbox', {name: 'Slim arms (Alex)'});
+  // 2. Arms from the NPC (Advanced): a new document for Anna only.
+  await setMode(page, 'advanced');
+  await openDocument(page, workspace, 'npc', 'town/anna');
+  const look = await npcTab(page, 'Look');
+  const layers = look.locator('[data-npc="skin-layers"] > details');
+  if (!(await layers.evaluate((details) => details.open))) await layers.locator(':scope > summary').click();
+  const arms = look.getByRole('switch', {name: 'Slim arms (Alex)'});
   await arms.scrollIntoViewIfNeeded();
   await arms.click();
   await settle(page);
@@ -178,9 +185,9 @@ async function run(browser, folder, viewport, theme, tag) {
   assert.notEqual(own, slim.id);
   await openDocument(page, workspace, 'skin', own);
   const ownText = await (async () => {
-    await page.getByRole('tab', {name: 'Code'}).click();
+    await showView(page, 'code');
     const text = await page.locator('.animus-code textarea').inputValue();
-    await page.getByRole('tab', {name: 'Visual'}).click();
+    await showView(page, 'visual');
     return text;
   })();
   assert.equal(crypto.createHash('sha256').update(ownText).digest('hex'), own, 'the new id is the hash of its text');
@@ -198,7 +205,7 @@ async function run(browser, folder, viewport, theme, tag) {
   const summary = page.getByRole('region', {name: 'Skin'});
   await summary.getByRole('button', {name: /Anna \(town\/anna\)/}).waitFor();
   await summary.getByRole('button', {name: /Bert \(town\/bert\)/}).waitFor();
-  await summary.getByRole('checkbox', {name: 'Slim arms (Alex)'}).click();
+  await summary.getByRole('switch', {name: 'Slim arms (Alex)'}).click();
   await page.waitForFunction((old) => !decodeURIComponent(location.hash).includes(old), classic.id);
   const moved = decodeURIComponent(page.url()).split('/skin/')[1].split('?')[0];
   assert.match(moved, /^[a-f0-9]{64}$/);
@@ -213,33 +220,29 @@ async function run(browser, folder, viewport, theme, tag) {
 
   // 4. Delete lists the wearers; Escape keeps it.
   await openDocument(page, workspace, 'skin', classic.id);
-  await page.locator('#animus-doc-delete').click();
-  await page.getByText('Worn by Anna (town/anna) and Bert (town/bert); they would name a missing skin.', {exact: false}).waitFor();
+  await page.locator('#ui-page-actions-button').click();
+  await page.getByRole('menuitem', {name: 'Delete'}).click();
+  const confirm = page.getByRole('alertdialog');
+  await confirm.getByText('Worn by Anna (town/anna) and Bert (town/bert); they would name a missing skin.', {exact: false}).waitFor();
   await shot(page, `${tag}-03-delete`);
-  // The question takes focus once it is drawn; Escape counts only there.
-  await page.waitForFunction(() => document.activeElement && document.activeElement.closest('.animus-confirm'));
   await page.keyboard.press('Escape');
-  await page.locator('#animus-doc-delete').waitFor();
+  await confirm.waitFor({state: 'detached'});
+  await page.locator('#animus-main h1').waitFor();
 
-  // 5. The llama fix-it, own skin.
+  // 5. The llama question, own skin.
   await openDocument(page, workspace, 'npc', 'town/anna');
-  let body = await part(page, 'body');
-  let type = body.getByRole('combobox', {name: 'Body type'});
-  await type.scrollIntoViewIfNeeded();
-  await type.fill('minecraft:llama');
-  const ask = body.getByRole('alertdialog');
-  await ask.getByText('A skin needs a player body. Remove the skin and use minecraft:llama?').waitFor();
+  let ask = await pickBody(page, 'minecraft:llama');
+  await ask.getByText('Only a player body wears a skin.', {exact: false}).waitFor();
   await shot(page, `${tag}-04-llama-ask`);
   await noSidewaysScroll(page, `${tag} llama ask`);
   await ask.getByRole('button', {name: 'Cancel'}).click();
-  await body.getByText('Kept minecraft:player: minecraft:llama cannot wear a skin.').waitFor();
+  await ask.waitFor({state: 'detached'});
+  assert.equal(await valueOf(page.locator('button#animus-npc-body')), 'minecraft:player', 'Cancel keeps the player body');
   let json = await codeOf(page);
   assert.equal(json.type, 'minecraft:player');
   assert.equal(json.skin, classic.id);
-  body = await part(page, 'body');
-  type = body.getByRole('combobox', {name: 'Body type'});
-  await type.fill('minecraft:llama');
-  await body.getByRole('alertdialog').getByRole('button', {name: 'Remove skin'}).click();
+  ask = await pickBody(page, 'minecraft:llama');
+  await ask.getByRole('button', {name: 'Remove skin'}).click();
   await settle(page);
   json = await codeOf(page);
   assert.equal(json.type, 'minecraft:llama');
@@ -252,11 +255,8 @@ async function run(browser, folder, viewport, theme, tag) {
 
   // Group-given skin.
   await openDocument(page, workspace, 'npc', 'town/cara');
-  body = await part(page, 'body');
-  type = body.getByRole('combobox', {name: 'Body type'});
-  await type.fill('minecraft:llama');
-  const groupAsk = body.getByRole('alertdialog');
-  await groupAsk.getByText('Also removes it from group guards.', {exact: false}).waitFor();
+  const groupAsk = await pickBody(page, 'minecraft:llama');
+  await groupAsk.getByText('It also leaves trait group guards.', {exact: false}).waitFor();
   await groupAsk.getByRole('button', {name: 'Remove skin'}).click();
   await settle(page);
   assert.equal((await codeOf(page)).type, 'minecraft:llama');
@@ -268,15 +268,15 @@ async function run(browser, folder, viewport, theme, tag) {
 
   // A llama typed in Code shows the server's refusal on the NPC.
   await openDocument(page, workspace, 'npc', 'town/cara');
-  await page.getByRole('tab', {name: 'Code'}).click();
+  await showView(page, 'code');
   const area = page.locator('.animus-code textarea');
   const text = (await area.inputValue()).replace('"minecraft:player"', '"minecraft:llama"');
   await area.fill(text);
-  await page.getByRole('button', {name: 'Apply to draft'}).click();
+  await page.getByRole('button', {name: 'Use this code'}).click();
   await settle(page);
-  await page.getByRole('tab', {name: 'Visual'}).click();
-  body = await part(page, 'appearance');
-  await body.getByText('textures require a player body (the skin comes from group guards)', {exact: false}).first().waitFor();
+  await showView(page, 'visual');
+  const cara = await npcTab(page, 'Basics');
+  await cara.getByText('textures require a player body (the skin comes from group guards)', {exact: false}).first().waitFor();
   await shot(page, `${tag}-05-group-skin-error`);
   await noSidewaysScroll(page, `${tag} group skin error`);
 

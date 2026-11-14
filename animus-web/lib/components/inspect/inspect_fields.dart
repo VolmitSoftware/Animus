@@ -12,70 +12,33 @@ import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
 import '../../logic/gui/gui_json.dart';
+import '../../logic/inspect/named_ids.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/inspect/typed_values.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
+import '../../mc/npc/npc_objects.dart' show mcPaintings;
+import '../../ui/mode.dart';
 import '../gui/gui_fields.dart';
-import '../../logic/diagnostic_text.dart';
-import '../../logic/help_text.dart';
-import '../info_tip.dart';
-import '../typing_pause.dart';
+import '../mc/item_picker.dart';
+import '../../ui/density.dart';
+import '../../ui/field.dart';
 import '../select/suggest_input.dart';
 import 'typed_values_editor.dart';
+import '../select/animus_select.dart';
+import '../../ui/action_row.dart';
+import '../../ui/number_input.dart';
+import '../../ui/stack.dart';
+import '../../ui/toggle_choice.dart';
+import 'inspect_lines.dart';
+import '../../ui/problem_text.dart';
 
 /// A label with a required marker; keys read as words (`waitTicks` is "Wait ticks").
 String fieldLabel(FieldSpec field, {String? label}) => '${label ?? humanizeKey(field.key)}${field.required ? ' *' : ''}';
 
 /// An element id for the control at [path], so a row label can name it.
 String controlId(String path) => 'animus-field-${path.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '-')}';
-
-/// A labelled row like [GuiRow] whose label is a `<label for>` of the control
-/// [labelFor], for selects and other controls without their own name. Without
-/// [labelFor] the label is plain text, for groups and controls that name
-/// themselves.
-class InspectRow extends StatefulWidget {
-  const InspectRow({required this.label, required this.child, this.labelFor, this.help, this.tip, this.problems = const <Diagnostic>[], super.key});
-
-  final String label;
-  final String? labelFor;
-  final Widget child;
-
-  /// Shown under the control when short; long help moves into the info tip.
-  final String? help;
-
-  /// Tip text on the label; with it, [help] always stays inline.
-  final String? tip;
-  final List<Diagnostic> problems;
-
-  @override
-  State<InspectRow> createState() => _InspectRowState();
-}
-
-class _InspectRowState extends State<InspectRow> with TypingPause<InspectRow> {
-  @override
-  Widget build(BuildContext context) {
-    final List<Diagnostic> shown = typing ? const <Diagnostic>[] : component.problems;
-    final ({String? hint, String? tip}) split = component.tip == null ? splitHelp(component.help) : (hint: component.help == null || component.help!.isEmpty ? null : component.help, tip: component.tip);
-    return dom.div(classes: 'animus-gui-row${shown.any((Diagnostic d) => d.severity == DiagnosticSeverity.error) ? ' has-error' : ''}', events: typingEvents, <Widget>[
-      if (component.labelFor case final String target)
-        dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': target}, <Widget>[withTip(Component.text(component.label), split.tip)])
-      else
-        dom.span(classes: 'animus-gui-label', <Widget>[withTip(Component.text(component.label), split.tip)]),
-      dom.div(classes: 'animus-gui-control', <Widget>[
-        component.child,
-        if (split.hint != null) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(split.hint!)]),
-        for (final Diagnostic problem in withoutRepeats(shown))
-          dom.span(
-            classes: 'animus-gui-problem is-${problem.severity.name}',
-            attributes: <String, String>{'role': 'note', 'title': problem.path},
-            <Widget>[Component.text(diagnosticSentence(problem))],
-          ),
-      ]),
-    ]);
-  }
-}
 
 /// Diagnostics for a field: the document's at [path] and the field's own
 /// bounds check of [value].
@@ -98,6 +61,7 @@ class InspectField extends StatelessWidget {
     this.schema,
     this.label,
     this.profile = FieldProfile.none,
+    this.bounds = true,
     super.key,
   });
 
@@ -106,6 +70,9 @@ class InspectField extends StatelessWidget {
 
   /// What a text value completes beyond [suggestions].
   final FieldProfile profile;
+
+  /// Shows the schema's bounds under the control ("1 to 64").
+  final bool bounds;
 
   /// The field's path, as diagnostics name it.
   final String path;
@@ -124,11 +91,12 @@ class InspectField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool nested = field.kind == FieldKind.object || field.kind == FieldKind.array || field.kind == FieldKind.any;
-    return InspectRow(
+    return Field(
       label: fieldLabel(field, label: label),
-      labelFor: InspectControl.focusable(field, value) ? controlId(path) : null,
-      help: field.boundsHint,
-      tip: field.description ?? '',
+      forId: InspectControl.focusable(field, value) ? controlId(path) : null,
+      help: bounds ? field.boundsHint : null,
+      // Simple's pickers name the ids a description spells out.
+      tip: ModeScope.advanced(context) ? field.description ?? '' : withoutIdSentences(bodiesInWords(field.description ?? '')),
       problems: fieldProblems(field, value, path, diagnostics, nested: nested),
       child: InspectControl(
         field: field,
@@ -201,10 +169,10 @@ class InspectControl extends StatelessWidget {
         }
         if (!textual) {
           final Map<String, Object> byLabel = <String, Object>{for (final FieldOption option in field.options) option.label: option.value};
-          return GuiSelect(
+          return AnimusSelect.values(
             id: controlId(path),
             value: current == null ? null : '$current',
-            options: options,
+            values: options,
             allowNone: !field.required,
             noneLabel: field.required ? 'Pick ${humanizeKey(field.key).toLowerCase()}' : 'Not set',
             onChanged: (String? next) => onChanged(next == null ? null : byLabel[next]),
@@ -221,10 +189,10 @@ class InspectControl extends StatelessWidget {
             onChanged: (String next) => onChanged(next.isEmpty && !field.required ? null : next),
           );
         }
-        return GuiSelect(
+        return AnimusSelect.values(
           id: controlId(path),
           value: current is String ? current : null,
-          options: options,
+          values: options,
           allowNone: !field.required,
           noneLabel: field.required ? 'Pick ${humanizeKey(field.key).toLowerCase()}' : 'Not set',
           labels: <String, String>{for (final FieldOption option in field.options) option.label: option.label},
@@ -232,15 +200,24 @@ class InspectControl extends StatelessWidget {
         );
       case FieldKind.boolean:
         if (current is bool || current == null) {
-          return dom.div(classes: 'animus-row', <Widget>[
-            GuiSwitch(value: current == true, label: name, onChanged: onChanged),
-            if (current != null && !field.required)
-              Button.ghost(label: 'Unset', onPressed: () => onChanged(null)),
-          ]);
+          if (field.required) return ArcaneToggleSwitch(value: current == true, ariaLabel: name, onChanged: onChanged, size: ComponentSize.sm);
+          // An optional switch has three states, so it is one control of
+          // three choices rather than a switch with an Unset button under it.
+          final Object? fallback = field.schema['default'];
+          return ToggleChoice<bool?>(
+            label: name,
+            options: <ChoiceOption<bool?>>[
+              ChoiceOption<bool?>(null, fallback is bool ? 'Default (${fallback ? 'on' : 'off'})' : 'Default'),
+              const ChoiceOption<bool?>(true, 'On'),
+              const ChoiceOption<bool?>(false, 'Off'),
+            ],
+            value: current as bool?,
+            onChanged: onChanged,
+          );
         }
       case FieldKind.integer || FieldKind.number:
         if (current is num || current == null) {
-          return GuiNumberInput(
+          return NumberInput(
             id: controlId(path),
             value: current as num?,
             integer: field.kind == FieldKind.integer,
@@ -251,6 +228,8 @@ class InspectControl extends StatelessWidget {
         }
       case FieldKind.string:
         if (current is String || current == null) {
+          final NamedId? named = ModeScope.advanced(context) ? null : namedIdOf(path, field.key, field.schema);
+          if (named != null) return _named(named, current as String? ?? '', name);
           return SuggestInput(
             id: controlId(path),
             value: current as String? ?? '',
@@ -313,6 +292,38 @@ class InspectControl extends StatelessWidget {
     }
     return TypedValueEditor(value: current, label: humanizeKey(field.key), onChanged: onChanged);
   }
+
+  /// Simple's picker for a text field holding a game id: items and blocks
+  /// by name (a picked block drops the old block's state), paintings from
+  /// the vanilla list. The id it writes is the one picked.
+  Widget _named(NamedId named, String current, String name) {
+    void put(String next) => onChanged(next.isEmpty && !field.required ? null : next);
+    return switch (named) {
+      NamedId.item => ItemPicker(id: controlId(path), value: current, label: name, onChanged: put),
+      NamedId.block => ItemPicker(
+          id: controlId(path),
+          value: blockOfState(current),
+          label: name,
+          onChanged: (String next) => put(blockOfState(next) == blockOfState(current) ? current : next),
+        ),
+      NamedId.painting => _painting(current, name, put),
+    };
+  }
+
+  Widget _painting(String current, String name, void Function(String next) put) {
+    final String painting = current.isEmpty || current.contains(':') ? current : 'minecraft:$current';
+    final List<String> vanilla = <String>[for (final String key in mcPaintings.keys) 'minecraft:$key'];
+    return AnimusSelect.values(
+      id: controlId(path),
+      hiddenLabel: name,
+      value: painting.isEmpty ? null : painting,
+      values: <String>[...vanilla, if (painting.isNotEmpty && !vanilla.contains(painting)) painting],
+      labels: <String, String>{for (final String each in <String>[...vanilla, if (painting.isNotEmpty) painting]) each: paintingName(each)},
+      allowNone: !field.required,
+      noneLabel: 'Not set',
+      onChanged: (String? next) => put(next ?? ''),
+    );
+  }
 }
 
 /// A list whose items share the schema [items]: one control per item, or a
@@ -344,47 +355,44 @@ class InspectArray extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String noun = humanizeKey(items.key);
-    return dom.div(classes: 'animus-inspect-array', attributes: <String, String>{'role': 'group', 'aria-label': noun}, <Widget>[
-      for (int index = 0; index < value.length; index++)
-        dom.div(key: ValueKey<String>('item:$index'), classes: 'animus-inspect-array-item', <Widget>[
-          InspectControl(
-            field: items,
-            value: value[index],
-            path: indexPath(path, index),
-            diagnostics: diagnostics,
-            schema: schema,
-            onChanged: (Object? next) => onChanged(<Object?>[...value]..[index] = next),
-          ),
-          for (final Diagnostic problem in diagnosticsAt(diagnostics, indexPath(path, index)))
-            dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', attributes: const <String, String>{'role': 'note'}, <Widget>[Component.text(problem.message)]),
-          dom.div(classes: 'animus-inspect-array-actions', <Widget>[
-            GuiIconButton(
-              icon: ArcaneIcon.arrowUp(size: IconSize.sm),
-              label: 'Move $noun ${index + 1} up',
-              disabled: index == 0,
-              onPressed: () => onChanged(moveItem(value, index, index - 1)),
-            ),
-            GuiIconButton(
-              icon: ArcaneIcon.arrowDown(size: IconSize.sm),
-              label: 'Move $noun ${index + 1} down',
-              disabled: index == value.length - 1,
-              onPressed: () => onChanged(moveItem(value, index, index + 1)),
-            ),
-            GuiIconButton(
-              icon: ArcaneIcon.x(size: IconSize.sm),
-              label: 'Remove $noun ${index + 1}',
-              onPressed: () => onChanged(<Object?>[...value]..removeAt(index)),
-            ),
+    // A one-control item keeps its move and remove buttons on its own row;
+    // an object or list item has them on a row under its fields.
+    final bool inline = items.kind != FieldKind.object && items.kind != FieldKind.array && items.kind != FieldKind.any;
+    return dom.div(attributes: <String, String>{'role': 'group', 'aria-label': noun}, <Widget>[
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, gapSize: Gap.sm, children: <Widget>[
+        for (int index = 0; index < value.length; index++)
+          Column(key: ValueKey<String>('item:$index'), crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, gapSize: Gap.xs, children: <Widget>[
+            if (inline)
+              ActionRow(dense: true, label: '$noun ${index + 1}', leading: <Widget>[Expanded(child: _item(index))], secondary: _actions(noun, index))
+            else ...<Widget>[
+              _item(index),
+              ActionRow(dense: true, label: '$noun ${index + 1}', secondary: _actions(noun, index)),
+            ],
+            for (final Diagnostic problem in diagnosticsAt(diagnostics, indexPath(path, index)))
+              problemLine(problem.severity, problem.message),
           ]),
-        ]),
-      Button.ghost(
-        label: 'Add',
-        size: ButtonSize.small,
-        attributes: <String, String>{'aria-label': 'Add $noun'},
-        onPressed: () => onChanged(<Object?>[...value, _blank()]),
-      ),
+        ActionRow(
+          dense: DensityScope.of(context) == Density.dense,
+          secondary: <RowAction>[RowAction('Add', () => onChanged(<Object?>[...value, _blank()]), attributes: <String, String>{'aria-label': 'Add $noun'})],
+        ),
+      ]),
     ]);
   }
+
+  Widget _item(int index) => InspectControl(
+        field: items,
+        value: value[index],
+        path: indexPath(path, index),
+        diagnostics: diagnostics,
+        schema: schema,
+        onChanged: (Object? next) => onChanged(<Object?>[...value]..[index] = next),
+      );
+
+  List<RowAction> _actions(String noun, int index) => <RowAction>[
+        RowAction('Move $noun ${index + 1} up', index == 0 ? null : () => onChanged(moveItem(value, index, index - 1)), icon: ArcaneIcon.arrowUp(), iconOnly: true),
+        RowAction('Move $noun ${index + 1} down', index == value.length - 1 ? null : () => onChanged(moveItem(value, index, index + 1)), icon: ArcaneIcon.arrowDown(), iconOnly: true),
+        RowAction('Remove $noun ${index + 1}', () => onChanged(<Object?>[...value]..removeAt(index)), icon: ArcaneIcon.x(), iconOnly: true),
+      ];
 }
 
 /// The fields of an object under [node], then its keys the schema does not
@@ -398,6 +406,7 @@ class InspectObject extends StatelessWidget {
     required this.onChanged,
     this.diagnostics = const <Diagnostic>[],
     this.skip = const <String>{},
+    this.unknownLabel = 'Other fields',
     super.key,
   });
 
@@ -411,14 +420,20 @@ class InspectObject extends StatelessWidget {
   /// Keys another part of the inspector shows.
   final Set<String> skip;
 
+  /// The label over the keys the schema does not name.
+  final String unknownLabel;
+
 
   @override
   Widget build(BuildContext context) {
     final List<FieldSpec> fields = schema.fields(node, value);
+    // Simple keeps an item's component text and import record as written.
+    final Set<String> hidden = ModeScope.advanced(context) ? const <String>{} : simpleHiddenKeys(path, <String>{for (final FieldSpec field in fields) field.key});
+    final Set<String> skip = <String>{...this.skip, ...hidden};
     final Set<String> known = <String>{for (final FieldSpec field in fields) field.key, ...skip};
     final JsonMap unknown = unknownEntries(value, known);
     void put(String key, Object? next) => onChanged(asMap(writeIn(value, <JsonStep>[key], next)));
-    return dom.div(classes: 'animus-inspect-object', <Widget>[
+    return dom.div(<Widget>[
       for (final FieldSpec field in fields)
         if (!skip.contains(field.key))
           InspectField(
@@ -431,14 +446,14 @@ class InspectObject extends StatelessWidget {
             onChanged: (Object? next) => put(field.key, next),
           ),
       if (unknown.isNotEmpty)
-        GuiRow(
+        Field(
           key: const ValueKey<String>('other-fields'),
-          label: 'Other fields',
+          label: unknownLabel,
           tip: 'Keys this form does not know. They are kept as written and the server reads them.',
           problems: <Diagnostic>[for (final String key in unknown.keys) ...diagnosticsAt(diagnostics, childPath(path, key), nested: true)],
           child: KeyValueEditor(
             value: unknown,
-            label: 'Other fields',
+            label: unknownLabel,
             onChanged: (JsonMap next) => onChanged(withUnknownEntries(value, known, next)),
           ),
         ),
@@ -470,9 +485,10 @@ class _KeptJsonEditorState extends State<KeptJsonEditor> {
   Widget build(BuildContext context) {
     final String text = _typed ?? _shown;
     final int rows = component.rows ?? text.split('\n').length.clamp(1, 12);
-    return dom.div(classes: 'animus-gui-text', <Widget>[
+    return stack(spacing: 4, <Widget>[
       dom.textarea(
-        classes: 'animus-gui-input is-code animus-kept-json${_error != null ? ' is-invalid' : ''}',
+        classes: 'arcane-textarea animus-kept-json',
+        styles: codeFont,
         rows: rows,
         attributes: <String, String>{'spellcheck': 'false', 'aria-label': ?component.label, if (_error != null) 'aria-invalid': 'true'},
         events: <String, void Function(web.Event)>{
@@ -493,7 +509,7 @@ class _KeptJsonEditorState extends State<KeptJsonEditor> {
         },
         <Widget>[Component.text(text)],
       ),
-      if (_error != null) dom.span(classes: 'animus-gui-problem is-error', <Widget>[Component.text('Invalid JSON: $_error')]),
+      if (_error != null) problemLine(DiagnosticSeverity.error, 'Invalid JSON: $_error'),
     ]);
   }
 }

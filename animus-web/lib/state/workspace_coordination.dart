@@ -6,11 +6,12 @@ library;
 
 import 'dart:async';
 
-enum WorkspaceEventKind { saved, deleted }
+/// What one tab tells the others: it saved or deleted a workspace, or it
+/// asks the tab that owns a workspace to hand it over.
+enum WorkspaceEventKind { saved, deleted, takeOver }
 
-/// One tab telling the others that it saved or deleted a workspace.
 class WorkspaceEvent {
-  const WorkspaceEvent(this.kind, this.workspaceId, {this.generation = 0});
+  const WorkspaceEvent(this.kind, this.workspaceId, {this.generation = 0, this.keys, this.resources = false});
 
   final WorkspaceEventKind kind;
   final String workspaceId;
@@ -18,15 +19,35 @@ class WorkspaceEvent {
   /// The generation now stored, for [WorkspaceEventKind.saved].
   final int generation;
 
-  Map<String, Object?> toJson() => <String, Object?>{'kind': kind.name, 'id': workspaceId, 'generation': generation};
+  /// The document keys the save wrote, when it says; a tab one generation
+  /// behind reads only those. Null: read the whole workspace.
+  final List<String>? keys;
+
+  /// The save also changed resources.
+  final bool resources;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'kind': kind.name,
+        'id': workspaceId,
+        'generation': generation,
+        if (keys != null) 'keys': keys,
+        if (resources) 'resources': true,
+      };
 
   static WorkspaceEvent? fromJson(Object? json) {
     if (json is! Map) return null;
     final WorkspaceEventKind? kind = WorkspaceEventKind.values.asNameMap()[json['kind']];
     final Object? id = json['id'];
     final Object? generation = json['generation'];
+    final Object? keys = json['keys'];
     if (kind == null || id is! String) return null;
-    return WorkspaceEvent(kind, id, generation: generation is num ? generation.toInt() : 0);
+    return WorkspaceEvent(
+      kind,
+      id,
+      generation: generation is num ? generation.toInt() : 0,
+      keys: keys is List ? <String>[for (final Object? key in keys) '$key'] : null,
+      resources: json['resources'] == true,
+    );
   }
 }
 

@@ -273,9 +273,9 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
      * for what the off hand holds. A shop with no file yet gets one. The catalog reloads once the file is saved.
      */
     public void stock(CommandActor actor, String shop, String mode, Optional<String> price, int page) {
-        ShopDocument.Mode chosen;
-        try { chosen = ShopDocument.Mode.valueOf(mode.toUpperCase(java.util.Locale.ROOT)); }
-        catch (IllegalArgumentException unknown) { actor.tell(Palette.error("mode= is buy, sell or trade")); return; }
+        Optional<ShopDocument.Mode> named = ShopDocument.Mode.of(mode);
+        if (named.isEmpty()) { actor.tell(Palette.error("mode= is buy, sell or trade")); return; }
+        ShopDocument.Mode chosen = named.get();
         Optional<java.math.BigDecimal> amount;
         try { amount = price.map(java.math.BigDecimal::new); }
         catch (NumberFormatException notNumber) { actor.tell(Palette.error("price= is a number, such as price=10 or price=2.5")); return; }

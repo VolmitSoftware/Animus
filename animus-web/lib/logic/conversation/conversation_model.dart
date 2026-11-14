@@ -14,20 +14,23 @@ const String playAnimationCapability = 'animus:play-animation';
 
 /// What starts the conversation.
 enum ConversationStartKind {
-  click('Right-click', 'interact'),
-  sneakClick('Sneak + right-click', 'sneak_interact'),
-  leftClick('Left-click', 'attack'),
-  sneakLeftClick('Sneak + left-click', 'sneak_attack'),
-  drop('Drop key (Q)', 'drop'),
-  sneakDrop('Sneak + drop key', 'sneak_drop'),
-  swapHands('Swap hands (F)', 'swap_hands'),
-  sneakSwapHands('Sneak + swap hands', 'sneak_swap_hands'),
-  proximity('Walk near', null),
-  manual('Command', null);
+  click('On click', 'interact', 'A player right-clicks the NPC.'),
+  sneakClick('On sneak click', 'sneak_interact', 'Right-click while sneaking. A shop on the NPC still opens without sneaking.'),
+  leftClick('On left-click', 'attack', 'A player hits the NPC.'),
+  sneakLeftClick('On sneak left-click', 'sneak_attack', 'Left-click while sneaking.'),
+  drop('On drop key', 'drop', 'Q while looking at the NPC.'),
+  sneakDrop('On sneak drop key', 'sneak_drop', 'Q while sneaking.'),
+  swapHands('On swap hands', 'swap_hands', 'F while looking at the NPC.'),
+  sneakSwapHands('On sneak swap hands', 'sneak_swap_hands', 'F while sneaking.'),
+  proximity('Player nearby', null, 'A player walks within a radius.'),
+  manual('By command', null, 'Only /animus behaviors run starts it.');
 
-  const ConversationStartKind(this.label, this.action);
+  const ConversationStartKind(this.label, this.action, this.line);
 
   final String label;
+
+  /// One line under the label in the picker.
+  final String line;
 
   /// The interaction trigger's `action`, or null for a start that is no click or key.
   final String? action;

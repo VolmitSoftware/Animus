@@ -7,8 +7,8 @@ library;
 
 import 'dart:typed_data';
 
-import '../../logic/shared_schemas.dart';
 import 'error_copy.dart';
+import 'relay_limits.dart';
 import 'transport.dart';
 
 /// What a file is to the server (`file=` of `POST /v1/imports`).
@@ -139,14 +139,12 @@ String importRefusalText(ImportRefused refused) {
   return refused.code == 'conflict' ? detail : '${refused.message} Server: $detail';
 }
 
-int _limit(String name) => ((SharedSchemas.embedded.endpoints['limits']! as Map<String, Object?>)[name]! as num).toInt();
-
 /// The largest request body: `importBodyBytes`.
-final int importBodyBytes = _limit('importBodyBytes');
+final int importBodyBytes = protocolLimit('importBodyBytes');
 
 /// The largest file the relay carries: a relay frame holds the upload as
 /// base64 (4 bytes per 3) inside a JSON request frame, which needs some room.
-final int relayUploadBytes = (_limit('relayFrameBytes') - 16384) ~/ 4 * 3;
+final int relayUploadBytes = (relayFrameBytes - relayEnvelopeBytes) ~/ 4 * 3;
 
 /// Why [upload] cannot go over [path], or null when it can.
 String? uploadProblem(ImportUpload upload, ConnectionPath? path) {

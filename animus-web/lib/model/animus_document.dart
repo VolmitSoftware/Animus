@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'document_kind.dart';
+import 'display_name.dart';
+import 'document_summary.dart' show plainName;
 
 enum DiagnosticSeverity { error, warning, info }
 
@@ -52,15 +54,23 @@ class AnimusDocument {
 
   bool get valid => !diagnostics.any((Diagnostic diagnostic) => diagnostic.severity == DiagnosticSeverity.error);
 
-  /// A display name: an NPC's name, a shop's title, otherwise the id.
+  /// A display name: an NPC's or pack's name, otherwise the id. An NPC
+  /// whose name shows no letter or digit once its colour codes are drawn
+  /// (`&f`) is "Unnamed NPC" ([displayName] names every other kind).
   String get title {
     final Object? value = json;
     if (value is Map<String, Object?>) {
       final Object? name = kind == DocumentKind.npc ? value['name'] : (kind == DocumentKind.pack ? value['name'] : null);
-      if (name is String && name.trim().isNotEmpty) return name;
+      if (name is String && _shows(name)) return name;
     }
-    return id;
+    return kind == DocumentKind.npc ? unnamedNpc : id;
   }
+
+  /// Whether [name] reads as a name once its codes are drawn; plain text
+  /// (the usual name) skips the parse, as titles are read on every build.
+  static bool _shows(String name) => readableName(_markup.hasMatch(name) ? plainName(name) : name);
+
+  static final RegExp _markup = RegExp(r'[&\u00a7<|\[]');
 
   AnimusDocument copyWith({String? source, Object? json, List<Diagnostic>? diagnostics}) => AnimusDocument(
         kind: kind,

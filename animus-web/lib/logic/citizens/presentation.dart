@@ -1,7 +1,9 @@
 /// Port of core's `CitizensPresentation`: equipment, inventory, hologram, pose, armor stand, facing, owner and nameplate.
 library;
 
+import '../../mc/npc/mc_text.dart';
 import '../../mc/npc/npc_look.dart' show NpcSlot, mcDrawnSlots;
+import '../gui/gui_text.dart';
 import 'citizens_items.dart';
 import 'field_notes.dart';
 import 'java_json.dart';
@@ -320,7 +322,9 @@ class _Presentation {
     return item;
   }
 
-  /// Citizens keeps hologram lines bottom-up; Animus lists them top-down, so the order is reversed.
+  /// Citizens keeps hologram lines bottom-up; Animus lists them top-down, so the order is reversed. Citizens draws
+  /// every line as its own entity, so each starts unstyled; lines sharing one Animus display carry a style down, so a
+  /// line that would take one on from the lines above starts with `&r`.
   void hologram() {
     final JObject? hologram = _object(traits.get('hologramtrait'));
     if (hologram == null) return;
@@ -330,6 +334,7 @@ class _Presentation {
     final JObject style = JObject();
     JObject? first;
     final List<JElement> shown = <JElement>[];
+    final List<String> shownPaths = <String>[];
     for (final MapEntry<String, JElement> entry in entries) {
       final String path = '$base/lines/${pointer(entry.key)}';
       String? line = _text(entry.value);
@@ -385,13 +390,7 @@ class _Presentation {
         warnings.add('$base/lines: only the bottom $maxLines lines are shown; move the others into fewer lines');
         break;
       }
-      String cleaned = String.fromCharCodes(line.runes.map((int point) => javaIsIsoControl(point) ? 0x20 : point));
-      if (cleaned.length > maxText) {
-        final int unit = cleaned.codeUnitAt(maxText - 1);
-        final int end = unit >= 0xD800 && unit <= 0xDBFF ? maxText - 1 : maxText;
-        cleaned = cleaned.substring(0, end);
-        warnings.add('$path: shortened to $maxText characters; shorten the line in the editor');
-      }
+      final String cleaned = _fit(String.fromCharCodes(line.runes.map((int point) => javaIsIsoControl(point) ? 0x20 : point)), path);
       if (top != 0 || bottom != 0) {
         final JObject object = JObject()..addString('text', cleaned);
         if (top != 0) object.addDouble('marginTop', top);
@@ -400,6 +399,7 @@ class _Presentation {
       } else {
         shown.add(JString(cleaned));
       }
+      shownPaths.add(path);
       lines.addString(cleaned);
       converted.add(linePath);
     }
@@ -457,15 +457,51 @@ class _Presentation {
       notes['$base/default_renderer'] = const FieldNote(requiresReview, 'Animus draws every hologram line as text');
     }
     if (lines.isEmpty) return;
+    final bool ownDisplays = style.has('lineHeight') || shown.any((JElement line) => line.isObject);
     final JArray ordered = JArray();
+    final List<String> above = <String>[];
     for (int index = shown.length - 1; index >= 0; index--) {
-      ordered.add(shown[index]);
+      JElement line = shown[index];
+      if (!ownDisplays) {
+        String text = (line as JString).value;
+        if (_inherits(above, text)) line = JString(text = _fit('&r$text', shownPaths[index]));
+        above.add(text);
+      }
+      ordered.add(line);
     }
     final JObject result = JObject()..add('lines', ordered);
     for (final MapEntry<String, JElement> entry in style.entries) {
       result.add(entry.key, entry.value);
     }
     fields.add('hologram', result);
+  }
+
+  /// Whether [line] under [above] in one text display draws differently from the same line on its own.
+  static bool _inherits(List<String> above, String line) {
+    if (above.isEmpty) return false;
+    List<McTextRun> glyphs(String last) => <McTextRun>[
+          for (final List<McTextRun> row in guiDisplayRows(<String>[...above, last], sample: false).last)
+            for (final McTextRun run in row)
+              for (final int point in run.text.runes)
+                McTextRun(String.fromCharCode(point),
+                    color: run.color, bold: run.bold, italic: run.italic, underlined: run.underlined, strikethrough: run.strikethrough, obfuscated: run.obfuscated),
+        ];
+    final List<McTextRun> carried = glyphs(line), alone = glyphs('&r$line');
+    if (carried.length != alone.length) return true;
+    for (int index = 0; index < carried.length; index++) {
+      if (carried[index] != alone[index]) return true;
+    }
+    return false;
+  }
+
+  /// [text] cut to the longest hologram line, warning once for [path].
+  String _fit(String text, String path) {
+    if (text.length <= maxText) return text;
+    final int unit = text.codeUnitAt(maxText - 1);
+    final int end = unit >= 0xD800 && unit <= 0xDBFF ? maxText - 1 : maxText;
+    final String warning = '$path: shortened to $maxText characters; shorten the line in the editor';
+    if (!warnings.contains(warning)) warnings.add(warning);
+    return text.substring(0, end);
   }
 
   double _clampMargin(double margin, String path) {

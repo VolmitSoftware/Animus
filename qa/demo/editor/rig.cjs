@@ -14,60 +14,39 @@ async function drawn(page) {
   }, null, {timeout: 30000});
 }
 
-/** Closes every toast that is showing. */
-async function clearToasts(page) {
-  for (let i = 0; i < 8; i++) {
-    const close = page.getByRole('button', {name: 'Close'}).or(page.getByRole('button', {name: '×'}));
-    if (!(await close.count())) return;
-    await close.first().click({timeout: 2000}).catch(() => {});
-    await page.waitForTimeout(250);
-  }
-}
-
-/** Creates a blank workspace named [name] on [page] (unfilmed). */
-async function blankWorkspace(L, page, name = 'Town') {
-  await page.goto(`${L.SITE}/`);
-  await page.getByLabel('Workspace name').fill(name);
-  await page.getByRole('button', {name: 'Create blank workspace'}).click();
-  await page.waitForFunction(() => location.hash.startsWith('#/workspace/'));
-  await page.getByText(`Created ${name}.`).waitFor();
-  // The workspace is stored after the toast; the film page reopens it from storage.
-  await page.waitForTimeout(1500);
-}
-
-/** Imports knight.bbmodel through the top bar's Import menu (unfilmed). */
-async function importKnight(page) {
+/** Imports knight.bbmodel through the top bar's overflow menu, an Advanced entry (unfilmed). */
+async function importKnight(L, page) {
   const chooser = page.waitForEvent('filechooser');
-  // The top bar menus are found by id, as in animus-web/test/support/shell.cjs.
-  await page.locator('#animus-menu-import').click();
-  await page.getByRole('menuitem', {name: 'Import a Blockbench model'}).click();
+  await L.shell.topbarAction(page, 'Import Blockbench model');
   await (await chooser).setFiles(KNIGHT);
+  // The rig editor names its rig only as data-rig.
   await page.locator('.animus-rig-editor[data-rig="animus:knight"]').waitFor();
+}
+
+/** A bone's row in the rig's bone tree, by its id. */
+function bone(page, id) {
+  return page.getByRole('tree', {name: /^Bones/}).getByRole('treeitem', {name: new RegExp(`^${id} `)});
 }
 
 /**
- * A film page on the knight's rig editor, with nothing filmed yet. [prepare]
- * runs on the film page after the stage draws, for unfilmed edits.
- * The knight's hitbox bone is a large box around the model, so it is deleted
- * unless [keepHitbox], letting the stage show the knight itself.
+ * A film page on the knight's rig editor, in Advanced, with nothing filmed yet.
+ * The knight is imported into a blank workspace (its hitbox group is left out
+ * by the import). [prepare] runs on the film page after the stage draws, for
+ * unfilmed edits.
  */
-async function knightSession(L, id, {prepare, keepHitbox = false} = {}) {
+async function knightSession(L, id, {prepare} = {}) {
   const film = await L.session({id});
-  await blankWorkspace(L, film.setup);
-  await importKnight(film.setup);
+  await L.blankWorkspace(film.setup, 'Town');
+  await importKnight(L, film.setup);
   const url = film.setup.url();
+  // The workspace is stored after the import's toast; the film page reopens it from storage.
+  await film.setup.waitForTimeout(1500);
   const page = await film.start(url);
   await page.locator('.animus-rig-editor[data-rig="animus:knight"]').waitFor();
   await drawn(page);
-  if (!keepHitbox) {
-    await page.locator('.animus-rig-tree [data-bone="hitbox"]').click();
-    await page.getByRole('button', {name: 'Delete bone'}).click();
-    await page.locator('.animus-rig-tree [data-bone="hitbox"]').waitFor({state: 'detached'});
-    await page.locator('.animus-rig-tree [data-bone="body"]').click();
-  }
+  await bone(page, 'body').click();
   if (prepare) await prepare(page);
-  await clearToasts(page);
-  await page.evaluate(() => window.scrollTo(0, 0));
+  await L.clearToasts(page);
   await page.waitForTimeout(1200);
   return {film, page, h: L.human(film)};
 }
@@ -117,7 +96,7 @@ async function choose(L, h, page, combo, value) {
 
 /** Scrolls the page with the wheel by about [dy] pixels, in small steps, with the cursor away from the sidebar. */
 async function scrollBy(film, h, dy) {
-  if (film.pos.x < 400) await h.glide(860, film.pos.y);
+  if (film.pos.x < 400) await h.glide(1000, film.pos.y);
   for (let left = Math.abs(dy); left > 0; left -= 120) {
     await film.page.mouse.wheel(0, Math.sign(dy) * Math.min(120, left));
     await h.pause(90);
@@ -125,4 +104,4 @@ async function scrollBy(film, h, dy) {
   await h.pause(300);
 }
 
-module.exports = {KNIGHT, drawn, clearToasts, blankWorkspace, importKnight, knightSession, drag, choose, scrollBy};
+module.exports = {KNIGHT, drawn, importKnight, bone, knightSession, drag, choose, scrollBy};

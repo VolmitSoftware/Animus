@@ -21,8 +21,8 @@ public enum EditorScope {
     SPAWN("spawn"),
     TERRAIN("terrain");
 
-    /** What /animus editor pair grants unless scopes= says otherwise. */
-    public static final List<EditorScope> DEFAULT_PAIRING = List.of(READ, VALIDATE, PREVIEW, APPLY_NPCS, APPLY_BEHAVIORS, APPLY_GUI, APPLY_RIGS, TERRAIN);
+    /** What /animus editor pair grants unless scopes= narrows it: every scope but {@link #APPLY_COMMANDS}, which is always asked for by name. */
+    public static final List<EditorScope> DEFAULT_PAIRING = List.of(READ, VALIDATE, PREVIEW, APPLY_NPCS, APPLY_BEHAVIORS, APPLY_GUI, APPLY_RIGS, IMPORT, SPAWN, TERRAIN);
 
     private final String wireName;
 

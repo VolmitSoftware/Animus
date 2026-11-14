@@ -1,31 +1,26 @@
-/// The workspace sidebar: New document, Send to a server, the document
-/// search and every document by kind. Each kind's section, and each NPC
-/// folder, collapses from its header; what is collapsed is kept per
-/// workspace. On phones it is a drawer behind the top bar's Documents
-/// button: Escape closes it, Tab stays inside, and picking a document
-/// closes it.
+/// The workspace nav: jobs, not files. Simple lists Home, NPCs, Behaviors,
+/// Shops, Movement and Holograms; Advanced adds GUIs, Quests, Rigs, Trait
+/// groups, Packs, Send to server and Import. Each entry shows how many
+/// documents it holds. Below them, Recent (the last opened) and Changed
+/// (edits not applied to the server yet). An icon rail at 1100 px and
+/// below; on phones the shell puts this in a drawer.
 library;
 
-import 'dart:js_interop';
-
 import 'package:arcane_jaspr/arcane_jaspr.dart';
-import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
-import 'package:web/web.dart' as web;
 
-import '../config/docs_links.dart';
-import '../logic/gui/gui_text.dart';
-import '../logic/sidebar_sections.dart';
+import '../logic/change_sets.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
+import '../state/editor_store.dart';
+import '../state/library.dart';
 import '../state/live_session.dart';
 import '../state/workspace_repository.dart';
 import '../state/workspace_route.dart';
-import 'info_tip.dart';
-import 'server/live_bar.dart';
-import 'shortcut_sheet.dart';
+import '../ui/editor_mode.dart';
+import '../ui/library_rows.dart';
+import '../ui/library_watch.dart';
 
-/// Kinds listed in the sidebar, in this order.
+/// Kinds in the order lists and overviews show them.
 const List<DocumentKind> listedKinds = <DocumentKind>[
   DocumentKind.npc,
   DocumentKind.group,
@@ -46,397 +41,316 @@ const List<DocumentKind> listedKinds = <DocumentKind>[
   DocumentKind.serverBehaviors,
 ];
 
-/// Kinds whose sidebar section is a folder tree (NPC ids are folder/name).
-const Set<DocumentKind> foldered = <DocumentKind>{DocumentKind.npc};
-
-/// The id of the sidebar's search box, which Cmd or Ctrl+F and `/` focus.
-const String documentSearchId = 'animus-doc-search';
-
 int errorCount(AnimusDocument document) =>
     document.diagnostics.where((Diagnostic diagnostic) => diagnostic.severity == DiagnosticSeverity.error).length;
 
-class ShellSidebar extends StatefulWidget {
-  const ShellSidebar({
-    required this.workspace,
-    required this.route,
-    required this.compact,
-    required this.open,
-    required this.onClose,
-    this.session,
-    this.hasCodeDraft,
-    super.key,
-  });
+/// One nav entry: a job and the document kinds it covers.
+class NavJob {
+  const NavJob(this.id, this.label, this.icon, {this.kinds = const <DocumentKind>[], this.advanced = false, this.hint});
 
-  /// True for a document with Code text not applied to its draft.
-  final bool Function(DocumentKind kind, String id)? hasCodeDraft;
+  final String id;
+  final String label;
+  final ArcaneGlyph Function() icon;
 
-  final WorkspaceSnapshot workspace;
-  final EditorRoute route;
+  /// The kinds this job lists; the first is where the entry goes.
+  final List<DocumentKind> kinds;
+  final bool advanced;
 
-  /// Phone widths, where the sidebar is a drawer.
-  final bool compact;
-
-  /// Whether the drawer is open (phone widths only).
-  final bool open;
-  final void Function() onClose;
-  final LiveSession? session;
-
-  @override
-  State<ShellSidebar> createState() => _ShellSidebarState();
+  /// A line for each kind in the job's list switch (Movement's contrast).
+  final String? hint;
 }
 
-class _ShellSidebarState extends State<ShellSidebar> {
-  String _filter = '';
+const List<NavJob> navJobs = <NavJob>[
+  NavJob('home', 'Home', ArcaneIcon.house),
+  NavJob('npcs', 'NPCs', ArcaneIcon.users, kinds: <DocumentKind>[DocumentKind.npc]),
+  NavJob('behaviors', 'Behaviors', ArcaneIcon.workflow, kinds: <DocumentKind>[DocumentKind.behavior, DocumentKind.serverBehaviors]),
+  NavJob('shops', 'Shops', ArcaneIcon.store, kinds: <DocumentKind>[DocumentKind.shop]),
+  NavJob('movement', 'Movement', ArcaneIcon.route, kinds: <DocumentKind>[DocumentKind.route, DocumentKind.recording]),
+  NavJob('holograms', 'Holograms', ArcaneIcon.layers, kinds: <DocumentKind>[DocumentKind.hologram]),
+  NavJob('guis', 'GUIs', ArcaneIcon.layoutGrid,
+      advanced: true, kinds: <DocumentKind>[DocumentKind.inventory, DocumentKind.menu, DocumentKind.textAnimation, DocumentKind.presets]),
+  NavJob('quests', 'Quests', ArcaneIcon.scroll, advanced: true, kinds: <DocumentKind>[DocumentKind.quest]),
+  NavJob('rigs', 'Rigs', ArcaneIcon.bone, advanced: true, kinds: <DocumentKind>[DocumentKind.rig, DocumentKind.animation, DocumentKind.skin]),
+  NavJob('groups', 'Trait groups', ArcaneIcon.puzzle, advanced: true, kinds: <DocumentKind>[DocumentKind.group]),
+  NavJob('packs', 'Packs', ArcaneIcon.package, advanced: true, kinds: <DocumentKind>[DocumentKind.pack]),
+  NavJob('send', 'Send to server', ArcaneIcon.upload, advanced: true),
+  NavJob('import', 'Import', ArcaneIcon.download, advanced: true),
+];
 
-  /// Collapsed section and folder keys ([sectionKey], [folderKey]).
-  Set<String> _collapsed = <String>{};
+/// The job a document kind belongs to.
+NavJob jobOfKind(DocumentKind kind) =>
+    navJobs.firstWhere((NavJob job) => job.kinds.contains(kind), orElse: () => navJobs.first);
 
+/// The plural a list shows for [kind].
+String kindTitle(DocumentKind kind) => switch (kind) {
+      DocumentKind.group => 'Trait groups',
+      _ => kind.label,
+    };
+
+/// A job's tab for [kind], named by what it lists: Behaviors lists every
+/// behavior, NPC or server run, and the server's list of those that run.
+String subKindTab(DocumentKind kind) => switch (kind) {
+      DocumentKind.behavior => 'All behaviors',
+      DocumentKind.serverBehaviors => 'Server list',
+      _ => kindTitle(kind),
+    };
+
+/// The crumb a document of [kind] adds after its job: the tab it is listed
+/// under, unless the job has one kind or the tab says what the job says.
+String? kindCrumb(DocumentKind kind) {
+  final NavJob job = jobOfKind(kind);
+  if (job.kinds.length < 2 || kind == DocumentKind.serverBehaviors || kindTitle(kind) == job.label) return null;
+  return kindTitle(kind);
+}
+
+/// Whether [mode] lists and opens documents of [kind]: Simple keeps to its
+/// own jobs' kinds and leaves the server behaviors list out.
+bool kindShown(DocumentKind kind, EditorMode mode) {
+  if (mode == EditorMode.advanced) return true;
+  final NavJob job = jobOfKind(kind);
+  return !job.advanced && job.kinds.contains(kind) && kind != DocumentKind.serverBehaviors;
+}
+
+/// The jobs the nav lists in [mode]; Send to server only for a workspace
+/// kept in this browser.
+List<NavJob> visibleJobs(EditorMode mode, {required bool server}) => <NavJob>[
+      for (final NavJob job in navJobs)
+        if ((!job.advanced || mode == EditorMode.advanced) && !(job.id == 'send' && server)) job,
+    ];
+
+/// Where a job's entry goes: with [counts], the first of its kinds that has
+/// documents (Rigs of a server with only skins opens Skins).
+EditorRoute jobRoute(NavJob job, String workspaceId, {Map<DocumentKind, int>? counts}) => switch (job.id) {
+      'home' => WorkspaceRoute(workspaceId),
+      'npcs' => NpcListRoute(workspaceId),
+      'send' => SyncRoute(workspaceId),
+      'import' => CitizensRoute(workspaceId: workspaceId),
+      _ => KindListRoute(workspaceId, job.kinds.firstWhere((DocumentKind kind) => (counts?[kind] ?? 0) > 0, orElse: () => job.kinds.first)),
+    };
+
+/// The job the page at [route] belongs to, for the nav's current entry.
+String? currentJob(EditorRoute route) => switch (route) {
+      WorkspaceRoute() || ServerRoute() => 'home',
+      NpcListRoute() => 'npcs',
+      RecordingListRoute() => 'movement',
+      SyncRoute() => 'send',
+      CitizensRoute(:final String? workspaceId) when workspaceId != null => 'import',
+      KindListRoute(:final DocumentKind kind) => jobOfKind(kind).id,
+      DocumentRoute(:final DocumentKind kind) => jobOfKind(kind).id,
+      NewDocumentRoute(:final DocumentKind? kind) => kind == null ? null : jobOfKind(kind).id,
+      _ => null,
+    };
+
+/// How the nav is laid out.
+enum NavLayout { full, rail, drawer }
+
+/// One link of the nav.
+class NavLink {
+  const NavLink(this.label, this.href, {this.current = false, this.badge, this.job});
+
+  final String label;
+  final String href;
+  final bool current;
+  final String? badge;
+
+  /// The job this link opens (jobs carry an icon).
+  final NavJob? job;
+
+  @override
+  String toString() => '$label|$href|$current|${badge ?? ''}';
+}
+
+class ShellNav extends StatefulWidget {
+  /// Works out Recent and Changed now, so the frame can tell whether
+  /// anything the nav shows changed: a keystroke in a form leaves it as it
+  /// was. The job counts come from the library and redraw only when
+  /// [EditorStore.countChanges] says they moved.
+  ShellNav({
+    required this.store,
+    required WorkspaceSnapshot workspace,
+    required EditorRoute route,
+    required this.mode,
+    required this.layout,
+    required List<String> recent,
+    LiveSession? session,
+    this.header,
+    super.key,
+  })  : workspaceId = workspace.id,
+        server = workspace.server != null,
+        current = currentJob(route),
+        recent = _recent(store, workspace, route, recent, mode, session?.drafts ?? const <DraftChange>[]),
+        changed = _changed(store, workspace, route, session?.drafts ?? const <DraftChange>[]),
+        moreChanged = ((session?.drafts.length ?? 0) - 12).clamp(0, 1 << 30);
+
+  final EditorStore store;
+  final String workspaceId;
+  final bool server;
+
+  /// The job of the page shown, for the current entry.
+  final String? current;
+  final NavLayout layout;
+  final EditorMode mode;
+  final List<NavLink> recent;
+  final List<NavLink> changed;
+
+  /// Changed documents beyond the twelve listed.
+  final int moreChanged;
+
+  /// Shown above the jobs (the Mode switch in the phone drawer).
+  final Widget? header;
+
+  static bool _isOpen(EditorRoute route, DocumentKind kind, String id) => route is DocumentRoute && route.kind == kind && route.documentId == id;
+
+  /// The recently opened documents that [mode] shows and Changed does not
+  /// list already; Advanced ones stay in the list and come back with the
+  /// mode.
+  static List<NavLink> _recent(EditorStore store, WorkspaceSnapshot workspace, EditorRoute route, List<String> recent, EditorMode mode, List<DraftChange> drafts) {
+    final Set<String> changed = <String>{for (final DraftChange draft in drafts.take(12)) '${draft.kind.wireName}:${draft.id}'};
+    return <NavLink>[
+      for (final String key in recent)
+        if (_refOf(key) case (final DocumentKind kind, final String id)
+            when !changed.contains(key) && kindShown(kind, mode) && (store.libraryEntry(kind, id) != null || store.document(kind, id) != null))
+          NavLink(navName(store, kind, id), DocumentRoute(workspace.id, kind, id).format(), current: _isOpen(route, kind, id)),
+    ];
+  }
+
+  static List<NavLink> _changed(EditorStore store, WorkspaceSnapshot workspace, EditorRoute route, List<DraftChange> drafts) => <NavLink>[
+        for (final DraftChange draft in drafts.take(12))
+          NavLink(navName(store, draft.kind, draft.id), DocumentRoute(workspace.id, draft.kind, draft.id).format(),
+              current: _isOpen(route, draft.kind, draft.id), badge: _state(store, draft)),
+      ];
+
+  static (DocumentKind, String)? _refOf(String key) {
+    final int colon = key.indexOf(':');
+    if (colon < 0) return null;
+    final DocumentKind? kind = DocumentKind.parse(key.substring(0, colon));
+    return kind == null ? null : (kind, key.substring(colon + 1));
+  }
+
+  /// A changed document's state for its badge.
+  static String? _state(EditorStore store, DraftChange draft) {
+    final AnimusDocument? document = store.document(draft.kind, draft.id);
+    final int errors = document == null ? 0 : errorCount(document);
+    if (draft.problem != null || errors > 0) {
+      final int count = errors == 0 ? 1 : errors;
+      return '$count ${count == 1 ? 'problem' : 'problems'}';
+    }
+    return switch (draft.state) {
+      DraftState.deleted => 'Deleted',
+      DraftState.created => 'New',
+      _ => null,
+    };
+  }
+
+  @override
+  State<ShellNav> createState() => _ShellNavState();
+}
+
+/// How many things a job holds: its kinds' documents (Simple leaves the
+/// server behaviors list out) and, for Movement, the NPCs with a route of
+/// their own, as the Movement page lists them. Rigs without a rig counts
+/// the tab it opens on ([jobRoute]), so the number matches the page.
+int jobCount(NavJob job, Map<DocumentKind, int> counts, EditorMode mode, {int ownRoutes = 0}) {
+  final int total = kindTotal(counts, job.kinds.where((DocumentKind kind) => _counted(kind, mode))) + (job.kinds.contains(DocumentKind.route) ? ownRoutes : 0);
+  if (total > 0 || job.kinds.isEmpty) return total;
+  final EditorRoute landing = jobRoute(job, '', counts: counts);
+  return landing is KindListRoute && kindShown(landing.kind, mode) ? counts[landing.kind] ?? 0 : 0;
+}
+
+/// Simple leaves the server behaviors list out; Rigs counts rigs, not the
+/// animations and skins on its other tabs.
+bool _counted(DocumentKind kind, EditorMode mode) =>
+    (mode == EditorMode.advanced || kind != DocumentKind.serverBehaviors) && kind != DocumentKind.animation && kind != DocumentKind.skin;
+
+const ArcaneStyleData _inDrawer = ArcaneStyleData(widthCustom: '100%', borderCustom: 'none', backgroundCustom: 'transparent');
+
+/// What Recent and Changed call a document: the name its list row shows.
+String navName(EditorStore store, DocumentKind kind, String id) => store.libraryEntry(kind, id)?.name ?? id;
+
+/// The longest Recent or Changed label; a longer name ends in "..." and
+/// shows whole in the link's tooltip.
+const int navLabelLength = 28;
+
+String _short(String label) => label.length <= navLabelLength ? label : '${label.substring(0, navLabelLength - 1).trimRight()}\u2026';
+
+class _ShellNavState extends State<ShellNav> with LibraryWatch<ShellNav> {
   @override
   void initState() {
     super.initState();
-    _collapsed = _load(component.workspace.id);
+    watchLibrary(<LibraryChanges>[component.store.countChanges]);
   }
 
   @override
-  void didUpdateWidget(ShellSidebar oldComponent) {
+  void didUpdateWidget(ShellNav oldComponent) {
     super.didUpdateWidget(oldComponent);
-    if (oldComponent.workspace.id != component.workspace.id) _collapsed = _load(component.workspace.id);
+    if (!identical(oldComponent.store, component.store)) watchLibrary(<LibraryChanges>[component.store.countChanges]);
   }
 
-  static Set<String> _load(String workspaceId) {
-    try {
-      return decodeCollapsed(web.window.localStorage.getItem(collapsedStorageKey(workspaceId)));
-    } on Object {
-      // Storage blocked: everything starts open.
-      return <String>{};
-    }
+  @override
+  bool shouldRebuild(ShellNav newComponent) {
+    final ShellNav old = component;
+    return !identical(newComponent.store, old.store) ||
+        newComponent.workspaceId != old.workspaceId ||
+        newComponent.server != old.server ||
+        newComponent.current != old.current ||
+        newComponent.layout != old.layout ||
+        newComponent.mode != old.mode ||
+        newComponent.moreChanged != old.moreChanged ||
+        newComponent.recent.join('\n') != old.recent.join('\n') ||
+        newComponent.changed.join('\n') != old.changed.join('\n');
   }
 
-  void _store(Set<String> next) {
-    setState(() => _collapsed = next);
-    try {
-      web.window.localStorage.setItem(collapsedStorageKey(component.workspace.id), encodeCollapsed(next));
-    } on Object {
-      // Storage blocked: the sections still fold for this page.
-    }
+  bool get _rail => component.layout == NavLayout.rail;
+
+  List<NavLink> _jobs() {
+    final ShellNav nav = component;
+    final Map<DocumentKind, int> counts = nav.store.libraryCounts();
+    final int ownRoutes = nav.store.libraryOwnRoutes();
+    return <NavLink>[
+      for (final NavJob each in visibleJobs(nav.mode, server: nav.server))
+        NavLink(
+          each.label,
+          jobRoute(each, nav.workspaceId, counts: counts).format(),
+          current: each.id == nav.current,
+          job: each,
+          badge: each.kinds.isEmpty ? null : '${jobCount(each, counts, nav.mode, ownRoutes: ownRoutes)}',
+        ),
+    ];
   }
 
-  void _toggle(String key) => _store(_collapsed.contains(key) ? (<String>{..._collapsed}..remove(key)) : <String>{..._collapsed, key});
-
-  /// Every section and folder key the sidebar shows now.
-  Set<String> _allKeys() {
-    final List<AnimusDocument> documents = component.workspace.documents;
-    final Set<String> keys = <String>{
-      for (final DocumentKind kind in listedKinds)
-        if (documents.any((AnimusDocument document) => document.kind == kind)) sectionKey(kind.wireName),
-    };
-    void walk(DocumentKind kind, List<TreeNode<AnimusDocument>> nodes) {
-      for (final TreeNode<AnimusDocument> node in nodes) {
-        if (node is TreeFolder<AnimusDocument>) {
-          keys.add(folderKey(kind.wireName, node.path));
-          walk(kind, node.children);
-        }
-      }
-    }
-
-    for (final DocumentKind kind in foldered) {
-      walk(kind, folderTree(<AnimusDocument>[for (final AnimusDocument document in documents) if (document.kind == kind) document], (AnimusDocument document) => document.id));
-    }
-    return keys;
-  }
-
-  List<web.HTMLElement> _focusables(String selector) {
-    final web.NodeList? nodes = web.document.getElementById('animus-sidebar')?.querySelectorAll(selector);
-    if (nodes == null) return const <web.HTMLElement>[];
-    return <web.HTMLElement>[for (int index = 0; index < nodes.length; index++) nodes.item(index)! as web.HTMLElement];
-  }
-
-  void _keys(web.Event raw) {
-    final web.KeyboardEvent event = raw as web.KeyboardEvent;
-    final bool drawer = component.compact && component.open;
-    if (event.key == 'Escape' && drawer) {
-      event.preventDefault();
-      component.onClose();
-      return;
-    }
-    if (event.key == 'Tab' && drawer) {
-      // Focus stays in the drawer while it is open.
-      final List<web.HTMLElement> stops = _focusables('a[href], button:not([disabled]), input:not([disabled])');
-      if (stops.isEmpty) return;
-      final web.Element? active = web.document.activeElement;
-      if (event.shiftKey && identical(active, stops.first)) {
-        event.preventDefault();
-        stops.last.focus();
-      } else if (!event.shiftKey && identical(active, stops.last)) {
-        event.preventDefault();
-        stops.first.focus();
-      }
-      return;
-    }
-    final web.Element? active = web.document.activeElement;
-    final bool onToggle = active != null && active.classList.contains('animus-tree-toggle');
-    if (onToggle && (event.key == 'ArrowRight' || event.key == 'ArrowLeft')) {
-      // Right opens a closed header, Left closes an open one.
-      final String key = active.getAttribute('data-section') ?? '';
-      final bool expanded = active.getAttribute('aria-expanded') == 'true';
-      if (key.isNotEmpty && expanded == (event.key == 'ArrowLeft')) {
-        event.preventDefault();
-        _toggle(key);
-      }
-      return;
-    }
-    if (!onToggle && event.key == 'ArrowLeft') {
-      // From a document, Left goes to the header of its folder or section.
-      final web.Element? list = active?.closest('ul[data-section-list]');
-      final String? key = list?.getAttribute('data-section-list');
-      if (key == null) return;
-      event.preventDefault();
-      (web.document.querySelector('#animus-sidebar .animus-tree-toggle[data-section="$key"]') as web.HTMLElement?)?.focus();
-      return;
-    }
-    if (event.key != 'ArrowDown' && event.key != 'ArrowUp') return;
-    // Documents step to documents; a header steps to the next row of any kind.
-    final List<web.HTMLElement> items = _focusables(onToggle ? '.animus-tree-item, .animus-tree-toggle' : '.animus-tree-item');
-    final int at = items.indexWhere((web.HTMLElement item) => identical(item, active));
-    if (at < 0) return;
-    event.preventDefault();
-    final int next = event.key == 'ArrowDown' ? (at + 1).clamp(0, items.length - 1) : (at - 1).clamp(0, items.length - 1);
-    items[next].focus();
-  }
-
-  void _clicked(web.Event event) {
-    if (!component.compact || !component.open) return;
-    final web.EventTarget? target = event.target;
-    if (target == null || !target.isA<web.Element>()) return;
-    if ((target as web.Element).closest('a[href]') != null) component.onClose();
-  }
+  Widget _item(NavLink link) => ArcaneSidebarItem(
+        label: link.job == null ? _short(link.label) : link.label,
+        tooltip: link.job == null && link.label.length > navLabelLength ? link.label : null,
+        href: link.href,
+        icon: link.job?.icon(),
+        selected: link.current,
+        badge: link.badge,
+        collapsed: _rail,
+      );
 
   @override
   Widget build(BuildContext context) {
-    final WorkspaceSnapshot workspace = component.workspace;
-    final EditorRoute route = component.route;
-    final DocumentRoute? selected = route is DocumentRoute ? route : null;
-    final String filter = _filter.trim().toLowerCase();
-    bool matches(AnimusDocument document) =>
-        filter.isEmpty || document.id.toLowerCase().contains(filter) || guiPlainText(document.title).toLowerCase().contains(filter);
-    final bool compact = component.compact;
-    final bool open = component.open;
+    final ShellNav nav = component;
     final List<Widget> groups = <Widget>[
-      for (final DocumentKind kind in listedKinds)
-        if (workspace.documents.any((AnimusDocument document) => document.kind == kind)) _group(workspace, kind, selected, matches),
+      ArcaneSidebarGroup(children: <Widget>[for (final NavLink link in _jobs()) _item(link)]),
+      if (!_rail && nav.recent.isNotEmpty) ArcaneSidebarGroup(label: 'Recent', children: <Widget>[for (final NavLink link in nav.recent) _item(link)]),
+      if (!_rail && nav.changed.isNotEmpty)
+        ArcaneSidebarGroup(label: 'Changed', children: <Widget>[
+          for (final NavLink link in nav.changed) _item(link),
+          if (nav.moreChanged > 0) ArcaneSidebarItem(label: '${nav.moreChanged} more in Review', disabled: true),
+        ]),
     ];
-    final bool nothingMatches = filter.isNotEmpty && !workspace.documents.any(matches);
-    return dom.div(classes: 'animus-sidebar-frame', <Widget>[
-      if (compact && open)
-        dom.div(
-          classes: 'animus-drawer-scrim',
-          attributes: const <String, String>{'aria-hidden': 'true'},
-          events: <String, void Function(web.Event)>{'click': (web.Event _) => component.onClose()},
-          const <Widget>[],
-        ),
-      dom.aside(
-        id: 'animus-sidebar',
-        classes: 'animus-sidebar${compact ? ' is-drawer' : ''}${open ? ' is-open' : ''}',
-        attributes: <String, String>{
-          'aria-label': 'Documents',
-          if (compact && open) ...<String, String>{'role': 'dialog', 'aria-modal': 'true'},
-          if (compact && !open) 'inert': '',
-        },
-        events: <String, void Function(web.Event)>{'keydown': _keys, 'click': _clicked},
-        <Widget>[
-          if (compact)
-            dom.div(classes: 'animus-drawer-head', <Widget>[
-              const dom.h2(classes: 'animus-drawer-title', <Widget>[Component.text('Documents')]),
-              Button.ghost(
-                label: 'Close',
-                icon: ArcaneIcon.x(),
-                size: ButtonSize.small,
-                attributes: const <String, String>{'aria-label': 'Close documents'},
-                onPressed: component.onClose,
-              ),
-            ]),
-          dom.nav(classes: 'animus-new', attributes: const <String, String>{'aria-label': 'Workspace'}, <Widget>[
-            dom.a(
-              href: NewDocumentRoute(workspace.id).format(),
-              classes: 'animus-side-link is-primary${route is NewDocumentRoute && !route.conversation ? ' is-selected' : ''}',
-              const <Widget>[Component.text('New document')],
-            ),
-            dom.a(
-              href: NewDocumentRoute.conversation(workspace.id).format(),
-              classes: 'animus-side-link${route is NewDocumentRoute && route.conversation ? ' is-selected' : ''}',
-              const <Widget>[Component.text('New conversation')],
-            ),
-            if (workspace.server == null)
-              dom.a(
-                href: SyncRoute(workspace.id).format(),
-                classes: 'animus-side-link${route is SyncRoute ? ' is-selected' : ''}',
-                const <Widget>[Component.text('Send to a server')],
-              ),
-          ]),
-          dom.div(classes: 'animus-doc-search', <Widget>[
-            const dom.label(classes: 'animus-sr-only', attributes: <String, String>{'for': documentSearchId}, <Widget>[
-              Component.text('Search documents'),
-            ]),
-            TextInput(
-              id: documentSearchId,
-              placeholder: 'Search documents',
-              value: _filter,
-              attributes: <String, String>{'aria-keyshortcuts': '${platformAriaKeys(const <String>['Mod+F'])} /'},
-              onChanged: (String value) => setState(() => _filter = value),
-            ),
-          ]),
-          if (nothingMatches)
-            dom.p(classes: 'animus-empty-line', attributes: const <String, String>{'role': 'status'}, <Widget>[
-              Component.text('Nothing matches "${_filter.trim()}".'),
-            ]),
-          if (groups.isNotEmpty)
-            dom.div(classes: 'animus-tree-tools', <Widget>[
-              // On phones the drawer keeps Tab and Escape for its own stops.
-              if (!compact)
-                const dom.span(classes: 'animus-tree-tools-label', <Widget>[
-                  InfoTip(
-                    tip: 'Every document in this workspace by kind. What you collapse stays collapsed in this browser.',
-                    docs: Docs.editorDocuments,
-                    child: Component.text('By kind'),
-                  ),
-                ]),
-              Button.ghost(
-                label: 'Collapse all',
-                size: ButtonSize.small,
-                disabled: filter.isNotEmpty,
-                onPressed: () => _store(_allKeys()),
-              ),
-              Button.ghost(
-                label: 'Expand all',
-                size: ButtonSize.small,
-                disabled: filter.isNotEmpty || _collapsed.isEmpty,
-                onPressed: () => _store(<String>{}),
-              ),
-            ]),
-          if (workspace.server != null && workspace.documents.isEmpty) _nothingOpen(workspace),
-          dom.nav(classes: 'animus-tree', attributes: const <String, String>{'aria-label': 'Documents by kind'}, groups),
-        ],
-      ),
-    ]);
-  }
-
-  /// A just-paired server's workspace: nothing is copied in until opened
-  /// from the server catalog, so say so and offer to open everything.
-  Widget _nothingOpen(WorkspaceSnapshot workspace) {
-    final LiveSession? session = component.session;
-    final int count = session == null || !session.catalogLoaded ? 0 : session.catalog.length;
-    return dom.div(classes: 'animus-sidebar-empty', attributes: const <String, String>{'data-testid': 'sidebar-nothing-open'}, <Widget>[
-      dom.p(classes: 'animus-empty-line', <Widget>[
-        Component.text(count == 0
-            ? 'Nothing open yet. Documents join this workspace as you open them from the server catalog.'
-            : 'Nothing open yet. The server has $count document${count == 1 ? '' : 's'}.'),
-      ]),
-      if (count > 0)
-        Button.secondary(
-          label: 'Open all $count',
-          disabled: !session!.online || !session.owned || session.busy != null,
-          onPressed: () => session.openDocuments(session.catalog),
-        ),
-      dom.a(href: WorkspaceRoute(workspace.id).format(), classes: 'animus-side-link', const <Widget>[Component.text('Pick from the catalog')]),
-    ]);
-  }
-
-  /// A collapsible header: a button naming the section with its count.
-  Widget _header(String key, String label, int count, {required bool open, int level = 0}) => dom.button(
-        classes: 'animus-tree-toggle${level > 0 ? ' is-folder' : ''}',
-        styles: level > 0 ? dom.Styles(raw: <String, String>{'padding-inline-start': '${0.25 + level * 0.75}rem'}) : null,
-        attributes: <String, String>{
-          'type': 'button',
-          'aria-expanded': '$open',
-          'aria-controls': _listId(key),
-          'data-section': key,
-        },
-        events: <String, void Function(web.Event)>{'click': (web.Event _) => _toggle(key)},
-        <Widget>[
-          dom.span(classes: 'animus-tree-chevron${open ? ' is-open' : ''}', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[ArcaneIcon.chevronRight(size: IconSize.sm)]),
-          dom.span(classes: 'animus-tree-label', <Widget>[Component.text(label)]),
-          dom.span(classes: 'animus-count', attributes: <String, String>{'aria-label': '$count document${count == 1 ? '' : 's'}'}, <Widget>[Component.text('$count')]),
-        ],
-      );
-
-  static String _listId(String key) => 'animus-tree-${key.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '-')}';
-
-  Widget _group(WorkspaceSnapshot workspace, DocumentKind kind, DocumentRoute? selected, bool Function(AnimusDocument document) matches) {
-    final List<AnimusDocument> documents = <AnimusDocument>[for (final AnimusDocument document in workspace.documents) if (document.kind == kind) document];
-    final int count = documents.length;
-    final String key = sectionKey(kind.wireName);
-    final bool searching = _filter.trim().isNotEmpty;
-    final bool open = searching || !_collapsed.contains(key);
-    final List<AnimusDocument> shown = <AnimusDocument>[for (final AnimusDocument document in documents) if (matches(document)) document];
-    return dom.div(classes: 'animus-tree-group', attributes: <String, String>{'data-kind': kind.wireName}, <Widget>[
-      dom.div(classes: 'animus-tree-head', <Widget>[
-        dom.h3(<Widget>[_header(key, kind.label, count, open: open)]),
-        if (kind == DocumentKind.npc)
-          dom.a(
-            href: NpcListRoute(workspace.id).format(),
-            classes: 'animus-tree-browse${component.route is NpcListRoute ? ' is-selected' : ''}',
-            const <Widget>[Component.text('Browse')],
-          ),
-        if (kind == DocumentKind.recording && count > 0)
-          dom.a(
-            href: RecordingListRoute(workspace.id).format(),
-            classes: 'animus-tree-browse${component.route is RecordingListRoute ? ' is-selected' : ''}',
-            attributes: const <String, String>{'aria-label': 'Browse recordings'},
-            const <Widget>[Component.text('Browse')],
-          ),
-      ]),
-      if (open)
-        foldered.contains(kind)
-            ? _list(key, kind, folderTree(shown, (AnimusDocument document) => document.id), selected, searching, 0)
-            : _list(key, kind, <TreeNode<AnimusDocument>>[for (final AnimusDocument document in shown) TreeLeaf<AnimusDocument>(document)], selected, searching, 0),
-    ]);
-  }
-
-  Widget _list(String key, DocumentKind kind, List<TreeNode<AnimusDocument>> nodes, DocumentRoute? selected, bool searching, int level) {
-    return dom.ul(id: _listId(key), attributes: <String, String>{'role': 'list', 'data-section-list': key}, <Widget>[
-      for (final TreeNode<AnimusDocument> node in nodes)
-        switch (node) {
-          TreeLeaf<AnimusDocument>(:final AnimusDocument item) => dom.li(<Widget>[_item(kind, item, selected, level)]),
-          TreeFolder<AnimusDocument>() => dom.li(classes: 'animus-tree-folder', <Widget>[
-              _header(folderKey(kind.wireName, node.path), node.name, node.count, open: searching || !_collapsed.contains(folderKey(kind.wireName, node.path)), level: level + 1),
-              if (searching || !_collapsed.contains(folderKey(kind.wireName, node.path)))
-                _list(folderKey(kind.wireName, node.path), kind, node.children, selected, searching, level + 1),
-            ]),
-        },
-    ]);
-  }
-
-  Widget _item(DocumentKind kind, AnimusDocument document, DocumentRoute? selected, int level) {
-    final WorkspaceSnapshot workspace = component.workspace;
-    final LiveSession? session = component.session;
-    final bool current = selected?.kind == kind && selected?.documentId == document.id;
-    return dom.a(
-      href: DocumentRoute(workspace.id, kind, document.id, selected?.view ?? ViewMode.visual).format(),
-      classes: 'animus-tree-item${current ? ' is-selected' : ''}',
-      styles: level > 0 ? dom.Styles(raw: <String, String>{'padding-inline-start': '${0.5 + level * 0.75}rem'}) : null,
-      attributes: <String, String>{if (current) 'aria-current': 'page'},
-      <Widget>[
-        dom.span(classes: 'animus-tree-title', <Widget>[Component.text(guiPlainText(document.title))]),
-        if (document.title != document.id) dom.span(classes: 'animus-tree-id', <Widget>[Component.text(document.id)]),
-        if (!document.valid)
-          dom.span(
-            classes: 'animus-badge is-error',
-            attributes: <String, String>{'title': '${errorCount(document)} problem${errorCount(document) == 1 ? '' : 's'}'},
-            <Widget>[Component.text('${errorCount(document)}')],
-          ),
-        if (component.hasCodeDraft?.call(kind, document.id) ?? false)
-          const dom.span(
-            classes: 'animus-badge is-draft',
-            attributes: <String, String>{'data-code-draft': 'true', 'title': 'Code draft not applied'},
-            <Widget>[Component.text('code')],
-          ),
-        if (session != null && workspace.server != null && draftBadge(session, kind, document.id) != null)
-          dom.span(
-            classes: 'animus-badge is-draft',
-            attributes: <String, String>{'data-draft': draftBadge(session, kind, document.id)!},
-            <Widget>[Component.text(draftBadge(session, kind, document.id)!)],
-          ),
-      ],
+    final bool drawer = nav.layout == NavLayout.drawer;
+    return ArcaneSidebar(
+      width: _rail ? 56 : 240,
+      collapsedWidth: 56,
+      collapsed: _rail,
+      showCollapseToggle: false,
+      header: nav.header,
+      // In the phone drawer the sheet is the panel: the nav fills it with no
+      // second box (border, tint) inside.
+      styles: drawer ? _inDrawer : null,
+      children: groups,
     );
   }
 }

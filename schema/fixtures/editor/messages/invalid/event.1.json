@@ -1,0 +1,13 @@
+{
+  "type": "catalog",
+  "documents": [
+    {
+      "kind": "npc",
+      "id": "town/guard",
+      "path": "npcs/town/guard.json",
+      "revision": 4,
+      "hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "source": "plugin"
+    }
+  ]
+}

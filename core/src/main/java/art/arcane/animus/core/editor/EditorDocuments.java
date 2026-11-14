@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -52,6 +53,7 @@ public final class EditorDocuments {
 
     private final DocumentStore store;
     private final IntSupplier recordingBytes;
+    private final Set<String> reported = new HashSet<>();
 
     /** @param recordingBytes the live {@code [recordings] maximumFileBytes} */
     public EditorDocuments(DocumentStore store, IntSupplier recordingBytes) {
@@ -83,7 +85,7 @@ public final class EditorDocuments {
             List<String> roots = new ArrayList<>(List.of(kind.folder()));
             if (kind == DocumentKind.BEHAVIOR || kind == DocumentKind.PACK) {
                 Path packs = store.resolve("packs");
-                for (Path file : JsonDocumentTree.files(packs, 18)) {
+                for (Path file : JsonDocumentTree.files(packs, 18, this::skipped)) {
                     String relative = "packs/" + packs.relativize(file).toString().replace('\\', '/');
                     idFor(kind, relative).ifPresent((String id) -> found.add(new Location(kind, id, relative)));
                 }
@@ -91,7 +93,7 @@ public final class EditorDocuments {
             }
             for (String root : roots) {
                 Path directory = store.resolve(root);
-                for (Path file : JsonDocumentTree.files(directory, 16)) {
+                for (Path file : JsonDocumentTree.files(directory, 16, this::skipped)) {
                     String relative = root + "/" + directory.relativize(file).toString().replace('\\', '/');
                     idFor(kind, relative).ifPresent((String id) -> found.add(new Location(kind, id, relative)));
                 }
@@ -99,6 +101,14 @@ public final class EditorDocuments {
         }
         found.sort((Location a, Location b) -> a.kind() != b.kind() ? Integer.compare(a.kind().ordinal(), b.kind().ordinal()) : a.path().compareTo(b.path()));
         return found;
+    }
+
+    /** Logs a skipped symlink or too-deep file once, since the editor lists the folders every few seconds while a browser is paired. */
+    private void skipped(String message) {
+        synchronized (reported) {
+            if (reported.size() >= 256 || !reported.add(message)) return;
+        }
+        System.getLogger("Animus").log(System.Logger.Level.WARNING, message);
     }
 
     /** The id a path has for a kind, or empty when the path is not one of that kind's documents. */
@@ -165,12 +175,16 @@ public final class EditorDocuments {
     /** The document's integer {@code revision}, or 0 when it has none or cannot be parsed. */
     public static long revision(String content) {
         if (content == null) return 0;
-        try {
-            JsonElement revision = JsonDocuments.object(content).get("revision");
-            if (revision == null || !revision.isJsonPrimitive() || !revision.getAsJsonPrimitive().isNumber()) return 0;
-            long value = revision.getAsBigDecimal().longValueExact();
-            return Math.max(0, value);
-        } catch (IOException | ArithmeticException unreadable) { return 0; }
+        try { return revision(JsonDocuments.object(content)); }
+        catch (IOException unreadable) { return 0; }
+    }
+
+    /** The parsed document's integer {@code revision}, or 0 when it has none. */
+    public static long revision(JsonObject document) {
+        JsonElement revision = document.get("revision");
+        if (revision == null || !revision.isJsonPrimitive() || !revision.getAsJsonPrimitive().isNumber()) return 0;
+        try { return Math.max(0, revision.getAsBigDecimal().longValueExact()); }
+        catch (ArithmeticException fraction) { return 0; }
     }
 
     /** The stored document parsed, or an empty object when its JSON is unreadable. */

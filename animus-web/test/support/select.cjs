@@ -1,7 +1,9 @@
-// Helpers for the editor's dropdowns (lib/components/select). A dropdown is
-// a button with role="combobox" whose current value sits in data-value; its
-// options render only while it is open, each a [role="option"] with the
-// value in data-value.
+// Helpers for the editor's dropdowns: arcane_jaspr's shadcn combobox behind
+// AnimusSelect. The trigger is a button with role="combobox"
+// whose aria-controls names its list; the list is in the page while closed
+// (hidden) and shows while open; each option is a [role="option"] with its
+// value in data-arcane-value and its text in data-label; the chosen one has
+// aria-selected="true".
 
 /** Every dropdown trigger inside [scope]. */
 function dropdowns(scope) {
@@ -10,72 +12,75 @@ function dropdowns(scope) {
 
 /** The dropdown trigger inside [scope] showing [text] (its value or placeholder). */
 function dropdownShowing(scope, text) {
-  return dropdowns(scope).filter({has: scope.page().locator('.animus-select-value', {hasText: text})}).first();
+  return dropdowns(scope).filter({hasText: text}).first();
 }
 
 /**
  * Narrows [locator] to the trigger button: a label locator such as
- * getByLabel also matches the open listbox, which carries the same name.
+ * getByLabel also matches the list, which carries the same name.
  */
 function triggerOf(locator) {
   return locator.and(locator.page().locator('button[role="combobox"]'));
 }
 
-/** The open listbox of [trigger]. */
+/** The list of [trigger], open or not. */
 async function listboxOf(trigger) {
   trigger = triggerOf(trigger);
   const id = await trigger.getAttribute('aria-controls');
   return trigger.page().locator(`[id="${id}"]`);
 }
 
-/** Opens [trigger] (if closed) and returns its listbox. */
+/** Opens [trigger] (if closed) and returns its list. */
 async function openDropdown(trigger) {
   trigger = triggerOf(trigger);
-  if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
   const listbox = await listboxOf(trigger);
-  await listbox.waitFor();
+  if (!(await listbox.isVisible().catch(() => false))) await trigger.click();
+  await listbox.waitFor({state: 'visible'});
   return listbox;
 }
+
+const quoted = value => value.replace(/"/g, '\\"');
 
 /** Picks the option with [value] in the dropdown [trigger] by pointer. */
 async function choose(trigger, value) {
   const listbox = await openDropdown(trigger);
-  const option = listbox.locator(`[role="option"][data-value="${value.replace(/"/g, '\\"')}"]`);
+  const option = listbox.locator(`[role="option"][data-arcane-value="${quoted(value)}"]`);
   await option.scrollIntoViewIfNeeded();
   await option.click();
-  await listbox.waitFor({state: 'detached'});
+  await listbox.waitFor({state: 'hidden'});
 }
 
 /** Picks the option labelled [text] (exact) in the dropdown [trigger]. */
 async function chooseText(trigger, text) {
   const listbox = await openDropdown(trigger);
-  const option = listbox.locator('[role="option"]', {has: trigger.page().locator('.animus-select-label', {hasText: new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)})}).first();
+  const option = listbox.locator(`[role="option"][data-label="${quoted(text)}"]`).first();
   await option.scrollIntoViewIfNeeded();
   await option.click();
-  await listbox.waitFor({state: 'detached'});
+  await listbox.waitFor({state: 'hidden'});
 }
 
-/** The chosen value of the dropdown [trigger]. */
+/** The chosen value of the dropdown [trigger] ('' when none is). */
 async function valueOf(trigger) {
-  trigger = triggerOf(trigger);
-  return (await trigger.getAttribute('data-value')) ?? '';
+  const listbox = await listboxOf(trigger);
+  const chosen = listbox.locator('[role="option"][aria-selected="true"]');
+  return (await chosen.count()) ? ((await chosen.first().getAttribute('data-arcane-value')) ?? '') : '';
 }
 
 /** The option values of [trigger], opening and closing it. */
 async function optionValues(trigger) {
   const listbox = await openDropdown(trigger);
-  const values = await listbox.locator('[role="option"]:not([data-action])').evaluateAll(rows => rows.map(row => row.getAttribute('data-value')));
+  const values = await listbox.locator('[role="option"]').evaluateAll(rows => rows.map(row => row.getAttribute('data-arcane-value')));
   await trigger.page().keyboard.press('Escape');
-  await listbox.waitFor({state: 'detached'});
+  await listbox.waitFor({state: 'hidden'});
   return values;
 }
 
 /** The option labels of [trigger], opening and closing it. */
 async function optionLabels(trigger) {
   const listbox = await openDropdown(trigger);
-  const labels = await listbox.locator('[role="option"]:not([data-action]) .animus-select-label').allTextContents();
+  const labels = await listbox.locator('[role="option"]').evaluateAll(rows => rows.map(row => row.getAttribute('data-label')));
   await trigger.page().keyboard.press('Escape');
-  await listbox.waitFor({state: 'detached'});
+  await listbox.waitFor({state: 'hidden'});
   return labels;
 }
 

@@ -1,183 +1,101 @@
-.animus-views.is-split.has-editor {
-  grid-template-columns: minmax(0, 1fr);
-}
+/* Rig editor (lib/components/rig): the pane layout, the bone tree, the gizmo
+   over the stage and the keyframe timeline. Fields and buttons are the
+   kit's and the library's, unrestyled. Tokens only. */
 
-.animus-sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
+/* The editor's own width picks the layout (so Split's form column fits):
+   from 64rem bones, stage and inspector side by side, the timeline under
+   them; narrower, the tabs pick one pane under the stage. */
 .animus-rig-editor {
+  container: rig / inline-size;
   display: grid;
   gap: 0.75rem;
   min-width: 0;
 }
 
-.animus-rig-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 0.75rem;
-  align-items: end;
-}
-
-/* Three panes with the stage in the middle as the focal point; the
-   timeline spans the full width under them. */
 .animus-rig-layout {
   display: grid;
-  grid-template-columns: minmax(11rem, 15rem) minmax(0, 1fr) minmax(13rem, 18rem);
-  grid-template-areas:
-    "tree stage inspector"
-    "timeline timeline timeline";
-  gap: 0.75rem 1rem;
-  align-items: start;
-}
-
-.animus-rig-stage {
-  grid-area: stage;
-  display: grid;
-  gap: 0.5rem;
-  min-width: 0;
-}
-
-.animus-rig-gizmo-caption {
-  align-self: center;
-  padding-inline: 0.375rem;
-  color: var(--animus-muted);
-  font-size: var(--animus-text-md);
-}
-
-.animus-rig-pane {
-  min-width: 0;
-}
-
-.animus-rig-pane.is-tree {
-  grid-area: tree;
-}
-
-.animus-rig-pane.is-inspector {
-  grid-area: inspector;
-}
-
-.animus-rig-pane.is-timeline {
-  grid-area: timeline;
-}
-
-.animus-rig-panes {
-  display: none;
-}
-
-.animus-rig-tree,
-.animus-rig-inspector {
-  display: grid;
-  gap: 0.5rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
   min-width: 0;
   align-content: start;
 }
 
-.animus-rig-tree h3,
-.animus-rig-inspector h3 {
-  margin: 0;
-  font-size: var(--animus-text-md);
+@container rig (max-width: 63.98rem) {
+  .animus-rig-layout[data-pane="bones"] .animus-rig-pane:not(.is-bones),
+  .animus-rig-layout[data-pane="inspector"] .animus-rig-pane:not(.is-inspector),
+  .animus-rig-layout[data-pane="timeline"] .animus-rig-pane:not(.is-timeline) {
+    display: none;
+  }
 }
 
-.animus-rig-tree ul {
+@container rig (min-width: 64rem) {
+  .animus-rig-layout {
+    grid-template-columns: 15rem minmax(0, 1fr) 24rem;
+    grid-template-areas: "bones stage inspector" "timeline timeline timeline";
+  }
+
+  /* The stage keeps its own height; a taller inspector makes the page
+     scroll, never its own pane. */
+  .animus-rig-stage {
+    grid-area: stage;
+    align-self: start;
+  }
+
+  .animus-rig-pane.is-bones {
+    grid-area: bones;
+  }
+
+  .animus-rig-pane.is-inspector {
+    grid-area: inspector;
+  }
+
+  .animus-rig-pane.is-timeline {
+    grid-area: timeline;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .animus-rig-tabs {
+    display: none;
+  }
+}
+
+/* Bone tree */
+.animus-rig-bones {
   list-style: none;
   margin: 0;
-  padding: 0.25rem;
+  padding: 0;
   max-height: 22rem;
   overflow: auto;
-  border: 1px solid var(--animus-border);
 }
 
 .animus-rig-bone {
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.375rem 0.5rem;
+  padding: 0.375rem 0.5rem 0.375rem calc(0.5rem + var(--depth, 0) * 0.875rem);
+  border-radius: calc(var(--radius) - 2px);
+  font-size: 0.875rem;
   cursor: pointer;
 }
 
 .animus-rig-bone:hover {
-  background: color-mix(in srgb, var(--animus-muted) 14%, transparent);
+  background: color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
 .animus-rig-bone.is-selected {
-  background: color-mix(in srgb, var(--primary) 22%, transparent);
+  background: var(--accent);
+  color: var(--accent-foreground);
+  font-weight: 500;
 }
 
-.animus-rig-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+.animus-rig-bone:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }
 
-.animus-rig-field {
-  display: grid;
-  gap: 0.25rem;
-  min-width: 0;
-  font-size: var(--animus-text-md);
-}
-
-/* A field and its button stay on one line, the field taking the room; a
-   row of buttons only wraps. */
-.animus-rig-field > .animus-row:has(.arcane-text-input) {
-  flex-wrap: nowrap;
-}
-
-.animus-rig-field > .animus-row:has(.arcane-text-input) > :first-child {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
-/* The caption reads as every other field label. */
-.animus-rig-field > span:first-child {
-  font-size: var(--animus-text-sm);
-  color: var(--animus-muted);
-}
-
-.animus-rig-field.is-inline {
-  /* Room for a four-digit tick count and the step arrows. */
-  grid-template-columns: max-content minmax(6rem, 1fr);
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.animus-rig-field.is-check {
-  grid-template-columns: max-content minmax(0, 1fr);
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-}
-
-.animus-rig-field.is-check > span:first-child,
-.animus-rig-field.is-check > span {
-  font-size: inherit;
-  color: inherit;
-}
-
-.animus-rig-field.is-check input {
-  width: 1.1rem;
-  height: 1.1rem;
-  accent-color: var(--primary);
-  cursor: pointer;
-}
-
-.animus-rig-vector {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.25rem;
-}
-
-.animus-rig-hint {
-  margin: 0;
-  font-size: var(--animus-text-md);
-}
-
-.animus-mc-overlay,
+/* Gizmo over the stage: bones, then the axes of the picked one (x red, y
+   green, z blue). */
 .animus-rig-gizmo {
   position: absolute;
   inset: 0;
@@ -192,186 +110,66 @@
 }
 
 .animus-rig-bone-link {
-  stroke: rgba(255, 255, 255, 0.7);
+  stroke: color-mix(in srgb, var(--foreground) 70%, transparent);
   stroke-width: 1.5;
 }
 
-html.light .animus-rig-bone-link {
-  stroke: rgba(20, 18, 20, 0.6);
-}
-
 .animus-rig-bone-dot {
-  fill: rgba(20, 18, 20, 0.75);
-  stroke: #ffffff;
+  fill: var(--background);
+  stroke: var(--foreground);
   stroke-width: 1.5;
 }
 
 .animus-rig-bone-dot.is-selected {
   fill: var(--primary);
+  stroke: var(--primary-foreground);
 }
 
 .animus-rig-axis {
   stroke-width: 3;
 }
 
+.animus-rig-axis.is-x,
+.animus-rig-handle.is-x {
+  stroke: var(--destructive);
+  fill: var(--destructive);
+}
+
+.animus-rig-axis.is-y,
+.animus-rig-handle.is-y {
+  stroke: var(--success);
+  fill: var(--success);
+}
+
+.animus-rig-axis.is-z,
+.animus-rig-handle.is-z {
+  stroke: #3b82f6;
+  fill: #3b82f6;
+}
+
 .animus-rig-handle {
-  stroke: #0d0d0f;
   stroke-width: 1.5;
   cursor: grab;
+}
+
+.animus-rig-handle.is-rotate {
+  r: 8;
+}
+
+.animus-rig-handle.is-scale {
+  r: 7;
 }
 
 .animus-rig-handle:focus {
   outline: none;
 }
 
-.animus-rig-handle:focus-visible {
+.animus-rig-gizmo .animus-rig-handle:focus-visible {
   stroke: var(--ring);
   stroke-width: 4;
 }
 
-.animus-rig-axis.is-x,
-.animus-rig-handle.is-x {
-  stroke: var(--animus-axis-x);
-}
-
-.animus-rig-axis.is-y,
-.animus-rig-handle.is-y {
-  stroke: var(--animus-axis-y);
-}
-
-.animus-rig-axis.is-z,
-.animus-rig-handle.is-z {
-  stroke: var(--animus-axis-z);
-}
-
-.animus-rig-handle.is-x { fill: var(--animus-axis-x); }
-.animus-rig-handle.is-y { fill: var(--animus-axis-y); }
-.animus-rig-handle.is-z { fill: var(--animus-axis-z); }
-.animus-rig-handle.is-rotate { r: 8; }
-.animus-rig-handle.is-scale { r: 7; }
-
-.animus-rig-handle.is-x:focus-visible,
-.animus-rig-handle.is-y:focus-visible,
-.animus-rig-handle.is-z:focus-visible {
-  stroke: var(--ring);
-}
-
-.animus-rig-timeline {
-  display: grid;
-  gap: 0.5rem;
-  min-width: 0;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--animus-border);
-}
-
-.animus-rig-names-box {
-  border: 1px solid var(--animus-border);
-  padding: 0.25rem 0.75rem;
-}
-
-.animus-rig-names-toggle {
-  min-height: var(--animus-control-h);
-  width: 100%;
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: var(--animus-text-md);
-  text-align: left;
-  cursor: pointer;
-}
-
-.animus-rig-names-toggle:hover {
-  text-decoration: underline;
-}
-
-.animus-rig-names-caret {
-  width: 1ch;
-  font-family: var(--font-mono);
-  color: var(--animus-muted);
-}
-
-.animus-rig-names {
-  display: grid;
-  gap: 0.5rem;
-  padding-bottom: 0.5rem;
-}
-
-.animus-rig-names p {
-  margin: 0;
-}
-
-.animus-rig-name-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.5rem;
-}
-
-.animus-rig-name {
-  display: grid;
-  gap: 0.25rem;
-  padding: 0.5rem;
-  border: 1px solid var(--animus-border);
-}
-
-.animus-rig-name.is-broken {
-  border-color: var(--animus-warning);
-}
-
-.animus-rig-name-head,
-.animus-rig-name-add,
-.animus-rig-name-fix {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.animus-rig-name-head > :first-child {
-  flex: 0 1 10rem;
-  min-width: 6rem;
-}
-
-.animus-rig-name-role {
-  font-size: var(--animus-text-sm);
-  color: var(--animus-muted);
-}
-
-.animus-rig-name-fix {
-  font-size: var(--animus-text-sm);
-  color: var(--animus-warning);
-}
-
-.animus-rig-transport {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1rem;
-  align-items: center;
-  padding: 0.5rem;
-  background: color-mix(in srgb, var(--animus-muted) 8%, transparent);
-}
-
-.animus-rig-loop-note,
-.animus-rig-status {
-  margin: 0;
-  font-size: var(--animus-text-sm);
-}
-
-.animus-rig-trim {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 0.75rem;
-  align-items: center;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--animus-warning);
-}
-
+/* Timeline: a lane's name, then its keys over the clip's length. */
 .animus-rig-lanes {
   display: grid;
   gap: 0.25rem;
@@ -381,68 +179,44 @@ html.light .animus-rig-bone-link {
 
 .animus-rig-lane {
   display: grid;
-  grid-template-columns: minmax(8rem, 12rem) minmax(0, 1fr);
+  grid-template-columns: minmax(7rem, 11rem) minmax(0, 1fr);
   gap: 0.5rem;
   align-items: center;
-  font-size: var(--animus-text-md);
 }
 
-.animus-rig-lane-label {
-  display: flex;
-  gap: 0.375rem;
-  align-items: center;
+.animus-rig-lane-name {
+  display: grid;
+  justify-items: start;
   min-width: 0;
-  min-height: 1.75rem;
-  padding: 0 0.375rem;
-  border: 1px solid transparent;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
   overflow: hidden;
-  white-space: nowrap;
-}
-
-button.animus-rig-lane-label {
-  cursor: pointer;
-}
-
-button.animus-rig-lane-label:hover {
-  border-color: var(--animus-border);
-}
-
-.animus-rig-lane-label > span:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.animus-rig-lane.is-bone .animus-rig-lane-label {
-  font-weight: 600;
-}
-
-.animus-rig-lane.is-selected .animus-rig-lane-label {
-  border-color: var(--primary);
-}
-
-.animus-rig-blend {
-  flex: none;
-  font-size: var(--animus-text-xs);
-  color: var(--animus-muted);
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
 }
 
 .animus-rig-lane-keys,
 .animus-rig-ruler {
   position: relative;
-  height: 1.75rem;
-  margin: 0 0.6rem;
-  background: color-mix(in srgb, var(--animus-muted) 12%, transparent);
+  height: 2rem;
+  margin: 0 0.5rem;
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--muted);
+}
+
+.animus-rig-lane.is-bone .animus-rig-lane-keys {
+  background: var(--accent);
+}
+
+.animus-rig-lane.is-selected .animus-rig-lane-keys {
+  outline: 1px solid var(--ring);
 }
 
 .animus-rig-ruler {
-  height: 1.4rem;
-  background: color-mix(in srgb, var(--animus-muted) 20%, transparent);
-  font-family: var(--font-mono);
-  font-size: var(--animus-text-xs);
+  height: 1.5rem;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
 }
 
 .animus-rig-ruler-mark {
@@ -452,65 +226,34 @@ button.animus-rig-lane-label:hover {
   display: flex;
   align-items: center;
   padding-left: 0.25rem;
-  border-left: 1px solid var(--animus-muted);
-  color: var(--animus-muted);
+  border-left: 1px solid var(--border);
 }
 
 .animus-rig-ruler-mark.is-end {
   padding: 0 0.25rem 0 0;
   border-left: 0;
-  border-right: 1px solid var(--animus-muted);
+  border-right: 1px solid var(--border);
   transform: translateX(-100%);
 }
 
-.animus-rig-ruler-event {
-  position: absolute;
-  bottom: 0;
-  width: 0.5rem;
-  height: 0.35rem;
-  margin-left: -0.25rem;
-  background: var(--animus-muted);
-  clip-path: polygon(50% 0, 100% 100%, 0 100%);
-}
-
-.animus-rig-lane.is-scrubber {
-  align-items: center;
-}
-
-.animus-rig-lane.is-scrubber .animus-rig-range {
-  margin: 0 0.6rem;
-  width: calc(100% - 1.2rem);
-}
-
-.animus-rig-range {
-  width: 100%;
-  min-height: 2rem;
-  accent-color: var(--primary);
-  cursor: pointer;
-}
-
-.animus-rig-tick {
-  font-family: var(--font-mono);
-  font-size: var(--animus-text-sm);
-}
-
-.animus-rig-playhead {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  margin-left: -1px;
-  background: var(--primary);
-  pointer-events: none;
-  z-index: 1;
-}
-
+.animus-rig-playhead,
 .animus-rig-hidden-span {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--animus-muted) 30%, transparent) 0 4px, transparent 4px 8px);
+  z-index: 1;
   pointer-events: none;
+}
+
+.animus-rig-playhead {
+  width: 2px;
+  margin-left: -1px;
+  background: var(--primary);
+}
+
+.animus-rig-hidden-span {
+  z-index: 0;
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted-foreground) 30%, transparent) 0 4px, transparent 4px 8px);
 }
 
 .animus-rig-key,
@@ -518,171 +261,81 @@ button.animus-rig-lane-label:hover {
   position: absolute;
   top: 50%;
   z-index: 2;
-  width: 0.8rem;
-  height: 0.8rem;
+  width: 0.75rem;
+  height: 0.75rem;
   padding: 0;
-  border: 1px solid var(--animus-panel);
-  background: var(--animus-muted);
+  border: 1px solid var(--background);
+  border-radius: 2px;
+  background: var(--muted-foreground);
   transform: translate(-50%, -50%) rotate(45deg);
-  font-size: var(--animus-text-md);
   cursor: grab;
   touch-action: none;
 }
 
-.animus-rig-key.is-hidden {
-  background: var(--animus-panel);
-  border: 2px solid var(--animus-muted);
-}
-
 .animus-rig-event {
+  border-radius: 50%;
   transform: translate(-50%, -50%);
   cursor: pointer;
 }
 
+.animus-rig-key.is-hidden {
+  border: 2px solid var(--muted-foreground);
+  background: var(--background);
+}
+
 .animus-rig-key:hover,
 .animus-rig-event:hover {
-  background: var(--secondary-foreground);
+  background: var(--foreground);
 }
 
 .animus-rig-key.is-selected,
 .animus-rig-event.is-selected {
-  background: var(--primary);
   border-color: var(--primary);
+  background: var(--primary);
 }
 
-.animus-rig-keybar {
-  align-items: center;
+.animus-rig-key:focus-visible,
+.animus-rig-event:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
-.animus-rig-key-panels {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.animus-rig-keyframe {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 0.75rem;
-  align-items: center;
-  padding: 0.5rem;
-  border: 1px solid var(--animus-border);
-}
-
-.animus-rig-keyframe > p {
-  margin: 0;
-  flex-basis: 100%;
-}
-
-@media (max-width: 1100px) {
-  .animus-rig-layout {
-    grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
-    grid-template-areas:
-      "tree stage"
-      "inspector inspector"
-      "timeline timeline";
-  }
-}
-
-/* Phone: the stage on top, then one pane at a time picked by the switch. */
+/* Phones: a lane's name sits over its keys. */
 @media (max-width: 760px) {
-  .animus-rig-layout {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "stage"
-      "tree"
-      "inspector"
-      "timeline";
-  }
-
-  .animus-rig-panes {
-    display: flex;
-  }
-
-  .animus-rig-layout[data-pane="tree"] .animus-rig-pane:not(.is-tree),
-  .animus-rig-layout[data-pane="inspector"] .animus-rig-pane:not(.is-inspector),
-  .animus-rig-layout[data-pane="timeline"] .animus-rig-pane:not(.is-timeline) {
-    display: none;
-  }
-
   .animus-rig-lane {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.125rem;
   }
 
-  .animus-rig-lane.is-ruler .animus-rig-lane-label {
-    display: none;
-  }
-
   .animus-rig-lanes {
     max-height: none;
   }
+
+  .animus-rig-lane.is-ruler .animus-rig-lane-name,
+  .animus-rig-lane.is-scrubber .animus-rig-lane-name,
+  .animus-rig-ruler-mark.is-odd {
+    display: none;
+  }
 }
 
-/* Touch: keyframes and events keep their small glyph but take a 44 px
-   target; the glyph is drawn by ::before so its states carry over. */
+/* Touch: keys and events keep their small mark inside a 44 px target;
+   handles grow to 44 px. */
 @media (max-width: 760px), (pointer: coarse) {
   .animus-rig-lane-keys {
-    min-height: 2.75rem;
-  }
-
-  .animus-rig-key,
-  .animus-rig-event,
-  .animus-rig-key.is-hidden,
-  .animus-rig-key.is-selected,
-  .animus-rig-event.is-selected,
-  .animus-rig-key:hover,
-  .animus-rig-event:hover {
-    width: 2.75rem;
     height: 2.75rem;
-    border: 0;
-    background: transparent;
   }
 
-  .animus-rig-key::before,
-  .animus-rig-event::before {
+  .animus-rig-key::after,
+  .animus-rig-event::after {
     content: "";
     position: absolute;
-    inset: calc(50% - 0.4rem);
-    box-sizing: border-box;
-    border: 1px solid var(--animus-panel);
-    background: var(--animus-muted);
+    inset: -1rem;
   }
 
-  .animus-rig-key.is-hidden::before {
-    border: 2px solid var(--animus-muted);
-    background: var(--animus-panel);
-  }
-
-  .animus-rig-key:hover::before,
-  .animus-rig-event:hover::before {
-    background: var(--secondary-foreground);
-  }
-
-  .animus-rig-key.is-selected::before,
-  .animus-rig-event.is-selected::before {
-    border-color: var(--primary);
-    background: var(--primary);
-  }
-
-  /* Gizmo handles stay round (they are the 3D gizmo) at a 44 px target. */
   .animus-rig-handle,
   .animus-rig-handle.is-rotate,
   .animus-rig-handle.is-scale {
     r: 22px;
     fill-opacity: 0.4;
-  }
-}
-
-@media (max-width: 520px) {
-  button.animus-rig-lane-label {
-    min-height: 2.75rem;
-  }
-
-  .animus-rig-panes > * {
-    flex: 1 1 0;
-  }
-
-  .animus-rig-lane-keys {
-    height: 2.75rem;
   }
 }

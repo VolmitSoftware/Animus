@@ -218,6 +218,30 @@ void main() {
     expect(found.ids(DocumentKind.behavior), <String>['town/greeter']);
   });
 
+  test('should keep the same sources while an edit changes no id or name', () {
+    AnimusDocument behavior(String flag, {String id = 'town/greeter'}) => AnimusDocument(
+          kind: DocumentKind.behavior,
+          id: id,
+          path: 'behaviors/$id.json',
+          source: '',
+          diagnostics: <Diagnostic>[],
+          json: <String, Object?>{
+            'note': flag,
+            'steps': <Object?>[
+              <String, Object?>{'capability': 'animus:set-flag', 'arguments': <String, Object?>{'name': flag}},
+            ],
+          },
+        );
+    final WorkspaceSourcesCache cache = WorkspaceSourcesCache();
+    final AnimusDocument other = behavior('met', id: 'town/other');
+    final CompletionSources first = cache.sources(<AnimusDocument>[behavior('gift'), other]);
+    expect(first.flags, <String>['gift', 'met']);
+    expect(identical(cache.sources(<AnimusDocument>[behavior('gift'), other]), first), isTrue, reason: 'same names, same instance');
+    final CompletionSources renamed = cache.sources(<AnimusDocument>[behavior('cake'), other]);
+    expect(identical(renamed, first), isFalse);
+    expect(renamed.flags, <String>['cake', 'met']);
+  });
+
   test('should strip the minecraft namespace from registry lists', () {
     final Map<RegistryKind, List<String>> parsed = parseRegistries(<String, Object?>{
       'registries': <String, Object?>{

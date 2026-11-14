@@ -25,6 +25,9 @@ AnimusDocument _npc(String id, {String? skin, String type = 'minecraft:player', 
       'groups': ?groups,
     });
 
+AnimusDocument _named(String id, String name, String skin) =>
+    _doc(DocumentKind.npc, id, <String, Object?>{'id': id.split('/').last, 'type': 'minecraft:player', 'name': name, 'skin': skin});
+
 AnimusDocument _group(String id, JsonMap values) => _doc(DocumentKind.group, id, <String, Object?>{'schemaVersion': 1, 'values': values});
 
 /// Applies [change]'s documents to [documents] the way the store does.
@@ -61,6 +64,32 @@ void main() {
       expect(skinListing(guard), (label: 'Guard', detail: '${classic.id.substring(0, 12)}, classic'));
       final AnimusDocument bare = _skin(classic);
       expect(skinListing(bare), (label: classic.id.substring(0, 12), detail: 'classic'));
+    });
+
+    test('a skin list finds who wears each skin and says it in a line', () {
+      final List<AnimusDocument> documents = <AnimusDocument>[
+        _npc('town/baker', skin: classic.id),
+        _npc('town/smith', skin: classic.id),
+        _group('guards', <String, Object?>{'skins': <Object?>[classic.id]}),
+        _npc('town/nobody'),
+      ];
+      final Map<String, List<String>> wearers = skinWearerNames(documents);
+      expect(wearers[classic.id], <String>['Unnamed NPC', 'Unnamed NPC', 'guards'], reason: 'NPCs with no name read Unnamed NPC, as their list rows do');
+      expect(wornByLine(wearers[classic.id]!), 'Worn by Unnamed NPC, Unnamed NPC and 1 more');
+      expect(wornByLine(const <String>['Baker']), 'Worn by Baker');
+      expect(wornByLine(const <String>[]), isNull);
+    });
+
+    test('a rename of a wearer moves the "Worn by" line, once per document list', () {
+      final List<AnimusDocument> renamed = <AnimusDocument>[_named('world/citizens-100', 'glassblower ux', classic.id), _named('world/a', 'carpenter', classic.id)];
+      final List<AnimusDocument> undone = <AnimusDocument>[_named('world/citizens-100', 'glassblower', classic.id), _named('world/a', 'carpenter', classic.id)];
+      expect(skinWearersOf(renamed), same(skinWearersOf(renamed)));
+      expect(skinWearersOf(undone)[classic.id], <String>['glassblower', 'carpenter']);
+      expect(wearersMoved(renamed, undone, classic.id), isTrue, reason: 'an undone rename, Take server or a console edit');
+      expect(wearersMoved(renamed, <AnimusDocument>[...renamed], classic.id), isFalse);
+      expect(wearersMoved(renamed, undone, null), isFalse, reason: 'no skin, no wearers line');
+      final List<AnimusDocument> other = <AnimusDocument>[_named('world/citizens-100', 'glassblower ux', classic.id), _named('world/a', 'carpenter console', classic.id)];
+      expect(wearersMoved(renamed, other, classic.id), isTrue, reason: 'another wearer renamed');
     });
 
     test('a model change keeps the label in the new document', () {

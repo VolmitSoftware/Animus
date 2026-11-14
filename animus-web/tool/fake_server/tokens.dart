@@ -1,15 +1,54 @@
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:animus_editor/config/shared_schemas.g.dart';
+import 'package:animus_editor/model/document_kind.dart';
+
 import 'protocol.dart';
+
+/// The editor protocol's scopes, in schema order.
+final List<String> allScopes = () {
+  final Map<String, Object?> schema = jsonDecode(sharedSchemaSources['editor-v1.schema.json']!) as Map<String, Object?>;
+  final Map<String, Object?> scope = (schema[r'$defs']! as Map<String, Object?>)['scope']! as Map<String, Object?>;
+  return <String>[for (final Object? name in scope['enum']! as List<Object?>) name! as String];
+}();
+
+/// What a pairing grants without `scopes=`: everything but apply:commands.
+final List<String> defaultScopes = <String>[for (final String scope in allScopes) if (scope != 'apply:commands') scope];
+
+/// The scopes a `/__fake/pair?scopes=` list grants. A list with read is the
+/// whole grant, as `/animus editor pair scopes=`; one without read adds to
+/// the defaults, so `scopes=apply:commands` opts in and `scopes=import`
+/// changes nothing.
+List<String> grantedScopes(List<String> named) {
+  if (named.isEmpty) return defaultScopes;
+  final Set<String> granted = named.contains('read') ? named.toSet() : <String>{...defaultScopes, ...named};
+  return <String>[for (final String scope in allScopes) if (granted.contains(scope)) scope];
+}
+
+/// An NPC folder below `npcs/`, as NpcPaths.FOLDER without the empty root.
+final RegExp npcFolderPattern = RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}(?:/[a-z0-9][a-z0-9_-]{0,63}){0,7}$');
+
+/// The NPC folder of an NPC id: everything before its last slash.
+String npcFolder(String id) => id.substring(0, max(0, id.lastIndexOf('/')));
 
 /// A paired browser's token. Only the SHA-256 of the token text is kept.
 class FakeToken {
-  FakeToken(this.id, this.hash, this.scopes, this.created, this.expires, this.client);
+  FakeToken(this.id, this.hash, this.scopes, this.groups, this.created, this.lifetime, this.client) : expires = created.add(lifetime);
 
   final String id;
   final String hash;
   final List<String> scopes;
+
+  /// The NPC folders a `folders=` pairing limits the token to; empty
+  /// reaches every folder.
+  final List<String> groups;
   final DateTime created;
 
-  /// Moved by `/__fake/expire`.
+  /// How long the token lives after its last use.
+  final Duration lifetime;
+
+  /// Moved forward by every authenticated request and by `/__fake/expire`.
   DateTime expires;
   final String? client;
   int counter = 0;
@@ -17,10 +56,23 @@ class FakeToken {
 
   bool has(String scope) => scopes.contains(scope);
 
+  /// True when the token may touch NPCs in [folder]: one of its groups or a
+  /// folder inside one.
+  bool group(String folder) => groups.isEmpty || groups.any((String group) => folder == group || folder.startsWith('$group/'));
+
+  /// Every document but an NPC outside the token's folders, as EditorApi.visible.
+  bool sees(DocumentKind kind, String id) => kind != DocumentKind.npc || group(npcFolder(id));
+
+  /// Refuses an NPC outside the token's folders with `group-denied`.
+  void reach(DocumentKind kind, String id) {
+    if (!sees(kind, id)) throw ApiError('group-denied', 'This token cannot reach NPC folder npcs/${npcFolder(id)}.');
+  }
+
   Map<String, Object?> get state => <String, Object?>{
         'id': id,
         'counter': counter,
         'scopes': scopes,
+        if (groups.isNotEmpty) 'groups': groups,
         'expiresAt': instant(expires),
         if (client != null) 'client': client,
         if (lastUsed != null) 'lastUsed': instant(lastUsed!),
@@ -37,7 +89,7 @@ class Pairing {
 }
 
 class _Pending {
-  const _Pending(this.secretHash, this.expires, this.extraScopes, this.tokenDays);
+  const _Pending(this.secretHash, this.expires, this.scopes, this.groups, this.tokenDays);
 
   final String secretHash;
   final DateTime expires;
@@ -45,8 +97,11 @@ class _Pending {
   /// The token's lifetime, the pairing default unless a test asked.
   final num tokenDays;
 
-  /// Scopes granted on top of the pairing defaults, such as import.
-  final List<String> extraScopes;
+  /// What the token is granted.
+  final List<String> scopes;
+
+  /// The NPC folders the token is limited to; empty for all.
+  final List<String> groups;
 }
 
 /// Pairings, tokens and counters, as EditorTokens without the file.
@@ -70,13 +125,14 @@ class FakeTokens {
     _revoked.clear();
   }
 
-  /// A fresh one-time secret, good for `secretMinutes`; its token gets the
-  /// pairing defaults plus [extraScopes].
-  Pairing pair([List<String> extraScopes = const <String>[], num? tokenDays]) {
+  /// A fresh one-time secret, good for `secretMinutes`; its token gets
+  /// [scopes], the defaults unless a test asked, limited to the NPC
+  /// [groups] when any are given.
+  Pairing pair([List<String>? scopes, num? tokenDays, List<String> groups = const <String>[]]) {
     final String id = 'tok_${randomText(12)}';
     final String secret = randomText(32);
     final DateTime expires = now().add(Duration(minutes: pairingDefaults['secretMinutes']! as int));
-    _pairings[id] = _Pending(sha256Text(secret), expires, extraScopes, tokenDays ?? (pairingDefaults['defaultTokenDays']! as int));
+    _pairings[id] = _Pending(sha256Text(secret), expires, scopes ?? defaultScopes, groups, tokenDays ?? (pairingDefaults['defaultTokenDays']! as int));
     return Pairing(id, secret, expires);
   }
 
@@ -92,17 +148,13 @@ class FakeTokens {
       throw ApiError('pairing-expired', 'This pairing code expired; mint another with POST /__fake/pair.');
     }
     final String text = 'anm_$tokenId.${randomText(32)}';
-    final List<String> scopes = <String>[
-      for (final Object? scope in pairingDefaults['defaultScopes']! as List<Object?>) scope! as String,
-      for (final String scope in pending.extraScopes) scope,
-    ];
-    final FakeToken token = FakeToken(tokenId, sha256Text(text), scopes, time,
-        time.add(Duration(minutes: (pending.tokenDays * 1440).round())), client);
+    final FakeToken token = FakeToken(tokenId, sha256Text(text), pending.scopes, pending.groups, time, Duration(minutes: (pending.tokenDays * 1440).round()), client);
     _tokens[tokenId] = token;
     return (text, token);
   }
 
-  /// The token a bearer value names, or why it is refused.
+  /// The token a bearer value names, or why it is refused. Its expiry
+  /// slides to a full lifetime from now, never earlier.
   FakeToken authenticate(String? bearer) {
     if (bearer == null || !RegExp(r'^anm_[A-Za-z0-9_-]{8,64}\.[A-Za-z0-9_-]{43}$').hasMatch(bearer)) {
       throw ApiError('unauthorized', 'A valid editor token is required.');
@@ -116,6 +168,8 @@ class FakeTokens {
     final DateTime time = now();
     if (!time.isBefore(token.expires)) throw ApiError('token-expired', 'This token expired; pair the browser again.');
     token.lastUsed = time;
+    final DateTime slid = time.add(token.lifetime);
+    if (slid.isAfter(token.expires)) token.expires = slid;
     return token;
   }
 

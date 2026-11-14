@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000702",
+  "id": "citizens-2",
+  "group": "world",
+  "name": "Ferryman",
+  "type": "minecraft:villager",
+  "spawned": true,
+  "migration": {
+    "importId": "6c56bf9b7f8cceff22477d00a413cf1effe76eda3822b82261bc0049f54e6ec6",
+    "citizensId": 2,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 4.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "hologram": {
+    "lines": [
+      {
+        "text": "&b&lFerry",
+        "marginTop": 0.25
+      },
+      "Right click to cross"
+    ]
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "VILLAGER",
+      "location": {
+        "world": "world",
+        "x": 4.5,
+        "y": 64,
+        "z": 0.5
+      },
+      "hologramtrait": {
+        "lines": {
+          "0": "Right click to cross",
+          "1": {
+            "text": "&b&lFerry",
+            "margin": {
+              "top": 0.25,
+              "bottom": 0.0
+            }
+          }
+        }
+      }
+    }
+  }
+}

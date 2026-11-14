@@ -1,0 +1,61 @@
+{
+  "documents": [
+    {
+      "kind": "npc",
+      "id": "town/guard",
+      "path": "npcs/town/guard.json",
+      "revision": 4,
+      "hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "summary": {
+        "name": "Guard",
+        "type": "minecraft:player",
+        "world": "world",
+        "x": -7.5,
+        "y": 64,
+        "z": 0.5,
+        "spawned": true,
+        "folder": "town",
+        "tags": [
+          "gate"
+        ],
+        "features": [
+          "route",
+          "behavior"
+        ],
+        "skin": "3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b"
+      }
+    },
+    {
+      "kind": "skin",
+      "id": "3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b",
+      "path": "skins/3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b.json",
+      "revision": 0,
+      "hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "summary": {
+        "texture": "https://textures.minecraft.net/texture/ab12",
+        "slim": false
+      }
+    },
+    {
+      "kind": "shop",
+      "id": "town:bakery",
+      "path": "shops/town/bakery.json",
+      "revision": 2,
+      "hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "summary": {
+        "name": "Bakery",
+        "offers": 7,
+        "pages": 1
+      }
+    },
+    {
+      "kind": "menu",
+      "id": "town:main",
+      "path": "gui/menus/town/main.json",
+      "revision": 0,
+      "hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "summary": {}
+    }
+  ],
+  "next": "MQpucGNzL3Rvd24"
+}

@@ -12,15 +12,25 @@ import 'terrain_data.dart';
 /// One place on a path, in blocks.
 typedef TerrainPathPoint = ({double x, double y, double z});
 
-/// One chunk slice to ask for: the chunk and its lowest layer.
+/// One chunk a view draws: the chunk and its lowest layer drawn.
 typedef TerrainPathChunk = ({int cx, int cz, int y});
 
 /// The most chunk slices one view asks for along a path.
 const int terrainPathMaxChunks = 256;
 
-/// Layers a slice reads below and above the path.
+/// Layers a view draws below and above the path.
 const int terrainPathBelow = 16;
 const int terrainPathAbove = 16;
+
+/// Slices start on this grid and reach one step past the layers drawn, so
+/// a path that moves a few blocks up or down (a live NPC on a hill, a
+/// dragged route point) reuses the slices it already has.
+const int terrainSliceStep = 16;
+
+/// The slice to ask for to draw [chunk]: its lowest layer rounded down to
+/// [terrainSliceStep], tall enough to hold every layer drawn.
+({int y, int height}) terrainSliceFor(TerrainPathChunk chunk) =>
+    (y: terrainFloorDiv(chunk.y, terrainSliceStep) * terrainSliceStep, height: terrainPathBelow + terrainPathAbove + terrainSliceStep);
 
 final class TerrainPath {
   TerrainPath({required this.points, this.legs = const <(int, int)>[]});

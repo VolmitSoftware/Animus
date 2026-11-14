@@ -97,17 +97,19 @@ dart run tool/fake_server.dart --port=9991 --origin=http://127.0.0.1:8191 --data
 python3 tool/serve_site.py --port 8191
 ```
 
-Then `node qa/demo/editor/record.cjs 05-conversation`, or `--all`. Flags: `--web=` (`ANIMUS_WEB_URL`), `--fake=` (`ANIMUS_FAKE_URL`), `--pair=` (`ANIMUS_PAIR_LINK`), `--out=` (`ANIMUS_DEMO_OUT`, default `build/demo/editor`).
+Then `node qa/demo/editor/record.cjs 05-conversation`, or `--all`. Flags: `--web=` (`ANIMUS_WEB_URL`), `--fake=` (`ANIMUS_FAKE_URL`), `--pair=` (`ANIMUS_PAIR_LINK`), `--out=` (`ANIMUS_DEMO_OUT`, default `build/demo/editor`). Clips are 1920x1080 VP9, like the in-game ones, so `clip_check.py` checks them too.
 
 Each clip's header says what it needs:
 
 | Clips | Needs |
 |---|---|
 | 01-10, 15 | the fake server with `test/fixtures/npc_browser` |
-| 13, 14, 16-21, 32-37, 43, 48 | only the site (offline workspaces, made before filming; 20 opens `editor/fixtures/harbor-server` as a data folder) |
+| 13, 14, 16-21, 32-37, 43, 48 | only the site (browser workspaces, made before filming; 20 opens `editor/fixtures/harbor-server` as a data folder) |
 | 22-31 | the fake server with `../qa/demo/editor/fixtures/town-deep` |
 | 38-42 | the fake server with `test/fixtures/gui_editors` |
-| 11, 12, 44-47, 49 | a real server on the town stage, paired with `--pair=`; 12 and 49 need extra token scopes and 44 the `ANIMUS_LINK_DOWN` / `ANIMUS_LINK_UP` commands, as their headers say |
+| 11, 12, 44-47, 49 | a real server on the town stage, paired with `--pair=` |
+
+For the real server clips, build the stage's world once with `stage.py` (the town data, the plugin jar from `:bukkit:shadowJar`), set its `[editor]` `port` to a free port, add the site's origin to `allowedOrigins`, point `editorUrl` at the site and turn `relayEnabled` off. Each pairing link works once, so make one per clip from the console with `animus editor pair`; a console pairing has every scope but `apply:commands`, which 12 needs (`scopes=read,validate,apply:npcs,apply:behaviors,apply:gui,apply:commands`). 47 needs the herald's own points and 44 the `ANIMUS_LINK_DOWN` / `ANIMUS_LINK_UP` commands, as their headers say. 12, 45 and 49 change the server; their headers say how to put it back before another take.
 
 Clips glide the cursor on eased curves from where it is, rest on each target before clicking, type 25% slower than the raw delays with a 1 s hold after typing, hold each result 1.5 to 2.5 s and end on a 3 s closing caption (`finish(film, {closing})` refuses a clip without one). `finish()` trims the video from `mark()` to the end of the caption.
 

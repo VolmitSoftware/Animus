@@ -1,0 +1,25 @@
+{
+  "name": "Ferryman",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000702",
+  "traits": {
+    "type": "VILLAGER",
+    "location": {
+      "world": "world",
+      "x": 4.5,
+      "y": 64,
+      "z": 0.5
+    },
+    "hologramtrait": {
+      "lines": {
+        "0": "Right click to cross",
+        "1": {
+          "text": "&b&lFerry",
+          "margin": {
+            "top": 0.25,
+            "bottom": 0.0
+          }
+        }
+      }
+    }
+  }
+}

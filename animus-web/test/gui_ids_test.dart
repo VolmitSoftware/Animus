@@ -7,6 +7,7 @@ import 'package:animus_editor/model/animus_document.dart';
 import 'package:animus_editor/model/document_kind.dart';
 import 'package:animus_editor/model/server_binding.dart';
 import 'package:animus_editor/state/editor_store.dart';
+import 'package:animus_editor/state/workspace_migration.dart';
 import 'package:animus_editor/state/workspace_repository.dart';
 import 'package:test/test.dart';
 
@@ -49,7 +50,7 @@ void main() {
   });
 
   for (final int version in <int>[1, 2]) {
-    test('should migrate a version $version workspace from plain-path ids to namespace:path ids', () {
+    test('should migrate a version $version workspace from plain-path ids to namespace:path ids', () async {
       final List<Map<String, Object?>> cases = _entries('migration');
       final List<AnimusDocument> documents = <AnimusDocument>[
         for (final Map<String, Object?> entry in cases)
@@ -78,9 +79,15 @@ void main() {
           history: const <AppliedChange>[],
         ),
       );
-      final Map<String, Object?> encoded = jsonDecode(old.encode()) as Map<String, Object?>;
-      encoded['schemaVersion'] = version;
-      final WorkspaceSnapshot migrated = WorkspaceSnapshot.decode(jsonEncode(encoded));
+      final Map<String, Object?> encoded = <String, Object?>{
+        'schemaVersion': version,
+        'id': old.id,
+        'name': old.name,
+        'generation': old.generation,
+        'documents': <Object?>[for (final AnimusDocument document in old.documents) document.toJson()],
+        'server': old.server!.toJson(),
+      };
+      final WorkspaceSnapshot migrated = decodeLegacyWorkspace(jsonEncode(encoded));
       expect(
         <String>[for (final AnimusDocument d in migrated.documents) '${d.kind.wireName} ${d.id} ${d.path}'],
         <String>[for (final Map<String, Object?> entry in cases) '${entry['kind']} ${entry['migratedId']} ${entry['migratedPath']}'],
@@ -89,7 +96,9 @@ void main() {
       expect(migrated.server!.bases.keys, <String>[moved]);
       expect(migrated.server!.pending.single.documents, <String>[moved]);
       expect(migrated.generation, 3);
-      expect(WorkspaceSnapshot.decode(migrated.encode()).documents.map((AnimusDocument d) => d.id), migrated.documents.map((AnimusDocument d) => d.id));
+      final MemoryWorkspaceRepository repository = MemoryWorkspaceRepository();
+      await repository.save(migrated.atGeneration(1));
+      expect((await repository.load(migrated.id))!.documents.map((AnimusDocument d) => d.id), unorderedEquals(migrated.documents.map((AnimusDocument d) => d.id)));
     });
   }
 }

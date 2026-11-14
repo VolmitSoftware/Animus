@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000703",
+  "id": "citizens-3",
+  "group": "world",
+  "name": "Bellringer",
+  "type": "minecraft:villager",
+  "spawned": true,
+  "migration": {
+    "importId": "6c56bf9b7f8cceff22477d00a413cf1effe76eda3822b82261bc0049f54e6ec6",
+    "citizensId": 3,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 6.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "hologram": {
+    "lines": [
+      "&d&nBells",
+      "Rings at noon"
+    ],
+    "lineHeight": 0.3
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "VILLAGER",
+      "location": {
+        "world": "world",
+        "x": 6.5,
+        "y": 64,
+        "z": 0.5
+      },
+      "hologramtrait": {
+        "lineHeight": 0.3,
+        "lines": {
+          "0": "Rings at noon",
+          "1": "&d&nBells"
+        }
+      }
+    }
+  }
+}

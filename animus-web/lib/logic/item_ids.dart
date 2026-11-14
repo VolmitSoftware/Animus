@@ -14,6 +14,34 @@ const int itemOptionLimit = 40;
 /// Whether [text] is a `namespace:item` id as the server reads one.
 bool isItemId(String text) => _itemId.hasMatch(text);
 
+/// "Golden apple" for `minecraft:golden_apple`; a modded id is named by its
+/// item key alone.
+String itemName(String id) {
+  final String key = id.substring(id.indexOf(':') + 1).replaceAll(RegExp(r'[_/.]+'), ' ').trim();
+  return key.isEmpty ? id : '${key[0].toUpperCase()}${key.substring(1)}';
+}
+
+/// What an item field shows for [value]: Simple names the item, Advanced
+/// shows the id. Anything that is not an id shows as written.
+String itemFieldText(String value, {required bool advanced}) => advanced || !isItemId(value) ? value : itemName(value);
+
+final RegExp _searchWords = RegExp(r'^[A-Za-z0-9_ ]*[A-Za-z0-9_][A-Za-z0-9_ ]*$');
+
+/// Whether [text] typed into a Simple item field only searches by name
+/// ("gold ingot"): it is written once an item is taken. An id, an
+/// expression or an emptied field is written as typed.
+bool itemSearchOnly(String text) => _searchWords.hasMatch(text);
+
+/// The id among [ids] named [text], ignoring case; null when none is.
+String? itemNamed(String text, Iterable<String> ids) {
+  final String wanted = text.trim().toLowerCase();
+  if (wanted.isEmpty) return null;
+  for (final String id in ids) {
+    if (itemName(id).toLowerCase() == wanted) return id;
+  }
+  return null;
+}
+
 /// The item ids of a `registries.json` body (`{"registries": {"items": [..]}}`)
 /// or a bare `{"items": [..]}`, namespaced, in order, without repeats.
 List<String> parseItemRegistry(Object? json) {

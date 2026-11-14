@@ -15,20 +15,22 @@ import java.util.Set;
  * hotload: {@code enabled} opens or closes the editor, a changed address, port, TLS file, {@code openConnections} or
  * {@code listenerEnabled} restarts only the listener, and the rest apply to the next request. Issued tokens stay valid.
  * The listener serves plain HTTP only on a loopback address; any other address needs {@code tlsCertificate} and {@code tlsPrivateKey}.
- * The {@code [editor.notify]} sub-table is {@link EditorNotifySettings}.
+ * The {@code [editor.notify]} sub-table is {@link EditorNotifySettings}. {@code serverName} names the server in the editor; empty
+ * takes the server's MOTD, else its folder name.
  */
-public record EditorSettings(boolean enabled, String editorUrl, boolean listenerEnabled, String listenAddress, int port, String advertisedUrl,
+public record EditorSettings(boolean enabled, String serverName, String editorUrl, boolean listenerEnabled, String listenAddress, int port, String advertisedUrl,
                              String tlsCertificate, String tlsPrivateKey, List<String> allowedOrigins,
                              int tokenDays, int auditDays, int requestBodyBytes, int importBodyBytes, int changeSetDocuments,
                              int concurrentRequestsPerToken, int requestsPerSecond, int pairAttemptsPerMinute, int openConnections,
                              int eventFramesPerSecond, int previewsPerServer, int npcsPerPreview, int previewMinutes, int idempotencyHours, int terrainRadius,
                              EditorNotifySettings notices) {
     private static final Set<String> LOOPBACK = Set.of("127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1");
-    public static final EditorSettings DEFAULT = new EditorSettings(true, "https://animus.volmitsoftware.com", true, "127.0.0.1", 9797, "", "", "",
+    public static final EditorSettings DEFAULT = new EditorSettings(true, "", "https://animus.volmitsoftware.com", true, "127.0.0.1", 9797, "", "", "",
             List.of("https://animus.volmitsoftware.com", "https://animus-editor.web.app", "https://animus-editor.firebaseapp.com"),
             7, 30, 4 * 1024 * 1024, 16 * 1024 * 1024, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24, 160, EditorNotifySettings.DEFAULT);
 
     public EditorSettings {
+        if (serverName == null || serverName.length() > 64) throw new IllegalArgumentException("serverName must be at most 64 characters");
         url("editorUrl", editorUrl, Set.of("https", "http"));
         if (listenAddress == null || listenAddress.isBlank() || listenAddress.length() > 255) throw new IllegalArgumentException("listenAddress must be a host name or address");
         // 0 binds any free port; the listener reports and pairing links carry the port it bound.
@@ -65,7 +67,7 @@ public record EditorSettings(boolean enabled, String editorUrl, boolean listener
     /** Reads the table; the relay keys that share it are read by {@link EditorRelaySettings}, and unknown keys were dropped with a warning before. */
     public static EditorSettings parse(JsonObject table) {
         EditorSettings d = DEFAULT;
-        return new EditorSettings(bool(table, "enabled", d.enabled), text(table, "editorUrl", d.editorUrl), bool(table, "listenerEnabled", d.listenerEnabled),
+        return new EditorSettings(bool(table, "enabled", d.enabled), text(table, "serverName", d.serverName), text(table, "editorUrl", d.editorUrl), bool(table, "listenerEnabled", d.listenerEnabled),
                 text(table, "listenAddress", d.listenAddress), integer(table, "port", d.port), text(table, "advertisedUrl", d.advertisedUrl),
                 text(table, "tlsCertificate", d.tlsCertificate), text(table, "tlsPrivateKey", d.tlsPrivateKey), strings(table, "allowedOrigins", d.allowedOrigins), integer(table, "tokenDays", d.tokenDays),
                 integer(table, "auditDays", d.auditDays), integer(table, "requestBodyBytes", d.requestBodyBytes), integer(table, "importBodyBytes", d.importBodyBytes),
@@ -81,6 +83,7 @@ public record EditorSettings(boolean enabled, String editorUrl, boolean listener
     public JsonObject toJson() {
         JsonObject table = new JsonObject();
         table.addProperty("enabled", enabled);
+        table.addProperty("serverName", serverName);
         table.addProperty("editorUrl", editorUrl);
         table.addProperty("listenerEnabled", listenerEnabled);
         table.addProperty("listenAddress", listenAddress);

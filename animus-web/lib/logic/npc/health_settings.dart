@@ -4,6 +4,7 @@
 library;
 
 import '../gui/gui_json.dart';
+import 'combat_forms.dart' show withModuleField;
 
 const String healthModule = 'animus:health';
 
@@ -36,37 +37,22 @@ const List<String> healthAttackSources = <String>['players', 'mobs', 'npcs', 'pr
 const List<String> healthAfterDeath = <String>['respawn', 'permadeath', 'delete'];
 const List<String> healthOrders = <String>['in_order', 'random', 'nearest'];
 
-bool _empty(Object? value) => (value is Map<String, Object?> && value.isEmpty) || (value is List<Object?> && value.isEmpty);
-
-/// [module] with [value] at [steps]; null or an empty map or list removes the
-/// key, and so does every map it leaves empty above it.
-JsonMap withHealthField(JsonMap module, List<JsonStep> steps, Object? value) {
-  Object? next = writeIn(module, steps, steps.last is String && _empty(value) ? null : value);
-  for (int depth = steps.length - 1; depth >= 1; depth--) {
-    final List<JsonStep> prefix = steps.sublist(0, depth);
-    if (prefix.last is! String || !_empty(readIn(next, prefix))) break;
-    next = writeIn(next, prefix, null);
-  }
-  return asMap(next);
-}
-
 /// The sources that may hurt the NPC.
 Set<String> healthSourcesOn(JsonMap module) =>
     module.containsKey('sources') ? <String>{for (final Object? source in asList(module['sources'])) ?asString(source)} : healthAttackSources.toSet();
 
-/// [module] with [source] on or off; every attack and nothing else on again removes `sources`.
-JsonMap withHealthSource(JsonMap module, String source, bool on) {
-  final Set<String> chosen = healthSourcesOn(module);
-  if (on) {
-    chosen.add(source);
-  } else {
-    chosen.remove(source);
-  }
+/// [module] with exactly [chosen] hurting it. Every attack and nothing else
+/// is the default, so it removes `sources`; nothing at all is an empty list.
+JsonMap withHealthSources(JsonMap module, Set<String> chosen) {
   final bool plain = chosen.length == healthAttackSources.length && healthAttackSources.every(chosen.contains);
-  return withHealthField(module, const <JsonStep>['sources'], plain ? null : <String>[
-    for (final String name in healthSources)
-      if (chosen.contains(name)) name,
-  ]);
+  if (plain) return withModuleField(module, const <JsonStep>['sources'], null);
+  return <String, Object?>{
+    ...module,
+    'sources': <String>[
+      for (final String name in healthSources)
+        if (chosen.contains(name)) name,
+    ],
+  };
 }
 
 JsonMap newHealthDrop([String item = 'minecraft:iron_ingot']) => <String, Object?>{

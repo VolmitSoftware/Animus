@@ -1,20 +1,29 @@
-/// Which NPCs and groups run the conversation: a checklist of every NPC and
-/// group in the workspace, ticked where its `behaviors` list names the
-/// behavior. Attach writes every changed list in one undoable change.
+/// Which NPCs run the conversation: the ones whose `behaviors` list names
+/// it, each with Remove, and one searchable picker over the workspace's
+/// whole NPC library (trait groups too in Advanced) that adds another. An
+/// NPC of a server workspace not read yet is read when picked. Every pick or
+/// removal is its own undoable change, saved at once like the rest of the
+/// form.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
-import '../../logic/gui/gui_text.dart';
+import '../../logic/select/select_model.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../../state/editor_store.dart';
-import '../gui/gui_fields.dart';
-import '../info_tip.dart';
+import '../../state/library.dart';
+import '../../state/live_session.dart' show DocumentRef;
+import '../../ui/density.dart';
+import '../../ui/field.dart';
+import '../../ui/icon_button.dart';
+import '../gui/gui_fields.dart' show stringList;
+import '../select/animus_select.dart';
 import 'conversation_fields.dart';
+import '../../ui/stack.dart';
+import '../../ui/problem_text.dart';
 
 /// Writes [changes] as one undoable change named [label].
 typedef ConversationCommit = Future<void> Function(List<DocumentChange> changes, String label);
@@ -40,77 +49,116 @@ JsonMap withBehavior(DocumentKind kind, JsonMap json, String behavior, {required
   return put(json);
 }
 
-class ConversationAttach extends StatefulWidget {
-  const ConversationAttach({required this.behavior, required this.documents, required this.onCommit, super.key});
+/// The entries of one document kind in the workspace library.
+typedef LibraryOf = List<LibraryEntry> Function(DocumentKind kind);
+
+/// Reads documents of a server workspace that are not here yet.
+typedef LoadDocuments = Future<void> Function(List<DocumentRef> refs);
+
+class ConversationAttach extends StatelessWidget {
+  const ConversationAttach({
+    required this.behavior,
+    required this.documents,
+    required this.library,
+    required this.onCommit,
+    required this.advanced,
+    this.load,
+    super.key,
+  });
 
   final String behavior;
 
-  /// The workspace; its NPCs and groups are listed.
+  /// The documents read so far; an NPC's `behaviors` list comes from here.
   final List<AnimusDocument> documents;
+
+  /// Every NPC (and in Advanced every trait group), read or not.
+  final LibraryOf library;
   final ConversationCommit onCommit;
+  final bool advanced;
 
-  @override
-  State<ConversationAttach> createState() => _ConversationAttachState();
-}
+  /// Reads a picked NPC first when it is not here; null in a local workspace.
+  final LoadDocuments? load;
 
-class _ConversationAttachState extends State<ConversationAttach> {
-  /// Ticks the author changed and has not saved, by `kind:id`.
-  final Map<String, bool> _pending = <String, bool>{};
-  bool _busy = false;
+  static String _key(DocumentKind kind, String id) => '${kind.wireName}:$id';
 
-  static String _key(AnimusDocument document) => '${document.kind.wireName}:${document.id}';
+  Future<void> _set(DocumentKind kind, String id, {required bool listed}) => onCommit(
+        <DocumentChange>[
+          DocumentChange.update(kind, id, (Object? latest) => withBehavior(kind, asMap(latest), behavior, listed: listed)),
+        ],
+        '${listed ? 'attach' : 'detach'} $behavior ${listed ? 'to' : 'from'} $id',
+      );
 
-  bool _listed(AnimusDocument document) => listedBehaviors(document).contains(component.behavior);
-
-  Future<void> _save(List<AnimusDocument> targets) async {
-    final List<DocumentChange> changes = <DocumentChange>[
-      for (final AnimusDocument document in targets)
-        if (_pending[_key(document)] case final bool listed when listed != _listed(document))
-          DocumentChange.update(document.kind, document.id, (Object? latest) => withBehavior(document.kind, asMap(latest), component.behavior, listed: listed)),
-    ];
-    if (changes.isEmpty) return;
-    setState(() => _busy = true);
-    try {
-      await component.onCommit(changes, 'attach ${component.behavior}');
-      _pending.clear();
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+  Future<void> _add(LibraryEntry entry) async {
+    if (!entry.loaded && load != null) await load!(<DocumentRef>[DocumentRef(entry.kind, entry.id)]);
+    await _set(entry.kind, entry.id, listed: true);
   }
 
   @override
   Widget build(BuildContext context) {
-    final List<AnimusDocument> targets = <AnimusDocument>[
-      for (final AnimusDocument document in component.documents)
-        if ((document.kind == DocumentKind.npc || document.kind == DocumentKind.group) && document.json is Map<String, Object?>) document,
-    ];
-    final int changed = targets.where((AnimusDocument document) => _pending.containsKey(_key(document)) && _pending[_key(document)] != _listed(document)).length;
-    final int using = targets.where(_listed).length;
-    return dom.section(classes: 'animus-conv-attach', attributes: const <String, String>{'aria-label': 'NPCs'}, <Widget>[
-      dom.div(classes: 'animus-conv-preview-head', <Widget>[
-        dom.h3(<Widget>[
-          withTip(Component.text(using == 0 ? 'NPCs' : 'NPCs ($using)'), 'NPCs and groups that list this behavior run its start. Tick them, then Attach.', docs: conversationDocs),
-        ]),
-        Button.primary(
-          label: changed == 0 ? 'Attach' : 'Attach ($changed)',
-          size: ButtonSize.small,
-          disabled: changed == 0 || _busy,
-          onPressed: () => _save(targets),
-        ),
-      ]),
-      if (targets.isEmpty)
-        const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No NPCs or groups yet.')])
-      else
-        dom.ul(classes: 'animus-conv-targets', <Widget>[
-          for (final AnimusDocument document in targets)
-            dom.li(attributes: <String, String>{'data-target': _key(document)}, <Widget>[
-              GuiSwitch(
-                value: _pending[_key(document)] ?? _listed(document),
-                label: '${document.kind == DocumentKind.group ? 'Group ' : ''}${guiPlainText(document.title)}${document.title == document.id ? '' : ' (${document.id})'}',
-                onChanged: (bool on) => setState(() => _pending[_key(document)] = on),
-              ),
+    final Map<String, AnimusDocument> read = <String, AnimusDocument>{
+      for (final AnimusDocument document in documents)
+        if (document.kind == DocumentKind.npc || document.kind == DocumentKind.group) _key(document.kind, document.id): document,
+    };
+    final List<(LibraryEntry, AnimusDocument)> attached = <(LibraryEntry, AnimusDocument)>[];
+    final List<LibraryEntry> free = <LibraryEntry>[];
+    for (final DocumentKind kind in <DocumentKind>[DocumentKind.npc, if (advanced) DocumentKind.group]) {
+      for (final LibraryEntry entry in library(kind)) {
+        final AnimusDocument? document = read[entry.key];
+        if (document != null && document.json is Map<String, Object?> && listedBehaviors(document).contains(behavior)) {
+          attached.add((entry, document));
+        } else {
+          free.add(entry);
+        }
+      }
+    }
+    final Map<String, LibraryEntry> byKey = <String, LibraryEntry>{for (final LibraryEntry entry in free) entry.key: entry};
+    return Field(
+      label: 'NPCs',
+      forId: 'conv-attach',
+      tip: 'The NPCs that run this conversation. A pick or a removal saves at once.',
+      docs: conversationDocs,
+      child: dom.div(attributes: const <String, String>{'data-testid': 'conv-attach'}, <Widget>[
+        stack(<Widget>[
+          if (attached.isNotEmpty)
+            DenseBox(attributes: const <String, String>{'role': 'list', 'aria-label': 'NPCs that run it'}, children: <Widget>[
+              for (final (LibraryEntry entry, AnimusDocument document) in attached)
+                dom.div(attributes: <String, String>{'role': 'listitem', 'data-target': entry.key}, <Widget>[
+                  Row(gapSize: Gap.sm, children: <Widget>[
+                    Expanded(
+                      child: Text('${entry.kind == DocumentKind.group ? 'Trait group ' : ''}${_name(entry)}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ),
+                    AppIconButton(icon: ArcaneIcon.x(), label: 'Remove ${_name(entry)}', tipAtEnd: true, onPressed: () => _set(document.kind, document.id, listed: false)),
+                  ]),
+                ]),
             ]),
+          if (free.isEmpty && attached.isEmpty)
+            noteLine('No NPCs yet.')
+          else if (free.isNotEmpty)
+            AnimusSelect(
+              id: 'conv-attach',
+              value: null,
+              hiddenLabel: 'Add NPC',
+              placeholder: attached.isEmpty ? 'Pick an NPC' : 'Add NPC',
+              options: <SelectOption>[
+                for (final LibraryEntry entry in free)
+                  SelectOption(
+                    value: entry.key,
+                    label: _name(entry),
+                    group: advanced ? (entry.kind == DocumentKind.group ? 'Trait groups' : 'NPCs') : null,
+                    description: advanced ? entry.id : null,
+                    keywords: <String>[entry.id],
+                  ),
+              ],
+              onChanged: (String key) {
+                final LibraryEntry? picked = byKey[key];
+                if (picked != null) _add(picked);
+              },
+            ),
         ]),
-    ]);
+      ]),
+    );
   }
+
+  /// The name a person knows an NPC or group by.
+  static String _name(LibraryEntry entry) => entry.name.trim().isEmpty ? entry.id : entry.name;
 }

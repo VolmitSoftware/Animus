@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000605",
+  "id": "king",
+  "group": "court",
+  "name": "&6King",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 10.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 90,
+    "pitch": -20
+  },
+  "owner": "fe531426-31bc-5660-9207-b3d3078c2305",
+  "tags": [
+    "royal",
+    "court"
+  ],
+  "groups": [
+    "court"
+  ],
+  "poses": {
+    "throne": {
+      "yaw": 180,
+      "pitch": 0
+    }
+  },
+  "player": {
+    "cape": "hidden",
+    "leftSleeve": "hidden"
+  },
+  "bossBar": {
+    "title": "&6The King",
+    "color": "yellow",
+    "style": "segmented_6",
+    "range": 40.0
+  },
+  "viewers": {
+    "mode": "allow",
+    "permissions": [
+      "court.enter"
+    ]
+  },
+  "clickRedirect": "0a1b2c3d-0000-4000-8000-000000000606",
+  "attributes": {
+    "max_health": 40
+  },
+  "inventory": {
+    "size": 9,
+    "slots": {
+      "0": {
+        "id": "minecraft:golden_apple",
+        "count": 3
+      }
+    }
+  },
+  "modules": {
+    "animus:combat": {
+      "enabled": true,
+      "targets": {
+        "categories": [
+          "monsters"
+        ],
+        "patterns": {
+          "names": [
+            "^Bandit"
+          ]
+        }
+      },
+      "pursuit": {
+        "speed": 5
+      }
+    },
+    "animus:health": {
+      "killable": true,
+      "armor": 0.2,
+      "regenerate": true
+    },
+    "animus:look-close": {
+      "enabled": true,
+      "range": 8
+    },
+    "citizens:review": {
+      "type": "PLAYER",
+      "note": "kept as written"
+    }
+  }
+}

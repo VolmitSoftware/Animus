@@ -1,7 +1,7 @@
 /// The Visual view of `server-behaviors.json`: the server behaviors that
-/// run, in order. Add from the workspace's server behaviors, remove and
-/// reorder; ids the workspace does not hold, or that are not server
-/// behaviors, are flagged but kept.
+/// run, in order, one row each with a "..." menu to open, move or remove
+/// it, and one picker that adds another. Ids the workspace does not hold,
+/// or that are not server behaviors, are flagged but kept.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -11,11 +11,18 @@ import 'package:jaspr/jaspr.dart' show Component;
 import '../../config/docs_links.dart';
 import '../../logic/diagnostic_text.dart';
 import '../../logic/gui/gui_json.dart';
+import '../../logic/inspect/behavior_words.dart';
 import '../../logic/inspect/server_behaviors.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
+import '../../ui/action_row.dart';
+import '../../ui/info_tip.dart';
+import '../../ui/menu.dart';
 import '../gui/gui_fields.dart';
-import '../info_tip.dart';
+import '../select/animus_select.dart';
+import '../../ui/field.dart';
+import '../../ui/stack.dart';
+import '../../ui/problem_text.dart';
 
 class ServerBehaviorsEditor extends StatelessWidget {
   const ServerBehaviorsEditor({required this.document, required this.onJson, required this.workspaceDocuments, this.onOpen, this.diagnostics = const <Diagnostic>[], super.key});
@@ -33,56 +40,75 @@ class ServerBehaviorsEditor extends StatelessWidget {
     final Map<String, bool> behaviors = workspaceBehaviors(workspaceDocuments);
     final List<String> addable = <String>[for (final MapEntry<String, bool> entry in behaviors.entries) if (entry.value && !listed.contains(entry.key)) entry.key];
     void put(List<String> next) => onJson(writeAt(json, const <JsonStep>[], <String, Object?>{...json, 'schemaVersion': 1, 'behaviors': next}), coalesce: 'server-behaviors');
-    return dom.section(classes: 'animus-panel animus-inspector animus-server-behaviors', attributes: const <String, String>{'aria-label': 'Server behaviors list'}, <Widget>[
-      const dom.h2(<Widget>[
-        InfoTip(
-          tip: 'Only listed behaviors run, in this order. At most $serverBehaviorsMaximum.',
-          docs: Docs.serverBehaviors,
-          child: Component.text('Server behaviors'),
-        ),
-      ]),
-      for (final Diagnostic problem in diagnostics)
-        dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', attributes: <String, String>{'role': 'note', 'title': problem.path}, <Widget>[Component.text(diagnosticSentence(problem))]),
-      if (listed.isEmpty)
-        dom.p(classes: 'animus-muted', <Widget>[
-          Component.text(addable.isEmpty
-              ? 'Nothing listed. Turn on Server behavior in a behavior first.'
-              : 'Nothing listed. Add one below.'),
+    List<String> moved(int from, int to) => <String>[for (final Object? id in moveItem(listed, from, to)) id! as String];
+    return dom.section(classes: 'animus-server-behaviors', attributes: const <String, String>{'aria-label': 'Server behaviors list'}, <Widget>[
+      stack(<Widget>[
+        const dom.h2(<Widget>[
+          TipLabel(
+            label: Component.text('Server behaviors'),
+            tip: 'Only listed behaviors run, in this order. At most $serverBehaviorsMaximum.',
+            docs: Docs.serverBehaviors,
+          ),
         ]),
-      dom.ol(classes: 'animus-server-list', attributes: const <String, String>{'aria-label': 'Listed server behaviors'}, <Widget>[
-        for (int index = 0; index < listed.length; index++)
-          dom.li(key: ValueKey<String>('listed-$index'), classes: 'animus-server-item', attributes: <String, String>{'data-behavior': listed[index]}, <Widget>[
-            dom.code(<Widget>[Component.text(listed[index])]),
-            dom.span(classes: 'animus-muted', <Widget>[Component.text(serverBehaviorNote(listed[index], behaviors))]),
-            dom.div(classes: 'animus-row', <Widget>[
-              if (onOpen != null && behaviors.containsKey(listed[index]))
-                Button.ghost(label: 'Open', size: ButtonSize.small, onPressed: () => onOpen!(DocumentKind.behavior, listed[index])),
-              GuiIconButton(icon: ArcaneIcon.arrowUp(size: IconSize.sm), label: 'Move ${listed[index]} up', disabled: index == 0, onPressed: () => put(<String>[for (final Object? id in moveItem(listed, index, index - 1)) id! as String])),
-              GuiIconButton(
-                icon: ArcaneIcon.arrowDown(size: IconSize.sm),
-                label: 'Move ${listed[index]} down',
-                disabled: index == listed.length - 1,
-                onPressed: () => put(<String>[for (final Object? id in moveItem(listed, index, index + 1)) id! as String]),
-              ),
-              GuiIconButton(icon: ArcaneIcon.x(size: IconSize.sm), label: 'Remove ${listed[index]} from the list', onPressed: () => put(<String>[...listed]..removeAt(index))),
+        // A listed behavior that is not a server behavior says so on its row.
+        for (final Diagnostic problem in diagnostics)
+          if (problem.code != 'not-server-behavior') problemLine(problem.severity, diagnosticSentence(problem)),
+        if (listed.isEmpty) noteLine(addable.isEmpty ? 'Nothing listed. Turn on Server behavior in a behavior first.' : 'Nothing listed yet.'),
+        if (listed.isNotEmpty)
+          dom.div(attributes: const <String, String>{'role': 'list', 'aria-label': 'Listed server behaviors'}, <Widget>[
+            stack(spacing: 4, <Widget>[
+              for (int index = 0; index < listed.length; index++) ...<Widget>[
+                if (index > 0) const ArcaneSeparator(),
+                dom.div(key: ValueKey<String>('listed-$index'), attributes: <String, String>{'role': 'listitem', 'data-behavior': listed[index]}, <Widget>[
+                  ActionRow(
+                    dense: true,
+                    label: behaviorTitle(listed[index]),
+                    leading: <Widget>[_name(listed[index], serverBehaviorNote(listed[index], behaviors))],
+                    more: <AppMenuEntry>[
+                      if (onOpen != null && behaviors.containsKey(listed[index])) AppMenuEntry('Open', () => onOpen!(DocumentKind.behavior, listed[index])),
+                      AppMenuEntry('Move up', index == 0 ? null : () => put(moved(index, index - 1))),
+                      AppMenuEntry('Move down', index == listed.length - 1 ? null : () => put(moved(index, index + 1))),
+                      const AppMenuEntry.separator(),
+                      AppMenuEntry('Remove from list', () => put(<String>[...listed]..removeAt(index))),
+                    ],
+                  ),
+                ]),
+              ],
             ]),
           ]),
+        if (listed.length >= serverBehaviorsMaximum)
+          problemLine(DiagnosticSeverity.warning, 'List full. Remove one to add another.')
+        else if (addable.isNotEmpty)
+          Field(
+            label: 'Add behavior',
+            child: AnimusSelect.values(
+              references: DocumentKind.behavior,
+              value: null,
+              values: addable,
+              labels: <String, String>{for (final String id in addable) id: behaviorTitle(id)},
+              details: <String, String>{for (final String id in addable) id: id},
+              noneLabel: 'Pick a server behavior',
+              hiddenLabel: 'Add a server behavior',
+              onChanged: (String? id) {
+                if (id != null) put(<String>[...listed, id]);
+              },
+            ),
+          )
+        else if (listed.isNotEmpty)
+          noteLine('All server behaviors are listed.'),
       ]),
-      if (listed.length >= serverBehaviorsMaximum)
-        const dom.p(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('List full. Remove one to add another.')])
-      else if (addable.isNotEmpty)
-        GuiSelect(
-          references: DocumentKind.behavior,
-          value: null,
-          options: addable,
-          noneLabel: 'Add a server behavior',
-          label: 'Add a server behavior',
-          onChanged: (String? id) {
-            if (id != null) put(<String>[...listed, id]);
-          },
-        )
-      else if (listed.isNotEmpty)
-        const dom.p(classes: 'animus-muted', <Widget>[Component.text('All server behaviors are listed.')]),
     ]);
   }
+
+  /// A row's name with its id under it, and what is wrong with it, if
+  /// anything; the lines wrap instead of running under the row's menu.
+  static Widget _name(String id, String? problem) => dom.div(styles: _wrap, <Widget>[
+        stack(spacing: 2, <Widget>[
+          dom.span(<Widget>[Component.text(behaviorTitle(id))]),
+          Text(id, size: FontSize.sm, color: TextColor.muted, family: FontFamily.mono, element: 'code'),
+          if (problem != null) noteLine(problem),
+        ]),
+      ]);
+
+  static const dom.Styles _wrap = dom.Styles(raw: <String, String>{'min-width': '0', 'overflow-wrap': 'anywhere'});
 }

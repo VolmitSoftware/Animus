@@ -116,6 +116,7 @@ final class EditorImportRoutes {
             JsonObject review;
             try {
                 EditorCommandGuard.requireForImport(token, step, step.equals("apply") ? imports().commandGrants(id) : List.of(), commandGrants);
+                if (step.equals("apply") && !token.has(EditorScope.APPLY_COMMANDS)) EditorCommandGuard.requireForImport(token, imports().stagedWrites(id), api.rules());
                 review = step.equals("apply") ? imports().apply(id) : imports().rollback(id);
             } catch (EditorError refused) {
                 api.audit("import-" + step, Optional.of(token.id()), token.admin(), request, List.of("import:" + id), refused.code().wireName());
@@ -137,10 +138,10 @@ final class EditorImportRoutes {
         return ids;
     }
 
-    /** Reloads what an import step changed and sends one catalog event; returns the changed documents as {@code kind:id}. */
+    /** Reloads what an import step changed and sends its catalog event; returns the changed documents as {@code kind:id}. */
     private List<String> importPublished(Map<String, String> before, Map<String, String> after, boolean rollback, EditorTokens.Token token,
                                          EditorNotifySettings.Kind notice, String verb) throws IOException {
-        JsonArray catalog = new JsonArray(), deleted = new JsonArray();
+        JsonArray deleted = new JsonArray();
         List<String> touched = new ArrayList<>();
         Set<DocumentKind> kinds = EnumSet.noneOf(DocumentKind.class);
         for (Map.Entry<String, String> entry : after.entrySet()) {
@@ -149,7 +150,6 @@ final class EditorImportRoutes {
             DocumentKind kind = DocumentKind.parse(name[0]).orElseThrow();
             kinds.add(kind);
             touched.add(kind.wireName() + ":" + name[1]);
-            catalog.add(EditorChanges.catalogEntry(kind, name[1], name[2], EditorDocuments.revision(api.parts().documents().store().read(name[2])), entry.getValue()));
         }
         for (String key : before.keySet()) {
             if (after.containsKey(key)) continue;
@@ -164,11 +164,7 @@ final class EditorImportRoutes {
         }
         if (kinds.isEmpty()) return touched;
         api.announce(api.parts().host().applied(kinds, EditorApi.removedBehaviors(deleted), rollback), token, notice, verb, touched, Optional.empty());
-        JsonObject event = new JsonObject();
-        event.addProperty("type", "catalog");
-        event.add("documents", catalog);
-        if (!deleted.isEmpty()) event.add("deleted", deleted);
-        api.parts().events().publish(event);
+        api.catalogChanged();
         return touched;
     }
 

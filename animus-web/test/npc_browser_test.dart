@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:animus_editor/components/npc/npc_list_rows.dart';
 import 'package:animus_editor/logic/data_folder.dart';
 import 'package:animus_editor/logic/gui/gui_json.dart';
 import 'package:animus_editor/logic/npc/npc_bulk.dart';
@@ -11,10 +12,13 @@ import 'package:animus_editor/logic/npc/route_model.dart';
 import 'package:animus_editor/logic/shared_schemas.dart';
 import 'package:animus_editor/model/animus_document.dart';
 import 'package:animus_editor/model/document_kind.dart';
+import 'package:animus_editor/model/document_summary.dart';
 import 'package:animus_editor/state/editor_store.dart';
-import 'package:test/test.dart';
-
+import 'package:animus_editor/state/library.dart';
 import 'package:animus_editor/state/workspace_repository.dart';
+import 'package:animus_editor/ui/library_query.dart';
+import 'package:animus_editor/ui/library_rows.dart';
+import 'package:test/test.dart';
 
 Map<String, Uint8List> _folder(String name) {
   final Directory directory = Directory('test/fixtures/$name');
@@ -34,6 +38,29 @@ List<String> _keys(Iterable<NpcEntry> entries) => <String>[for (final NpcEntry e
 
 JsonMap _json(DocumentChange change) => asMap(jsonDecode(change.source!));
 
+Set<String> _taken() => <String>{for (final NpcEntry entry in _entries()) entry.key};
+
+/// The fixture opened as a local workspace, for its library.
+Future<EditorStore> _store() async {
+  final EditorStore store = EditorStore(repository: MemoryWorkspaceRepository(), schemas: SharedSchemas.embedded, newId: () => 'ws-npc');
+  await store.openFiles('npc browser', _folder('npc_browser'));
+  return store;
+}
+
+Future<List<NpcListItem>> _items() async => npcListItems('ws-npc', (await _store()).library(DocumentKind.npc));
+
+List<String> _rowIds(List<LibraryRow> rows) => <String>[for (final LibraryRow row in rows) row.key.substring('npc:'.length)];
+
+/// A catalog entry of a server NPC not read yet: its summary only.
+LibraryEntry _unread(String id, Map<String, Object?> summary) => LibraryEntry(
+      kind: DocumentKind.npc,
+      id: id,
+      path: 'npcs/$id.json',
+      name: plainName(summary['name']) ?? id,
+      summary: DocumentSummary(<String, Object?>{...summary, 'name': plainName(summary['name'])}),
+      loaded: false,
+    );
+
 void main() {
   group('fixture', () {
     test('every npc_browser document passes the shared schemas', () {
@@ -51,23 +78,20 @@ void main() {
   });
 
   group('catalog', () {
-    test('entries read folder, tags, world and features', () {
+    test('entries read folder, file name and tags', () {
       final NpcEntry guard = _entry('town/guard-north');
       expect(guard.folder, 'town');
       expect(guard.localId, 'guard-north');
       expect(guard.tags, <String>['guard', 'patrol']);
-      expect(guard.world, 'world');
-      expect(guard.features, containsAll(<NpcFeature>[NpcFeature.route, NpcFeature.combat]));
-      expect(_entry('town/guard-south').has(NpcFeature.route), isTrue, reason: 'a referenced route counts');
-      expect(_entry('town/baker').has(NpcFeature.shop), isTrue);
-      expect(_entry('wild/golem-keeper').has(NpcFeature.rig), isTrue);
-      expect(_entry('harbor/ferryman').has(NpcFeature.skin), isTrue);
-      expect(_entry('harbor/dockhand').features, isEmpty);
+      expect(_entry('town/market/stalls/cartwright').folder, 'town/market/stalls');
+      expect(_entry('town/market/stalls/cartwright').localId, 'cartwright');
+      expect(_entry('crier').folder, '');
     });
 
     test('entries sort by folder then name', () {
       expect(_keys(_entries()), <String>[
         'crier',
+        'harbor/lamplighter',
         'harbor/dockhand',
         'harbor/ferryman',
         'town/baker',
@@ -79,50 +103,125 @@ void main() {
       ]);
     });
 
-    test('plain words match name, id, type, world and tags', () {
-      expect(_keys(NpcQuery.parse('guard').filter(_entries())), <String>['town/guard-north', 'town/guard-south']);
-      expect(_keys(NpcQuery.parse('FERRY').filter(_entries())), <String>['harbor/ferryman']);
-      expect(_keys(NpcQuery.parse('harbor').filter(_entries())), <String>['harbor/dockhand', 'harbor/ferryman']);
-      expect(_keys(NpcQuery.parse('armor_stand').filter(_entries())), <String>['harbor/dockhand', 'wild/golem-keeper']);
-      expect(_keys(NpcQuery.parse('merch').filter(_entries())), <String>['town/baker', 'town/market/fishmonger']);
-    });
-
-    test('field terms narrow and a leading dash negates', () {
-      expect(_keys(NpcQuery.parse('tag:guard -tag:patrol').filter(_entries())), <String>['town/guard-south']);
-      expect(_keys(NpcQuery.parse('folder:harbor is:despawned').filter(_entries())), <String>['harbor/dockhand']);
-      expect(_keys(NpcQuery.parse('group:wild').filter(_entries())), <String>['wild/golem-keeper']);
-      expect(_keys(NpcQuery.parse('has:combat has:route').filter(_entries())), <String>['town/guard-north', 'town/guard-south']);
-      expect(_keys(NpcQuery.parse('type:armor_stand world:harbor').filter(_entries())), <String>['harbor/dockhand']);
-      expect(_keys(NpcQuery.parse('has:nothing').filter(_entries())), isEmpty);
-      expect(NpcQuery.parse('   ').terms, isEmpty);
-    });
-
-    test('toggleTerm adds and removes one term', () {
-      expect(toggleTerm('guard', 'has', 'combat'), 'guard has:combat');
-      expect(toggleTerm('guard has:combat', 'has', 'combat'), 'guard');
-      expect(hasTerm('guard has:combat', 'has', 'combat'), isTrue);
-    });
-
-    test('the folder tree nests folders and counts each one and its subtree', () {
-      final NpcFolderNode root = npcFolderTree(_entries(), extra: <String>['wild/caves/deep']);
-      expect(<String>[for (final NpcFolderNode node in root.all) '${node.path}=${node.own}/${node.total}'], <String>[
-        '=1/9',
-        'harbor=2/2',
-        'town=3/5',
-        'town/market=1/2',
-        'town/market/stalls=1/1',
-        'wild=1/1',
-        'wild/caves=0/0',
-        'wild/caves/deep=0/0',
-      ]);
-      final List<NpcFolderRow> rows = npcFolderRows(root, <String>{'town', 'wild/caves'});
-      expect(<String>[for (final NpcFolderRow row in rows) '${row.level}:${row.node.path}:${row.parent}'], <String>['1::null', '2:harbor:0', '2:town:0', '2:wild:0', '3:wild/caves:3']);
-      expect(rows[2].expanded, isFalse);
-      expect(rows[2].expandable, isTrue);
-      expect(rows[1].expandable, isFalse);
-      expect(npcFolderTree(_entries(), extra: <String>['Bad Folder']).all.map((NpcFolderNode node) => node.path), isNot(contains('Bad Folder')));
+    test('npcTags counts each tag, most used first', () {
       expect(npcTags(_entries()).first, ('guard', 2));
-      expect(npcValues(_entries(), (NpcEntry entry) => entry.world), <String>['harbor', 'world']);
+      expect(npcTags(_entries()).map(((String, int) tag) => tag.$1), containsAll(<String>['herald', 'merchant', 'patrol', 'quest']));
+    });
+  });
+
+  group('list rows', () {
+    test('every NPC is a row with its plain name, body and world, read from summaries', () async {
+      final List<NpcListItem> items = await _items();
+      expect(items, hasLength(10));
+      final LibraryRow baker = items.firstWhere((NpcListItem item) => item.id == 'town/baker').row;
+      expect(baker.title, 'Baker');
+      expect(baker.meta, 'Player, world');
+      expect(baker.href, '#/workspace/ws-npc/npc/town%2Fbaker');
+      final LibraryRow dockhand = items.firstWhere((NpcListItem item) => item.id == 'harbor/dockhand').row;
+      expect(dockhand.meta, 'Armor stand, harbor');
+      expect(dockhand.badges.map((LibraryBadge badge) => badge.label), contains('Despawned'));
+      expect(dockhand.tags, contains(despawnedFilter.id));
+    });
+
+    test('an NPC named only with a colour code is Unnamed NPC told apart by where it stands, and still opens', () async {
+      final NpcListItem blank = (await _items()).firstWhere((NpcListItem item) => item.id == 'harbor/lamplighter');
+      expect(blank.row.title, 'Unnamed NPC');
+      expect(blank.row.href, '#/workspace/ws-npc/npc/harbor%2Flamplighter');
+      expect(blank.row.meta, 'Villager, harbor at 30, 64, 6');
+      expect(blank.row.advancedMeta, startsWith('npcs/harbor/lamplighter'), reason: 'Advanced keeps the path');
+    });
+
+    test('the Advanced line holds the file path and tags', () async {
+      final List<NpcListItem> items = await _items();
+      expect(items.firstWhere((NpcListItem item) => item.id == 'town/guard-north').row.advancedMeta, 'npcs/town/guard-north · guard, patrol');
+      expect(items.firstWhere((NpcListItem item) => item.id == 'crier').row.advancedMeta, 'npcs/crier · herald');
+      expect(items.firstWhere((NpcListItem item) => item.id == 'harbor/dockhand').row.advancedMeta, 'npcs/harbor/dockhand');
+    });
+
+    test('rows of server NPCs not read yet come from their catalog summaries', () {
+      final List<NpcListItem> items = npcListItems('server-x', <LibraryEntry>[
+        _unread('world/citizens-12', <String, Object?>{'name': '&f', 'type': 'minecraft:iron_golem', 'world': 'spawn', 'spawned': false, 'folder': 'world', 'tags': <String>['gate']}),
+        _unread('world/citizens-7', <String, Object?>{'name': '&6Baker', 'type': 'minecraft:player', 'world': 'spawn', 'folder': 'world'}),
+      ]);
+      expect(items[0].row.title, 'world/citizens-12');
+      expect(items[0].row.meta, 'Iron golem, spawn');
+      expect(items[0].row.badges.map((LibraryBadge badge) => badge.label), contains('Despawned'));
+      expect(items[0].folder, 'world');
+      expect(items[0].tags, <String>['gate']);
+      expect(items[1].row.title, 'Baker');
+    });
+
+    test('a face is asked for each row with the entry it shows', () async {
+      final List<String> asked = <String>[];
+      npcListItems('ws-npc', (await _store()).library(DocumentKind.npc), face: (LibraryEntry entry) {
+        asked.add(entry.id);
+        return null;
+      });
+      expect(asked, hasLength(10));
+    });
+
+    test('folder counts hold each folder with its subfolders, in tree order', () async {
+      expect(npcFolderCounts(await _items()), <(String, int)>[('harbor', 3), ('town', 5), ('town/market', 2), ('town/market/stalls', 1), ('wild', 1)]);
+      expect(folderLabel(''), 'npcs/');
+      expect(folderLabel('town/market'), 'npcs/town/market/');
+    });
+
+    test('a folder filter shows the folder and its subfolders', () async {
+      final List<NpcListItem> items = await _items();
+      expect(_rowIds(npcRows(items, const NpcListFilter(folder: 'town/market'))), unorderedEquals(<String>['town/market/fishmonger', 'town/market/stalls/cartwright']));
+      expect(_rowIds(npcRows(items, const NpcListFilter(folder: 'wild'))), <String>['wild/golem-keeper']);
+      expect(npcRows(items, const NpcListFilter()), hasLength(10));
+    });
+
+    test('body, world and tag filters narrow together; tags match any picked', () async {
+      final List<NpcListItem> items = await _items();
+      expect(_rowIds(npcRows(items, const NpcListFilter(body: 'minecraft:armor_stand'))), unorderedEquals(<String>['harbor/dockhand', 'wild/golem-keeper']));
+      expect(_rowIds(npcRows(items, const NpcListFilter(body: 'minecraft:armor_stand', world: 'harbor'))), <String>['harbor/dockhand']);
+      expect(_rowIds(npcRows(items, const NpcListFilter(tags: <String>{'guard', 'quest'}))), unorderedEquals(<String>['town/guard-north', 'town/guard-south', 'harbor/ferryman']));
+      expect(npcRows(items, const NpcListFilter(folder: 'harbor', tags: <String>{'guard'})), isEmpty);
+    });
+
+    test('filtered rows are the same list until the rows or the filter change', () async {
+      final List<NpcListItem> items = await _items();
+      final NpcRowCache cache = NpcRowCache();
+      final List<LibraryRow> first = cache.rows(items, const NpcListFilter(world: 'harbor'));
+      expect(identical(cache.rows(items, const NpcListFilter(world: 'harbor')), first), isTrue);
+      expect(identical(cache.rows(items, const NpcListFilter(world: 'world')), first), isFalse);
+      expect(identical(cache.rows(<NpcListItem>[...items], const NpcListFilter(world: 'world')), first), isFalse);
+    });
+
+    test('bodies, worlds and top tags come from the summaries', () async {
+      final List<NpcListItem> items = await _items();
+      expect(npcBodies(items), <String>['minecraft:armor_stand', 'minecraft:player', 'minecraft:villager']);
+      expect(npcWorlds(items), <String>['harbor', 'world']);
+      expect(npcTopTags(items).first, ('guard', 2));
+      expect(npcTopTags(items, limit: 2), hasLength(2));
+      expect(mostUsedWorld(items), 'world');
+      expect(mostUsedWorld(const <NpcListItem>[]), 'world');
+    });
+
+    test('New NPC offers a player body first', () {
+      expect(commonBodies.first, 'minecraft:player');
+    });
+
+    test('filtering 1500 NPCs stays well under a frame', () {
+      final List<LibraryEntry> entries = <LibraryEntry>[
+        for (int index = 0; index < 1500; index++)
+          _unread('f${index % 12}/sub${index % 3}/npc-$index', <String, Object?>{
+            'name': 'NPC $index',
+            'type': index.isEven ? 'minecraft:player' : 'minecraft:villager',
+            'world': 'w${index % 4}',
+            'folder': 'f${index % 12}/sub${index % 3}',
+            'tags': <String>['t${index % 20}'],
+          }),
+      ];
+      final List<NpcListItem> items = npcListItems('ws', entries);
+      final Stopwatch watch = Stopwatch()..start();
+      for (int round = 0; round < 20; round++) {
+        npcRows(items, NpcListFilter(folder: 'f${round % 12}', world: 'w${round % 4}', tags: <String>{'t${round % 20}'}));
+        npcFolderCounts(items);
+      }
+      expect(watch.elapsedMilliseconds / 20, lessThan(16));
     });
   });
 
@@ -150,22 +249,22 @@ void main() {
       expect(_json(result.changes.single).containsKey('tags'), isFalse);
     });
 
-    test('folder terms match a subtree, or one folder with =', () {
-      expect(_keys(NpcQuery.parse('folder:town').filter(_entries())), <String>['town/baker', 'town/guard-north', 'town/guard-south', 'town/market/fishmonger', 'town/market/stalls/cartwright']);
-      expect(_keys(NpcQuery.parse('folder:=town/market').filter(_entries())), <String>['town/market/fishmonger']);
-      expect(_keys(NpcQuery.parse('folder:=').filter(_entries())), <String>['crier']);
-      expect(_keys(NpcQuery.parse('folder:npcs/town/market/').filter(_entries())), <String>['town/market/fishmonger', 'town/market/stalls/cartwright']);
-      expect(_keys(NpcQuery.parse('-folder:town').filter(_entries())), isNot(contains('town/baker')));
-    });
-
-    test('nested ids read their folder and file name', () {
-      expect(_entry('town/market/stalls/cartwright').folder, 'town/market/stalls');
-      expect(_entry('town/market/stalls/cartwright').localId, 'cartwright');
-      expect(_entry('crier').folder, '');
+    test('bulk edits keep every key they do not change, byte for byte', () {
+      String without(JsonMap json, Set<String> keys) => prettyJson(<String, Object?>{
+            for (final MapEntry<String, Object?> entry in json.entries)
+              if (!keys.contains(entry.key)) entry.key: entry.value,
+          });
+      final NpcEntry guard = _entry('town/guard-north');
+      expect(without(_json(addTag(<NpcEntry>[guard], 'night').changes.single), <String>{'tags'}), without(guard.json, <String>{'tags'}));
+      expect(without(_json(setSpawned(<NpcEntry>[guard], false).changes.single), <String>{'spawned'}), without(guard.json, <String>{'spawned'}));
+      expect(without(_json(moveToFolder(<NpcEntry>[guard], 'watch', _taken()).changes.last), <String>{'group'}), without(guard.json, <String>{'group'}));
+      final JsonMap off = _json(setModuleEnabled(<NpcEntry>[guard], 'animus:combat', false).changes.single);
+      expect(without(off, <String>{'modules'}), without(guard.json, <String>{'modules'}));
+      expect(prettyJson(asMap(off['modules'])['animus:navigation']), prettyJson(guard.modules['animus:navigation']));
     });
 
     test('renameNpcFolder moves the whole subtree in one edit', () {
-      final NpcFolderEdit edit = renameNpcFolder(_entries(), 'town/market', 'bazaar');
+      final NpcFolderEdit edit = renameNpcFolder(_entries(), 'town/market', 'bazaar', _taken());
       expect(edit.problem, isNull);
       expect(edit.moved, 2);
       expect(<String?>[for (final DocumentChange change in edit.changes) change.source == null ? '-${change.id}' : '+${change.id}'],
@@ -175,22 +274,26 @@ void main() {
       expect(_json(edit.changes[3])['uuid'], _entry('town/market/stalls/cartwright').json['uuid']);
     });
 
-    test('moveNpcFolder puts a folder under another one, or at the top', () {
-      final NpcFolderEdit under = moveNpcFolder(_entries(), 'town/market', 'harbor');
+    test('renameNpcFolder needs only the NPCs inside the folder', () {
+      final List<NpcEntry> inside = <NpcEntry>[_entry('wild/golem-keeper')];
+      expect(renameNpcFolder(inside, 'wild', 'forest', _taken()).changes.last.id, 'forest/golem-keeper');
+      expect(renameNpcFolder(inside, 'wild', 'harbor', <String>{..._taken(), 'harbor/golem-keeper'}).problem, 'harbor/golem-keeper already exists.');
+    });
+
+    test('renameNpcFolder puts a folder under another one, or at the top', () {
+      final NpcFolderEdit under = renameNpcFolder(_entries(), 'town/market', 'harbor/market', _taken());
       expect(under.changes.where((DocumentChange change) => change.source != null).map((DocumentChange change) => change.id),
           <String>['harbor/market/fishmonger', 'harbor/market/stalls/cartwright']);
-      expect(moveNpcFolder(_entries(), 'town/market/stalls', '').changes.last.id, 'stalls/cartwright');
+      expect(renameNpcFolder(_entries(), 'town/market/stalls', 'stalls', _taken()).changes.last.id, 'stalls/cartwright');
     });
 
     test('folder edits refuse what the server refuses, before anything is written', () {
-      expect(renameNpcFolder(_entries(), 'town', 'town/market/x').problem, 'npcs/town/ cannot move into itself.');
-      expect(renameNpcFolder(_entries(), 'town', 'Town').problem, 'npcs/Town/: $npcFolderRule.');
-      expect(renameNpcFolder(_entries(), '', 'x').problem, isNotNull);
-      expect(renameNpcFolder(_entries(), 'town', 'a/b/c/d/e/f/g').problem, contains('town/market/stalls/cartwright would land in npcs/a/b/c/d/e/f/g/market/stalls/'));
-      expect(renameNpcFolder(_entries(), 'wild', 'harbor').problem, isNull);
-      final NpcEntry clash = NpcEntry.of(const AnimusDocument(kind: DocumentKind.npc, id: 'harbor/golem-keeper', path: 'npcs/harbor/golem-keeper.json', source: '{}', json: <String, Object?>{}, diagnostics: <Diagnostic>[]));
-      expect(renameNpcFolder(<NpcEntry>[..._entries(), clash], 'wild', 'harbor').problem, 'harbor/golem-keeper already exists.');
-      expect(renameNpcFolder(_entries(), 'wild', 'wild').problem, isNotNull);
+      expect(renameNpcFolder(_entries(), 'town', 'town/market/x', _taken()).problem, 'npcs/town/ cannot move into itself.');
+      expect(renameNpcFolder(_entries(), 'town', 'Town', _taken()).problem, 'npcs/Town/: $npcFolderRule.');
+      expect(renameNpcFolder(_entries(), '', 'x', _taken()).problem, isNotNull);
+      expect(renameNpcFolder(_entries(), 'town', 'a/b/c/d/e/f/g', _taken()).problem, contains('town/market/stalls/cartwright would land in npcs/a/b/c/d/e/f/g/market/stalls/'));
+      expect(renameNpcFolder(_entries(), 'wild', 'harbor', _taken()).problem, isNull);
+      expect(renameNpcFolder(_entries(), 'wild', 'wild', _taken()).problem, isNotNull);
     });
 
     test('folder rules follow NpcPaths', () {
@@ -207,7 +310,7 @@ void main() {
     });
 
     test('moveToFolder rewrites group and path and refuses collisions', () {
-      final Set<String> taken = <String>{for (final NpcEntry entry in _entries()) entry.key, 'harbor/baker'};
+      final Set<String> taken = <String>{..._taken(), 'harbor/baker'};
       final NpcBulkResult result = moveToFolder(<NpcEntry>[_entry('town/guard-north'), _entry('town/baker'), _entry('harbor/ferryman')], 'harbor', taken);
       expect(result.changed, 1);
       expect(result.skipped.keys, unorderedEquals(<String>['town/baker', 'harbor/ferryman']));
@@ -255,6 +358,12 @@ void main() {
       expect(asMap(_json(both.changes.single)['modules']).keys, <String>['animus:look-close']);
     });
 
+    test('selectionModules lists the modules the picked NPCs have, switchable ones first', () {
+      expect(selectionModules(<NpcEntry>[_entry('town/guard-south'), _entry('town/baker')]),
+          <String>['animus:combat', 'animus:navigation', 'animus:look-close', 'animus:health', 'animus:shop']);
+      expect(selectionModules(<NpcEntry>[_entry('crier')]), isEmpty);
+    });
+
     test('setSpawned and deleteNpcs', () {
       final NpcBulkResult spawned = setSpawned(<NpcEntry>[_entry('harbor/dockhand'), _entry('harbor/ferryman')], true);
       expect(spawned.changed, 1);
@@ -270,8 +379,7 @@ void main() {
     });
 
     test('one bulk change set is one undo step', () async {
-      final EditorStore store = EditorStore(repository: MemoryWorkspaceRepository(), schemas: SharedSchemas.embedded, newId: () => 'ws-npc');
-      await store.openFiles('npc browser', _folder('npc_browser'));
+      final EditorStore store = await _store();
       final List<NpcEntry> all = npcEntries(store.workspace!.documents);
       await store.commit(documents: addTag(all, 'reviewed').changes);
       await store.commit(documents: moveToFolder(<NpcEntry>[npcEntries(store.workspace!.documents).firstWhere((NpcEntry e) => e.key == 'wild/golem-keeper')], 'town', <String>{for (final NpcEntry e in all) e.key}).changes);
@@ -283,6 +391,21 @@ void main() {
       expect(npcEntries(store.workspace!.documents).every((NpcEntry e) => e.tags.contains('reviewed')), isTrue);
       await store.undo();
       expect(npcEntries(store.workspace!.documents).any((NpcEntry e) => e.tags.contains('reviewed')), isFalse);
+    });
+  });
+
+  group('new NPC', () {
+    test('newNpcId proposes a free file name from the name', () {
+      expect(newNpcId('Town Crier', '', _taken()), 'town-crier');
+      expect(newNpcId('&6Baker', 'town', _taken()), 'baker-2');
+      expect(newNpcId('', 'town', _taken()), 'npc');
+    });
+
+    test('newNpcProblem names what keeps an NPC from being made', () {
+      expect(newNpcProblem('baker', 'town', _taken()), 'npcs/town/baker already exists.');
+      expect(newNpcProblem('Bad Id', 'town', _taken()), isNotNull);
+      expect(newNpcProblem('cook', 'Bad Folder', _taken()), isNotNull);
+      expect(newNpcProblem('cook', 'town/kitchen', _taken()), isNull);
     });
   });
 

@@ -1,50 +1,31 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import '../logic/data_folder.dart';
 import '../logic/gui/gui_json.dart';
 import '../logic/rig_validation.dart';
+import '../logic/npc/skin_edits.dart' show skinDocumentLabel;
 import '../logic/schema_upgrades.dart';
 import '../logic/shared_schemas.dart';
+import '../logic/skin_label.dart';
 import '../model/animus_document.dart';
+import '../model/display_name.dart';
 import '../model/document_kind.dart';
+import '../model/document_summary.dart';
 import '../model/server_binding.dart';
-import 'workspace_coordination.dart';
-import 'workspace_repository.dart';
 import '../logic/plural.dart';
+import 'library.dart';
+import 'workspace_coordination.dart';
+import 'workspace_records.dart';
+import 'workspace_repository.dart';
+
+part 'store_changes.dart';
+part 'store_history.dart';
+part 'store_library.dart';
+part 'store_tabs.dart';
 
 typedef StoreListener = void Function();
-
-/// One document written by [EditorStore.commit]: new text, removal when
-/// [source] is null, or an [update] of an existing document.
-class DocumentChange {
-  const DocumentChange(this.kind, this.id, this.source, {this.path}) : update = null;
-
-  /// An edit run on the document's JSON when the commit's turn comes, after
-  /// every commit queued before it, and written back as formatted JSON. An
-  /// edit worked out from what an editor shows goes this way, so it cannot
-  /// overwrite a quicker edit that was still being saved. Skipped when the
-  /// document is gone by then.
-  const DocumentChange.update(this.kind, this.id, JsonUpdate this.update)
-      : source = null,
-        path = null;
-
-  final DocumentKind kind;
-  final String id;
-  final String? source;
-  final JsonUpdate? update;
-
-  /// Where a new document lives; defaults to [documentPath].
-  final String? path;
-}
-
-/// Where a new document of [kind] with [id] lives in the data folder.
-String documentPath(DocumentKind kind, String id) {
-  if (kind == DocumentKind.serverBehaviors) return DocumentKind.serverBehaviorsPath;
-  final int colon = id.indexOf(':');
-  final String relative = colon < 0 ? id : '${id.substring(0, colon)}/${id.substring(colon + 1)}';
-  return '${kind.folder}/$relative.json';
-}
 
 /// The problem shown when another tab saved first and this tab reloaded.
 const String reloadedFromOtherTab = 'Another tab changed this workspace, so this tab reloaded it. Your last edit here was not kept.';
@@ -61,16 +42,9 @@ String saveFailureMessage(Object failure) {
   return 'Not saved: the browser refused to write ($reason). Export a zip, then try again.';
 }
 
-/// What a commit did, for "Undid: ..." when no label was given.
-String describeChanges(List<DocumentChange> documents, Iterable<String> resources, bool Function(DocumentChange change) exists) {
-  if (documents.length == 1) {
-    final DocumentChange change = documents.single;
-    if (change.source == null && change.update == null) return 'delete ${change.id}';
-    return exists(change) ? 'edit ${change.id}' : 'create ${change.id}';
-  }
-  if (documents.isEmpty) return resources.length == 1 ? 'change ${resources.single}' : 'change ${countOf(resources.length, 'file')}';
-  return 'change ${countOf(documents.length, 'document')}';
-}
+/// The few words the save bar shows for a refused save.
+String saveFailureReason(Object failure) =>
+    failure is WorkspaceWriteFailure && failure.quota ? 'browser storage is full' : 'the browser refused to store it';
 
 /// A picked folder or zip that holds no Animus documents; nothing was saved.
 class NoDocumentsFound implements Exception {
@@ -120,13 +94,29 @@ class EditorStore {
 
   /// Undo (and redo) steps kept per workspace, in memory and in the
   /// repository.
-  static const int undoLimit = 50;
+  static const int undoLimit = historyLimit;
 
   WorkspaceSnapshot? _workspace;
+
+  /// The open workspace as it is stored now: what the next save writes the
+  /// difference from. Behind [_workspace] while an edit is held unsaved.
+  WorkspaceSnapshot? _stored;
   WorkspaceSnapshot? _deleted;
   Future<void> _queue = Future<void>.value();
   int _pending = 0;
   String? _coalesce;
+
+  /// The last commit queued and not started yet, while later keystrokes of
+  /// the same field may join it.
+  _QueuedCommit? _waiting;
+
+  /// Tells listeners of an edit whose write is still out; see [showDelay].
+  Timer? _showTimer;
+
+  /// How long an edit's write may take before listeners hear of the edit
+  /// anyway. Normally they hear once, when it is stored, so the write starts
+  /// before the screen redraws.
+  static const Duration showDelay = Duration(milliseconds: 50);
 
   /// The document changes of commits not yet in [_workspace] (queued, or
   /// waiting on the browser's storage), oldest first; [shown] lays them over.
@@ -149,6 +139,14 @@ class EditorStore {
   WorkspaceSnapshot? get workspace => _workspace;
   List<WorkspaceSummary> get workspaces => _workspaces;
 
+  final Library _library = Library();
+  ServerLibrary? _server;
+  int _libraryRevision = 0;
+  final Map<DocumentKind, LibraryChanges> _kindChanges = <DocumentKind, LibraryChanges>{};
+  final LibraryChanges _countChanges = LibraryChanges();
+  Map<DocumentKind, int>? _toldCounts;
+  int? _toldOwnRoutes;
+
   /// False until the workspace list has loaded once.
   bool get workspacesListed => _listed;
 
@@ -169,6 +167,22 @@ class EditorStore {
   /// True while the open workspace holds an edit the browser refused to
   /// store; [saveAgain] retries it.
   bool get hasUnsavedEdit => _unsaved;
+
+  /// Why the held edit was not stored, in a few words.
+  String? get unsavedReason => _unsaved ? _unsavedReason : null;
+  String? _unsavedReason;
+
+  /// True while a commit is queued or being stored.
+  bool get saving => _pending > 0;
+
+  /// Raised by every edit, undo and redo (not by server refreshes), so a
+  /// later state can tell an edit happened since.
+  int get editCount => _editCount;
+  int _editCount = 0;
+
+  /// When the user last edited; background reads wait a moment after it.
+  DateTime? get lastEditAt => _lastEditAt;
+  DateTime? _lastEditAt;
 
   /// True while a commit is queued or an edit is held only in memory: the
   /// page asks before it closes.
@@ -219,9 +233,14 @@ class EditorStore {
   void removeListener(StoreListener listener) => _listeners.remove(listener);
 
   void _changed() {
+    _showTimer?.cancel();
+    _showTimer = null;
+    _libraryRevision++;
+    _library.sync(_workspace, _server);
     for (final StoreListener listener in List<StoreListener>.of(_listeners)) {
       listener();
     }
+    _tellLibrary();
   }
 
   /// True once after another tab deleted the open workspace, so the app can
@@ -277,8 +296,8 @@ class EditorStore {
     } else {
       final WorkspaceSnapshot? stored = await repository.load(id);
       if (stored == null) return;
-      await repository.save(stored.next(name: trimmed));
-      events.announce(WorkspaceEvent(WorkspaceEventKind.saved, id, generation: stored.generation + 1));
+      await repository.save(stored.next(name: trimmed), previous: stored);
+      events.announce(WorkspaceEvent(WorkspaceEventKind.saved, id, generation: stored.generation + 1, keys: const <String>[]));
     }
     await refreshWorkspaces();
   }
@@ -329,13 +348,10 @@ class EditorStore {
     await repository.save(snapshot);
     events.announce(WorkspaceEvent(WorkspaceEventKind.saved, snapshot.id, generation: 1));
     onWorkspaceCreated?.call();
-    _workspace = snapshot;
+    _opened(snapshot);
     _ignored = result.ignored;
     _upgraded = result.upgraded;
-    _codeDrafts.clear();
-    _resetHistory();
     _problem = null;
-    _unsaved = false;
     await _claim(snapshot.id);
     _workspaces = await repository.list();
     _listed = true;
@@ -344,7 +360,9 @@ class EditorStore {
   }
 
   /// Opens the workspace for a paired server, creating it empty the first
-  /// time. Documents join it as they are opened from the server's catalog.
+  /// time, with its saved undo and redo steps. Its documents are the ones
+  /// read from the server so far; the library lists the whole catalog. A
+  /// workspace named before the server said its name takes [name].
   Future<WorkspaceSnapshot> openServerWorkspace(String id, String name, ServerBinding binding) async {
     WorkspaceSnapshot? snapshot = _workspace?.id == id ? _workspace : await repository.load(id);
     if (snapshot == null) {
@@ -353,19 +371,21 @@ class EditorStore {
       events.announce(WorkspaceEvent(WorkspaceEventKind.saved, id, generation: 1));
     }
     if (_workspace?.id != id) {
-      _workspace = snapshot;
+      _opened(snapshot);
       _ignored = const <String>[];
       _upgraded = const <String>[];
-      _codeDrafts.clear();
-      _resetHistory();
-      _unsaved = false;
+      await _loadHistory(id);
       await _claim(id);
     }
     _problem = null;
+    if (snapshot.name != name && name.trim().isNotEmpty) {
+      final WorkspaceSnapshot named = snapshot;
+      await _enqueue(() => _save(named, named.next(name: name)));
+    }
     _workspaces = await repository.list();
     _listed = true;
     _changed();
-    return snapshot;
+    return _workspace ?? snapshot;
   }
 
   /// Opens a stored workspace with its saved undo and redo steps; returns
@@ -373,13 +393,10 @@ class EditorStore {
   Future<bool> openWorkspace(String id) async {
     if (_workspace?.id == id) return true;
     final WorkspaceSnapshot? snapshot = await repository.load(id);
-    _workspace = snapshot;
+    _opened(snapshot);
     _ignored = const <String>[];
     _upgraded = const <String>[];
-    _codeDrafts.clear();
-    _resetHistory();
     if (snapshot != null) await _loadHistory(id);
-    _unsaved = false;
     _problem = snapshot == null ? 'There is no workspace "$id" in this browser.' : null;
     if (snapshot != null) {
       await _claim(id);
@@ -389,6 +406,15 @@ class EditorStore {
     }
     _changed();
     return snapshot != null;
+  }
+
+  /// Makes [snapshot], as stored, the open workspace with no history yet.
+  void _opened(WorkspaceSnapshot? snapshot) {
+    _workspace = snapshot;
+    _stored = snapshot;
+    _codeDrafts.clear();
+    _resetHistory();
+    _unsaved = false;
   }
 
   /// Upgrades a local workspace's NPCs and groups below the current schema
@@ -415,11 +441,8 @@ class EditorStore {
   }
 
   void closeWorkspace() {
-    _workspace = null;
+    _opened(null);
     _upgraded = const <String>[];
-    _codeDrafts.clear();
-    _resetHistory();
-    _unsaved = false;
     _release();
     _changed();
   }
@@ -436,12 +459,7 @@ class EditorStore {
     await refreshWorkspaces();
   }
 
-  AnimusDocument? document(DocumentKind kind, String id) {
-    for (final AnimusDocument document in _workspace?.documents ?? const <AnimusDocument>[]) {
-      if (document.kind == kind && document.id == id) return document;
-    }
-    return null;
-  }
+  AnimusDocument? document(DocumentKind kind, String id) => _workspace?.document(kind, id);
 
   /// The document as the editor should draw it: [document] with every
   /// commit asked for so far applied, even those still waiting their turn
@@ -485,9 +503,14 @@ class EditorStore {
   /// Writes, adds or removes documents and resources as one undo step, and
   /// revalidates them with the animations that depend on changed rigs.
   /// Commits run one at a time in call order. Successive commits with the
-  /// same [coalesce] key (typing into one field) share one undo step.
+  /// same [coalesce] key (typing into one field) share one undo step, and
+  /// those queued behind a write still out share one write.
   /// [label] says what the step did for the Undo and Redo notices, such as
   /// `rename town:baker`; without one it is worked out from the changes.
+  ///
+  /// [shown] has the edit at once. Listeners hear of it when it is
+  /// stored, so its write starts before the screen redraws, or after
+  /// [showDelay] while the write is still out.
   Future<void> commit({
     List<DocumentChange> documents = const <DocumentChange>[],
     Map<String, Uint8List?> resources = const <String, Uint8List?>{},
@@ -496,13 +519,23 @@ class EditorStore {
     bool undoable = true,
     String? label,
   }) {
+    final bool joins = coalesce != null && documents.isNotEmpty && resources.isEmpty && server == null;
+    final _QueuedCommit? waiting = _waiting;
+    if (joins && waiting != null && waiting.coalesce == coalesce && waiting.undoable == undoable && waiting.label == label) {
+      waiting.changes.addAll(documents);
+      _unsettledVersion++;
+      _showSoon();
+      return waiting.done;
+    }
     final List<DocumentChange> changes = List<DocumentChange>.of(documents);
     if (changes.isNotEmpty) {
       _unsettled.add(changes);
       _unsettledVersion++;
-      _changed();
+      _showSoon();
     }
-    return _enqueue(() async {
+    late final _QueuedCommit queued;
+    final Future<void> done = _enqueue(() async {
+      if (identical(_waiting, queued)) _waiting = null;
       try {
         await _commit(changes, resources, coalesce, server, undoable, label);
       } finally {
@@ -511,6 +544,16 @@ class EditorStore {
           _changed();
         }
       }
+    });
+    queued = _QueuedCommit(changes, coalesce, undoable, label, done);
+    if (joins) _waiting = queued;
+    return done;
+  }
+
+  void _showSoon() {
+    _showTimer ??= Timer(showDelay, () {
+      _showTimer = null;
+      if (_unsettled.isNotEmpty) _changed();
     });
   }
 
@@ -525,38 +568,41 @@ class EditorStore {
     final WorkspaceSnapshot? current = _workspace;
     if (current == null) return;
     final ServerBinding? binding = current.server == null || server == null ? current.server : server(current.server!);
-    final List<AnimusDocument> next = List<AnimusDocument>.of(current.documents);
+    final Map<String, AnimusDocument> byKey = Map<String, AnimusDocument>.of(current.byKey);
     final Set<String> touched = <String>{};
-    bool changed = false;
+    final Set<String> gone = <String>{};
+    bool added = false;
+    bool removed = false;
     final String description = label ??
-        describeChanges(documents, resources.keys, (DocumentChange change) => next.any((AnimusDocument d) => d.kind == change.kind && d.id == change.id));
+        describeChanges(documents, resources.keys, (DocumentChange change) {
+          if (!byKey.containsKey(documentKey(change.kind, change.id))) return null;
+          return libraryEntry(change.kind, change.id)?.name ?? displayName(change.kind, change.id, null);
+        });
     for (final DocumentChange change in documents) {
-      final int index = next.indexWhere((AnimusDocument document) => document.kind == change.kind && document.id == change.id);
+      final String key = documentKey(change.kind, change.id);
+      final AnimusDocument? existing = byKey[key];
       final JsonUpdate? update = change.update;
-      final Object? updated = update == null || index < 0 ? null : update(next[index].json);
-      if (update != null && (index < 0 || jsonEquals(updated, next[index].json))) continue;
+      final Object? updated = update == null || existing == null ? null : update(existing.json);
+      if (update != null && (existing == null || jsonEquals(updated, existing.json))) continue;
       final String? source = update != null ? prettyJson(updated) : change.source;
       if (source == null) {
-        if (index >= 0) {
-          next.removeAt(index);
+        if (existing != null) {
+          byKey.remove(key);
           _codeDrafts.remove(_draftKey(change.kind, change.id));
-          changed = true;
+          gone.add(key);
+          removed = true;
         }
         continue;
       }
-      if (index >= 0 && next[index].source == source) continue;
-      final String path = index >= 0 ? next[index].path : (change.path ?? documentPath(change.kind, change.id));
-      final AnimusDocument edited = validateSource(DocumentLocation(change.kind, change.id), path, source, schemas);
-      if (index >= 0) {
-        next[index] = edited;
-      } else {
-        next.add(edited);
-        next.sort((AnimusDocument a, AnimusDocument b) => a.path.compareTo(b.path));
-      }
-      touched.add('${change.kind.wireName}:${change.id}');
-      changed = true;
+      if (existing != null && existing.source == source) continue;
+      final String path = existing?.path ?? change.path ?? documentPath(change.kind, change.id);
+      byKey[key] = validateSource(DocumentLocation(change.kind, change.id), path, source, schemas);
+      added |= existing == null;
+      touched.add(key);
     }
-    final Map<String, Uint8List> nextResources = Map<String, Uint8List>.of(current.resources);
+    final bool documentsChanged = added || removed || touched.isNotEmpty;
+    bool changed = documentsChanged;
+    final Map<String, Uint8List> nextResources = resources.isEmpty ? current.resources : Map<String, Uint8List>.of(current.resources);
     for (final MapEntry<String, Uint8List?> resource in resources.entries) {
       changed = true;
       if (resource.value == null) {
@@ -566,67 +612,77 @@ class EditorStore {
       }
     }
     if (!changed && identical(binding, current.server)) return;
+    _revalidateRigs(byKey, touched);
+    final List<AnimusDocument> next = !documentsChanged
+        ? current.documents
+        : added || removed
+            ? (byKey.values.toList()..sort((AnimusDocument a, AnimusDocument b) => a.path.compareTo(b.path)))
+            : byKey.values.toList();
+    // Without additions or removals byKey is in the documents' order already.
+    final WorkspaceSnapshot after =
+        current.next(documents: next, byKey: documentsChanged && !added && !removed ? byKey : null, resources: nextResources, server: binding);
+    HistoryStep? record;
+    HistoryStep? widened;
+    if (undoable && changed) {
+      final HistoryStep step = HistoryStep.between(description, current, after);
+      if (coalesce != null && coalesce == _coalesce && _undo.isNotEmpty) {
+        widened = _undo.last.widen(step);
+      } else {
+        record = step;
+      }
+    }
+    final bool saved = await _save(current, after, record: record, lands: documents);
+    if (!saved) return;
+    if (widened != null) {
+      final HistoryStep top = widened;
+      _undo[_undo.length - 1] = top;
+      await _persistHistory(() => repository.replaceHistoryTop(current.id, HistoryStack.undo, top));
+    }
+    if (changed && undoable) {
+      _editCount++;
+      _lastEditAt = DateTime.now();
+      await _clearRedo(current.id);
+    }
+    if (undoable) {
+      _coalesce = coalesce;
+    } else if (_undo.isNotEmpty && <String>{...touched, ...gone}.any(_undo.last.documents.containsKey)) {
+      // A change from outside the history to a document the coalesced step
+      // holds ends that step, so the next keystroke starts from what it left.
+      _coalesce = null;
+    }
+  }
+
+  /// Animations whose rig or own text changed, and rigs when any rig or
+  /// animation changed, validated again against each other.
+  void _revalidateRigs(Map<String, AnimusDocument> byKey, Set<String> touched) {
+    if (!touched.any((String key) => key.startsWith('rig:') || key.startsWith('animation:'))) return;
     final Map<String, Object?> rigs = <String, Object?>{
-      for (final AnimusDocument document in next)
+      for (final AnimusDocument document in byKey.values)
         if (document.kind == DocumentKind.rig) document.id: document.json,
     };
-    for (int index = 0; index < next.length; index++) {
-      final AnimusDocument document = next[index];
+    final Map<String, Object?> animations = <String, Object?>{};
+    for (final MapEntry<String, AnimusDocument> entry in byKey.entries.toList()) {
+      final AnimusDocument document = entry.value;
       if (document.kind != DocumentKind.animation) continue;
       final Object? json = document.json;
       final String? rig = json is Map<String, Object?> && json['rig'] is String ? json['rig']! as String : null;
-      if (!touched.contains('animation:${document.id}') && !touched.contains('rig:$rig')) continue;
-      final AnimusDocument fresh = validateSource(DocumentLocation(document.kind, document.id), document.path, document.source, schemas);
-      next[index] = fresh.copyWith(diagnostics: <Diagnostic>[...fresh.diagnostics, ...validateAnimationStructure(fresh.json, rigs[rig])]);
-    }
-    if (touched.any((String key) => key.startsWith('rig:') || key.startsWith('animation:'))) {
-      final Map<String, Object?> animations = <String, Object?>{
-        for (final AnimusDocument document in next)
-          if (document.kind == DocumentKind.animation) document.id: document.json,
-      };
-      for (int index = 0; index < next.length; index++) {
-        final AnimusDocument document = next[index];
-        if (document.kind != DocumentKind.rig) continue;
+      if (touched.contains(entry.key) || touched.contains('rig:$rig')) {
         final AnimusDocument fresh = validateSource(DocumentLocation(document.kind, document.id), document.path, document.source, schemas);
-        next[index] = fresh.copyWith(diagnostics: <Diagnostic>[...fresh.diagnostics, ...validateRigAnimations(fresh.json, animations)]);
+        byKey[entry.key] = fresh.copyWith(diagnostics: <Diagnostic>[...fresh.diagnostics, ...validateAnimationStructure(fresh.json, rigs[rig])]);
       }
+      animations[document.id] = byKey[entry.key]!.json;
     }
-    final bool merge = coalesce != null && coalesce == _coalesce && _undo.isNotEmpty;
-    final bool saved = await _save(
-      current,
-      current.next(documents: next, resources: nextResources, server: binding),
-      record: undoable && !merge ? HistoryStep(description, current) : null,
-      lands: documents,
-    );
-    if (!saved) return;
-    if (changed) await _clearRedo(current.id);
-    _coalesce = undoable ? coalesce : null;
+    for (final MapEntry<String, AnimusDocument> entry in byKey.entries.toList()) {
+      final AnimusDocument document = entry.value;
+      if (document.kind != DocumentKind.rig) continue;
+      final AnimusDocument fresh = validateSource(DocumentLocation(document.kind, document.id), document.path, document.source, schemas);
+      byKey[entry.key] = fresh.copyWith(diagnostics: <Diagnostic>[...fresh.diagnostics, ...validateRigAnimations(fresh.json, animations)]);
+    }
   }
 
   /// Completes once every commit, undo and redo asked for so far has run.
-  Future<void> settled() => _enqueue(() async {});
-
-  /// Goes back one step; returns what the step did, or null when there was
-  /// nothing to undo.
-  Future<String?> undo() => _enqueue(() => _travel(_undo, HistoryStack.undo, _redo, HistoryStack.redo));
-
-  /// Repeats the last undone step; returns what it did, or null.
-  Future<String?> redo() => _enqueue(() => _travel(_redo, HistoryStack.redo, _undo, HistoryStack.undo));
-
-  Future<String?> _travel(List<HistoryStep> from, HistoryStack fromStack, List<HistoryStep> to, HistoryStack toStack) async {
-    final WorkspaceSnapshot? current = _workspace;
-    if (current == null || from.isEmpty) return null;
-    final HistoryStep step = from.removeLast();
-    _coalesce = null;
-    await _persistHistory(() => repository.popHistory(current.id, fromStack));
-    final bool saved = await _save(current, current.next(documents: step.snapshot.documents, resources: step.snapshot.resources));
-    if (!saved) return null;
-    final HistoryStep back = HistoryStep(step.label, current);
-    to.add(back);
-    if (to.length > undoLimit) to.removeAt(0);
-    await _persistHistory(() => repository.pushHistory(current.id, toStack, back, undoLimit));
-    return step.label;
-  }
+  /// Queues nothing, so keystrokes after it may still share a write.
+  Future<void> settled() => _queue;
 
   /// Tries again to store an edit the browser refused.
   Future<void> saveAgain() => _enqueue(() async {
@@ -635,37 +691,9 @@ class EditorStore {
     await _save(current, current.next());
   });
 
-  /// History is a convenience: a failed write to it never blocks the edit.
-  Future<void> _persistHistory(Future<void> Function() write) async {
-    try {
-      await write();
-    } on Object {
-      return;
-    }
-  }
-
-  Future<void> _clearRedo(String id) async {
-    if (_redo.isEmpty) return;
-    _redo.clear();
-    await _persistHistory(() => repository.clearHistory(id, HistoryStack.redo));
-  }
-
-  void _resetHistory() {
-    _undo.clear();
-    _redo.clear();
-    _coalesce = null;
-  }
-
-  Future<void> _loadHistory(String id) async {
-    try {
-      _undo.addAll(await repository.loadHistory(id, HistoryStack.undo));
-      _redo.addAll(await repository.loadHistory(id, HistoryStack.redo));
-    } on Object {
-      _resetHistory();
-    }
-  }
-
   Future<T> _enqueue<T>(Future<T> Function() task) {
+    // Only the last queued commit may take more keystrokes.
+    _waiting = null;
     _pending++;
     final Future<T> run = _queue.then((void _) => task());
     _queue = run.then<void>((T _) {}, onError: (Object _) {}).whenComplete(() => _pending--);
@@ -674,12 +702,14 @@ class EditorStore {
 
   /// Saves [next] over [current]; true when the edit stands (stored, or kept
   /// in memory after the browser refused it), false when another tab won and
-  /// this tab reloaded.
+  /// this tab reloaded. Only what differs from the stored copy is written.
   /// [lands] are the commit's changes, settled as [next] (or the reloaded
   /// copy) takes their place.
   Future<bool> _save(WorkspaceSnapshot current, WorkspaceSnapshot next, {HistoryStep? record, List<DocumentChange>? lands}) async {
+    final WorkspaceSnapshot? stored = _stored?.id == next.id ? _stored : null;
+    final Set<String>? changed = stored == null ? null : changedKeys(stored, next);
     try {
-      await repository.save(next);
+      await repository.save(next, previous: stored, changed: changed);
     } on WorkspaceConflict {
       if (lands != null) _settle(lands);
       await _reload(current.id, lost: true);
@@ -687,104 +717,37 @@ class EditorStore {
     } on Object catch (failure) {
       // The edit stays on screen at the stored generation, so the next save
       // (or Save again) writes it on top of the stored copy.
-      _keep(current, next.atGeneration(current.generation), record);
+      _keep(next.atGeneration(current.generation), record);
       if (lands != null) _settle(lands);
       _unsaved = true;
+      _unsavedReason = saveFailureReason(failure);
       _problem = saveFailureMessage(failure);
       _changed();
       return true;
     }
-    _keep(current, next, record);
+    _keep(next, record);
+    _stored = next;
     if (lands != null) _settle(lands);
     if (record != null) await _persistHistory(() => repository.pushHistory(current.id, HistoryStack.undo, record, undoLimit));
     _unsaved = false;
     _problem = null;
-    events.announce(WorkspaceEvent(WorkspaceEventKind.saved, next.id, generation: next.generation));
+    events.announce(WorkspaceEvent(
+      WorkspaceEventKind.saved,
+      next.id,
+      generation: next.generation,
+      keys: changed?.toList(),
+      resources: stored != null && changedResources(stored, next).isNotEmpty,
+    ));
     _changed();
     return true;
   }
 
-  void _keep(WorkspaceSnapshot current, WorkspaceSnapshot next, HistoryStep? record) {
+  void _keep(WorkspaceSnapshot next, HistoryStep? record) {
     if (record != null) {
       _undo.add(record);
       if (_undo.length > undoLimit) _undo.removeAt(0);
     }
     _workspace = next;
-  }
-
-  /// Replaces the open workspace with the stored copy and its history.
-  /// [lost] says an edit made here was dropped.
-  Future<void> _reload(String id, {required bool lost}) async {
-    final WorkspaceSnapshot? stored = await repository.load(id);
-    if (_workspace?.id != id) return;
-    if (stored == null) {
-      _workspaceDeletedElsewhere();
-      return;
-    }
-    final bool hadUnsaved = _unsaved;
-    _workspace = stored;
-    _resetHistory();
-    await _loadHistory(id);
-    _unsaved = false;
-    if (lost || hadUnsaved) _problem = reloadedFromOtherTab;
-    _changed();
-  }
-
-  void _workspaceDeletedElsewhere() {
-    _workspace = null;
-    _codeDrafts.clear();
-    _resetHistory();
-    _unsaved = false;
-    _release();
-    _gone = true;
-    _problem = deletedInOtherTab;
-  }
-
-  void _heard(WorkspaceEvent event) {
-    final WorkspaceSnapshot? open = _workspace;
-    if (open == null || open.id != event.workspaceId) {
-      if (open == null) unawaited(refreshWorkspaces());
-      return;
-    }
-    switch (event.kind) {
-      case WorkspaceEventKind.saved:
-        if (event.generation <= open.generation) return;
-        unawaited(_enqueue(() => _reload(open.id, lost: false)));
-      case WorkspaceEventKind.deleted:
-        unawaited(_enqueue(() async {
-          if (_workspace?.id != event.workspaceId) return;
-          _workspaceDeletedElsewhere();
-          _changed();
-        }));
-    }
-  }
-
-  /// Takes the open workspace's lock, or waits for it in the background.
-  Future<void> _claim(String id) async {
-    final String name = workspaceLockName(id);
-    if (_lock == name) return;
-    _release();
-    _lock = name;
-    _owned = await locks.tryHold(name);
-    if (_owned || _lock != name) return;
-    _heldElsewhere = true;
-    unawaited(locks.hold(name).then((void _) {
-      if (_lock != name) {
-        locks.release(name);
-        return;
-      }
-      _owned = true;
-      _heldElsewhere = false;
-      _changed();
-    }));
-  }
-
-  void _release() {
-    final String? lock = _lock;
-    _lock = null;
-    _owned = false;
-    _heldElsewhere = false;
-    if (lock != null) locks.release(lock);
   }
 
   static String _timeId() => 'ws-${DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36)}';
