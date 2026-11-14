@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * bStats refuses to start from its own package, so the jar must carry it relocated; and only {@link AnimusBStats}
- * may name its types, so AnimusPlugin links even if the library is ever loaded another way.
+ * may name its types, so AnimusPlugin and AnimusBukkit link even if the library is ever loaded another way.
  */
 class BStatsShadingTest {
     private static final String RELOCATED = "art/arcane/animus/internal/bstats/";
@@ -38,7 +38,8 @@ class BStatsShadingTest {
         try (ZipFile jar = new ZipFile(pluginJar().toFile())) {
             for (ZipEntry entry : Collections.list(jar.entries())) {
                 String name = entry.getName();
-                if (!name.startsWith("art/arcane/animus/bukkit/AnimusPlugin") || !name.endsWith(".class")) continue;
+                boolean pluginClass = name.startsWith("art/arcane/animus/bukkit/AnimusPlugin") || name.startsWith("art/arcane/animus/bukkit/AnimusBukkit");
+                if (!pluginClass || !name.endsWith(".class")) continue;
                 String constants = constants(jar, name);
                 assertFalse(constants.contains("/bstats/"), name + " references a bStats type");
             }

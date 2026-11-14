@@ -28,6 +28,7 @@ if (localDirectory != null) {
         dependencySubstitution {
             substitute(module('com.github.VolmitSoftware.VolmLib:volmlib-localization')).using(project(':localization'))
             substitute(module('com.github.VolmitSoftware.VolmLib:volmlib-shared')).using(project(':shared'))
+            substitute(module('com.github.VolmitSoftware.VolmLib:packaging')).using(project(':packaging'))
         }
     }
 }

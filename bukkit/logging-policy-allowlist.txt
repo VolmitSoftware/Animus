@@ -1,0 +1,2 @@
+# The CONSOLE message audience of a behavior script; the line is the script author's output, not a plugin log.
+art/arcane/animus/bukkit/BukkitBehaviorPlatform.java getConsoleSender().sendMessage(

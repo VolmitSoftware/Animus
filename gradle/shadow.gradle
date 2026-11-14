@@ -27,7 +27,7 @@ tasks.named('shadowJar').configure {
     relocate('com.google.gson', "${animus.projectGroup}.internal.gson")
     relocate('net.kyori', "${animus.projectGroup}.internal.kyori")
     relocate('com.moandjiezana.toml', "${animus.projectGroup}.internal.toml")
-    exclude('META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'module-info.class')
+    exclude('META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'META-INF/maven/**', 'module-info.class')
     // VolmLib's shared jar is bundled for Director alone; its other packages need Bukkit and libraries Animus does not ship.
     List<String> volmLibKept = ['art/arcane/volmlib/util/localization/', 'art/arcane/volmlib/util/director/',
         'art/arcane/volmlib/util/config/ConfigDescription', 'art/arcane/volmlib/util/config/ConfigDoc', 'art/arcane/volmlib/util/config/ConfigExposePolicy',

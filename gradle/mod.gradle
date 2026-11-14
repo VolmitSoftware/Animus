@@ -1,3 +1,15 @@
+import art.arcane.volmit.packaging.JarCompactor
+
+buildscript {
+    repositories {
+        mavenCentral()
+        maven { url = uri('https://jitpack.io') }
+    }
+    dependencies {
+        classpath('com.github.VolmitSoftware.VolmLib:packaging:master-SNAPSHOT')
+    }
+}
+
 ext.animusRoot = file('../..')
 apply from: '../../gradle/identity.gradle'
 apply from: '../../gradle/java.gradle'
@@ -58,4 +70,12 @@ tasks.named('shadowJar').configure {
     String displayVersion = loaderVersion.startsWith(target + '-') ? loaderVersion.substring(target.length() + 1) : loaderVersion
     displayVersion = displayVersion.replaceFirst(/-beta$/, '')
     archiveFileName.set("${animus.projectName} v${version} [${platform}] ${target}+${displayVersion}.jar")
+    // Mod jars have no size limit and are not tree-shaken; this drops local variable tables and recompresses the entries.
+    File compressionCache = new File(gradle.gradleUserHomeDir, 'caches/volmit-packaging/compression')
+    doLast {
+        File archive = archiveFile.get().asFile
+        long before = archive.length()
+        JarCompactor.compact(archive, new JarCompactor.CompactionOptions(Collections.<String>emptySet(), false, true, true, compressionCache.toPath()))
+        logger.lifecycle("${archive.name}: ${before} -> ${archive.length()} bytes")
+    }
 }

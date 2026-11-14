@@ -1,7 +1,21 @@
+import art.arcane.volmit.packaging.PackagingArtifact
+
+buildscript {
+    repositories {
+        mavenCentral()
+        maven { url = uri('https://jitpack.io') }
+    }
+    dependencies {
+        classpath('com.github.VolmitSoftware.VolmLib:packaging:master-SNAPSHOT')
+    }
+}
+
 plugins {
     id 'java'
     id 'com.gradleup.shadow' version '9.5.1'
 }
+
+apply plugin: 'art.arcane.volmit-packaging'
 
 ext.animusRoot = projectDir.parentFile
 apply from: '../gradle/identity.gradle'
@@ -80,6 +94,30 @@ tasks.named('shadowJar').configure {
     archiveFileName.set("${animus.projectName} v${version} [CraftBukkit] ${minecraftTargets.keySet().first()}-${minecraftTargets.keySet().last()}.jar")
     // bStats refuses to enable from its own package.
     relocate('org.bstats', "${animus.projectGroup}.internal.bstats")
+}
+
+String namespace = animus.projectGroup.replace('.', '/')
+pluginPackaging {
+    nativeImplementationPackages.set(['art.arcane.animus.bukkit.packet', 'art.arcane.animus.bukkit.combat'])
+    artifacts {
+        create('distribution') {
+            taskName = 'shadowJar'
+            maximumBytes = PackagingArtifact.SPIGOT_CAP_BYTES
+            packed = true
+            packedPayloadOnlyPrefixes = ['animus/schema/']
+            stripDirectories = true
+            stripLocalVariables = true
+            requiredEntries = ['plugin.yml', "${namespace}/bukkit/AnimusPlugin.class".toString()]
+            forbiddenPrefixes = ['org/bukkit/', 'io/papermc/', 'net/minecraft/', 'art/arcane/volmit/packaging/', 'org/gradle/']
+            // Only the bundled libraries are tree-shaken. Animus's own classes are read by Gson and the config codecs, and
+            // extensions and other plugins call API and event members that nothing in this jar calls.
+            shrinkKeep = ["-keep class !${animus.projectGroup}.internal.**,${animus.projectGroup}.** { *; }".toString(),
+                '-keep class art.arcane.animus.api.** { *; }', '-keep class art.arcane.animus.bukkit.api.** { *; }',
+                '-keep class art.arcane.animus.bukkit.event.** { *; }']
+            // gradle/shadow.gradle bundles a hand-picked part of VolmLib, so the kept classes name ones that never ship.
+            shrinkDontwarn = ["${animus.projectGroup}.internal.volmlib.**".toString(), 'com.google.auto.service.AutoService', 'java.lang.invoke.MethodHandle']
+        }
+    }
 }
 
 // The Paper API build each target's linkage is checked against; the APIs differ and the plugin compiles against Spigot.

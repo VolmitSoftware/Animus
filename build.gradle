@@ -83,7 +83,7 @@ tasks.register('distributions', Sync) {
     description = 'Builds all supported distributions into build/distributions.'
     dependsOn(':bukkit:build', ':converter:build')
     if (includeMods) dependsOn(matrixBuilds)
-    from(project(':bukkit').tasks.named('shadowJar'))
+    from(project(':bukkit').tasks.named('packedJar'))
     (includeMods ? ['fabric', 'forge', 'neoforge'] : []).each { String loader ->
         minecraftTargets.keySet().each { String target ->
             if (loader == 'neoforge' && minecraftTargets[target].neoforgeUsesForge) {

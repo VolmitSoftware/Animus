@@ -53,11 +53,11 @@ def build_mod() -> Path:
 
 
 def build_animus(platform: str) -> Path:
-    """The Paper plugin from :bukkit:shadowJar, or the Fabric mod from the adapters/fabric build."""
+    """The Paper plugin from :bukkit:packedJar, or the Fabric mod from the adapters/fabric build."""
     if platform == 'fabric':
         subprocess.run([str(REPO / 'gradlew'), '-p', str(REPO / 'adapters' / 'fabric'), 'shadowJar', '--console=plain', '-q'], check=True)
         return max((REPO / 'adapters' / 'fabric' / 'build').glob('*/libs/Animus*Fabric*.jar'), key=lambda p: p.stat().st_mtime)
-    subprocess.run([str(REPO / 'gradlew'), '-p', str(REPO), ':bukkit:shadowJar', '--console=plain', '-q'], check=True)
+    subprocess.run([str(REPO / 'gradlew'), '-p', str(REPO), ':bukkit:packedJar', '--console=plain', '-q'], check=True)
     return max((REPO / 'bukkit' / 'build' / 'libs').glob('Animus*CraftBukkit*.jar'), key=lambda p: p.stat().st_mtime)
 
 
@@ -163,7 +163,7 @@ def main() -> int:
     rec.add_argument('--player', help='the recording account name; default the active Prism account')
     rec.add_argument('--port', type=int, default=25640, help='first port to try for the stage')
     rec.add_argument('--plugins', type=Path, default=BUILD / 'plugins', help='folder with ViaVersion, ViaBackwards and third-party plugin jars')
-    rec.add_argument('--animus-jar', type=Path, help='use this plugin jar instead of building bukkit:shadowJar')
+    rec.add_argument('--animus-jar', type=Path, help='use this plugin jar instead of building bukkit:packedJar')
     rec.add_argument('--fabric-jar', type=Path, help='use this Fabric mod jar instead of building adapters/fabric')
     rec.add_argument('--mod-jar', type=Path, help='use this recorder mod jar instead of building qa/demo/mod')
     rec.add_argument('--keep-stage', action='store_true', help='leave the stage instance for another run')

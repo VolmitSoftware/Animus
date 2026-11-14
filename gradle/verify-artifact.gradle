@@ -32,14 +32,17 @@ TaskProvider verification = tasks.register('verifyArtifact') {
         Map<String, Object> target = minecraftTargets[animus.minecraftVersion]
         new JarFile(artifact).withCloseable { JarFile archive ->
             boolean versionedEntries = archive.entries().any { JarEntry entry -> !entry.directory && entry.name.startsWith('META-INF/versions/') }
-            require(archive.isMultiRelease() == versionedEntries, 'multi-release manifest must match versioned archive entries')
+            // The Bukkit shrink drops the versioned SnakeYAML logger and leaves the manifest flag, which is harmless without versioned entries.
+            require(archive.isMultiRelease() || !versionedEntries, 'versioned archive entries need a multi-release manifest')
             List<String> required = [metadataPath, entrypoint.replace('.', '/') + '.class',
                 namespace + 'core/AnimusRuntime.class', namespace + 'core/BuildIdentity.class',
                 'art/arcane/animus/api/AnimusApi.class', 'art/arcane/animus/api/TrustedModule.class',
-                internal + 'volmlib/util/config/ConfigJson.class', internal + 'volmlib/util/io/AtomicFileIO.class',
+                internal + 'volmlib/util/config/ConfigJson.class',
                 internal + 'gson/Gson.class', internal + 'volmlib/util/director/runtime/DirectorRuntimeEngine.class',
                 internal + 'volmlib/util/director/help/DirectorMiniMenu.class']
             if (platform != 'bukkit') {
+                // The Bukkit shrink drops AtomicFileIO: only VolmLib's language file editors use it and Animus calls neither.
+                required.add(internal + 'volmlib/util/io/AtomicFileIO.class')
                 required.add(namespace + 'mod/AnimusModRuntime.class')
                 required.add(namespace + 'mod/MinecraftVersion.class')
             }
