@@ -3,7 +3,7 @@
   "title": "Setup greeting",
   "description": "The join greeting, the setup list and the status line",
   "target": 21,
-  "stage": {"world": "town", "titleScreen": true, "files": {"Animus/npcs": null, "Animus/gui/holograms/town/mayor-sign.json": null}},
+  "stage": {"world": "town", "titleScreen": true, "files": {"Animus/npcs": null, "Animus/gui/holograms/town/mayor-sign.json": null, "Citizens": null}},
   "setup": [
     {"wait": 1500}
   ],
@@ -15,17 +15,17 @@
     {"join": "{address}"},
     {"expect": "joined the game", "timeout": 120000},
     {"waitForWorld": true, "timeout": 120000},
-    {"result": "the world loads and chat shows the join line", "ms": 1500},
+    {"result": "the world loads; chat shows the join line, then Ready. /animus gui opens the menu [Menu] [Dismiss]", "ms": 1500},
     {"perspective": "third-front"},
     {"wait": 1500},
     {"perspective": "first"},
     {"wait": 1500},
     {"type": "/animus setup"},
     {"wait": 900},
-    {"result": "Setup | no NPCs, then three steps with [Create], [Toolkit] and [Pair editor]", "ms": 2500},
+    {"result": "Setup: no NPCs, then Make an NPC [New NPC], Change it [Menu], Edit in your browser [Pair]", "ms": 2500},
     {"type": "/animus status"},
     {"wait": 1000},
     {"result": "the status line: version, Paper, 0 NPCs, runtime ready, with [Details]", "ms": 2500}
   ],
-  "closing": "With no NPCs, joining offers [Setup]; setup lists the first steps"
+  "closing": "With no NPCs, joining offers [Menu]; setup lists the first steps and status the counts"
 }

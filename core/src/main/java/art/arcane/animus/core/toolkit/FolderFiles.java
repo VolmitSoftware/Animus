@@ -13,12 +13,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Folder renames for the toolkit, on the file lane. A folder is only the NPC files in it, so a rename moves them all. */
+/** Folder renames for the menu, on the file lane. A folder is only the NPC files in it, so a rename moves them all. */
 final class FolderFiles {
     private final NpcRepository npcs;
     private final DocumentStore store;
 
     FolderFiles(NpcRepository npcs, DocumentStore store) { this.npcs = npcs; this.store = store; }
+
+    /** A folder as people read it: {@code town / market}, and the top level for {@code npcs/} itself. */
+    static String shown(String folder) { return folder.isEmpty() ? "Top level" : folder.replace("/", " / "); }
+
+    /** A typed folder name with the spaces around its slashes dropped, so {@code town / market} reads {@code town/market}. */
+    static String typed(String text) { return text.strip().replaceAll("\\s*/\\s*", "/"); }
 
     /** Whether the NPC sits in the folder or one below it. */
     static boolean inside(String folder, String npcFolder) { return npcFolder.equals(folder) || npcFolder.startsWith(folder + "/"); }
@@ -33,9 +39,9 @@ final class FolderFiles {
 
     /** Moves every NPC in {@code from}, and in the folders below it, to {@code to} in one transaction. */
     String rename(String from, String to) throws IOException {
-        if (from.isEmpty()) throw new IOException("npcs/ itself cannot be renamed");
+        if (from.isEmpty()) throw new IOException("The top level cannot be renamed");
         if (to.isEmpty() || !NpcPaths.folder(to)) throw new IOException("Folder " + to + " is not lowercase words split by /");
-        if (to.equals(from)) return "Folder npcs/" + from + "/ already has that name";
+        if (to.equals(from)) return "Folder " + shown(from) + " already has that name";
         List<NpcDefinition> moved = new ArrayList<>();
         Map<String, String> expected = new HashMap<>();
         List<DocumentStore.Change> removals = new ArrayList<>();
@@ -43,7 +49,7 @@ final class FolderFiles {
             NpcRepository.Draft draft = npcs.draft(id);
             JsonObject document = draft.document();
             String next = to + document.get("group").getAsString().substring(from.length());
-            if (!NpcPaths.folder(next)) throw new IOException("Folder " + next + " would be too deep");
+            if (!NpcPaths.folder(next)) throw new IOException("Folder " + shown(next) + " would be too deep");
             document.addProperty("group", next);
             document.addProperty("revision", draft.expectedRevision() + 1);
             NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(document));
@@ -54,9 +60,9 @@ final class FolderFiles {
             String pointer = DocumentStore.DEFINITION_POINTERS + draft.path(), current = store.read(pointer);
             if (current != null) removals.add(new DocumentStore.Change(pointer, JsonDocuments.hash(current), null));
         }
-        if (moved.isEmpty()) throw new IOException("No NPCs in npcs/" + from + "/");
+        if (moved.isEmpty()) throw new IOException("No NPCs in folder " + shown(from));
         String tx = DefinitionBatch.commit(store, moved, expected, removals);
         npcs.reload();
-        return "Renamed npcs/" + from + "/ to npcs/" + to + "/, moved " + ToolkitFiles.count(moved.size()) + "; tx " + tx;
+        return "Renamed folder " + shown(from) + " to " + shown(to) + ", moved " + ToolkitFiles.count(moved.size()) + "; tx " + tx;
     }
 }

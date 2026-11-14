@@ -8,14 +8,16 @@ import java.util.List;
 
 /**
  * The {@code /animus setup} reply: a header, then numbered steps in the order a new server needs them (a found migration
- * first, then the first NPC, the toolkit and the web editor) and the quick-start page last. A step already done shows as
- * done without a click. A player gets click chips; the console gets each command written out.
+ * first, then making the first NPC and changing it in the Animus menu, then the web editor) and the quick-start page
+ * last. A step already done shows as done without a click. A player gets click chips; the console gets each command
+ * written out.
  */
 public final class SetupGuide {
     public static final String DOCS = ChatLine.docsUrl("20-tutorial-introduction", "");
     public static final int MAXIMUM_LINES = 6;
     static final String SETUP = "/animus setup";
-    static final String CREATE = "/animus create guard";
+    /** The Animus menu at Home, where New NPC makes one and NPCs finds one to change. */
+    static final String MENU = "/animus gui";
 
     private enum Click { RUN, SUGGEST }
 
@@ -71,12 +73,12 @@ public final class SetupGuide {
                     "/animus import citizens apply", "Installs the NPCs and turns on what converted; press Enter to run", false));
             case DONE -> steps.add(Step.done("Citizens import done"));
         }
-        if (state.npcs() == 0) steps.add(new Step("Create an NPC where you stand", false, "Create", Click.SUGGEST, CREATE, "Pick an id, then press Enter", true));
+        if (state.npcs() == 0) steps.add(new Step("Make an NPC", false, "New NPC", Click.RUN, MENU, "Open the Animus menu and click New NPC", true));
         else steps.add(Step.done(count(state.npcs()) + " ready"));
-        steps.add(new Step("Set a skin and placement", false, "Toolkit", Click.RUN, "/animus tools", "Open the in-game toolkit", true));
-        if (!state.editorEnabled()) steps.add(Step.note("Web editor is off; set editor.enabled = true in config.toml"));
+        steps.add(new Step("Change it", false, "Menu", Click.RUN, MENU, "Open the Animus menu", true));
+        if (!state.editorEnabled()) steps.add(Step.note("Web editor is off; set [editor] enabled = true in config.toml"));
         else if (state.editorTokens() > 0) steps.add(Step.done("Web editor paired, " + state.editorTokens() + (state.editorTokens() == 1 ? " token" : " tokens")));
-        else steps.add(new Step("Edit NPCs in your browser", false, "Pair editor", Click.RUN, "/animus editor pair", "Make a single-use pairing link", false));
+        else steps.add(new Step("Edit in your browser", false, "Pair", Click.RUN, "/animus editor pair", "Pair the web editor with a one-time link", false));
         return steps;
     }
 

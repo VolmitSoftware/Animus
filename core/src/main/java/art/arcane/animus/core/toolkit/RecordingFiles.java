@@ -8,6 +8,7 @@ import art.arcane.animus.core.recording.Playback;
 import art.arcane.animus.core.recording.RecordingDocument;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.text.Words;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
@@ -25,6 +26,7 @@ import java.util.TreeMap;
  */
 final class RecordingFiles {
     static final List<Playback> PLAYBACKS = List.of(Playback.ONCE, Playback.LOOP, Playback.PINGPONG);
+    static final String NAMES = "A recording name is 1 to 64 lowercase letters, digits, _ or -";
     private final NpcRepository npcs;
     private final DocumentStore store;
 
@@ -73,20 +75,24 @@ final class RecordingFiles {
             document.add("modules", modules);
             drafts.add(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
         }
-        if (drafts.isEmpty()) return "Recording " + id + " already plays on " + ToolkitFiles.count(ids.size());
-        return "Recording " + id + " on " + ToolkitFiles.named(drafts) + "; tx " + RouteFiles.commit(npcs, store, drafts, List.of());
+        if (drafts.isEmpty()) return "Recording " + Words.readable(id) + " already plays on " + ToolkitFiles.count(ids.size());
+        return "Recording " + Words.readable(id) + " on " + ToolkitFiles.named(drafts) + "; tx " + RouteFiles.commit(npcs, store, drafts, List.of());
     }
 
-    /**
-     * Moves the listed NPCs that play the recording to the playback after the first one's: once, loop, pingpong. Others
-     * are skipped.
-     */
-    String playback(String id, List<String> ids) throws IOException {
+    /** How a playback reads: Once, Loop, Back and forth. */
+    static String label(Playback playback) {
+        return switch (playback) {
+            case ONCE -> "Once";
+            case LOOP -> "Loop";
+            case PINGPONG -> "Back and forth";
+        };
+    }
+
+    /** Sets the playback of the listed NPCs that play the recording; others are skipped. */
+    String playback(String id, List<String> ids, Playback next) throws IOException {
         Map<String, Optional<Playback>> playing = players().getOrDefault(id, Map.of());
         List<String> chosen = ids.stream().filter(playing::containsKey).toList();
-        if (chosen.isEmpty()) return "None of the selection plays " + id + "; left-click it to assign it first";
-        Playback current = playing.get(chosen.getFirst()).orElse(Playback.DEFAULT);
-        Playback next = PLAYBACKS.get((PLAYBACKS.indexOf(current) + 1) % PLAYBACKS.size());
+        if (chosen.isEmpty()) throw new IOException("None of them plays " + id + "; use it on them first");
         List<NpcRepository.Draft> drafts = new ArrayList<>();
         for (String npc : chosen) {
             NpcRepository.Draft draft = npcs.draft(npc);
@@ -95,15 +101,15 @@ final class RecordingFiles {
             drafts.add(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
         }
         int skipped = ids.size() - chosen.size();
-        return "Playback " + next.key() + " for " + id + " on " + ToolkitFiles.named(chosen) + (skipped == 0 ? "" : ", " + skipped + " skipped (not playing it)")
+        return "Playback of " + Words.readable(id) + " on " + ToolkitFiles.named(npcs, chosen) + ": " + label(next) + (skipped == 0 ? "" : ", " + skipped + " skipped (not playing it)")
                 + "; tx " + RouteFiles.commit(npcs, store, drafts, List.of());
     }
 
     /** Renames the file and the id inside it, and repoints every NPC and route step that plays it, in one transaction. */
     String rename(String from, String to) throws IOException {
         String text = existing(from);
-        if (!to.matches(RecordingDocument.ID)) throw new IOException("A recording id is 1 to 64 lowercase letters, digits, _ or -");
-        if (store.read(path(to)) != null) throw new IOException("recordings/" + to + ".json already exists");
+        if (!to.matches(RecordingDocument.ID)) throw new IOException(NAMES);
+        if (store.read(path(to)) != null) throw new IOException("Recording " + Words.readable(to) + " already exists; pick another name");
         RecordingDocument old = RecordingDocument.parse(text, JsonDocuments.MAX_BYTES);
         String renamed = new RecordingDocument(old.revision(), to, old.recordedBy(), old.world(), old.origin(), old.sampleTicks(), old.durationTicks(),
                 old.frames(), old.events(), old.details()).serialize();
@@ -125,7 +131,7 @@ final class RecordingFiles {
         }
         String tx = RouteFiles.commit(npcs, store, drafts, files);
         String also = (drafts.isEmpty() ? "" : ", " + ToolkitFiles.count(drafts.size()) + " repointed") + (routes.isEmpty() ? "" : ", " + routes.size() + (routes.size() == 1 ? " route" : " routes") + " repointed");
-        return "Renamed recording " + from + " to " + to + also + "; tx " + tx;
+        return "Renamed recording " + Words.readable(from) + " to " + Words.readable(to) + also + "; tx " + tx;
     }
 
     /**
@@ -135,10 +141,10 @@ final class RecordingFiles {
     String delete(String id, boolean unassign) throws IOException {
         String text = existing(id);
         List<String> routes = routes().getOrDefault(id, List.of());
-        if (!routes.isEmpty()) throw new IOException("Recording " + id + " is a step in " + ToolScreen.names(routes, 4) + "; edit those routes in the web editor first");
+        if (!routes.isEmpty()) throw new IOException("Recording " + Words.readable(id) + " is a step in " + ToolScreen.names(routes, 4) + "; edit those routes in the web editor first");
         List<String> playing = List.copyOf(players().getOrDefault(id, Map.of()).keySet());
         if (!playing.isEmpty() && !unassign)
-            throw new IOException("Recording " + id + " plays on " + ToolkitFiles.count(playing.size()) + " (" + ToolScreen.names(playing, 4) + "); use Unassign and delete to clear them too");
+            throw new IOException("Recording " + Words.readable(id) + " plays on " + ToolkitFiles.count(playing.size()) + " (" + ToolScreen.names(playing, 4) + "); open it again and Delete stops it on them too");
         List<NpcRepository.Draft> drafts = new ArrayList<>();
         for (String npc : unassign ? playing : List.<String>of()) {
             NpcRepository.Draft draft = npcs.draft(npc);
@@ -149,7 +155,7 @@ final class RecordingFiles {
             drafts.add(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
         }
         String tx = RouteFiles.commit(npcs, store, drafts, List.of(new DocumentStore.Change(path(id), JsonDocuments.hash(text), null)));
-        return "Deleted recording " + id + (drafts.isEmpty() ? "" : ", unassigned from " + ToolkitFiles.count(drafts.size())) + "; tx " + tx;
+        return "Deleted recording " + Words.readable(id) + (drafts.isEmpty() ? "" : ", unassigned from " + ToolkitFiles.count(drafts.size())) + "; tx " + tx;
     }
 
     private Recording recording(String id, Map<String, Optional<Playback>> players, List<String> routes) throws IOException {
@@ -191,9 +197,9 @@ final class RecordingFiles {
 
     private String existing(String id) throws IOException {
         String text = id.matches(RecordingDocument.ID) ? store.read(path(id)) : null;
-        if (text == null) throw new IOException("No recording recordings/" + id + ".json");
+        if (text == null) throw new IOException("No recording " + Words.readable(id));
         return text;
     }
 
-    private static String path(String id) { return "recordings/" + id + ".json"; }
+    static String path(String id) { return "recordings/" + id + ".json"; }
 }

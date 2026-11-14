@@ -67,7 +67,7 @@ final class RegionOwner {
         this.regions = Objects.requireNonNull(regions); this.budget = Objects.requireNonNull(budget);
         ownership = new NpcOwnership(npc); mailbox = new OwnerMailbox(mailboxCapacity);
         this.workPerTick = workPerTick; this.body = Objects.requireNonNull(body);
-        mailbox.pause("NPC is dormant");
+        mailbox.pause("NPC is not active");
     }
 
     NpcOwnership ownership() { return ownership; }
@@ -269,7 +269,7 @@ final class RegionOwner {
     /** Teardown runs while the NPC is suspending, so no wake can take it until it is dormant. */
     private boolean settle(NpcOwnership.Token token, String reason) {
         footprint = null;
-        try { cancel(token); mailbox.pause("NPC became dormant: " + reason); body.suspended(reason); dropRiders("their vehicle became dormant: " + reason); }
+        try { cancel(token); mailbox.pause("NPC not active: " + reason); body.suspended(reason); dropRiders("their vehicle is not active: " + reason); }
         finally { if (ownership.settle(token)) body.rested(); }
         return true;
     }
@@ -280,7 +280,7 @@ final class RegionOwner {
             rider.carrier = null;
             if (state.phase() != NpcOwnership.Phase.CARRIED || !rider.ownership.suspendCarried(state.token())) continue;
             rider.footprint = null;
-            try { rider.mailbox.pause("NPC became dormant: " + reason); rider.body.suspended(reason); }
+            try { rider.mailbox.pause("NPC not active: " + reason); rider.body.suspended(reason); }
             finally { if (rider.ownership.settle(state.token())) rider.body.rested(); }
         }
         riders.clear();

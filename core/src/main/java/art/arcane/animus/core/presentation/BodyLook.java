@@ -97,8 +97,12 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
     }
     public int extraIds() { return rows.size() + (seated() ? 1 : 0); }
     public boolean seated() { return pose == NpcPose.SITTING; }
-    /** Whether the body needs its own scoreboard team: to hide its profile name, or to colour its name and glow. */
-    public boolean team() { return hideProfileName || traits.glowing() || traits.teamColor().isPresent(); }
+    /**
+     * Whether the body needs its own scoreboard team: to hide its profile name, to colour its name and glow, or to keep its
+     * profile name showing under text rows. The client draws no name tag on a living entity that carries passengers
+     * unless its team sets the tag's visibility, and the rows ride the body.
+     */
+    public boolean team() { return hideProfileName || aboveNativeNameplate || traits.glowing() || traits.teamColor().isPresent(); }
 
     public static BodyLook of(UUID uuid, String typeKey, String name, NpcAppearance appearance) {
         boolean player = typeKey.equals(BodyRules.PLAYER);

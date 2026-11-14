@@ -62,7 +62,7 @@ class PermissionNodesTest {
         AnimusDirectorTest.Actor builder = new AnimusDirectorTest.Actor(true, PermissionNodes.NPC_VIEW, PermissionNodes.NPC_CREATE, PermissionNodes.NPC_EDIT,
                 PermissionNodes.NPC_SKIN, PermissionNodes.NPC_MOVE, PermissionNodes.TOOLS);
         assertTrue(AnimusDirector.allowed(builder, node("create")));
-        assertTrue(AnimusDirector.allowed(builder, node("tools", "open")));
+        assertTrue(AnimusDirector.allowed(builder, node("tools", "menu")));
         for (String[] refused : List.of(new String[]{"combat", "attack"}, new String[]{"behaviors", "state", "delete", "all", "confirm"},
                 new String[]{"import", "citizens", "rollback"}, new String[]{"shop", "reset"}, new String[]{"editor", "pair"}, new String[]{"delete"}))
             assertFalse(AnimusDirector.allowed(builder, node(refused)), String.join(" ", refused));

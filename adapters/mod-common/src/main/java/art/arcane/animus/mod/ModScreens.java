@@ -15,8 +15,10 @@ import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.platform.ModWorlds;
 import art.arcane.animus.core.text.ChatLine;
+import art.arcane.animus.core.toolkit.SkinLookup;
 import art.arcane.animus.core.toolkit.Toolkit;
 import art.arcane.animus.mod.toolkit.ModWand;
+import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.ParseResults;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -28,6 +30,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.UUID;
+import java.util.function.Function;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.Holder;
@@ -54,7 +57,10 @@ import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.ItemLore;
+import net.minecraft.world.item.component.ResolvableProfile;
+import net.minecraft.world.item.component.TooltipDisplay;
 
 /**
  * Animus windows on mod servers, as vanilla chest menus that refuse every click (see {@link AnimusMenu}), and shops
@@ -195,10 +201,26 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
         }
     }
 
-    /** The stack a display item shows; an invalid item shows a barrier. */
+    /** The stack a display item shows; an invalid item shows a barrier, and a head named for an owner shows their skin. */
     ItemStack display(ScreenFrame.Item item) {
-        return stack(item.item(), item.name(), item.lore(), new ArrayList<>())
+        ItemStack stack = stack(item.item(), item.name(), item.lore(), new ArrayList<>())
                 .orElseGet(() -> stack(new NpcItem("minecraft:barrier", 1, Optional.empty(), Optional.empty()), item.name(), item.lore(), new ArrayList<>()).orElse(ItemStack.EMPTY));
+        item.head().ifPresent((String owner) -> owned(stack, owner, (String name) -> Optional.ofNullable(server.getPlayerList().getPlayerByName(name)).map(ServerPlayer::getGameProfile)));
+        return stack;
+    }
+
+    /**
+     * Puts {@code owner}'s profile on a player head that wears none: an online player's own, signed skin included,
+     * otherwise a name-only profile the client resolves itself as it does for vanilla heads, so nothing is looked up on
+     * the server thread. The profile is hidden from the tooltip, where a name-only one adds a "Dynamic" line. A name no
+     * account can have leaves the default head.
+     */
+    static void owned(ItemStack stack, String owner, Function<String, Optional<GameProfile>> online) {
+        if (!stack.is(Items.PLAYER_HEAD) || stack.has(DataComponents.PROFILE)) return;
+        Optional<GameProfile> profile = online.apply(owner);
+        if (profile.isEmpty() && !owner.matches(SkinLookup.NAME)) return;
+        stack.set(DataComponents.PROFILE, profile.map(ResolvableProfile::createResolved).orElseGet(() -> ResolvableProfile.createUnresolved(owner)));
+        stack.update(DataComponents.TOOLTIP_DISPLAY, TooltipDisplay.DEFAULT, (TooltipDisplay shown) -> shown.withHidden(DataComponents.PROFILE, true));
     }
 
     @Override public void close(ServerPlayer player, Object window) {
@@ -330,16 +352,20 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
     @Override public Optional<ItemStack> stack(NpcItem item, Optional<String> name, List<String> lore, List<String> errors) {
         ItemStack stack = VanillaRuntimeHost.stack(server, item, "$.item", errors);
         if (stack == null) return Optional.empty();
-        name.ifPresent((String text) -> stack.set(DataComponents.CUSTOM_NAME, plain(text)));
-        if (!lore.isEmpty()) {
-            List<Component> lines = new ArrayList<>();
-            for (String line : lore) lines.add(plain(line));
-            stack.set(DataComponents.LORE, new ItemLore(lines));
-        }
+        dress(stack, name, lore);
         return Optional.of(stack);
     }
 
-    private static Component plain(String text) { return ModText.component(text, Style.EMPTY.withItalic(false)); }
+    /** Sets the name and lore with italic false on every run, which vanilla otherwise draws italic. */
+    static void dress(ItemStack stack, Optional<String> name, List<String> lore) {
+        name.ifPresent((String text) -> stack.set(DataComponents.CUSTOM_NAME, upright(text)));
+        if (lore.isEmpty()) return;
+        List<Component> lines = new ArrayList<>();
+        for (String line : lore) lines.add(upright(line));
+        stack.set(DataComponents.LORE, new ItemLore(lines));
+    }
+
+    private static Component upright(String text) { return ModText.component(text, Style.EMPTY.withItalic(false)); }
 
     @Override public void drop(ServerPlayer player, ItemStack stack) {
         ItemEntity entity = new ItemEntity(player.level(), player.getX(), player.getEyeY() - 0.3, player.getZ(), stack);
@@ -353,12 +379,21 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
         return ModRecordings.item(server, player.getItemBySlot(ModRecordings.vanilla(slot)));
     }
     @Override public boolean holdsWand(ServerPlayer player) { return ModWand.is(player.getMainHandItem()); }
-    @Override public boolean giveWand(ServerPlayer player) {
+    @Override public WandGift giveWand(ServerPlayer player) {
+        if (ModWand.carried(player)) return WandGift.MOVED;
         Optional<ItemStack> wand = stack(Toolkit.WAND_ITEM, Optional.of(Toolkit.WAND_NAME), Toolkit.WAND_LORE, new ArrayList<>());
-        if (wand.isEmpty()) return false;
-        ItemStack marked = ModWand.mark(wand.get());
-        if (!player.getInventory().add(marked)) drop(player, marked);
-        return true;
+        if (wand.isEmpty()) return WandGift.NONE;
+        return give(ModWand.mark(wand.get()), player.getInventory().getFreeSlot() >= 0, player.getInventory()::add, (ItemStack stack) -> drop(player, stack));
+    }
+
+    /**
+     * Puts the wand in the inventory when it has a free slot, else drops it at the player's feet. Vanilla's add is not
+     * asked without a free slot: for a creative player it answers true and empties the stack.
+     */
+    static WandGift give(ItemStack wand, boolean room, java.util.function.Predicate<ItemStack> add, java.util.function.Consumer<ItemStack> drop) {
+        if (room && add.test(wand)) return WandGift.GIVEN;
+        drop.accept(wand);
+        return WandGift.DROPPED;
     }
     @Override public void chat(ServerPlayer player, ChatLine line) {
         player.sendSystemMessage(line.interactive() ? ModText.adventure(line.component()) : ModText.component(line.console()));

@@ -164,6 +164,12 @@ public final class BehaviorCommands implements AutoCloseable {
                 listed(sender,rows.getFirst(),"trace "+npc,rows.subList(1,rows.size()),page,"Nothing running or recent; /animus behaviors run "+npc+" <behavior> starts one",id->"/animus behaviors inspect "+id);}
         });
     }
+    /** The runs active on one NPC now, for the Animus menu's Cancel a run; none while the runtime cannot answer, as trace refuses then. */
+    public CompletionStage<List<BehaviorRuntime.Execution>> running(String npc){
+        BehaviorRuntime runtime=coordinator;State current=state;
+        if(closed.get()||runtime==null||current!=State.READY&&current!=State.DISABLED)return CompletableFuture.completedFuture(List.of());
+        return runtime.observeNpc(npc).thenApply(outcome->outcome.value().map(BehaviorRuntime.NpcTrace::active).orElse(List.of()));
+    }
     public void inspect(CommandActor sender,UUID id){
         BehaviorRuntime runtime=coordinator;
         if(runtime==null){reply(sender,List.of("Behavior inspect: UNAVAILABLE | state="+state+"; "+nextStep(state)));return;}

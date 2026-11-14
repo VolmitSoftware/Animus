@@ -114,6 +114,8 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
     }
 
     public ScreenManager<P, S> screens() { return screens; }
+    /** How prices read now, with the economy and {@code [shops]} settings a hotload last set. */
+    public Prices prices() { return new Prices(context.transactions().economy(), settings); }
     /** An online player's UUID by exact name, on any thread. */
     public Optional<UUID> playerNamed(String name) { return playerNamed.apply(name); }
     public ShopCatalog catalog() { return catalog; }
@@ -168,17 +170,20 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
         ShopBinding binding = binding(npc);
         if (binding == null || !binding.opensOn(attack)) return false;
         if (sneaking && host.permitted(player, "animus.admin")) return false;
-        openShop(player, binding.shop(), Optional.of(npc), Optional.empty());
+        openShop(player, binding.shop(), Optional.of(npc), Optional.empty(), Optional.empty());
         return true;
     }
 
     /** On the player's owner, in the style the shop and its NPC choose. */
-    public boolean openShop(P player, String id, Optional<UUID> npc) { return openShop(player, id, npc, Optional.empty()); }
+    public boolean openShop(P player, String id, Optional<UUID> npc) { return openShop(player, id, npc, Optional.empty(), Optional.empty()); }
 
-    /** On the player's owner. {@code style} replaces the style the shop and its NPC would choose. */
-    public boolean openShop(P player, String id, Optional<UUID> npc, Optional<ShopDocument.Style> style) {
+    /**
+     * On the player's owner. {@code style} replaces the style the shop and its NPC would choose; {@code as} is an NPC's
+     * binding to open it with when the window belongs to no NPC.
+     */
+    private boolean openShop(P player, String id, Optional<UUID> npc, Optional<ShopDocument.Style> style, Optional<ShopBinding> as) {
         if (!enabled()) return false;
-        return screens.open(player, npc, (ScreenManager<P, S>.Viewer viewer) -> shop(viewer, id, style));
+        return screens.open(player, npc, (ScreenManager<P, S>.Viewer viewer) -> shop(viewer, id, style, as));
     }
 
     /** On the player's owner. */
@@ -195,17 +200,17 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
         return Optional.of(screen);
     }
 
-    @Override public Optional<Screen> shop(ScreenManager<P, S>.Viewer viewer, String id) { return shop(viewer, id, Optional.empty()); }
+    @Override public Optional<Screen> shop(ScreenManager<P, S>.Viewer viewer, String id) { return shop(viewer, id, Optional.empty(), Optional.empty()); }
 
     /**
-     * The style is the first of {@code override}, the opening NPC's {@code animus:shop} style, the shop's style and
-     * {@code [shops] style}. The NPC's villager look applies only when its binding names this shop.
+     * The style is the first of {@code override}, the opening NPC's {@code animus:shop} style (or {@code as}'s), the
+     * shop's style and {@code [shops] style}. The NPC's villager look applies only when its binding names this shop.
      */
-    private Optional<Screen> shop(ScreenManager<P, S>.Viewer viewer, String id, Optional<ShopDocument.Style> override) {
+    private Optional<Screen> shop(ScreenManager<P, S>.Viewer viewer, String id, Optional<ShopDocument.Style> override, Optional<ShopBinding> as) {
         ShopCatalog current = catalog;
         Optional<ShopDocument> shop = current.shop(id);
         if (shop.isEmpty()) { host.message(viewer.player(), RichText.colorize(settings.message("shopMissing").replace("{shop}", id))); return Optional.empty(); }
-        Optional<ShopBinding> bound = viewer.npc().map(this::binding).filter((ShopBinding binding) -> binding.shop().equals(id));
+        Optional<ShopBinding> bound = viewer.npc().map(this::binding).or(() -> as).filter((ShopBinding binding) -> binding.shop().equals(id));
         ShopDocument.Style style = override.or(() -> bound.flatMap(ShopBinding::style)).or(() -> shop.get().style()).orElse(settings.defaultStyle());
         ShopScreen.View<P, S> view = new ShopScreen.View<>(style, bound.flatMap(ShopBinding::villager), shop.get().layout().flatMap(current::gui), Optional.of(this));
         return ShopScreen.open(shop.get(), viewer, context, view);
@@ -250,11 +255,22 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
         reload((ShopCatalog next) -> answer(actor, "Reloaded " + next.shops().size() + " shops and " + next.guis().size() + " GUIs; " + next.problems().size() + " problems"));
     }
 
-    /** Opens a shop for the actor, or for the named player. */
-    public void open(CommandActor actor, String shop, Optional<String> player, Optional<String> style) {
+    /**
+     * Opens a shop for the actor, or for the named player. With {@code npc} it opens as that NPC's click opens it, in the
+     * NPC's window style and villager look, wherever the NPC is.
+     */
+    public void open(CommandActor actor, String shop, Optional<String> player, Optional<String> style, Optional<String> npc) {
         Optional<ShopDocument.Style> chosen = style.flatMap(ShopDocument.Style::of);
         if (style.isPresent() && chosen.isEmpty()) { actor.tell("style= is native or chest"); return; }
-        deliver(actor, player, (P viewer) -> openShop(viewer, shop, Optional.empty(), chosen));
+        Optional<ShopBinding> as = Optional.empty();
+        if (npc.isPresent()) {
+            Optional<NpcDefinition> definition = runtime.npcs().find(npc.get());
+            if (definition.isEmpty()) { actor.tell(Palette.error("Unknown NPC " + npc.get())); return; }
+            as = Optional.ofNullable(binding(definition.get().uuid())).filter((ShopBinding binding) -> binding.shop().equals(shop));
+            if (as.isEmpty()) { actor.tell(Palette.error(npc.get() + " does not open " + shop)); return; }
+        }
+        Optional<ShopBinding> opened = as;
+        deliver(actor, player, (P viewer) -> openShop(viewer, shop, Optional.empty(), chosen, opened));
     }
 
     /** Clears the limits and stock counters of a shop, for everyone or one player by name or UUID. */

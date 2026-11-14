@@ -1,12 +1,19 @@
 {
   "id": "05-find",
-  "title": "Find",
-  "description": "Teleporting to an NPC and selecting another from Find",
+  "title": "NPCs",
+  "description": "Going to an NPC from the NPCs list and opening another's screen",
   "target": 30,
-  "stage": {"world": "town"},
+  "stage": {
+    "world": "town",
+    "console": [
+      "animus create greeter name=Greeter world=world x=-2.5 y=64 z=-9.5",
+      "animus create trader type=minecraft:llama name=Trader world=world x=4.5 y=64 z=-9.5"
+    ]
+  },
   "setup": [
-    {"run": "/give @s minecraft:blaze_rod"},
+    {"run": "/gamemode creative"},
     {"run": "/clear @s"},
+    {"hotbar": 0},
     {"tp": [-14, 64, 8, -90, 5]},
     {"wait": 11000},
     {"clearChat": true}
@@ -15,27 +22,26 @@
     {"perspective": "third-front"},
     {"wait": 2200},
     {"perspective": "first"},
-    {"tp": [44.5, 64, 0.5, -90, 5]},
+    {"tp": [44.5, 64, 0.5, -90, 5], "note": "east of the town, far from both NPCs"},
     {"wait": 1200},
-    {"palette": true},
-    {"click": "Find"},
-    {"screen": "Nearest"},
-    {"wait": 500},
-    {"hover": "guard", "ms": 1500},
-    {"hover": "herald", "ms": 1500},
-    {"click": "baker"},
-    {"result": "you stand beside the Baker; chat says Teleported to baker", "ms": 2400},
-    {"palette": true},
-    {"click": "Find"},
-    {"screen": "Nearest"},
-    {"wait": 500},
-    {"hover": "guard", "ms": 1000},
-    {"click": "guard", "button": "right"},
-    {"result": "the action bar reads Selected guard", "ms": 1500},
-    {"closeScreen": true},
+    {"menu": true},
+    {"click": "NPCs"},
+    {"screen": "NPCs"},
+    {"result": "NPCs: the nearest first, each with its distance", "ms": 1500},
+    {"hover": "Trader", "ms": 1800},
+    {"click": "Trader", "button": "right"},
     {"wait": 600},
-    {"type": "/animus selection"},
-    {"result": "chat: Selected guard", "ms": 2500}
+    {"closeScreen": true},
+    {"wait": 300},
+    {"result": "you stand beside the trader, facing it; chat says Teleported to Trader", "ms": 2400},
+    {"menu": true},
+    {"click": "NPCs"},
+    {"screen": "NPCs"},
+    {"wait": 300},
+    {"hover": "Greeter", "ms": 1500},
+    {"click": "Greeter"},
+    {"screen": "Greeter"},
+    {"result": "the greeter's screen: how it looks, what it does, and managing it", "ms": 2400}
   ],
-  "closing": "Find teleports to the Baker and selects the guard"
+  "closing": "NPCs: right-click goes to the trader, a click opens the greeter's screen"
 }

@@ -24,7 +24,8 @@ public enum DocsLink {
     PAIRING("14-web-editor", "pairing"),
     TOKENS("14-web-editor", "managing-tokens"),
     CONNECTING("14-web-editor", "connecting-the-server"),
-    DEBUG("17-debug-react-metrics", "animus-debug");
+    DEBUG("17-debug-react-metrics", "animus-debug"),
+    RECORDINGS("19-performance-recordings", "recording-a-performance");
 
     private final String page;
     private final String anchor;

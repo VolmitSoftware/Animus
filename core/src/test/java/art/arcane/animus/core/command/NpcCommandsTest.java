@@ -108,8 +108,8 @@ class NpcCommandsTest {
             art.arcane.animus.core.toolkit.SkinFiles skins = new art.arcane.animus.core.toolkit.SkinFiles(repository, store);
             String worn = skins.wear(new art.arcane.animus.core.presentation.BodySkin(texture, "c2ln"), "Notch", List.of("guard"));
             String hash = repository.find("guard").orElseThrow().json().get("skin").getAsString();
-            assertTrue(worn.startsWith("Saved Notch's skin as skins/" + hash.substring(0, 12) + "; Skin Notch " + hash + " on guard; tx "), worn);
-            assertTrue(skins.remove(List.of("guard")).startsWith("Skin removed on guard; tx "));
+            assertTrue(worn.startsWith("Skin Notch on N; tx "), worn);
+            assertTrue(skins.remove(List.of("guard")).startsWith("Skin removed on N; tx "));
             assertFalse(repository.find("guard").orElseThrow().json().has("skin"));
         }
     }

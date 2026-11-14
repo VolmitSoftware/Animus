@@ -9,12 +9,16 @@ import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.storage.NpcPaths;
+import art.arcane.animus.core.text.Words;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -26,6 +30,9 @@ import java.util.function.Consumer;
  * NPC back together.
  */
 final class RouteFiles {
+    /** Fewer points than this make no walk; saving refuses them. */
+    static final int MINIMUM_POINTS = 2;
+    static final String NAMES = "A route name is 1 to 64 lowercase letters, digits, _ or -";
     private final NpcRepository npcs;
     private final DocumentStore store;
 
@@ -42,9 +49,10 @@ final class RouteFiles {
         private String text(String key, String fallback) { return settings.has(key) && settings.get(key).isJsonPrimitive() ? settings.get(key).getAsString() : fallback; }
     }
 
-    /** What saving a capture wrote: the route id and the line for the player. */
-    /** A saved capture: its route id and the short reply; the file is {@link #path(String)}. */
-    record Saved(String id, String line) {}
+    /** A saved route: its id, the short reply and the NPCs it went on; the file is {@link #path(String)}. */
+    record Saved(String id, String line, List<String> users) {
+        Saved { users = List.copyOf(users); }
+    }
 
     /** Every saved route with its users, in id order. */
     List<Route> routes() throws IOException {
@@ -67,14 +75,14 @@ final class RouteFiles {
         free(to);
         List<NpcRepository.Draft> drafts = repoint(from, (JsonObject navigation) -> navigation.addProperty("route", to));
         List<DocumentStore.Change> files = List.of(new DocumentStore.Change(path(from), JsonDocuments.hash(text), null), new DocumentStore.Change(path(to), "missing", text));
-        return "Renamed route " + from + " to " + to + (drafts.isEmpty() ? "" : ", " + ToolkitFiles.count(drafts.size()) + " repointed") + "; tx " + commit(npcs, store, drafts, files);
+        return "Renamed route " + Words.readable(from) + " to " + Words.readable(to) + (drafts.isEmpty() ? "" : ", " + ToolkitFiles.count(drafts.size()) + " repointed") + "; tx " + commit(npcs, store, drafts, files);
     }
 
     /** Copies the route under a new id; nothing uses the copy yet. */
     String duplicate(String from, String to) throws IOException {
         String text = existing(from);
         free(to);
-        return "Copied route " + from + " as " + to + "; tx " + store.commit(List.of(new DocumentStore.Change(path(to), "missing", text)));
+        return "Copied route " + Words.readable(from) + " as " + Words.readable(to) + "; tx " + store.commit(List.of(new DocumentStore.Change(path(to), "missing", text)));
     }
 
     /**
@@ -86,24 +94,25 @@ final class RouteFiles {
         Map<String, List<String>> users = users();
         List<String> using = users.getOrDefault(id, List.of());
         if (!using.isEmpty() && !unassign)
-            throw new IOException("Route " + id + " is used by " + ToolkitFiles.count(using.size()) + " (" + ToolScreen.names(using, 4) + "); use Unassign and delete to clear them too");
+            throw new IOException("Route " + Words.readable(id) + " is used by " + ToolkitFiles.count(using.size()) + " (" + ToolScreen.names(using, 4) + "); open it again and Delete takes it off them too");
         List<NpcRepository.Draft> drafts = unassign ? repoint(id, null) : List.of();
         String tx = commit(npcs, store, drafts, List.of(new DocumentStore.Change(path(id), JsonDocuments.hash(text), null)));
-        return "Deleted route " + id + (drafts.isEmpty() ? "" : ", unassigned from " + ToolkitFiles.count(drafts.size())) + "; tx " + tx;
+        return "Deleted route " + Words.readable(id) + (drafts.isEmpty() ? "" : ", unassigned from " + ToolkitFiles.count(drafts.size())) + "; tx " + tx;
     }
 
-    /** Changes the route's own settings; the result is checked as the runtime reads it before it is written. */
-    String settings(String id, String what, Consumer<JsonObject> edit) throws IOException {
+    /**
+     * Changes the route's own settings; the result is checked as the runtime reads it before it is written. {@code shown}
+     * is the new value in words, for the reply.
+     */
+    String settings(String id, String what, String shown, Consumer<JsonObject> edit) throws IOException {
         String text = existing(id);
         JsonObject document = JsonDocuments.object(text);
         edit.accept(document);
         String next = JsonDocuments.write(document);
-        if (next.equals(text)) return "Route " + id + " already has that " + what;
+        if (next.equals(text)) return "Route " + Words.readable(id) + " already has that " + what;
         try { WaypointSettings.document(next); }
-        catch (IllegalArgumentException invalid) { throw new IOException("Route " + id + " " + what + " refused: " + invalid.getMessage()); }
-        JsonElement value = document.get(what);
-        String now = value == null ? "off" : value.isJsonPrimitive() ? value.getAsString() : JsonDocuments.write(value);
-        return "Route " + id + " " + what + " set to " + now + "; tx " + store.commit(List.of(new DocumentStore.Change(path(id), JsonDocuments.hash(text), next)));
+        catch (IllegalArgumentException invalid) { throw new IOException("Route " + Words.readable(id) + " " + what + " refused: " + invalid.getMessage()); }
+        return "Route " + Words.readable(id) + " " + what + ": " + shown + "; tx " + store.commit(List.of(new DocumentStore.Change(path(id), JsonDocuments.hash(text), next)));
     }
 
     /** The route ready for editing in the player's world. */
@@ -113,18 +122,27 @@ final class RouteFiles {
     }
 
     /**
-     * Saves a capture: a capture loaded from a route writes back over that file, refused when the file changed
-     * meanwhile; a new capture saves as {@code wp-<player>}.
+     * Saves route points: a loaded capture writes back over its file unless the file changed meanwhile. A new one saves
+     * as {@code id}, or {@code id-2} and so on when that name was taken meanwhile, and goes on those of {@code users}
+     * that still exist in the same transaction; the reply names any that were deleted.
      */
-    Saved save(String player, WaypointCapture capture, String document) throws IOException {
-        int count = capture.points().size();
-        if (capture.source().isEmpty()) {
-            String id = new ToolkitFiles(npcs, store).saveRoute(player, document);
-            return new Saved(id, "Saved " + id + ", " + count + " points; sneak-click it in Routes to rename");
+    Saved save(String id, WaypointCapture capture, String document, List<String> users) throws IOException {
+        String count = MovementScreen.points(capture.points().size());
+        if (capture.source().isPresent()) {
+            if (!store.hash(path(id)).equals(capture.hash().orElseThrow())) throw DocumentStore.conflict(path(id));
+            return new Saved(id, "Saved route " + Words.readable(id) + ", " + count + "; tx " + store.commit(List.of(new DocumentStore.Change(path(id), capture.hash().get(), document))), List.of());
         }
-        String id = capture.source().get();
-        if (!store.hash(path(id)).equals(capture.hash().orElseThrow())) throw DocumentStore.conflict(path(id));
-        return new Saved(id, "Saved " + id + ", " + count + " points; tx " + store.commit(List.of(new DocumentStore.Change(path(id), capture.hash().get(), document))));
+        if (!id.matches(NpcPaths.SEGMENT)) throw new IOException(NAMES);
+        String name = id;
+        for (int n = 2; store.read(path(name)) != null; n++) name = id.substring(0, Math.min(id.length(), 58)) + "-" + n;
+        Set<String> existing = new HashSet<>();
+        for (NpcDefinition definition : npcs.stored()) existing.add(definition.id());
+        List<String> kept = users.stream().filter(existing::contains).toList(), gone = users.stream().filter((String user) -> !existing.contains(user)).toList();
+        List<NpcRepository.Draft> drafts = new ToolkitFiles(npcs, store).routeDrafts(name, kept);
+        String tx = commit(npcs, store, drafts, List.of(new DocumentStore.Change(path(name), "missing", document)));
+        String renamed = name.equals(id) ? "" : " (" + Words.readable(id) + " was taken)";
+        String left = gone.isEmpty() ? "" : "; " + ToolScreen.names(gone, 4) + (gone.size() == 1 ? " no longer exists" : " no longer exist");
+        return new Saved(name, "Saved route " + Words.readable(name) + renamed + ", " + count + (drafts.isEmpty() ? "" : ", on " + ToolkitFiles.named(drafts)) + left + "; tx " + tx, kept);
     }
 
     private Route route(String id, List<String> users) throws IOException {
@@ -170,13 +188,37 @@ final class RouteFiles {
 
     private String existing(String id) throws IOException {
         String text = id.matches(NpcPaths.SEGMENT) ? store.read(path(id)) : null;
-        if (text == null) throw new IOException("No route routes/" + id + ".json");
+        if (text == null) throw new IOException("No route " + Words.readable(id));
         return text;
     }
 
     private void free(String id) throws IOException {
-        if (!id.matches(NpcPaths.SEGMENT)) throw new IOException("A route id is 1 to 64 lowercase letters, digits, _ or -");
-        if (store.read(path(id)) != null) throw new IOException("routes/" + id + ".json already exists");
+        if (!id.matches(NpcPaths.SEGMENT)) throw new IOException(NAMES);
+        if (store.read(path(id)) != null) throw new IOException("Route " + Words.readable(id) + " already exists; pick another name");
+    }
+
+    /** A typed name as a file name: trimmed, lowercase, spaces as dashes. Whether it is allowed is checked where it is used. */
+    static String typed(String text) { return text.strip().toLowerCase(Locale.ROOT).replace(' ', '-'); }
+
+    /**
+     * A name to suggest in a prompt, such as {@code Bob the Greeter route}: {@code base} with the characters a file name
+     * cannot hold left out, {@code fallback} when nothing is left, and a number added while {@code taken} holds the file
+     * name it makes.
+     */
+    static String suggest(String base, String fallback, Collection<String> taken) {
+        String plain = base.replaceAll("[^A-Za-z0-9 _-]", "").replaceAll(" +", " ").strip();
+        String trimmed = plain.substring(0, Math.min(plain.length(), 56)).strip();
+        String start = trimmed.isEmpty() ? fallback : trimmed, name = start;
+        for (int n = 2; taken.contains(typed(name)); n++) name = start + " " + n;
+        return name;
+    }
+
+    /** {@code base}, or {@code base-2}, {@code base-3} and so on, whichever {@code taken} does not hold. */
+    static String free(String base, Collection<String> taken) {
+        String trimmed = base.substring(0, Math.min(base.length(), 58));
+        String name = trimmed;
+        for (int n = 2; taken.contains(name); n++) name = trimmed + "-" + n;
+        return name;
     }
 
     static String path(String id) { return "routes/" + id + ".json"; }

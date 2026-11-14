@@ -6,6 +6,7 @@ import art.arcane.animus.core.npc.NpcAttributes;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.presentation.BodyLook;
 import art.arcane.animus.core.presentation.BodyPose;
+import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.presentation.BodyTransport;
 import art.arcane.animus.core.rig.DisplayTransform;
@@ -15,7 +16,6 @@ import art.arcane.animus.core.rig.RigView;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.virtual.ChunkPosition;
 import art.arcane.animus.core.virtual.DragonBody;
-import art.arcane.animus.core.virtual.SpatialNpcIndex;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.ViewerSession;
 import art.arcane.animus.core.virtual.VirtualNpcState;
@@ -63,7 +63,6 @@ final class ViewerPresenter<P, I> {
     private final AtomicInteger completionCount = new AtomicInteger();
     private volatile int completionCapacity;
     private Iterator<? extends P> admissions = Collections.emptyIterator();
-    private final ViewerCapNotice capNotice = new ViewerCapNotice();
     long accepted, rejected;
 
     ViewerPresenter(PersistedNpcService<P, I> service) { this.service = service; }
@@ -218,32 +217,38 @@ final class ViewerPresenter<P, I> {
             sent += viewer.preview.update(viewer.player, service.packets, at, settings.viewDistance(), visibleChunk,
                     (NpcDefinition definition) -> service.parse(definition),
                     (Runnable completion) -> enqueue(viewer, () -> { if (current(viewer)) completion.run(); }), viewer.nativeIds, packetBudget - sent);
-        if (viewer.ready && viewer.visible.size() >= settings.maximumVisible() && capNotice.due(service.tickNumber) && hiddenByCap(viewer, at, visibleChunk))
-            host.warn(capNotice.warn(service.tickNumber, host.name(viewer.player), settings.maximumVisible()));
+        NearestSelection.Area area = new NearestSelection.Area(service.index, at, settings.viewDistance(), visibleChunk);
+        NearestSelection.View<PersistedNpcService<P, I>.Value> npcs = npcs(viewer, at);
+        if (viewer.ready && viewer.retirements.isEmpty() && viewer.nearest.due(viewer.turns, at, viewer.visible.size(), settings.maximumVisible())) rank(viewer, area, npcs);
         if (!viewer.ready || !viewer.retirements.isEmpty() || sent >= packetBudget || viewer.pendingSpawns >= settings.pendingSpawnsPerViewer()
                 || viewer.visible.size() >= settings.maximumVisible()) return sent;
         int capacity = Math.min(Math.min(8, packetBudget - sent), Math.min(settings.maximumVisible() - viewer.visible.size(), settings.pendingSpawnsPerViewer() - viewer.pendingSpawns));
-        SpatialNpcIndex.Scan scan = service.index.scan(new SpatialNpcIndex.Query(at, settings.viewDistance()), viewer.cursor, new SpatialNpcIndex.Budget(32, Math.max(1, capacity * 2)), visibleChunk);
-        viewer.cursor = scan.next().orElse(null);
-        for (VirtualNpcState.Snapshot snapshot : scan.candidates()) {
-            if (capacity == 0) break;
-            PersistedNpcService<P, I>.Entry entry = service.byUuid.get(snapshot.npcId()); PersistedNpcService<P, I>.Value value = entry == null ? null : entry.value;
-            if (value == null || viewer.visible.containsKey(snapshot.npcId()) || viewer.retiring.containsKey(snapshot.npcId())
-                    || viewer.nativeIds + viewer.preview.reservedIds() + nativeIds(value) > 256 || !eligible(viewer, value, at, visibleChunk)) continue;
-            if (!admit(viewer, PresentationPressure.Tier.AUTHORITATIVE)) break;
-            spawn(viewer, value); sent++; capacity--;
-            if (!current(viewer)) break;
-        }
-        return sent;
+        return sent + viewer.nearest.fill(area, npcs, capacity, settings.maximumVisible());
     }
-    /** An NPC in range the viewer would see but for the {@code maximumVisible} cap; one bounded scan from the start. */
-    private boolean hiddenByCap(Viewer viewer, WorldPosition at, Predicate<ChunkPosition> visibleChunk) {
-        SpatialNpcIndex.Scan scan = service.index.scan(new SpatialNpcIndex.Query(at, service.settings.viewDistance()), null, new SpatialNpcIndex.Budget(256, service.settings.maximumVisible() + 1), visibleChunk);
-        for (VirtualNpcState.Snapshot snapshot : scan.candidates()) {
-            PersistedNpcService<P, I>.Entry entry = service.byUuid.get(snapshot.npcId());
-            if (entry != null && entry.value != null && !viewer.visible.containsKey(snapshot.npcId()) && !viewer.retiring.containsKey(snapshot.npcId()) && eligible(viewer, entry.value, at, visibleChunk)) return true;
+    /** This viewer's NPCs as {@link NearestSelection} ranks and spawns them. */
+    private NearestSelection.View<PersistedNpcService<P, I>.Value> npcs(Viewer viewer, WorldPosition at) {
+        return new NearestSelection.View<>() {
+            @Override public PersistedNpcService<P, I>.Value npc(UUID id) { PersistedNpcService<P, I>.Entry entry = service.byUuid.get(id); return entry == null ? null : entry.value; }
+            @Override public boolean eligible(PersistedNpcService<P, I>.Value value, Predicate<ChunkPosition> chunks) { return ViewerPresenter.this.eligible(viewer, value, at, chunks); }
+            @Override public WorldPosition position(PersistedNpcService<P, I>.Value value) { return value.state.snapshot().position(); }
+            @Override public int ids(PersistedNpcService<P, I>.Value value) { return nativeIds(value); }
+            @Override public boolean showing(UUID id) { return viewer.visible.containsKey(id); }
+            @Override public int shownIds(UUID id) { return viewer.visible.get(id).body.entityIds().length; }
+            @Override public int shownCount() { return viewer.visible.size(); }
+            @Override public boolean retiring(UUID id) { return viewer.retiring.containsKey(id); }
+            @Override public boolean fits(int ids) { return viewer.nativeIds + viewer.preview.reservedIds() + ids <= BodyRules.MAX_BODIES_PER_VIEWER; }
+            @Override public boolean admit() { return ViewerPresenter.this.admit(viewer, PresentationPressure.Tier.AUTHORITATIVE); }
+            @Override public void spawn(PersistedNpcService<P, I>.Value value) { ViewerPresenter.this.spawn(viewer, value); }
+            @Override public boolean current() { return ViewerPresenter.this.current(viewer); }
+        };
+    }
+    /** Ranks every eligible NPC in range for this viewer (see {@link NearestSelection}): those that lose their place leave. */
+    private void rank(Viewer viewer, NearestSelection.Area area, NearestSelection.View<PersistedNpcService<P, I>.Value> npcs) {
+        PersistedNpcService.Settings settings = service.settings;
+        for (UUID leaving : viewer.nearest.rank(viewer.turns, area, npcs, settings.maximumVisible(), BodyRules.MAX_BODIES_PER_VIEWER - viewer.preview.reservedIds())) {
+            Presented body = viewer.visible.get(leaving);
+            if (body != null) retire(viewer, body);
         }
-        return false;
     }
     /** A live NPC a preview stands in for stays hidden from that viewer only, as does one whose viewers filter hides it from them. */
     private boolean eligible(Viewer viewer, PersistedNpcService<P, I>.Value value, WorldPosition at, Predicate<ChunkPosition> delivered) {
@@ -802,14 +807,14 @@ final class ViewerPresenter<P, I> {
         final ViewerOutbox outbox = new ViewerOutbox();
         /** Presentation updates this viewer had; spaces its cosmetic work and distant moves under pressure. */
         long turns;
-        SpatialNpcIndex.Cursor cursor;
+        final NearestSelection nearest = new NearestSelection();
         int nativeIds, pendingSpawns, bones;
         boolean ready, rosterDirty; volatile boolean failed;
         long rosterRevision = -1;
         Viewer(P player) {
             this.player = player; id = service.host.id(player); world = service.host.position(player).world();
             preview = new PreviewBodies<>(service.previews, id);
-            guard = new ViewerSession(service.host.id(player), UUID.randomUUID(), service.viewerLimits());
+            guard = new ViewerSession(service.host.id(player), UUID.randomUUID(), PersistedNpcService.VIEWER_LIMITS);
         }
     }
 }

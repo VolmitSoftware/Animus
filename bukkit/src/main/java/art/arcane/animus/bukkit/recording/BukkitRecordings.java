@@ -2,6 +2,7 @@ package art.arcane.animus.bukkit.recording;
 
 import art.arcane.animus.bukkit.BukkitWorldLookup;
 import art.arcane.animus.bukkit.folia.FoliaRegions;
+import art.arcane.animus.bukkit.toolkit.BukkitWand;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.config.RecordingSettings;
 import art.arcane.animus.core.npc.NpcItem;
@@ -102,7 +103,7 @@ public final class BukkitRecordings implements RecordingHost<Player, ItemStack>,
             ItemStack before = stacks.get(slot);
             if (items.containsKey(slot) && (stack == null ? before == null : stack.equals(before))) continue;
             stacks.put(slot, stack == null ? null : stack.clone());
-            items.put(slot, RecorderLook.item(stack));
+            items.put(slot, BukkitWand.is(stack) ? Optional.empty() : RecorderLook.item(stack));
         }
         return new RecordingCapture.Sample(player.getWorld().getName(), at.getX(), at.getY(), at.getZ(), at.getYaw(), at.getPitch(),
                 player.isOnGround(), player.isSneaking(), player.isSprinting(), player.isSwimming(), player.isGliding(), items);

@@ -1,6 +1,7 @@
 package art.arcane.animus.mod;
 
 import art.arcane.animus.core.gui.GuiModel;
+import java.util.Optional;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -54,13 +55,20 @@ final class AnimusMenu extends ChestMenu {
     void show(int slot, ItemStack stack) { getContainer().setItem(slot, stack); }
 
     @Override public void clicked(int slot, int button, ContainerInput input, Player player) {
-        GuiModel.Click click = null;
-        if (slot >= 0 && slot < size) {
-            if (input == ContainerInput.PICKUP) click = button == 0 ? GuiModel.Click.LEFT : button == 1 ? GuiModel.Click.RIGHT : null;
-            else if (input == ContainerInput.QUICK_MOVE) click = button == 0 ? GuiModel.Click.SHIFT_LEFT : button == 1 ? GuiModel.Click.SHIFT_RIGHT : null;
-        }
+        Optional<GuiModel.Click> click = click(slot, size, button, input);
         sendAllDataToRemote();
-        if (click != null) clicks.clicked(this, slot, click);
+        click.ifPresent((GuiModel.Click bound) -> clicks.clicked(this, slot, bound));
+    }
+
+    /**
+     * The four bound clicks on the window's own slots, as the Bukkit host maps them; number keys, swaps, double
+     * clicks, drops, middle clicks, drags and clicks outside or in the player's rows are none.
+     */
+    static Optional<GuiModel.Click> click(int slot, int size, int button, ContainerInput input) {
+        if (slot < 0 || slot >= size) return Optional.empty();
+        if (input == ContainerInput.PICKUP) return button == 0 ? Optional.of(GuiModel.Click.LEFT) : button == 1 ? Optional.of(GuiModel.Click.RIGHT) : Optional.empty();
+        if (input == ContainerInput.QUICK_MOVE) return button == 0 ? Optional.of(GuiModel.Click.SHIFT_LEFT) : button == 1 ? Optional.of(GuiModel.Click.SHIFT_RIGHT) : Optional.empty();
+        return Optional.empty();
     }
 
     @Override public ItemStack quickMoveStack(Player player, int slot) { return ItemStack.EMPTY; }

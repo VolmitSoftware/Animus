@@ -51,7 +51,7 @@ class ShopScreenTest {
         assertTrue(open(parse(BAKERY)));
         assertEquals("Bakery (1/2)", RichText.plain(alex.frame.title()), "the staff page is hidden without its permission");
         assertEquals("Fresh bread", RichText.plain(alex.frame.items().get(10).name().orElseThrow()));
-        assertTrue(alex.frame.items().get(10).lore().stream().map(RichText::plain).anyMatch((String line) -> line.equals("Price: 12")));
+        assertTrue(alex.frame.items().get(10).lore().stream().map(RichText::plain).anyMatch((String line) -> line.equals("Price: $12")), "the economy's own format");
         assertEquals("minecraft:barrier", alex.frame.items().get(22).item().id());
         assertEquals("minecraft:arrow", alex.frame.items().get(24).item().id());
         assertNull(alex.frame.items().get(20), "no previous page on the first page");
@@ -64,9 +64,17 @@ class ShopScreenTest {
         click(10, Click.LEFT);
         assertEquals(4, alex.inventory.total("minecraft:bread"));
         assertEquals(0, new BigDecimal("88").compareTo(economy.balance(alex.id)));
-        assertEquals(List.of("Bought 4x minecraft:bread for 12."), alex.messages);
+        assertEquals(List.of("Bought 4x minecraft:bread for $12."), alex.messages);
         assertEquals(List.of("say Alex paid 12"), host.console);
         assertEquals(List.of("Alex bought 4x minecraft:bread"), host.broadcasts);
+    }
+
+    @Test void withoutAnEconomyPricesReadInPriceFormat() {
+        ShopScreen.Context<Stack> none = new ShopScreen.Context<>(ShopSettings.DEFAULT,
+                new ShopTransactions<>(MockInventory.OPS, art.arcane.animus.core.inventory.Economy.none("Vault is not installed"), ledger, () -> NOW), Optional.empty(), () -> NOW);
+        manager.open(alex, Optional.empty(), (ScreenManager<Player, Stack>.Viewer viewer) -> ShopScreen.open(parse(BAKERY), viewer, none));
+        assertTrue(alex.frame.items().get(10).lore().stream().map(RichText::plain).anyMatch((String line) -> line.equals("Price: 12")),
+                alex.frame.items().get(10).lore().toString());
     }
 
     @Test void aNameThatCannotBeWrittenIntoACommandRefusesThePurchase() {
@@ -83,7 +91,7 @@ class ShopScreenTest {
     @Test void aRefusedPurchaseSaysWhyAndRunsNothing() {
         open(parse(BAKERY));
         click(10, Click.LEFT);
-        assertEquals(List.of("You need 12 for that."), alex.messages);
+        assertEquals(List.of("You need $12 for that."), alex.messages);
         assertTrue(host.console.isEmpty());
         assertTrue(host.broadcasts.isEmpty());
     }

@@ -9,16 +9,17 @@ import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcItem;
-import art.arcane.animus.core.text.ChatLine;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * One rule list of the combat module ({@code targets}, {@code ignores} or {@code avoids}) as the kinds of rule it can
@@ -26,14 +27,21 @@ import java.util.Optional;
  * transaction. Nested rule sets, together groups and fight events are kept as they are and edited in the editor.
  */
 final class TargetRulesScreen<P, S> extends ToolScreen<P, S> {
-    static final int INFO_SLOT = 46, DISCARD = 47, SAVE = 53;
+    static final int INFO_SLOT = ACTIONS + 8;
     private static final List<String> NESTED = List.of("all", "together", "events");
+    private static final String EXPLAINED = "A rule list matches anyone who fits one of its rules, and an ignore always beats a target. "
+            + "Clicks change a draft that Save writes to every selected NPC.";
 
     private enum Type { CATEGORY, OWNER, HEALTH, LIST, NESTED }
 
+    /** How a list row adds an entry besides typing one: a wand pick, the held item, or neither. */
+    private enum Adds { TYPED, NPC, HELD }
+
     /** One row: a category toggle, the owner rule, a health bound, a list of names or patterns, or a kept nested rule. */
-    private record Rule(String label, List<String> path, Type type, String icon, String example, String description) {
+    private record Rule(String label, List<String> path, Type type, String icon, String example, String description, Adds adds) {
         Rule { path = List.copyOf(path); }
+
+        String key() { return String.join(".", path); }
     }
 
     private final String list;
@@ -49,49 +57,64 @@ final class TargetRulesScreen<P, S> extends ToolScreen<P, S> {
     @Override String node() { return PermissionNodes.COMBAT; }
     @Override int rows() { return 6; }
 
-    /** The rows this list allows: ignores have no chat words, nested scans or fight events. */
-    private List<Rule> kinds() {
+    /** The rows a list allows: ignores have no chat words, nested scans or fight events. */
+    private static List<Rule> kinds(String list) {
         List<Rule> kinds = new ArrayList<>();
         for (TargetCategory category : TargetCategory.values())
-            kinds.add(new Rule(category == TargetCategory.NPCS ? "NPCs" : CombatFields.label(category.jsonName()), List.of("categories", category.jsonName()), Type.CATEGORY,
+            kinds.add(new Rule(category(category), List.of("categories", category.jsonName()), Type.CATEGORY,
                     switch (category) { case PLAYERS -> HEAD; case NPCS -> "minecraft:armor_stand"; case MOBS -> "minecraft:spawner"; case MONSTERS -> "minecraft:zombie_head"; case ANIMALS -> "minecraft:wheat"; },
-                    "", "Every " + category.jsonName().replace("npcs", "NPC").replaceAll("s$", "")));
-        kinds.add(new Rule("Owner", List.of("owner"), Type.OWNER, "minecraft:golden_helmet", "", "The NPC's owner."));
-        kinds.add(new Rule("Health above", List.of("healthAbove"), Type.HEALTH, "minecraft:glistering_melon_slice", "", "Percent of maximum health."));
-        kinds.add(new Rule("Health below", List.of("healthBelow"), Type.HEALTH, "minecraft:spider_eye", "", "Percent of maximum health."));
-        kinds.add(new Rule("Mob types", List.of("entityTypes"), Type.LIST, "minecraft:zombie_spawn_egg", "minecraft:zombie", "Entity type ids."));
-        kinds.add(new Rule("Players by name", List.of("players"), Type.LIST, "minecraft:player_head", "Steve", "Player names or UUIDs."));
-        kinds.add(new Rule("NPCs by id", List.of("npcs"), Type.LIST, "minecraft:armor_stand", "guard", "NPC ids or display names. Sneak to click one with the wand."));
-        kinds.add(new Rule("Mobs by custom name", List.of("names"), Type.LIST, "minecraft:name_tag", "Bob", "Custom names of mobs."));
-        kinds.add(new Rule("Squads", List.of("squads"), Type.LIST, "minecraft:white_banner", "north", "Squads of other NPCs."));
-        kinds.add(new Rule("Permissions", List.of("permissions"), Type.LIST, "minecraft:tripwire_hook", "town.outlaw", "Permission nodes a player has."));
-        kinds.add(new Rule("Permission groups", List.of("groups"), Type.LIST, "minecraft:chest", "outlaws", "Permission groups a player is in."));
-        kinds.add(new Rule("Effects", List.of("effects"), Type.LIST, "minecraft:potion", "minecraft:glowing", "Status effects the target has."));
-        kinds.add(new Rule("Player name pattern", List.of("patterns", "players"), Type.LIST, "minecraft:paper", "^Guest", "A regular expression found in the name."));
-        kinds.add(new Rule("NPC name pattern", List.of("patterns", "npcs"), Type.LIST, "minecraft:paper", "^bandit", "A regular expression found in the id or name."));
-        kinds.add(new Rule("Mob name pattern", List.of("patterns", "names"), Type.LIST, "minecraft:paper", "zombie", "A regular expression found in the mob's name."));
-        kinds.add(new Rule("Main-hand item", List.of("items", "mainHand"), Type.LIST, "minecraft:iron_sword", "_sword$", "An item id pattern. Sneak to use the item you hold."));
-        kinds.add(new Rule("Off-hand item", List.of("items", "offHand"), Type.LIST, "minecraft:shield", "shield", "An item id pattern. Sneak to use the item you hold."));
-        kinds.add(new Rule("Worn item", List.of("items", "worn"), Type.LIST, "minecraft:iron_chestplate", "netherite", "An item id pattern. Sneak to use the item you hold."));
+                    "", "Every " + category.jsonName().replace("npcs", "NPC").replaceAll("s$", ""), Adds.TYPED));
+        kinds.add(new Rule("Owner", List.of("owner"), Type.OWNER, "minecraft:golden_helmet", "", "The NPC's owner", Adds.TYPED));
+        kinds.add(new Rule("Health above", List.of("healthAbove"), Type.HEALTH, "minecraft:glistering_melon_slice", "", "Percent of its maximum health", Adds.TYPED));
+        kinds.add(new Rule("Health below", List.of("healthBelow"), Type.HEALTH, "minecraft:spider_eye", "", "Percent of its maximum health", Adds.TYPED));
+        kinds.add(new Rule("Mob types", List.of("entityTypes"), Type.LIST, "minecraft:zombie_spawn_egg", "minecraft:zombie", "Entity type ids", Adds.TYPED));
+        kinds.add(new Rule("Players by name", List.of("players"), Type.LIST, "minecraft:player_head", "Steve", "Player names or UUIDs", Adds.TYPED));
+        kinds.add(new Rule("NPCs by id", List.of("npcs"), Type.LIST, "minecraft:armor_stand", "guard", "NPC ids or display names", Adds.NPC));
+        kinds.add(new Rule("Mobs by custom name", List.of("names"), Type.LIST, "minecraft:name_tag", "Bob", "Custom names of mobs", Adds.TYPED));
+        kinds.add(new Rule("Squads", List.of("squads"), Type.LIST, "minecraft:bell", "north", "Squads of other NPCs", Adds.TYPED));
+        kinds.add(new Rule("Permissions", List.of("permissions"), Type.LIST, "minecraft:tripwire_hook", "town.outlaw", "Permission nodes a player has", Adds.TYPED));
+        kinds.add(new Rule("Permission groups", List.of("groups"), Type.LIST, "minecraft:chest", "outlaws", "Permission groups a player is in", Adds.TYPED));
+        kinds.add(new Rule("Effects", List.of("effects"), Type.LIST, "minecraft:potion", "minecraft:glowing", "Status effects the target has", Adds.TYPED));
+        kinds.add(new Rule("Player name pattern", List.of("patterns", "players"), Type.LIST, "minecraft:paper", "^Guest", "A regular expression found in the name", Adds.TYPED));
+        kinds.add(new Rule("NPC name pattern", List.of("patterns", "npcs"), Type.LIST, "minecraft:paper", "^bandit", "A regular expression found in the id or name", Adds.TYPED));
+        kinds.add(new Rule("Mob name pattern", List.of("patterns", "names"), Type.LIST, "minecraft:paper", "zombie", "A regular expression found in the mob's name", Adds.TYPED));
+        kinds.add(new Rule("Main-hand item", List.of("items", "mainHand"), Type.LIST, "minecraft:iron_sword", "_sword$", "An item id pattern", Adds.HELD));
+        kinds.add(new Rule("Off-hand item", List.of("items", "offHand"), Type.LIST, "minecraft:shield", "shield", "An item id pattern", Adds.HELD));
+        kinds.add(new Rule("Worn item", List.of("items", "worn"), Type.LIST, "minecraft:iron_chestplate", "netherite", "An item id pattern", Adds.HELD));
         boolean seeking = !list.equals("ignores");
-        if (seeking) kinds.add(new Rule("Chat words", List.of("chat"), Type.LIST, "minecraft:writable_book", "traitor", "Words in chat that make the speaker a target."));
+        if (seeking) kinds.add(new Rule("Chat words", List.of("chat"), Type.LIST, "minecraft:writable_book", "traitor", "Words in chat that make the speaker a target", Adds.TYPED));
         for (String nested : NESTED)
-            if (seeking || nested.equals("all")) kinds.add(new Rule(switch (nested) { case "all" -> "Match-all sets"; case "together" -> "Together groups"; default -> "Fight events"; },
-                    List.of(nested), Type.NESTED, "minecraft:bookshelf", "", "Kept as they are; edit them in the web editor."));
+            if (seeking || nested.equals("all")) kinds.add(new Rule(switch (nested) { case "all" -> "Match-all sets"; case "together" -> "Together sets"; default -> "Fight events"; },
+                    List.of(nested), Type.NESTED, "minecraft:bookshelf", "", "Edit them in the web editor", Adds.TYPED));
         return kinds;
     }
 
+    /** {@code npcs} reads NPCs, the rest as their capitalised name. */
+    private static String category(TargetCategory category) { return category == TargetCategory.NPCS ? "NPCs" : CombatFields.label(category.jsonName()); }
+
     @Override void draw() {
-        List<String> selected = toolkit.selected(viewer.id());
-        list(kinds(), "No rules", this::row);
         back();
-        icon(INFO_SLOT, "minecraft:name_tag", title(ToolkitFiles.count(selected.size()) + " selected"),
-                List.of("&7Shows &f" + (selected.isEmpty() ? "nothing" : selected.getFirst()), "&7Save sets this whole list on all of them"), Optional.empty());
-        boolean changed = !rules.equals(stored());
-        if (changed) button(DISCARD, "minecraft:bucket", title("Discard"), any("go back to the saved list"), (GuiModel.Click click) -> rules = stored());
+        help(EXPLAINED, "21-in-game-toolkit", "rule-lists");
+        List<String> selected = toolkit.selected(viewer.id());
+        if (selected.isEmpty()) { CombatScreen.nothingSelected(this); return; }
+        list(kinds(list), Rule::label, "No rules", this::row);
+        List<String> lines = new ArrayList<>();
+        if (selected.size() > 1) lines.add("&7Rows show " + selected.getFirst() + "; Save sets all of them");
         List<String> summary = summary(rules);
-        String detail = (summary.isEmpty() ? "Empty; Save removes the list" : String.join("; ", summary)) + (changed ? " (changed)" : "");
-        guarded(SAVE, "minecraft:writable_book", "Save", detail, selected.size(), false, this::save);
+        if (summary.isEmpty()) lines.add("&7Empty; Save removes the list");
+        for (String line : summary) lines.add("&f" + line);
+        icon(INFO_SLOT, "minecraft:name_tag", title(named(selected)), lines, Optional.empty());
+        draft(changes(), selected.size(), true, this::save, this::discard);
+    }
+
+    /** How many rule kinds the draft changes from the saved list. */
+    private int changes() {
+        JsonObject saved = stored();
+        Set<String> keys = new HashSet<>(saved.keySet());
+        keys.addAll(rules.keySet());
+        int changed = 0;
+        for (String key : keys) if (!Objects.equals(saved.get(key), rules.get(key))) changed++;
+        return changed;
     }
 
     private void save() {
@@ -99,62 +122,72 @@ final class TargetRulesScreen<P, S> extends ToolScreen<P, S> {
         chosen().ifPresent((List<String> ids) -> toolkit.write(viewer, (ToolkitFiles ignored) -> new CombatFiles(toolkit.npcs()).rules(ids, list, saved)));
     }
 
+    private void discard() { rules = stored(); }
+
     private void row(int slot, Rule rule) {
         List<String> lines = new ArrayList<>(List.of("&7" + rule.description()));
         switch (rule.type()) {
             case CATEGORY -> {
                 boolean on = strings(List.of("categories")).contains(rule.path().getLast());
-                lines.add(on ? "&aOn" : "&7Off");
-                button(slot, rule.icon(), title(rule.label() + ": &f" + (on ? "on" : "off")), lore(lines, any("toggle")), (GuiModel.Click click) -> toggle(rule.path().getLast()));
+                lines.add("&fNow: " + (on ? "on" : "off"));
+                lines.add("&8categories: " + rule.path().getLast());
+                button(slot, rule.icon(), title(rule.label()), lore(lines, any(on ? "turn off" : "turn on")), (GuiModel.Click click) -> toggle(rule.path().getLast()));
             }
             case OWNER -> {
                 boolean on = CombatFiles.literalTrue(rules, "owner");
-                button(slot, rule.icon(), title(rule.label() + ": &f" + (on ? "on" : "off")), lore(lines, any("toggle")), (GuiModel.Click click) -> {
+                lines.add("&fNow: " + (on ? "on" : "off"));
+                lines.add("&8owner");
+                button(slot, rule.icon(), title(rule.label()), lore(lines, any(on ? "turn off" : "turn on")), (GuiModel.Click click) -> {
                     if (on) rules.remove("owner"); else rules.addProperty("owner", true);
                 });
             }
             case HEALTH -> {
                 Optional<JsonElement> value = CombatFiles.at(rules, rule.path());
-                button(slot, rule.icon(), title(rule.label() + ": &f" + value.map((JsonElement number) -> SettingsScreen.number(number.getAsDouble()) + "%").orElse("off")),
-                        lore(lines, hints(value.isEmpty() ? "turn on at 50%" : "+5%", "-5%", "turn off")), (GuiModel.Click click) -> health(rule, value, click));
+                lines.add("&fNow: " + value.map((JsonElement number) -> SettingsScreen.number(number.getAsDouble()) + "%").orElse("off"));
+                lines.add("&8" + rule.key());
+                List<String> hints = value.isEmpty() ? hints("turn on at 50%", "", "type a value") : hints("+5%", "-5%", "type a value, blank turns off");
+                button(slot, rule.icon(), title(rule.label()), lore(lines, hints), (GuiModel.Click click) -> health(rule, value, click));
             }
             case LIST -> {
                 List<String> entries = strings(rule.path());
-                lines.add("&f" + (entries.isEmpty() ? "&7None" : names(entries, 6)));
-                String sneak = rule.path().getFirst().equals("npcs") ? "click an NPC with the wand" : rule.path().getFirst().equals("items") ? "add the item you hold" : "list and remove";
-                button(slot, rule.icon(), title(rule.label() + " &7(" + entries.size() + ")"), lore(lines, hints("add one", "list and remove", sneak)), (GuiModel.Click click) -> entry(rule, click));
+                lines.add("&fNow: " + (entries.isEmpty() ? "none" : names(entries, 4)));
+                lines.add("&8" + rule.key());
+                button(slot, rule.icon(), title(rule.label()), lore(lines, hints("add one", "list and remove", "")), (GuiModel.Click click) -> {
+                    if (click.right()) push(new Entries<>(toolkit, viewer, commands, this, rule));
+                    else type(rule);
+                });
             }
             case NESTED -> {
                 Optional<JsonElement> value = CombatFiles.at(rules, rule.path());
                 int count = value.map((JsonElement element) -> element.isJsonArray() ? element.getAsJsonArray().size() : element.getAsJsonObject().size()).orElse(0);
-                lines.add("&f" + count + "&7 kept");
+                lines.add("&fNow: " + count + " kept");
+                lines.add("&8" + rule.key());
                 icon(slot, rule.icon(), title(rule.label()), lines, Optional.empty());
             }
         }
     }
 
+    /** Click turns a bound on at 50% or adds 5%, right-click takes 5% off, sneak-click types a percent; blank turns it off. */
     private void health(Rule rule, Optional<JsonElement> value, GuiModel.Click click) {
         String key = rule.path().getFirst();
-        if (sneak(click)) { rules.remove(key); return; }
-        if (value.isEmpty()) { if (!right(click)) rules.addProperty(key, 50); return; }
-        double next = Math.clamp(value.get().getAsDouble() + (right(click) ? -5 : 5), 0, 100);
-        if (next == Math.rint(next)) rules.addProperty(key, (long) next); else rules.addProperty(key, next);
+        if (sneak(click)) {
+            prompt(rule.label(), value.map((JsonElement number) -> SettingsScreen.number(number.getAsDouble())).orElse(""), (String typed) -> {
+                if (typed.isBlank()) { rules.remove(key); return; }
+                Optional<Double> percent = SettingsScreen.parse(typed);
+                if (percent.isEmpty() || percent.get() < 0 || percent.get() > 100) { refuse(rule.label() + " is a percent from 0 to 100"); return; }
+                percent(key, percent.get());
+            });
+            return;
+        }
+        if (value.isEmpty()) { if (!click.right()) rules.addProperty(key, 50); return; }
+        percent(key, Math.clamp(value.get().getAsDouble() + (click.right() ? -5 : 5), 0, 100));
     }
 
-    private void entry(Rule rule, GuiModel.Click click) {
-        // Sneaking picks an NPC on the NPC list and adds the held item on item rows; every other row lists its entries.
-        boolean npcs = rule.path().getFirst().equals("npcs"), items = rule.path().getFirst().equals("items");
-        if (right(click) || click == GuiModel.Click.SHIFT_RIGHT || sneak(click) && !npcs && !items) {
-            viewer.push(new Entries<>(toolkit, viewer, commands, this, rule));
-            return;
-        }
-        if (sneak(click) && npcs) { pick(rule.label(), (String npc) -> add(rule, npc)); return; }
-        if (sneak(click)) {
-            Optional<NpcItem> held = toolkit.host().worn(viewer.player(), EquipmentSlot.MAIN_HAND);
-            if (held.isEmpty()) { toolkit.say(viewer.player(), ChatLine.error("Hold the item in your main hand first")); return; }
-            add(rule, "^" + held.get().id() + "$");
-            return;
-        }
+    private void percent(String key, double value) {
+        if (value == Math.rint(value)) rules.addProperty(key, (long) value); else rules.addProperty(key, value);
+    }
+
+    private void type(Rule rule) {
         prompt(rule.label(), rule.example(), (String typed) -> { if (!typed.isBlank()) add(rule, typed.strip()); });
     }
 
@@ -168,7 +201,7 @@ final class TargetRulesScreen<P, S> extends ToolScreen<P, S> {
         JsonObject module = new JsonObject();
         module.add(list, next);
         try { CombatSettings.parseModule(module, HealthSettings.UNKILLABLE); }
-        catch (IllegalArgumentException invalid) { toolkit.say(viewer.player(), ChatLine.error(invalid.getMessage())); return; }
+        catch (IllegalArgumentException invalid) { refuse(invalid.getMessage()); return; }
         rules = next;
     }
 
@@ -202,30 +235,37 @@ final class TargetRulesScreen<P, S> extends ToolScreen<P, S> {
         return CombatFiles.at(module, List.of(list)).filter(JsonElement::isJsonObject).map((JsonElement object) -> object.getAsJsonObject().deepCopy()).orElse(new JsonObject());
     }
 
-    /** A rule list as lines of {@code key: values}, in file order, as the definition file reads. */
+    /** A rule list as lines people read, one per kind of rule in screen order: {@code Monsters, Players}, {@code Players by name: Steve}. */
     static List<String> summary(JsonObject rules) {
         List<String> lines = new ArrayList<>();
-        summarize("", rules, lines);
+        List<String> categories = new ArrayList<>();
+        Set<String> shown = new HashSet<>();
+        for (Rule rule : kinds("targets")) {
+            Optional<JsonElement> value = CombatFiles.at(rules, rule.path().subList(0, rule.type() == Type.CATEGORY ? 1 : rule.path().size()));
+            shown.add(rule.path().getFirst());
+            if (value.isEmpty()) continue;
+            switch (rule.type()) {
+                case CATEGORY -> { if (value.get().isJsonArray() && value.get().getAsJsonArray().contains(new JsonPrimitive(rule.path().getLast()))) categories.add(rule.label()); }
+                case OWNER -> { if (CombatFiles.literalTrue(rules, "owner")) lines.add(rule.label()); }
+                case HEALTH -> lines.add(rule.label() + " " + SettingsScreen.number(value.get().getAsDouble()) + "%");
+                case LIST -> lines.add(rule.label() + ": " + names(texts(value.get()), 4));
+                case NESTED -> lines.add(rule.label() + ": " + (value.get().isJsonArray() ? value.get().getAsJsonArray().size() : value.get().getAsJsonObject().size()) + " kept");
+            }
+        }
+        if (!categories.isEmpty()) lines.addFirst(String.join(", ", categories));
+        for (Map.Entry<String, JsonElement> other : rules.entrySet()) if (!shown.contains(other.getKey())) lines.add(other.getKey() + ": " + other.getValue());
         return lines;
     }
 
-    private static void summarize(String prefix, JsonObject object, List<String> lines) {
-        for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
-            String key = prefix + entry.getKey();
-            JsonElement value = entry.getValue();
-            if (NESTED.contains(key)) lines.add(key + ": " + (value.isJsonArray() ? value.getAsJsonArray().size() : value.getAsJsonObject().size()) + " kept");
-            else if (value.isJsonObject()) summarize(key + ".", value.getAsJsonObject(), lines);
-            else if (value.isJsonArray()) {
-                List<String> items = new ArrayList<>();
-                for (JsonElement item : value.getAsJsonArray()) items.add(item.isJsonPrimitive() ? item.getAsString() : item.toString());
-                lines.add((key.equals("categories") ? "" : key + ": ") + names(items, 6));
-            } else if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isBoolean()) { if (value.getAsBoolean()) lines.add(key); }
-            else lines.add(key + ": " + value.getAsString().toLowerCase(Locale.ROOT));
-        }
+    private static List<String> texts(JsonElement array) {
+        List<String> texts = new ArrayList<>();
+        if (array.isJsonArray()) for (JsonElement item : array.getAsJsonArray()) texts.add(item.isJsonPrimitive() ? item.getAsString() : item.toString());
+        return texts;
     }
 
-    /** The entries of one list; a click removes one from the draft. */
+    /** The entries of one list: a click removes one from the draft, row 4 adds one, and Save writes the shared draft. */
     static final class Entries<P, S> extends ToolScreen<P, S> {
+        static final int ADD = ACTIONS, OTHER = ACTIONS + 1;
         private final TargetRulesScreen<P, S> owner;
         private final Rule rule;
 
@@ -235,12 +275,31 @@ final class TargetRulesScreen<P, S> extends ToolScreen<P, S> {
         }
 
         @Override String title() { return rule.label(); }
+        @Override String node() { return PermissionNodes.COMBAT; }
         @Override int rows() { return 6; }
 
         @Override void draw() {
-            list(owner.strings(rule.path()), "None yet; left click the row on the rules screen to add one", (Integer slot, String value) ->
-                    button(slot, "minecraft:paper", title(value), lore(List.of("&7Back, then Save, writes the change"), any("remove")), (GuiModel.Click click) -> owner.remove(rule, value)));
-            back();
+            list(owner.strings(rule.path()), ToolScreen::itself, "None yet; add one below", (Integer slot, String value) ->
+                    button(slot, "minecraft:paper", title(value), any("remove"), (GuiModel.Click click) -> owner.remove(rule, value)));
+            button(ADD, "minecraft:writable_book", title("Add one"), lore(List.of("&7" + rule.description()), any("type one")), (GuiModel.Click click) -> type());
+            switch (rule.adds()) {
+                case NPC -> button(OTHER, "minecraft:armor_stand", title("Pick an NPC"), lore(List.of("&7Click one with the wand"), any("pick one")),
+                        (GuiModel.Click click) -> pick(rule.label(), (String npc) -> { owner.add(rule, npc); viewer.refresh(); }));
+                case HELD -> button(OTHER, "minecraft:item_frame", title("Add held item"), lore(List.of("&7The item in your main hand"), any("add it")), (GuiModel.Click click) -> held());
+                case TYPED -> { }
+            }
+            draft(owner.changes(), toolkit.selected(viewer.id()).size(), false, owner::save, owner::discard);
+            help(EXPLAINED, "21-in-game-toolkit", "rule-lists");
+        }
+
+        private void type() {
+            prompt(rule.label(), rule.example(), (String typed) -> { if (!typed.isBlank()) owner.add(rule, typed.strip()); });
+        }
+
+        private void held() {
+            Optional<NpcItem> item = toolkit.host().worn(viewer.player(), EquipmentSlot.MAIN_HAND);
+            if (item.isEmpty()) { refuse("Hold the item in your main hand first"); return; }
+            owner.add(rule, "^" + item.get().id() + "$");
         }
     }
 }

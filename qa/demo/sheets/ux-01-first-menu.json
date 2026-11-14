@@ -1,0 +1,30 @@
+{
+  "id": "ux-01-first-menu",
+  "title": "First look at the Animus menu",
+  "description": "Typing /animus for the commands, then /animus gui and reading each button on Home in Simple mode",
+  "target": 27,
+  "client": {"options": {"chatWidth": "1.0", "chatHeightUnfocused": "0.95"}},
+  "stage": {"world": "town"},
+  "setup": [
+    {"run": "/gamemode creative"},
+    {"run": "/clear @s"},
+    {"hotbar": 0},
+    {"tp": [-17.5, 64, 0.5, -90, 4]},
+    {"wait": 3500},
+    {"clearChat": true}
+  ],
+  "beats": [
+    {"wait": 800},
+    {"type": "/animus"},
+    {"result": "/animus lists the common commands, /animus gui first", "ms": 2500},
+    {"menu": true},
+    {"result": "Home: New NPC, NPCs, Wand and Web editor, with Close, Mode and Help below", "ms": 1500},
+    {"hover": "New NPC", "ms": 1600},
+    {"hover": "NPCs", "ms": 1600},
+    {"hover": "Wand", "ms": 1600},
+    {"hover": "Web editor", "ms": 1600},
+    {"hover": "Mode", "ms": 1600},
+    {"hover": "Help", "ms": 1600}
+  ],
+  "closing": "/animus lists the commands; /animus gui opens Home: make an NPC, find one, take the wand or pair the web editor"
+}

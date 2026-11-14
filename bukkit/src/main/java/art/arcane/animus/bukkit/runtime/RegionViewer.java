@@ -3,6 +3,9 @@ package art.arcane.animus.bukkit.runtime;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.text.RichText;
+import art.arcane.animus.core.config.NpcRuntimeSettings;
+import art.arcane.animus.core.presentation.BodyRules;
+import art.arcane.animus.core.runtime.NearestSelection;
 import art.arcane.animus.core.runtime.NpcPresentation;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.PresentationPressure;
@@ -27,7 +30,6 @@ import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerEvent;
 import art.arcane.animus.core.virtual.ChunkPosition;
 import art.arcane.animus.core.virtual.DragonBody;
-import art.arcane.animus.core.virtual.SpatialNpcIndex;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.ViewerSession;
 import art.arcane.animus.core.virtual.VirtualNpcState;
@@ -73,7 +75,7 @@ final class RegionViewer {
     private final ConcurrentLinkedQueue<Runnable> completions = new ConcurrentLinkedQueue<>();
     private final AtomicInteger queued = new AtomicInteger();
     final AtomicInteger shown = new AtomicInteger();
-    private SpatialNpcIndex.Cursor cursor;
+    private final NearestSelection nearest = new NearestSelection();
     private ProximityTracker proximity;
     private int nativeIds, pendingSpawns, bones;
     private long ticks, updates;
@@ -88,10 +90,11 @@ final class RegionViewer {
         this.host = host; this.player = player; this.epoch = epoch;
         id = player.getUniqueId(); world = player.getWorld().getUID();
         preview = new PreviewBodies<>(host.previews, id);
-        guard = new ViewerSession(id, UUID.randomUUID(), limits(host.settings().maximumVisible()));
+        guard = new ViewerSession(id, UUID.randomUUID(), LIMITS);
     }
 
-    private static ViewerSession.Limits limits(int maximumVisible) { return new ViewerSession.Limits(maximumVisible, RegionNpcRuntime.MAX_ISSUED_IDS, 100_000_000L, 4.5); }
+    /** The session guard allows the most {@code maximumVisible} may be; the cap itself is checked before each spawn, so a hotloaded cap never refuses a spawn already sent. */
+    private static final ViewerSession.Limits LIMITS = new ViewerSession.Limits(NpcRuntimeSettings.MAXIMUM_VISIBLE, RegionNpcRuntime.MAX_ISSUED_IDS, 100_000_000L, 4.5);
 
     /** Packet completions arrive on Netty; they are applied on the next viewer tick, on the player's owner. */
     void enqueue(Runnable completion) {
@@ -118,9 +121,6 @@ final class RegionViewer {
             host.reset(this); return;
         }
         ticks++;
-        // A hotloaded maximumVisible: bodies already shown stay; new spawns wait until under it.
-        int maximumVisible = host.settings().maximumVisible();
-        if (guard.limits().maxVisible() != maximumVisible) guard.limits(limits(maximumVisible));
         for (int i = 0; i < MAX_COMPLETIONS; i++) {
             Runnable completion = completions.poll();
             if (completion == null) break;
@@ -198,21 +198,44 @@ final class RegionViewer {
         if (ready && sent < packetBudget)
             sent += preview.update(player, host.packets, at, host.settings().viewDistance(), sentChunk, host::previewSpec,
                     (Runnable completion) -> enqueue(() -> { if (host.current(this)) completion.run(); }), nativeIds, packetBudget - sent);
-        if (!ready || !retirements.isEmpty() || sent >= packetBudget || pendingSpawns >= host.settings().pendingSpawnsPerViewer() || visible.size() >= host.settings().maximumVisible()) return sent;
-        int capacity = Math.min(Math.min(8, packetBudget - sent), Math.min(host.settings().maximumVisible() - visible.size(), host.settings().pendingSpawnsPerViewer() - pendingSpawns));
-        SpatialNpcIndex.Scan scan = host.index.scan(new SpatialNpcIndex.Query(at, host.settings().viewDistance()), cursor, new SpatialNpcIndex.Budget(32, Math.max(1, capacity * 2)), sentChunk);
-        cursor = scan.next().orElse(null);
-        for (VirtualNpcState.Snapshot candidate : scan.candidates()) {
-            if (capacity == 0) break;
-            RegionActor actor = host.byUuid.get(candidate.npcId());
-            RegionActor.Publication now = actor == null ? null : actor.publication;
-            if (now == null || visible.containsKey(candidate.npcId()) || retiring.containsKey(candidate.npcId())
-                    || nativeIds + preview.reservedIds() + now.ids() > 256 || !eligible(now, at, sentChunk)) continue;
-            if (!admit(PresentationPressure.Tier.AUTHORITATIVE)) break;
-            spawn(actor, now); sent++; capacity--;
-            if (!host.current(this)) break;
+        // A hotloaded maximumVisible: bodies already shown stay; new spawns wait until under it.
+        int maximumVisible = host.settings().maximumVisible();
+        NearestSelection.Area area = new NearestSelection.Area(host.index, at, host.settings().viewDistance(), sentChunk);
+        NearestSelection.View<Live> npcs = npcs(at);
+        if (ready && retirements.isEmpty() && nearest.due(updates, at, visible.size(), maximumVisible)) rank(area, npcs);
+        if (!ready || !retirements.isEmpty() || sent >= packetBudget || pendingSpawns >= host.settings().pendingSpawnsPerViewer() || visible.size() >= maximumVisible) return sent;
+        int capacity = Math.min(Math.min(8, packetBudget - sent), Math.min(maximumVisible - visible.size(), host.settings().pendingSpawnsPerViewer() - pendingSpawns));
+        return sent + nearest.fill(area, npcs, capacity, maximumVisible);
+    }
+    /** An NPC's actor with the publication read once for this update. */
+    private record Live(RegionActor actor, RegionActor.Publication now) {}
+    /** This viewer's NPCs as {@link NearestSelection} ranks and spawns them. */
+    private NearestSelection.View<Live> npcs(WorldPosition at) {
+        return new NearestSelection.View<>() {
+            @Override public Live npc(UUID npc) {
+                RegionActor actor = host.byUuid.get(npc);
+                RegionActor.Publication now = actor == null ? null : actor.publication;
+                return now == null ? null : new Live(actor, now);
+            }
+            @Override public boolean eligible(Live npc, Predicate<ChunkPosition> chunks) { return RegionViewer.this.eligible(npc.now(), at, chunks); }
+            @Override public WorldPosition position(Live npc) { return npc.now().snapshot().position(); }
+            @Override public int ids(Live npc) { return npc.now().ids(); }
+            @Override public boolean showing(UUID npc) { return visible.containsKey(npc); }
+            @Override public int shownIds(UUID npc) { return visible.get(npc).ids; }
+            @Override public int shownCount() { return visible.size(); }
+            @Override public boolean retiring(UUID npc) { return retiring.containsKey(npc); }
+            @Override public boolean fits(int ids) { return nativeIds + preview.reservedIds() + ids <= BodyRules.MAX_BODIES_PER_VIEWER; }
+            @Override public boolean admit() { return RegionViewer.this.admit(PresentationPressure.Tier.AUTHORITATIVE); }
+            @Override public void spawn(Live npc) { RegionViewer.this.spawn(npc.actor(), npc.now()); }
+            @Override public boolean current() { return host.current(RegionViewer.this); }
+        };
+    }
+    /** Ranks every eligible NPC in range for this viewer (see {@link NearestSelection}): those that lose their place leave. */
+    private void rank(NearestSelection.Area area, NearestSelection.View<Live> npcs) {
+        for (UUID leaving : nearest.rank(updates, area, npcs, host.settings().maximumVisible(), BodyRules.MAX_BODIES_PER_VIEWER - preview.reservedIds())) {
+            Presented body = visible.get(leaving);
+            if (body != null) retire(body);
         }
-        return sent;
     }
     /** A live NPC a preview stands in for stays hidden from this viewer only, as does one whose viewers filter hides it from them. */
     private boolean eligible(RegionActor.Publication now, WorldPosition at, Predicate<ChunkPosition> sentChunk) {

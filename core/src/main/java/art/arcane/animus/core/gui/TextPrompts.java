@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.text.Palette;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -18,6 +19,19 @@ import java.util.function.Consumer;
 public final class TextPrompts {
     /** Typing this word, in any case, cancels the prompt. */
     public static final String CANCEL = "cancel";
+    private static final String CONFIRM = Palette.TEXT + "Click to confirm";
+
+    /** The lore of an anvil's result paper: how to answer, then the prompt's hint when it has one. RichText source. */
+    public static List<String> lore(ScreenHost.Prompt prompt) {
+        return prompt.hint().isBlank() ? List.of(CONFIRM) : List.of(CONFIRM, Palette.GREY + prompt.hint());
+    }
+
+    /** What the chat fallback says: what to type, the current text when there is one, and how to cancel, then the hint. RichText source. */
+    public static List<String> chat(ScreenHost.Prompt prompt) {
+        String now = prompt.initial().isBlank() ? "" : " (now " + prompt.initial() + ")";
+        String ask = Palette.GREY + "Type " + prompt.label() + now + " in chat, or type " + CANCEL;
+        return prompt.hint().isBlank() ? List.of(ask) : List.of(ask, Palette.GREY + prompt.hint());
+    }
 
     /** How the player answers: an anvil window, or a chat line when the anvil could not be opened. */
     public enum Input { ANVIL, CHAT }

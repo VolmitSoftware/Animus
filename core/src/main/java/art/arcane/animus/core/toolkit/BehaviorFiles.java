@@ -4,6 +4,7 @@ import art.arcane.animus.core.behavior.catalog.BehaviorPath;
 import art.arcane.animus.core.behavior.conversation.ConversationDocument;
 import art.arcane.animus.core.editor.DocumentKind;
 import art.arcane.animus.core.editor.EditorDocuments;
+import art.arcane.animus.core.npc.DefinitionBatch;
 import art.arcane.animus.core.npc.GroupDocument;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
@@ -24,7 +25,8 @@ import java.util.Set;
 /**
  * The behavior screens' file work, on the file lane: which behaviors exist and who lists them, putting one on the
  * selection or taking it off in one transaction, and reading, saving and creating conversations. A saved conversation
- * is checked by the same compiler the web editor's save uses and refused whole when it would not load.
+ * is checked by the same compiler the web editor's save uses and refused whole when it would not load. Talk makes an
+ * NPC's first conversation and attaches it in the same transaction, so one Undo takes both back.
  */
 final class BehaviorFiles {
     private final NpcRepository npcs;
@@ -95,6 +97,11 @@ final class BehaviorFiles {
         return drafts.isEmpty() ? head : head + "; tx " + npcs.applyAll(drafts);
     }
 
+    /** A conversation as chat lines name it: {@code Greeter Bob's conversation} when made for an NPC by Talk, else its id. */
+    String shown(String id) {
+        return npcs.find(ConversationScreen.label(id)).map((NpcDefinition npc) -> NpcsScreen.name(npc) + "'s conversation").orElse(id);
+    }
+
     /** The behavior read as a conversation; refused with the editor's reason when it is not one. */
     Loaded conversation(String id) throws IOException {
         EditorDocuments.Location location = find(id).orElseThrow(() -> new IOException("No behavior " + id));
@@ -112,43 +119,112 @@ final class BehaviorFiles {
      * Refused when the compiler finds an error or the file changed since it was read.
      */
     Saved save(Loaded loaded, JsonObject next) throws IOException {
-        if (next.equals(loaded.behavior())) return new Saved("No changes to " + loaded.id(), loaded);
+        if (next.equals(loaded.behavior())) return new Saved("No changes to " + shown(loaded.id()), loaded);
         JsonObject revised = next.deepCopy();
         revised.addProperty("revision", EditorDocuments.revision(JsonDocuments.write(loaded.behavior())) + 1);
-        Committed committed = commit(loaded.id(), loaded.path(), loaded.hash(), revised);
-        return new Saved("Saved " + loaded.id() + "; tx " + committed.tx(), committed.loaded());
+        checked(loaded.id(), revised);
+        String text = JsonDocuments.write(revised);
+        String tx = store.commit(List.of(new DocumentStore.Change(loaded.path(), loaded.hash(), text)));
+        return new Saved("Saved " + shown(loaded.id()) + "; tx " + tx, loaded(loaded.id(), loaded.path(), text));
     }
 
     /** A new conversation that says "Hello" on a right click, at {@code behaviors/<namespace>/<path>.json}. */
     Saved create(String id) throws IOException {
-        String path;
-        try { path = BehaviorPath.forId(id); }
-        catch (IllegalArgumentException invalid) { throw new IOException("A behavior id is namespace:path in lowercase, like town:greeter"); }
+        String path = path(id);
         if (find(id).isPresent()) throw new IOException("Behavior " + id + " already exists");
+        JsonObject next = blank(id);
+        checked(id, next);
+        String text = JsonDocuments.write(next);
+        String tx = store.commit(List.of(new DocumentStore.Change(path, "missing", text)));
+        return new Saved("Created " + id + "; tx " + tx, loaded(id, path, text));
+    }
+
+    /** The conversations the listed NPCs have, their own or through a trait group, sorted by id. */
+    List<Behavior> talks(List<String> ids) throws IOException {
+        return behaviors(ids).stream().filter((Behavior behavior) -> behavior.misfit().isEmpty() && behavior.listed() + behavior.grouped() > 0).toList();
+    }
+
+    /**
+     * The first conversation of the listed NPCs: {@code <folder>:<npc>-talk}, saying "Hello" on a right click, made and
+     * attached to all of them in one transaction. A conversation already saved under that id is attached instead.
+     */
+    Saved talk(List<String> ids) throws IOException {
+        NpcDefinition first = stored(ids.getFirst()).orElseThrow(() -> new IOException("No NPC " + ids.getFirst()));
+        String base = talkId(first), id = base;
+        for (int n = 2; find(id).isPresent(); n++) {
+            if (conversational(id)) return new Saved(attach(id, ids, true), conversation(id));
+            id = base + "-" + n;
+        }
+        JsonObject next = blank(id);
+        checked(id, next);
+        String path = path(id), text = JsonDocuments.write(next);
+        List<NpcDefinition> updated = new ArrayList<>();
+        Map<String, String> expected = new HashMap<>();
+        for (String npc : ids) {
+            NpcRepository.Draft draft = npcs.draft(npc);
+            JsonObject document = draft.document();
+            List<String> own = strings(document.get("behaviors"));
+            JsonArray listed = new JsonArray();
+            for (String behavior : own) listed.add(behavior);
+            if (!own.contains(id)) listed.add(id);
+            document.add("behaviors", listed);
+            document.addProperty("revision", draft.expectedRevision() + 1);
+            updated.add(NpcDefinition.parse(JsonDocuments.write(document)));
+            expected.put(draft.path(), draft.expectedHash());
+        }
+        String tx = DefinitionBatch.commit(store, updated, expected, List.of(new DocumentStore.Change(path, "missing", text)));
+        npcs.reload();
+        return new Saved("Made a conversation for " + ToolkitFiles.named(npcs, ids) + "; tx " + tx, loaded(id, path, text));
+    }
+
+    /** {@code town:guard-talk} for guard in folder town; {@code guard:talk} for guard in no folder, the NPC naming its own files. */
+    static String talkId(NpcDefinition npc) {
+        return npc.group().isEmpty() ? npc.id() + ":talk" : scoped(npc.group(), npc.id().substring(0, Math.min(npc.id().length(), 59)) + "-talk");
+    }
+
+    /**
+     * An id for a file made for NPCs in {@code folder}: {@code town:name} in folder town, {@code town:market/name}
+     * deeper. A file for an NPC in no folder takes the NPC's id as its namespace instead.
+     */
+    static String scoped(String folder, String name) {
+        int slash = folder.indexOf('/');
+        return slash < 0 ? folder + ":" + name : folder.substring(0, slash) + ":" + folder.substring(slash + 1) + "/" + name;
+    }
+
+    private boolean conversational(String id) throws IOException {
+        String content = store.read(find(id).orElseThrow().path());
+        return content != null && ConversationDocument.read(JsonDocuments.object(content)) instanceof ConversationDocument.Fits;
+    }
+
+    private static String path(String id) throws IOException {
+        try { return BehaviorPath.forId(id); }
+        catch (IllegalArgumentException invalid) { throw new IOException("A behavior id is namespace:path in lowercase, like town:greeter"); }
+    }
+
+    private static JsonObject blank(String id) {
         JsonObject blank = new JsonObject();
         blank.addProperty("schemaVersion", 1);
         blank.addProperty("revision", 1);
         blank.addProperty("id", id);
         blank.addProperty("entry", "main");
         blank.add("routines", new JsonObject());
-        Committed committed = commit(id, path, "missing", ConversationDocument.started("Hello").write(blank));
-        return new Saved("Created " + id + "; tx " + committed.tx(), committed.loaded());
+        return ConversationDocument.started("Hello").write(blank);
     }
 
-    private Committed commit(String id, String path, String expected, JsonObject next) throws IOException {
+    /** Refuses a behavior the compiler finds an error in, with the first error. */
+    private void checked(String id, JsonObject next) throws IOException {
         for (JsonElement problem : new EditorDocuments(store, () -> 0).validate(DocumentKind.BEHAVIOR, id, next)) {
             JsonObject diagnostic = problem.getAsJsonObject();
             if ("error".equals(diagnostic.get("severity").getAsString()))
                 throw new IOException("Not saved: " + diagnostic.get("path").getAsString() + " " + diagnostic.get("message").getAsString());
         }
-        String text = JsonDocuments.write(next);
-        String tx = store.commit(List.of(new DocumentStore.Change(path, expected, text)));
-        JsonObject written = JsonDocuments.object(text);
-        ConversationDocument fresh = ((ConversationDocument.Fits) ConversationDocument.read(written)).conversation();
-        return new Committed(tx, new Loaded(id, path, JsonDocuments.hash(text), written, fresh));
     }
 
-    private record Committed(String tx, Loaded loaded) {}
+    private static Loaded loaded(String id, String path, String text) throws IOException {
+        JsonObject written = JsonDocuments.object(text);
+        ConversationDocument fresh = ((ConversationDocument.Fits) ConversationDocument.read(written)).conversation();
+        return new Loaded(id, path, JsonDocuments.hash(text), written, fresh);
+    }
 
     private Optional<EditorDocuments.Location> find(String id) throws IOException {
         for (EditorDocuments.Location location : new EditorDocuments(store, () -> 0).list(Set.of(DocumentKind.BEHAVIOR)))

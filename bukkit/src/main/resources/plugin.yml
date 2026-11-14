@@ -73,7 +73,7 @@ permissions:
     description: Move NPCs to you, teleport to them, send them along routes, and end NPC rides.
     default: op
   animus.tools:
-    description: Use /animus tools, the selection wand and /animus setup; each tool also needs its own node.
+    description: Open the Animus menu with /animus gui or /animus tools, use the selection wand and /animus setup; each menu job also needs its own node.
     default: op
   animus.behaviors:
     description: Run, reload, trace and cancel behaviors, and call module actions.
@@ -94,7 +94,7 @@ permissions:
     description: Open, list, reload and reset shops, and add offers with /animus shop stock.
     default: op
   animus.gui:
-    description: Open, reload and export chest GUIs, menus and holograms, and make them with /animus gui create and /animus hologram create.
+    description: Open, reload and export chest GUIs, menus and holograms with the /animus gui commands, and make them with /animus gui create and /animus hologram create.
     default: op
   animus.build:
     description: Run NPC builds and their teams.

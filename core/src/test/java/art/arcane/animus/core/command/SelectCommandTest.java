@@ -32,11 +32,27 @@ class SelectCommandTest {
     }
 
     private final List<String> toolkit = new ArrayList<>();
+    private int cleared;
+
+    /** The NPCs saved here: smith, and none when a test saves one by that id. */
+    private final List<String> saved = new ArrayList<>(List.of("smith"));
+
+    /** Names an NPC as every command does: here only the saved ones, smith also as world/town/smith, and @selected for mayor. */
+    private Optional<String> named(CommandActor actor, String typed) {
+        if (typed.equals("world/town/smith") || saved.contains(typed)) return Optional.of(typed.equals("world/town/smith") ? "smith" : typed);
+        if (typed.equals("@selected")) return Optional.of("mayor");
+        actor.tell(art.arcane.animus.core.text.Palette.error(CommandGroup.unknownNpc(typed)));
+        return Optional.empty();
+    }
+
+    private void select(Player player, Picking living, String npc) {
+        AnimusCommandTree.select(player, living, npc, (String typed) -> named(player, typed), saved::contains, toolkit::add, () -> cleared++);
+    }
 
     @Test void withoutAnIdThePickedNpcIsSelectedAndGlows() {
         Picking living = new Picking(Optional.of("guard"));
         Player player = new Player();
-        AnimusCommandTree.select(player, living, "", toolkit::add);
+        select(player, living, "");
         assertEquals(List.of("guard"), living.selected);
         assertEquals(List.of("guard"), toolkit, "the wand selection becomes the same NPC");
         assertEquals(List.of("guard " + SelectionPick.GLOW_TICKS), living.glowed);
@@ -46,15 +62,45 @@ class SelectCommandTest {
     @Test void aNamedNpcAlsoGlows() {
         Picking living = new Picking(Optional.empty());
         Player player = new Player();
-        AnimusCommandTree.select(player, living, "smith", toolkit::add);
+        select(player, living, "smith");
         assertEquals(List.of("smith"), living.selected);
         assertEquals(List.of("smith " + SelectionPick.GLOW_TICKS), living.glowed);
+    }
+
+    @Test void anIdIsReadAsEveryCommandReadsIt() {
+        Picking living = new Picking(Optional.empty());
+        Player player = new Player();
+        select(player, living, "world/town/smith");
+        select(player, living, "@selected");
+        assertEquals(List.of("smith", "mayor"), living.selected, "folder ids and @selected name an NPC");
+        select(player, living, "ghost");
+        assertEquals(List.of("smith", "mayor"), toolkit, "an unknown id selects nothing");
+        assertEquals("[Animus]: No NPC named ghost; /animus list shows ids", player.lines.getLast());
+    }
+
+    @Test void noneClearsTheSelection() {
+        Picking living = new Picking(Optional.of("guard"));
+        Player player = new Player();
+        select(player, living, "none");
+        assertEquals(1, cleared);
+        assertTrue(living.selected.isEmpty() && living.glowed.isEmpty() && toolkit.isEmpty(), "nothing is picked");
+        assertEquals("[Animus]: Selection cleared", player.lines.getLast());
+    }
+
+    @Test void anNpcSavedAsNoneIsSelectedRatherThanClearingTheSelection() {
+        saved.add("none");
+        Picking living = new Picking(Optional.empty());
+        Player player = new Player();
+        select(player, living, "none");
+        assertEquals(0, cleared);
+        assertEquals(List.of("none"), living.selected);
+        assertEquals("[Animus]: Selected none", player.rich.getFirst().toString());
     }
 
     @Test void nothingInRangeIsARefusal() {
         Picking living = new Picking(Optional.empty());
         Player player = new Player();
-        AnimusCommandTree.select(player, living, "", toolkit::add);
+        select(player, living, "");
         assertTrue(living.selected.isEmpty() && living.glowed.isEmpty() && toolkit.isEmpty());
         assertEquals("[Animus]: No NPC in view or within 16 blocks.", player.lines.getFirst());
     }

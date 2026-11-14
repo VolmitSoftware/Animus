@@ -6,59 +6,26 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import art.arcane.animus.core.command.CommandActor;
-import art.arcane.animus.core.command.PermissionNodes;
-import art.arcane.animus.core.gui.FakeNpcRuntime;
 import art.arcane.animus.core.gui.GuiModel.Click;
 import art.arcane.animus.core.gui.MockScreenHost;
-import art.arcane.animus.core.gui.MockScreenHost.Player;
-import art.arcane.animus.core.gui.ScreenFrame;
-import art.arcane.animus.core.gui.ScreenHost;
-import art.arcane.animus.core.gui.ScreenManager;
-import art.arcane.animus.core.inventory.MockInventory.Stack;
-import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.recording.RecordingDocument;
 import art.arcane.animus.core.recording.RecordingFrame;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
-import art.arcane.animus.core.text.RichText;
-import art.arcane.animus.core.virtual.Hitbox;
 import art.arcane.animus.core.virtual.Vec3;
-import art.arcane.animus.core.virtual.VirtualNpcState;
-import art.arcane.animus.core.virtual.WorldPosition;
 import com.google.gson.JsonObject;
 import java.io.IOException;
-import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
-/** The route, points and recording screens against a real document store. */
-class ToolkitRoutesTest {
-    static final UUID GUARD = UUID.fromString("12345678-1234-1234-1234-123456789abc"), BAKER = UUID.fromString("22345678-1234-1234-1234-123456789abc");
+/** Routes: the list, one route's details, making a new one with the chat chips, and its points. */
+class ToolkitRoutesTest extends ToolkitHarness {
     static final String MARKET = "{\"schemaVersion\":1,\"loop\":true,\"points\":[{\"x\":0.5,\"y\":64,\"z\":0.5},{\"x\":8.5,\"y\":64,\"z\":0.5}]}";
-    @TempDir Path root;
-    DocumentStore store;
-    NpcRepository npcs;
-    final MockScreenHost host = new MockScreenHost();
-    final Player alex = new Player("Alex");
-    final ScreenManager<Player, Stack> manager = new ScreenManager<>(host, (UUID npc) -> true, (String warning) -> { throw new AssertionError(warning); });
-    final List<Runnable> queue = new ArrayList<>();
-    final List<String> calls = new ArrayList<>();
-    final Toolkit.Commands commands = new Toolkit.Commands((CommandActor actor, String id) -> {}, (CommandActor actor) -> {}, (CommandActor actor, String id) -> {});
-    Toolkit<Player, Stack> toolkit;
-
-    static String npc(String id, UUID uuid, String modules) {
-        return "{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"" + uuid + "\",\"id\":\"" + id + "\",\"group\":\"town\",\"name\":\"N\",\"type\":\"minecraft:player\",\"spawned\":true,"
-                + "\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}" + modules + "}";
-    }
+    static final List<String> NOT_ON_CENTRE = List.of("Delete", "Discard", "Delete point", "Close", "Stand still", "Dismount");
 
     static String recording(String id) {
         return new RecordingDocument(1, id, UUID.fromString("8667ba71-b85a-4004-af54-457a9734eed7"), "world", new RecordingDocument.Origin(0, 64, 0, 0, 0), 2, 40,
@@ -66,116 +33,271 @@ class ToolkitRoutesTest {
     }
 
     @BeforeEach void setUp() throws IOException {
-        store = new DocumentStore(root);
-        store.commit(List.of(
-                new DocumentStore.Change("npcs/town/guard.json", "missing", npc("guard", GUARD, ",\"modules\":{\"animus:navigation\":{\"enabled\":true,\"route\":\"market\"}}")),
-                new DocumentStore.Change("npcs/town/baker.json", "missing", npc("baker", BAKER, "")),
-                new DocumentStore.Change("routes/market.json", "missing", MARKET),
-                new DocumentStore.Change("recordings/wave.json", "missing", recording("wave"))));
-        npcs = new NpcRepository(store);
-        assertTrue(npcs.reload().isEmpty());
-        alex.permissions.add(PermissionNodes.ADMIN);
-        stand(0, 0);
-        alex.wand = true;
-        FakeNpcRuntime<Player> living = new FakeNpcRuntime<>((UUID id) -> id.equals(alex.id) ? Optional.of(alex) : Optional.empty()) {
-            @Override public Optional<ActiveNpc> active(UUID npc) {
-                String id = npc.equals(GUARD) ? "guard" : npc.equals(BAKER) ? "baker" : null;
-                if (id == null) return Optional.empty();
-                Vec3 at = new Vec3(3, 64, 0);
-                return Optional.of(new ActiveNpc(id, id, new VirtualNpcState.Snapshot(npc, new WorldPosition("world", at), new Hitbox(at, at.add(new Vec3(0.6, 1.8, 0.6))), 20, true, 1)));
-            }
-            @Override public void followRoute(String id, String route) { calls.add("follow " + id + " " + route); }
-        };
-        toolkit = Toolkit.install(new Toolkit.Parts<>(() -> npcs, () -> store, manager, living, queue::add, (Player player) -> Optional.empty(), Optional.empty(), () -> 1L));
+        start(List.of(npcFile("guard", GUARD, ",\"modules\":{\"animus:navigation\":{\"enabled\":true,\"route\":\"market\"}}"), npcFile("baker", BAKER, ""),
+                file("routes/market.json", MARKET)), true);
+        active.put(GUARD, 3.0);
+        active.put(BAKER, 3.0);
     }
-
-    @AfterEach void tearDown() throws IOException { toolkit.close(); store.close(); }
-
-    void stand(double x, double z) { alex.pose = new ScreenHost.Pose(Set.of("world"), x, 64, z, 65.62, 0, 0, false); }
-
-    void drain() { while (!queue.isEmpty()) queue.removeFirst().run(); }
-
-    void click(String name, Click click) { manager.click(alex, alex.window, MockScreenHost.slot(alex, name), click); }
-
-    String lore(String name) {
-        ScreenFrame.Item item = alex.frame.items().get(MockScreenHost.slot(alex, name));
-        return String.join("\n", item.lore().stream().map(RichText::plain).toList());
-    }
-
-    boolean shows(String name) { return alex.frame.items().values().stream().anyMatch((ScreenFrame.Item item) -> item.name().map(RichText::plain).orElse("").equals(name)); }
 
     JsonObject navigation(String id) { return npcs.find(id).orElseThrow().json().getAsJsonObject("modules").getAsJsonObject("animus:navigation"); }
 
-    String tx() {
-        String line = alex.messages.getLast();
-        return line.substring(line.indexOf("; tx ") + 5).split("[ ;]")[0];
+    String tx() { return changes().getLast(); }
+
+    /** No destructive button or Close sits where the pointer opens. */
+    void centreIsSafe() {
+        for (int slot : List.of(13, 22, 31)) assertFalse(NOT_ON_CENTRE.contains(name(slot)), title() + " has " + name(slot) + " on slot " + slot);
     }
 
-    @Test void thePointsScreenTeleportsSelectsInsertsMovesWaitsAndDeletes() throws IOException {
-        toolkit.point(alex);
-        stand(10, 0);
-        toolkit.point(alex);
-        stand(20, 0);
-        toolkit.point(alex);
-        stand(9, 0);
-        toolkit.open(alex.id, commands, PointsScreen::new);
-        assertTrue(shows("Point 2 (here)"), "the nearest point is marked");
-        assertTrue(lore("Point 3").contains("Current"), lore("Point 3"));
-        assertTrue(lore("Point 1").contains("Wait route default"), lore("Point 1"));
-        click("Point 1", Click.LEFT);
-        assertTrue(alex.effects.contains("teleport:world:0,64,0"), alex.effects.toString());
-        click("Point 1", Click.RIGHT);
-        stand(5, 5);
-        click("Insert point", Click.LEFT);
-        WaypointCapture capture = toolkit.capture(alex.id).orElseThrow();
-        assertEquals(new Vec3(5.5, 64, 5.5), capture.points().get(1), "inserted after the current point");
-        assertEquals(1, capture.current());
-        stand(-3, 7);
-        click("Point 4", Click.SHIFT_LEFT);
-        assertEquals(new Vec3(-2.5, 64, 7.5), capture.points().get(3));
-        click("Wait at point 2", Click.LEFT);
-        MockScreenHost.answer(alex, Optional.of("40"));
-        assertTrue(lore("Point 2").contains("Wait 40 ticks"), lore("Point 2"));
-        click("Point 3", Click.SHIFT_RIGHT);
-        assertEquals(3, capture.points().size(), "a short route deletes at once");
-        click("Save route", Click.LEFT);
-        drain();
-        JsonObject saved = JsonDocuments.object(store.read("routes/wp-alex.json"));
-        assertEquals(40, saved.getAsJsonArray("points").get(1).getAsJsonObject().get("waitTicks").getAsInt());
-        assertTrue(toolkit.capture(alex.id).isEmpty());
+    /** One tap of sneak where Alex stands at {@code x}. */
+    void sneakAt(double x) {
+        stand(x, 0, false);
+        toolkit.tick(alex);
+        stand(x, 0, true);
+        toolkit.tick(alex);
+        toolkit.tick(alex);
     }
 
-    @Test void deletingFromALongRouteAsksTwice() {
-        for (int i = 0; i < ToolScreen.BULK + 1; i++) { stand(i, 0); toolkit.point(alex); }
-        toolkit.open(alex.id, commands, PointsScreen::new);
-        click("Point 21", Click.SHIFT_RIGHT);
-        assertEquals(ToolScreen.BULK + 1, toolkit.capture(alex.id).orElseThrow().points().size());
-        assertTrue(lore("Point 21").contains("Sneak-right again to delete"), lore("Point 21"));
-        click("Point 21", Click.SHIFT_RIGHT);
-        assertEquals(ToolScreen.BULK, toolkit.capture(alex.id).orElseThrow().points().size());
+    void routes() {
+        toolkit.open(alex.id, RouteScreen::new);
+        drain();
     }
 
-    @Test void theRouteListShowsPointsAndUsersAndSneakOpensItsDetails() {
-        toolkit.open(alex.id, commands, RouteScreen::new);
+    void detail() {
+        routes();
+        click("Market", Click.RIGHT);
         drain();
-        assertTrue(lore("market").contains("2 points"), lore("market"));
-        assertTrue(lore("market").contains("Used by 1 NPC"), lore("market"));
-        click("market", Click.SHIFT_LEFT);
+    }
+
+    @Test void theListShowsTheSameItemsInBothModesAndClickUsesTheRouteOnTheSelection() {
+        toolkit.selectOnly(alex.id, "baker");
+        routes();
+        assertEquals("Routes", title());
+        Map<Integer, String> simple = Map.of(0, "Market", 36, "New route", 45, "Back", 46, "Search", 53, "Help");
+        assertEquals(simple, buttons());
+        assertEquals("2 points, used by 1 NPC\nClick: use on baker\nRight-click: details", lore("Market"));
+        centreIsSafe();
+        toolkit.mode(alex.id, ToolkitMode.ADVANCED);
+        routes();
+        assertEquals(simple, buttons(), "Advanced adds nothing here; Walk once, Start and Stop now live in Movement");
+
+        click("Market", Click.LEFT);
         drain();
-        assertEquals("Route market", RichText.plain(alex.frame.title()));
-        assertTrue(lore("market").contains("guard"), lore("market"));
+        assertEquals("market", navigation("baker").get("route").getAsString());
+        assertTrue(alex.messages.getLast().contains("Route Market on baker"), alex.messages.getLast());
+        drain();
+        assertTrue(lore("Market").contains("Now: baker walks it"), lore("Market"));
+        click("Market", Click.RIGHT);
+        drain();
+        assertEquals("Route Market", title());
+    }
+
+    @Test void withNothingSelectedAClickOpensTheDetailsAndAnEmptyListSaysWhatToDo() throws IOException {
+        routes();
+        assertEquals("2 points, used by 1 NPC\nClick: details", lore("Market"));
+        click("Market", Click.LEFT);
+        drain();
+        assertEquals("Route Market", title());
+        store.commit(List.of(new art.arcane.animus.core.storage.DocumentStore.Change("routes/market.json", store.hash("routes/market.json"), null)));
+        routes();
+        assertEquals("No routes yet; New route makes one", name(22));
+    }
+
+    @Test void newRouteIsNamedThenWalkedWithChipsAndSavePutsItOnTheNpcAndReopensMovement() throws IOException {
+        sneakAt(1);
+        assertTrue(toolkit.captures().capture(alex.id).isEmpty(), "sneaking with the wand drops nothing while no route is being made");
+        toolkit.selectOnly(alex.id, "baker");
+        routes();
+        alex.wand = false;
+        click("New route", Click.LEFT);
+        assertEquals("Route name", alex.prompt.label());
+        assertEquals("baker route", alex.prompt.initial(), "a free name is suggested after the NPC's name");
+        MockScreenHost.answer(alex, Optional.of("Bakery Loop"));
+        assertNull(alex.window, "the window closes so the player can walk");
+        assertTrue(alex.wand, "the wand goes in hand so sneaking drops points");
+        assertTrue(alex.messages.contains("bar:Walk, tap sneak to drop a point"), alex.messages.toString());
+        String chips = alex.messages.getLast();
+        assertTrue(chips.startsWith("[Animus]: 0 points "), chips);
+        assertEquals("[Animus]: 0 points [Add] [Undo] [Save] [Cancel]", alex.lines.getLast().visible());
+        assertTrue(art.arcane.animus.core.text.ChatWidth.of(alex.lines.getLast().visible().replace("0 points", "88 points")) <= art.arcane.animus.core.text.ChatWidth.DEFAULT,
+                "the chip line stays on one line at the default chat width");
+        for (String step : List.of("add", "undo", "save", "cancel")) assertTrue(chips.contains("/animus tools capture " + step), chips);
+
+        toolkit.route(alex.id, "save", "");
+        assertTrue(alex.messages.getLast().contains("A route needs at least 2 points; it has 0"), alex.messages.getLast());
+        sneakAt(2);
+        assertTrue(alex.messages.getLast().contains("1 point "), "the chips come back with the count: " + alex.messages.getLast());
+        stand(8, 0, false);
+        toolkit.route(alex.id, "add", "");
+        assertTrue(alex.messages.getLast().contains("2 points"), alex.messages.getLast());
+        toolkit.route(alex.id, "undo", "");
+        assertTrue(alex.messages.contains("bar:Removed the last point, 1 left"), alex.messages.toString());
+        toolkit.route(alex.id, "add", "");
+        assertNull(store.read("routes/bakery-loop.json"), "nothing is written before Save");
+
+        toolkit.route(alex.id, "save", "");
+        drain();
+        assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("Saved route Bakery loop, 2 points, on baker")), "the name as typed: " + alex.messages);
+        assertEquals("bakery-loop", navigation("baker").get("route").getAsString());
+        assertTrue(toolkit.captures().capture(alex.id).isEmpty());
+        assertEquals("Movement", title(), "Movement opens again on the NPC");
+        assertTrue(lore(MovementScreen.HEADER).contains("Now: walks route Bakery loop"), lore(MovementScreen.HEADER));
+        click("Back", Click.LEFT);
+        assertEquals("baker", title());
+        click("Back", Click.LEFT);
+        assertEquals("Animus", title());
+
+        store.rollback(tx());
+        assertTrue(npcs.reloadAfterRollback().isEmpty());
+        assertNull(store.read("routes/bakery-loop.json"), "one Undo takes back the route and its use together");
+        assertFalse(npcs.find("baker").orElseThrow().json().has("modules"));
+    }
+
+    @Test void aSaveLeavesOffDeletedNpcsAndNumbersANameTakenMeanwhile() throws IOException {
+        toolkit.captures().start(alex, "market", List.of("guard", "baker"));
+        toolkit.route(alex.id, "add", "");
+        stand(6, 0, false);
+        toolkit.route(alex.id, "add", "");
+        store.commit(List.of(new DocumentStore.Change("npcs/town/baker.json", store.hash("npcs/town/baker.json"), null)));
+        npcs.reload();
+        toolkit.route(alex.id, "save", "");
+        drain();
+        String saved = alex.messages.stream().filter((String line) -> line.contains("Saved route")).findFirst().orElseThrow();
+        assertTrue(saved.contains("Saved route Market 2 (Market was taken), 2 points, on guard; baker no longer exists"), saved);
+        assertNotNull(store.read("routes/market-2.json"));
+        assertEquals("market-2", navigation("guard").get("route").getAsString());
+        assertTrue(toolkit.captures().capture(alex.id).isEmpty(), "the walked points are not lost to a refusal");
+    }
+
+    @Test void newRouteWaitsUntilTheRoutesAreRead() {
+        toolkit.open(alex.id, RouteScreen::new);
+        assertEquals("New route", name(RouteScreen.CREATE));
+        assertEquals("Reading routes", lore(RouteScreen.CREATE));
+        click(RouteScreen.CREATE, Click.LEFT);
+        assertNull(alex.prompt, "no name is asked before the taken names are known");
+        drain();
+        click("New route", Click.LEFT);
+        assertEquals("Route name", alex.prompt.label());
+    }
+
+    @Test void aChipLeftFromAnotherRouteIsRefused() {
+        toolkit.captures().start(alex, "walk", List.of());
+        assertTrue(alex.messages.getLast().contains("/animus tools capture add name=walk"), "each chip names its route: " + alex.messages.getLast());
+        toolkit.route(alex.id, "cancel", "market");
+        assertTrue(alex.messages.getLast().contains("That chip is for route Market; the route you are making is Walk"), alex.messages.getLast());
+        assertTrue(toolkit.captures().capture(alex.id).isPresent(), "the route being made is untouched");
+        toolkit.route(alex.id, "cancel", "walk");
+        assertTrue(toolkit.captures().capture(alex.id).isEmpty());
+    }
+
+    @Test void theSavedLineShowsTheFilePathOnlyInAdvanced() {
+        for (ToolkitMode mode : ToolkitMode.values()) {
+            toolkit.mode(alex.id, mode);
+            String route = "walk-" + mode.label().toLowerCase(java.util.Locale.ROOT);
+            toolkit.captures().start(alex, route, List.of());
+            toolkit.route(alex.id, "add", "");
+            stand(6, 0, false);
+            toolkit.route(alex.id, "add", "");
+            toolkit.route(alex.id, "save", "");
+            drain();
+            String saved = alex.messages.stream().filter((String line) -> line.contains("Saved route " + art.arcane.animus.core.text.Words.readable(route))).findFirst().orElseThrow();
+            assertEquals(mode == ToolkitMode.ADVANCED, saved.contains("routes/" + route + ".json"), mode + ": " + saved);
+            stand(0, 0, false);
+        }
+    }
+
+    @Test void cancelDropsTheRouteAndATakenNameOrABadNameIsRefused() {
+        routes();
+        click("New route", Click.LEFT);
+        assertEquals("route", alex.prompt.initial(), "with nothing selected the suggestion is plain");
+        MockScreenHost.answer(alex, Optional.of("market"));
+        assertTrue(alex.messages.getLast().contains("Route Market already exists; pick another name"), alex.messages.getLast());
+        assertNotNull(alex.window, "a refused name keeps the window");
+        click("New route", Click.LEFT);
+        MockScreenHost.answer(alex, Optional.of("no/slashes"));
+        assertTrue(alex.messages.getLast().contains("A route name is 1 to 64 lowercase letters, digits, _ or -"), alex.messages.getLast());
+        click("New route", Click.LEFT);
+        MockScreenHost.answer(alex, Optional.of("walk"));
+        toolkit.route(alex.id, "add", "");
+        toolkit.route(alex.id, "cancel", "");
+        assertTrue(toolkit.captures().capture(alex.id).isEmpty());
+        assertTrue(alex.messages.getLast().contains("Dropped route Walk; nothing saved"), alex.messages.getLast());
+        toolkit.route(alex.id, "add", "");
+        assertTrue(alex.messages.getLast().contains("No route being made; New route in Routes starts one"), alex.messages.getLast());
+    }
+
+    @Test void withoutAnNpcSaveOnlySavesAndTheListShowsFinishWhileARouteIsBeingMade() throws IOException {
+        routes();
+        click("New route", Click.LEFT);
+        MockScreenHost.answer(alex, Optional.of("walk"));
+        toolkit.route(alex.id, "add", "");
+        stand(6, 0, false);
+        toolkit.route(alex.id, "add", "");
+        routes();
+        assertEquals("Finish route (2 points)", name(RouteScreen.CREATE));
+        click("Finish route", Click.LEFT);
+        assertEquals("Route points", title());
+        click("Save", Click.LEFT);
+        drain();
+        assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("Saved route Walk, 2 points")), alex.messages.toString());
+        assertNotNull(store.read("routes/walk.json"));
+        drain();
+        assertEquals("Routes", title(), "Save goes back to the list, which shows the new route");
+        assertEquals("New route", name(RouteScreen.CREATE));
+        assertTrue(shows("Walk"));
+    }
+
+    @Test void theDetailShowsNamedSettingsInWordsAndSecondsAndWritesThem() throws IOException {
+        detail();
+        assertEquals(Map.ofEntries(Map.entry(4, "Market"), Map.entry(19, "Rename"), Map.entry(20, "Duplicate"), Map.entry(21, "Edit points"), Map.entry(28, "Loop"),
+                Map.entry(29, "Order"), Map.entry(30, "Mode"), Map.entry(31, "Speed"), Map.entry(35, "Delete"), Map.entry(45, "Back"), Map.entry(53, "Help")), buttons());
+        centreIsSafe();
+        assertFalse(lore("Market").contains("routes/"), "Simple shows no file paths");
+        assertTrue(lore("Speed").contains("Now: 2 blocks per second"), lore("Speed"));
+        assertTrue(lore("Order").contains("Now: In order"), lore("Order"));
+        assertTrue(lore("Mode").contains("Now: Walk"), lore("Mode"));
+        assertTrue(lore("Loop").contains("Now: on"), lore("Loop"));
+
+        click("Duplicate", Click.LEFT);
+        assertEquals("market-copy", alex.prompt.initial());
+        MockScreenHost.answer(alex, Optional.of("market-two"));
+        drain();
+        assertEquals(JsonDocuments.object(MARKET), JsonDocuments.object(store.read("routes/market-two.json")));
+        click("Speed", Click.LEFT);
+        drain();
+        assertEquals(2.5, JsonDocuments.object(store.read("routes/market.json")).get("speed").getAsDouble());
+        assertTrue(alex.messages.getLast().contains("Route Market speed: 2.5 blocks per second"), alex.messages.getLast());
+        assertTrue(lore("Speed").contains("Now: 2.5 blocks per second"), lore("Speed"));
+        click("Order", Click.LEFT);
+        drain();
+        JsonObject route = JsonDocuments.object(store.read("routes/market.json"));
+        assertEquals("pingpong", route.get("order").getAsString());
+        assertFalse(route.has("loop"), "loop only goes with In order");
+        assertTrue(lore("Order").contains("Now: Back and forth"), lore("Order"));
+        click("Loop", Click.LEFT);
+        assertTrue(alex.messages.getLast().contains("Loop needs Order: In order"), alex.messages.getLast());
+        click("Mode", Click.RIGHT);
+        drain();
+        assertEquals("fly", JsonDocuments.object(store.read("routes/market.json")).get("mode").getAsString(), "right-click steps back");
+
+        toolkit.mode(alex.id, ToolkitMode.ADVANCED);
+        click("Back", Click.LEFT);
+        drain();
+        click(buttons().entrySet().stream().filter((Map.Entry<Integer, String> entry) -> entry.getValue().equals("Market")).findFirst().orElseThrow().getKey(), Click.RIGHT);
+        drain();
+        assertEquals("Route Market", title());
+        assertTrue(lore(RouteDetailScreen.HEADER).contains("routes/market.json"), lore(RouteDetailScreen.HEADER));
     }
 
     @Test void renameRepointsEveryUserInOneTransactionAndRollsBackTogether() throws IOException {
         detail();
         click("Rename", Click.LEFT);
+        assertEquals("New route name", alex.prompt.label());
         MockScreenHost.answer(alex, Optional.of("bazaar"));
         drain();
-        assertTrue(alex.messages.getLast().contains("Renamed route market to bazaar, 1 NPC repointed; tx "), alex.messages.getLast());
+        assertTrue(alex.messages.getLast().contains("Renamed route Market to Bazaar, 1 NPC repointed"), alex.messages.getLast());
         assertNull(store.read("routes/market.json"));
-        assertNotNull(store.read("routes/bazaar.json"));
         assertEquals("bazaar", navigation("guard").get("route").getAsString());
-        assertEquals("Route bazaar", RichText.plain(alex.frame.title()));
+        assertEquals("Route Bazaar", title());
         store.rollback(tx());
         assertTrue(npcs.reloadAfterRollback().isEmpty());
         assertNotNull(store.read("routes/market.json"));
@@ -183,118 +305,108 @@ class ToolkitRoutesTest {
         assertEquals("market", navigation("guard").get("route").getAsString());
     }
 
-    @Test void deleteIsRefusedWhileUsedUnlessItAlsoUnassigns() throws IOException {
+    @Test void deleteAsksOnceNamesItsNpcsAndTakesItOffThem() throws IOException {
         detail();
+        assertTrue(lore("Delete").contains("Deletes route Market and takes it off guard"), lore("Delete"));
         click("Delete", Click.LEFT);
-        click("Click again to delete", Click.LEFT);
+        assertEquals("Click again to confirm", name(RouteDetailScreen.DELETE));
+        click("Back", Click.LEFT);
         drain();
-        assertTrue(alex.messages.getLast().contains("Route market is used by 1 NPC (guard)"), alex.messages.getLast());
-        assertNotNull(store.read("routes/market.json"));
-        click("Unassign and delete", Click.LEFT);
-        click("Click again to unassign and delete", Click.LEFT);
+        assertNotNull(store.read("routes/market.json"), "any other click cancels");
+        click("Market", Click.RIGHT);
         drain();
-        assertTrue(alex.messages.getLast().contains("Deleted route market, unassigned from 1 NPC; tx "), alex.messages.getLast());
+        click("Delete", Click.LEFT);
+        click(RouteDetailScreen.DELETE, Click.LEFT);
+        drain();
+        assertTrue(alex.messages.getLast().contains("Deleted route Market, unassigned from 1 NPC"), alex.messages.getLast());
         assertNull(store.read("routes/market.json"));
         assertFalse(npcs.find("guard").orElseThrow().json().has("modules"));
-        assertTrue(shows("routes/market.json is gone"));
+        assertTrue(shows("Route Market is gone"));
     }
 
-    @Test void duplicateAndRouteSettingsWriteTheFile() throws IOException {
+    @Test void editPointsLoadsTheRouteAndSaveWritesItBackAndReturnsToTheDetail() throws IOException {
         detail();
-        click("Duplicate", Click.LEFT);
-        MockScreenHost.answer(alex, Optional.of("market-two"));
-        drain();
-        assertEquals(JsonDocuments.object(MARKET), JsonDocuments.object(store.read("routes/market-two.json")));
-        click("Speed 2.0 blocks/s", Click.LEFT);
-        drain();
-        assertEquals(2.5, JsonDocuments.object(store.read("routes/market.json")).get("speed").getAsDouble());
-        assertTrue(alex.messages.getLast().contains("Route market speed set to 2.5; tx "), alex.messages.getLast());
-        click("Order sequence", Click.LEFT);
-        drain();
-        JsonObject route = JsonDocuments.object(store.read("routes/market.json"));
-        assertEquals("pingpong", route.get("order").getAsString());
-        assertFalse(route.has("loop"), "loop only goes with sequence");
-        click("Loop off", Click.LEFT);
-        assertTrue(alex.messages.getLast().contains("Loop needs order sequence"), alex.messages.getLast());
-        click("Mode walk", Click.LEFT);
-        drain();
-        assertEquals("swim", JsonDocuments.object(store.read("routes/market.json")).get("mode").getAsString());
-    }
-
-    @Test void editPointsLoadsTheFileAndSavesBackToTheSameIdWithARollback() throws IOException {
-        detail();
-        stand(4, 4);
+        stand(4, 4, false);
         click("Edit points", Click.LEFT);
         drain();
-        assertEquals("Route points", RichText.plain(alex.frame.title()));
-        WaypointCapture capture = toolkit.capture(alex.id).orElseThrow();
-        assertEquals(Optional.of("market"), capture.source());
-        click("Point 2", Click.SHIFT_LEFT);
-        click("Save route", Click.LEFT);
+        assertEquals("Route points", title());
+        assertEquals(Optional.of("market"), toolkit.captures().capture(alex.id).orElseThrow().source());
+        click("Point 2", Click.LEFT);
+        click("Move here", Click.LEFT);
+        click("Save", Click.LEFT);
         drain();
-        assertTrue(alex.messages.getLast().contains("Saved market, 2 points; tx ") && alex.messages.getLast().endsWith(" routes/market.json"), "short line, path behind [Path]: " + alex.messages.getLast());
+        assertTrue(alex.messages.getLast().contains("Saved route Market, 2 points"), alex.messages.getLast());
         assertEquals(4.5, JsonDocuments.object(store.read("routes/market.json")).getAsJsonArray("points").get(1).getAsJsonObject().get("x").getAsDouble());
+        drain();
+        assertEquals("Route Market", title(), "Save goes back to the route");
         store.rollback(tx());
         assertEquals(JsonDocuments.object(MARKET), JsonDocuments.object(store.read("routes/market.json")));
     }
 
-    @Test void theRecordingScreenIssuesRecordCommandsAndPlaysOnTheSelection() throws IOException {
-        toolkit.open(alex.id, commands, RecordingScreen::new);
-        drain();
-        assertTrue(lore("wave").contains("2 frames, 2.0 s"), lore("wave"));
-        click("Start recording", Click.LEFT);
-        MockScreenHost.answer(alex, Optional.of("Market-Walk"));
-        assertEquals(List.of("animus record start market-walk"), alex.commands);
-        toolkit.open(alex.id, commands, RecordingScreen::new);
-        drain();
-        click("Stop recording", Click.LEFT);
-        click("Stop recording", Click.RIGHT);
-        click("Ghost", Click.LEFT);
-        click("End preview", Click.LEFT);
-        assertEquals(List.of("animus record start market-walk", "animus record stop", "animus record cancel", "animus record ghost", "animus record clear"), alex.commands);
+    @Test void thePointsScreenChoosesAPointAndItsButtonsActOnIt() throws IOException {
+        toolkit.open(alex.id, PointsScreen::new);
+        assertEquals(Map.of(22, "No route being made", 45, "Back", 53, "Help"), buttons());
+        assertTrue(lore(22).contains("New route in Routes starts one"));
 
-        toolkit.interacted(alex, GUARD, false, false);
-        click("wave", Click.LEFT);
+        assertTrue(toolkit.captures().start(alex, "walk", List.of()));
+        toolkit.route(alex.id, "add", "");
+        stand(10, 0, false);
+        toolkit.route(alex.id, "add", "");
+        stand(20, 0, false);
+        toolkit.route(alex.id, "add", "");
+        stand(9, 0, false);
+        toolkit.open(alex.id, PointsScreen::new);
+        assertEquals(Map.ofEntries(Map.entry(0, "Point 1"), Map.entry(1, "Point 2 (here)"), Map.entry(2, "Point 3"), Map.entry(36, "Add point"), Map.entry(37, "Wait"),
+                Map.entry(38, "Go there"), Map.entry(39, "Move here"), Map.entry(40, "3 points"), Map.entry(44, "Delete point"), Map.entry(45, "Back"),
+                Map.entry(51, "Discard"), Map.entry(52, "Save"), Map.entry(53, "Help")), buttons());
+        centreIsSafe();
+        assertTrue(lore("Point 3").contains("Now: chosen"), lore("Point 3"));
+        assertEquals("0 64 0\nClick: choose it", lore("Point 1"));
+
+        click("Point 1", Click.LEFT);
+        assertTrue(lore("Point 1").contains("Now: chosen"), lore("Point 1"));
+        click("Go there", Click.LEFT);
+        assertTrue(alex.effects.contains("teleport:world:0,64,0"), alex.effects.toString());
+        toolkit.open(alex.id, PointsScreen::new);
+        stand(5, 5, false);
+        click("Add point", Click.LEFT);
+        WaypointCapture capture = toolkit.captures().capture(alex.id).orElseThrow();
+        assertEquals(new Vec3(5.5, 64, 5.5), capture.points().get(1), "added after the chosen point");
+        assertEquals(1, capture.current());
+        click("Wait", Click.LEFT);
+        assertEquals("Wait in seconds", alex.prompt.label());
+        MockScreenHost.answer(alex, Optional.of("2"));
+        assertTrue(lore("Point 2").contains("waits 2 seconds"), lore("Point 2"));
+        assertTrue(lore("Wait").contains("Now: 2 seconds"), lore("Wait"));
+        click("Wait", Click.LEFT);
+        MockScreenHost.answer(alex, Optional.of("soon"));
+        assertTrue(alex.messages.getLast().contains("soon is not a number of seconds"), alex.messages.getLast());
+        stand(-3, 7, false);
+        click("Point 4", Click.LEFT);
+        click("Move here", Click.LEFT);
+        assertEquals(new Vec3(-2.5, 64, 7.5), capture.points().get(3));
+        click("Point 3", Click.LEFT);
+        click("Delete point", Click.LEFT);
+        assertEquals(4, capture.points().size(), "a point delete asks once");
+        assertEquals("Click again to confirm", name(PointsScreen.DELETE));
+        click(PointsScreen.DELETE, Click.LEFT);
+        assertEquals(3, capture.points().size());
+
+        click("Save", Click.LEFT);
         drain();
-        assertTrue(alex.messages.getLast().contains("Recording wave on guard; tx "), alex.messages.getLast());
-        assertEquals(Map.of("enabled", true, "recording", "wave", "playback", "loop"), Map.of("enabled", navigation("guard").get("enabled").getAsBoolean(),
-                "recording", navigation("guard").get("recording").getAsString(), "playback", navigation("guard").get("playback").getAsString()));
-        assertFalse(navigation("guard").has("route"), "a recording replaces the route");
-        click("wave", Click.RIGHT);
-        drain();
-        assertEquals("pingpong", navigation("guard").get("playback").getAsString());
-        assertTrue(alex.messages.getLast().contains("Playback pingpong for wave on guard; tx "), alex.messages.getLast());
-        assertTrue(lore("wave").contains("Selection plays it pingpong on guard"), lore("wave"));
+        JsonObject saved = JsonDocuments.object(store.read("routes/walk.json"));
+        assertEquals(40, saved.getAsJsonArray("points").get(1).getAsJsonObject().get("waitTicks").getAsInt(), "seconds are saved as ticks");
+        assertTrue(toolkit.captures().capture(alex.id).isEmpty());
     }
 
-    @Test void recordingDetailPreviewsRenamesWithItsPlayersAndRefusesDeleteWhileUsed() throws IOException {
-        store.commit(List.of(new DocumentStore.Change("npcs/town/baker.json", store.hash("npcs/town/baker.json"),
-                npc("baker", BAKER, ",\"modules\":{\"animus:navigation\":{\"enabled\":true,\"recording\":\"wave\",\"playback\":\"once\"}}"))));
-        npcs.reload();
-        toolkit.open(alex.id, commands, RecordingScreen::new);
-        drain();
-        click("wave", Click.SHIFT_LEFT);
-        drain();
-        assertEquals("Recording wave", RichText.plain(alex.frame.title()));
-        click("Delete", Click.LEFT);
-        click("Click again to delete", Click.LEFT);
-        drain();
-        assertTrue(alex.messages.getLast().contains("Recording wave plays on 1 NPC (baker)"), alex.messages.getLast());
-        click("Rename", Click.LEFT);
-        MockScreenHost.answer(alex, Optional.of("greet"));
-        drain();
-        assertTrue(alex.messages.getLast().contains("Renamed recording wave to greet, 1 NPC repointed; tx "), alex.messages.getLast());
-        assertEquals("greet", RecordingDocument.parse(store.read("recordings/greet.json"), JsonDocuments.MAX_BYTES).id());
-        assertEquals("greet", navigation("baker").get("recording").getAsString());
-        assertEquals("once", navigation("baker").get("playback").getAsString());
-        click("Preview", Click.LEFT);
-        assertEquals(List.of("animus record preview greet"), alex.commands);
-    }
-
-    void detail() {
-        toolkit.open(alex.id, commands, RouteScreen::new);
-        drain();
-        click("market", Click.SHIFT_LEFT);
-        drain();
+    @Test void discardAsksOnceAndKeepsSavedRoutes() {
+        assertTrue(toolkit.captures().start(alex, "walk", List.of()));
+        toolkit.route(alex.id, "add", "");
+        toolkit.open(alex.id, PointsScreen::new);
+        click("Discard", Click.LEFT);
+        assertEquals("Click again to confirm", name(ToolScreen.DISCARD));
+        click(ToolScreen.DISCARD, Click.LEFT);
+        assertTrue(toolkit.captures().capture(alex.id).isEmpty());
+        assertEquals("No route being made", name(22));
     }
 }

@@ -44,8 +44,9 @@ final class ServiceCommands {
         @Director(description = "Open a shop for yourself or a player")
         void open(@Param(name = "shop", description = "The shop id") String shop,
                   @Param(name = "player", defaultValue = "", description = "Who sees it; you when left out") String player,
-                  @Param(name = "style", defaultValue = "", description = "native or chest; the shop's own style when left out") String style) {
-            services.shops().open(actor(), shop, given(player), given(style));
+                  @Param(name = "style", defaultValue = "", description = "native or chest; the shop's own style when left out") String style,
+                  @Param(name = "npc", defaultValue = "", description = "Open it as this NPC does, with its window style and villager look") String npc) {
+            services.shops().open(actor(), shop, given(player), given(style), given(npc));
         }
 
         @Director(description = "Add the item in your hand to a shop: buy or sell at price=, or trade for your off hand", origin = DirectorOrigin.PLAYER)
@@ -91,7 +92,7 @@ final class ServiceCommands {
         }
     }
 
-    @Director(name = "gui", aliases = "guis", description = "Chest GUIs, display menus, holograms and the export to Gloss")
+    @Director(name = ToolkitCommands.GUI, aliases = "guis", description = "Open the Animus menu; chest GUIs, display menus, holograms and the export to Gloss")
     @AnimusPermission(PermissionNodes.GUI)
     static final class Gui extends CommandGroup {
         GuiExport exports;
@@ -131,7 +132,7 @@ final class ServiceCommands {
             guis().closeMenu(actor(), given(player));
         }
 
-        @Director(description = "Make an empty chest GUI to fill in the toolkit or web editor")
+        @Director(description = "Make an empty chest GUI to fill in the web editor")
         @Positional({"rows", "title"})
         void create(@Param(name = "id", description = "The new GUI id, such as town:board") String id,
                     @Param(name = "rows", defaultValue = "3", description = "Rows of the chest window, 1 to 6") int rows,
@@ -337,7 +338,7 @@ final class ServiceCommands {
         @Director(description = "Show the editor listener, relay and connections")
         void status() { services.editor().status(actor()); }
 
-        @Director(description = "Make a single-use pairing link")
+        @Director(description = "Pair the web editor with a one-time link")
         void pair(@Param(name = "label", defaultValue = "", description = "A name for the token, such as laptop") String label,
                   @Param(name = "scopes", defaultValue = "", description = "Comma-separated scopes; the pairing defaults when left out") String scopes,
                   @Param(name = "folders", defaultValue = "", description = "Comma-separated NPC folders the token may edit; every folder when left out") String folders,

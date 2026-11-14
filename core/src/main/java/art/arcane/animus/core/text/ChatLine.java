@@ -17,12 +17,16 @@ import net.kyori.adventure.text.format.TextDecoration;
 /**
  * One reply line with click chips such as {@code [Click to copy]}. A player gets hover text and the click; the console,
  * which cannot click, gets {@link #console()}: the text with each chip's value written out once. Build a line with the
- * factories and chip methods, or let {@link #parse} find transaction ids and links in a finished reply.
+ * factories and chip methods, or let {@link #parse} find transaction ids and links in a finished reply. A player in
+ * Simple mode gets {@link #withoutTransactionIds()}: each change keeps its {@code [Undo]} but not its id.
  */
 public final class ChatLine {
     /** The Animus pages of the Volmit wiki. */
     public static final String DOCS = "https://docs.volmitsoftware.com/animus/";
-    private static final Pattern TRANSACTION = Pattern.compile("\\btx ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\\b");
+    /** A transaction id in a reply, with the {@code "; "} that leads it into the sentence when there is one. */
+    private static final Pattern TRANSACTION = Pattern.compile("(?:; )?\\btx ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\\b");
+    /** The command an {@code [Undo]} chip runs, before the change's short id. */
+    public static final String UNDO = "/animus undo ";
     private static final Pattern URL = Pattern.compile("https?://[^\\s§]+");
     private static final Pattern HASH = Pattern.compile("\\b[0-9a-f]{64}\\b");
     /** An Animus command in a {@code Next:} line: words after {@code /animus}, ending at a semicolon, a comma and space, or the line's end. */
@@ -35,7 +39,11 @@ public final class ChatLine {
     /** A clickable label. {@code console} is what the console sees in its place, or null for nothing. */
     private record Chip(String label, Palette tone, Click click, String value, String hover, String console) {}
 
+    /** {@code lead} (such as {@code "; tx "}) and the first characters of {@code id}, copying the full id; left out without ids. */
+    private record Transaction(String lead, String id) {}
+
     private final List<Object> pieces = new ArrayList<>();
+    private boolean ids = true;
 
     private ChatLine() {}
 
@@ -53,7 +61,7 @@ public final class ChatLine {
 
     /**
      * A finished reply with its transaction ids, long ids and links made clickable: {@code tx <uuid>} becomes a short id
-     * that copies the full one plus {@code [Undo]}, which suggests the rollback command; a 64-character hex id, such as an
+     * that copies the full one plus {@code [Undo]}, which runs {@code /animus undo}; a 64-character hex id, such as an
      * import id, shows its first 12 characters and copies the full id; a wiki link becomes {@code [Docs]}; any other link
      * becomes {@code [Open]} and {@code [Click to copy]}; after {@code Next: }, each {@code /animus} command goes into the
      * player's chat box on click, cut before its first {@code <placeholder>}. A reply with none of these comes back as one text piece.
@@ -75,7 +83,7 @@ public final class ChatLine {
             if (match == null) break;
             line.raw(coloured.substring(index, match.start()));
             int end = match.end();
-            if (match.pattern() == TRANSACTION) line.raw("tx ").transaction(match.group(1));
+            if (match.pattern() == TRANSACTION) line.transaction(match.group().substring(0, match.start(1) - match.start()), match.group(1)).undo(match.group(1));
             else if (match.pattern() == HASH) line.copy(match.group().substring(0, SHORT_HASH), match.group(), "Click to copy the full id");
             else if (match.pattern() == COMMAND) line.command(match.group());
             else {
@@ -157,14 +165,51 @@ public final class ChatLine {
 
     private ChatLine docs(String url) { return open("Docs", url, "Open the Animus wiki"); }
 
-    /** The first characters of a transaction id, copying the full id, then {@code [Undo]} suggesting its rollback by those characters. */
-    public ChatLine transaction(String id) {
-        chip(new Chip(id.substring(0, Math.min(SHORT_ID, id.length())), Palette.PINK, Click.COPY, id, "Click to copy the transaction id", id));
-        return suggest("Undo", "/animus rollback " + shortId(id), "Undo this change with /animus rollback");
+    /** {@code "; tx "} and the first characters of a transaction id, copying the full id; see {@link #withoutTransactionIds()}. */
+    public ChatLine transaction(String id) { return transaction("; tx ", id); }
+
+    private ChatLine transaction(String lead, String id) {
+        if (!pieces.isEmpty() && pieces.getLast() instanceof Chip) pieces.add(" ");
+        pieces.add(new Transaction(lead, id));
+        return this;
     }
 
+    /** {@code [Undo]}, which runs {@code /animus undo} for this change by its first characters. The console sees nothing. */
+    public ChatLine undo(String id) { return chip(new Chip("[Undo]", Palette.PINK_LIGHT, Click.RUN, UNDO + shortId(id), "Undo this change", null)); }
+
+    /** This line for a player in Simple mode: every transaction id and its {@code tx} lead left out, each {@code [Undo]} kept. */
+    public ChatLine withoutTransactionIds() {
+        ChatLine line = new ChatLine();
+        line.pieces.addAll(pieces);
+        line.ids = false;
+        return line;
+    }
+
+    /** The full transaction ids this line reports, in order. */
+    public List<String> transactions() {
+        return pieces.stream().filter(Transaction.class::isInstance).map((Object piece) -> ((Transaction) piece).id()).toList();
+    }
+
+    /** What the change was: the text before the first transaction id, without the prefix, such as {@code Deleted guard}. */
+    public String lead() {
+        StringBuilder out = new StringBuilder();
+        for (Object piece : pieces) {
+            if (piece instanceof Transaction) break;
+            if (piece instanceof String text) RichText.sectionRuns(text).forEach((RichText.Run run) -> out.append(run.text()));
+            else if (piece instanceof Chip chip && !chip.label().startsWith("[")) out.append(chip.label());
+        }
+        String text = out.toString();
+        if (text.startsWith(PREFIX_PLAIN)) text = text.substring(PREFIX_PLAIN.length());
+        return text.replaceFirst("[\\s;,:(]+$", "").strip();
+    }
+
+    private static final String PREFIX_PLAIN = RichText.plain(Palette.PREFIX);
+
+    /** True when the line is a refusal: it starts as {@link Palette#error} does. */
+    public boolean refusal() { return !pieces.isEmpty() && pieces.getFirst() instanceof String text && text.startsWith(Palette.error("")); }
+
     /** True when the line has a chip; a line without one sends as plain text. */
-    public boolean interactive() { return pieces.stream().anyMatch(Chip.class::isInstance); }
+    public boolean interactive() { return pieces.stream().anyMatch((Object piece) -> piece instanceof Chip || piece instanceof Transaction); }
 
     /**
      * Section-coded text for a receiver that cannot click: each value chip as its value, in the surrounding colour, and each
@@ -175,6 +220,7 @@ public final class ChatLine {
         List<String> shown = new ArrayList<>();
         for (Object piece : pieces) {
             if (piece instanceof String text) { out.append(text); continue; }
+            if (piece instanceof Transaction transaction) { if (ids) out.append(transaction.lead()).append(transaction.id()); continue; }
             Chip chip = (Chip) piece;
             boolean bracketed = chip.label().startsWith("[");
             if (chip.console() == null || bracketed && shown.contains(chip.console())) continue;
@@ -190,6 +236,11 @@ public final class ChatLine {
         TextComponent.Builder line = Component.text();
         OptionalInt carried = OptionalInt.empty();
         for (Object piece : pieces) {
+            if (piece instanceof Transaction transaction) {
+                if (!ids) continue;
+                for (RichText.Run run : RichText.sectionRuns(transaction.lead())) line.append(Component.text(run.text(), style(run, carried)));
+                piece = new Chip(shortId(transaction.id()), Palette.PINK, Click.COPY, transaction.id(), "Click to copy the change id", transaction.id());
+            }
             if (piece instanceof String text) {
                 for (RichText.Run run : RichText.sectionRuns(text)) {
                     OptionalInt colour = run.rgb().isPresent() ? run.rgb() : carried;
@@ -218,7 +269,7 @@ public final class ChatLine {
         Objects.requireNonNull(chip.value());
         boolean bracketed = chip.label().startsWith("[");
         if (bracketed && !pieces.isEmpty() && pieces.getLast() instanceof String text && !text.endsWith(" ")) pieces.add(" ");
-        else if (!pieces.isEmpty() && pieces.getLast() instanceof Chip) pieces.add(" ");
+        else if (!pieces.isEmpty() && (pieces.getLast() instanceof Chip || pieces.getLast() instanceof Transaction)) pieces.add(" ");
         pieces.add(chip);
         return this;
     }
@@ -248,7 +299,11 @@ public final class ChatLine {
     /** The text a player reads, chips as their labels, without colour codes; for measuring how wide a line is. */
     public String visible() {
         StringBuilder out = new StringBuilder();
-        for (Object piece : pieces) out.append(piece instanceof String text ? RichText.plain(text) : ((Chip) piece).label());
+        for (Object piece : pieces) {
+            if (piece instanceof String text) out.append(RichText.plain(text));
+            else if (piece instanceof Transaction transaction) { if (ids) out.append(RichText.plain(transaction.lead())).append(shortId(transaction.id())); }
+            else out.append(((Chip) piece).label());
+        }
         return out.toString();
     }
 

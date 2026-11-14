@@ -37,8 +37,9 @@ record ModActor(CommandSourceStack source, ModTicks ticks) implements CommandAct
         Objects.requireNonNull(source); Objects.requireNonNull(ticks);
     }
     @Override public boolean permitted(String node) { return VanillaRuntimeHost.permitted(source.permissions(), node); }
+    @Override public void tell(String message) { rich(line(message)); }
     /** Section codes, such as the debug command's colours and the brand lead {@link Palette#reply} adds, render as styled text. */
-    @Override public void tell(String message) { rich(ChatLine.parse(RichText.colorize(Palette.reply(message)))); }
+    @Override public ChatLine line(String message) { return ChatLine.parse(RichText.colorize(Palette.reply(message))); }
     @Override public void plain(String line) { source.sendSystemMessage(ModText.component(line)); }
     /** Players get the click chips; the console gets the plain text with each link written out. */
     @Override public void rich(ChatLine line) {

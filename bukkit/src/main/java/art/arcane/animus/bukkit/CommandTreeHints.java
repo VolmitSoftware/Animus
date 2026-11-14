@@ -37,7 +37,7 @@ final class CommandTreeHints {
     private static final Command<Object> RUNS = (com.mojang.brigadier.context.CommandContext<Object> context) -> 0;
     private static final SuggestionProvider<Object> ASK_SERVER =
             (com.mojang.brigadier.context.CommandContext<Object> context, com.mojang.brigadier.suggestion.SuggestionsBuilder builder) -> builder.buildFuture();
-    static final String HELP = "help", PAGE = "page", ARGUMENTS = "arguments";
+    static final String HELP = "help", PAGE = "page", TOPIC = "topic", ARGUMENTS = "arguments";
 
     private CommandTreeHints() {}
 
@@ -78,8 +78,10 @@ final class CommandTreeHints {
         LiteralArgumentBuilder<Object> literal = LiteralArgumentBuilder.literal(name);
         if (!node.isInvocable()) {
             literal.executes(RUNS);
-            literal.then(LiteralArgumentBuilder.literal(HELP).executes(RUNS)
-                    .then(RequiredArgumentBuilder.argument(PAGE, IntegerArgumentType.integer(0)).executes(RUNS)));
+            LiteralArgumentBuilder<Object> help = LiteralArgumentBuilder.<Object>literal(HELP).executes(RUNS)
+                    .then(RequiredArgumentBuilder.argument(PAGE, IntegerArgumentType.integer(0)).executes(RUNS));
+            if (node.getParent() == null) help.then(RequiredArgumentBuilder.argument(TOPIC, StringArgumentType.greedyString()).suggests(ASK_SERVER).executes(RUNS));
+            literal.then(help);
             for (DirectorRuntimeNode child : node.getChildren()) {
                 if (!runnable(director, actor, child)) continue;
                 for (String alias : child.allNames()) literal.then(tree(alias, child, director, actor));

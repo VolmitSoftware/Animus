@@ -2,6 +2,7 @@ package art.arcane.animus.core.command;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * What {@code /animus record} reaches: the platform's recording sessions and previews. Every call runs on the actor's
@@ -19,4 +20,6 @@ public interface RecordingControl {
     void stopPreview(CommandActor actor);
     /** Saved recording ids for completion. */
     List<String> ids();
+    /** Whether the player is recording now, for the menu's Stop recording button; on the player's owner. */
+    default boolean recording(UUID player) { return false; }
 }

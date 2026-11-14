@@ -106,6 +106,17 @@ class BehaviorCommandsTest {
             assertEquals(List.of("example:wait"),harness.service.behaviorIds());
         }
     }
+    @Test void theMenuListsTheRunsActiveOnAnNpcForCancelARun()throws Exception{
+        source("example:wait",1,2000);
+        try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
+            art.arcane.animus.core.toolkit.Toolkit.Runs runs=ToolkitCommands.runs(()->harness.service);
+            assertEquals(List.of(),runs.running("test").toCompletableFuture().get(5,TimeUnit.SECONDS),"nothing runs before the catalog is ready");
+            harness.start();UUID execution=harness.run(sender(false,true),"example:wait");
+            assertEquals(List.of(new art.arcane.animus.core.toolkit.Toolkit.Run(execution,"test","example:wait")),runs.running("test").toCompletableFuture().get(5,TimeUnit.SECONDS));
+            assertEquals(List.of(),runs.running("nobody").toCompletableFuture().get(5,TimeUnit.SECONDS),"an unknown NPC has none");
+            assertEquals(List.of(),ToolkitCommands.runs(()->null).running("test").toCompletableFuture().get(5,TimeUnit.SECONDS),"behaviors not started yet lists none");
+        }
+    }
     @Test void validateDoesNotPublishButReloadReplacesAuthorityAndCancelsExistingExecution()throws Exception{
         Path file=source("example:wait",1,200);try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
             harness.start();CommandActor sender=sender(false,true);UUID execution=harness.run(sender,"example:wait");source("example:wait",2,1);String bytes=Files.readString(file);

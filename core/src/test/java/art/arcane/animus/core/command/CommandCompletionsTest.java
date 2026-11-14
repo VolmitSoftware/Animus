@@ -42,6 +42,8 @@ class CommandCompletionsTest {
         AnimusDirector director = tree.director();
         TreeMap<String, String> missing = new TreeMap<>();
         Standing actor = new Standing();
+        tree.changes().record(actor.player().orElseThrow(), "0f1e2d3c-4b5a-4968-8776-655443322110", "Made guard", "");
+        assertEquals(List.of("0f1e2d3c"), List.copyOf(tree.values("change", actor, java.util.Map.of())), "undo offers the player's own changes");
         List<DirectorRuntimeNode> commands = new ArrayList<>();
         collect(director.engine().getRoot(), commands);
         for (DirectorRuntimeNode command : commands)

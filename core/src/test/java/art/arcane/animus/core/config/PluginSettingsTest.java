@@ -164,7 +164,7 @@ class PluginSettingsTest {
             PluginSettings.load(store);
             String toml = Files.readString(root.resolve("config.toml"));
             for (String key : java.util.List.of("relayReconnectMinSeconds = 1", "relayReconnectMaxSeconds = 60", "relayFrameBytes = 1048576", "relayConcurrentRequests = 64",
-                    "playerCooldownTicks = 20", "maximumAreas = 256", "[shops.messages]", "bought = "))
+                    "playerCooldownTicks = 20", "maximumAreas = 256", "[shops.messages]", "bought = ", "maximumVisible = 128"))
                 assertTrue(toml.contains(key), key);
             assertTrue(toml.contains("# Spacing of one player's runs of an interaction trigger"), toml);
             java.util.List<String> warnings = new java.util.ArrayList<>();

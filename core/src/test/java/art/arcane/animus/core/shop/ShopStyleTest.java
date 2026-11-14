@@ -139,14 +139,14 @@ class ShopStyleTest {
         assertEquals(2, bread.maxUses());
         ScreenFrame.Offer cake = merchant.offers().get(2);
         assertEquals("minecraft:gold_nugget", cake.costA().item().id());
-        assertEquals("30", RichText.plain(cake.costA().name().orElseThrow()));
+        assertEquals("$30", RichText.plain(cake.costA().name().orElseThrow()), "the economy writes the price");
         assertEquals("minecraft:cake", cake.result().item().id());
         assertEquals("Free", RichText.plain(merchant.offers().get(3).costA().name().orElseThrow()));
         ScreenFrame.Offer wheat = merchant.offers().get(4);
         assertEquals("minecraft:wheat", wheat.costA().item().id());
         assertEquals(8, wheat.costA().item().count());
         assertEquals("minecraft:gold_nugget", wheat.result().item().id());
-        assertEquals("Pays 2", RichText.plain(wheat.result().name().orElseThrow()));
+        assertEquals("Pays $2", RichText.plain(wheat.result().name().orElseThrow()));
         assertEquals(Integer.MAX_VALUE, wheat.maxUses());
     }
 

@@ -4,7 +4,6 @@ import art.arcane.animus.core.command.CommandActor;
 import art.arcane.animus.core.command.CommandSound;
 import art.arcane.animus.core.command.Coordinates;
 import art.arcane.animus.core.text.ChatLine;
-import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
@@ -35,7 +34,7 @@ record BukkitActor(CommandSender sender, ReplyScheduler replies) implements Comm
      * Players see the brand pinks in hex, with transaction ids and links as click chips; the console gets the legacy
      * fallbacks, which every Bukkit console renders.
      */
-    @Override public void tell(String message) { rich(ChatLine.parse(Palette.reply(message))); }
+    @Override public void tell(String message) { rich(line(message)); }
     @Override public void plain(String line) { sender.sendMessage(sender instanceof Player ? line : RichText.legacy(line)); }
     @Override public void rich(ChatLine line) {
         if (sender instanceof Player && line.interactive()) ComponentMessenger.send(sender, ComponentText.component(line.component()));

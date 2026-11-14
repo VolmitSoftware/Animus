@@ -38,6 +38,7 @@ import java.util.function.Supplier;
 import java.util.logging.Logger;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.World;
 import org.bukkit.boss.BarColor;
@@ -211,16 +212,29 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
 
     private ItemStack display(ScreenFrame.Item item) { return displayStack(server, item); }
 
-    /** The stack a display item shows; an invalid item shows a barrier, and a head shows an online player's skin. */
+    /**
+     * The stack a display item shows, its name and lore upright; an invalid item shows a barrier. A head named for an
+     * owner wears an online player's own profile, or for anyone else a name the client resolves (see
+     * {@link BukkitItems#owned}), so drawing never waits on a lookup.
+     */
     public static ItemStack displayStack(Server server, ScreenFrame.Item item) {
-        List<String> errors = new ArrayList<>();
-        ItemStack stack = BukkitItems.stack(item.item(), item.name(), item.lore(), errors)
-                .orElseGet(() -> BukkitItems.stack(new NpcItem("minecraft:barrier", 1, Optional.empty(), Optional.empty()), item.name(), item.lore(), new ArrayList<>()).orElseThrow());
-        if (item.head().isPresent() && stack.getItemMeta() instanceof SkullMeta skull) {
-            Player owner = server.getPlayerExact(item.head().get());
-            if (owner != null) { skull.setOwningPlayer(owner); stack.setItemMeta(skull); }
-        }
-        return stack;
+        Optional<Player> online = item.head().map(server::getPlayerExact);
+        ItemStack stack = BukkitItems.display(item.item(), item.name(), item.lore(), new ArrayList<>())
+                .orElseGet(() -> BukkitItems.display(new NpcItem("minecraft:barrier", 1, Optional.empty(), Optional.empty()), item.name(), item.lore(), new ArrayList<>()).orElseThrow());
+        if (online.isPresent() && stack.getItemMeta() instanceof SkullMeta skull) { skull.setOwningPlayer(online.get()); stack.setItemMeta(skull); }
+        if (online.isPresent() || stack.getType() != Material.PLAYER_HEAD) return stack;
+        Optional<NpcItem> named = item.head().map((String owner) -> BukkitItems.owned(item.item(), owner)).filter((NpcItem owned) -> !owned.equals(item.item()));
+        return named.map((NpcItem owned) -> named(stack, owned)).orElse(stack);
+    }
+
+    /**
+     * Puts the name-only profile on last, after the name and lore: each time a skull's meta is applied with such a
+     * profile, the server asks the session service to fill it in and throws the answer away. A profile the server
+     * refuses leaves the default head.
+     */
+    private static ItemStack named(ItemStack stack, NpcItem owned) {
+        try { return Bukkit.getUnsafe().modifyItemStack(stack, owned.components().orElseThrow()); }
+        catch (RuntimeException refused) { return stack; }
     }
 
     @Override public void close(Player player, Object window) {
@@ -335,10 +349,9 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     @Override public art.arcane.animus.core.shop.ShopStock<ItemStack> stock(art.arcane.animus.core.shop.ShopDocument shop) { return stocks.open(shop); }
     @Override public Optional<NpcItem> worn(Player player, EquipmentSlot slot) { return RecorderLook.item(RecorderLook.stack(player.getInventory(), slot)); }
     @Override public boolean holdsWand(Player player) { return BukkitWand.held(player); }
-    @Override public boolean giveWand(Player player) {
+    @Override public WandGift giveWand(Player player) {
         Optional<ItemStack> wand = stack(Toolkit.WAND_ITEM, Optional.of(Toolkit.WAND_NAME), Toolkit.WAND_LORE, new ArrayList<>());
-        wand.ifPresent((ItemStack stack) -> BukkitWand.give(player, stack));
-        return wand.isPresent();
+        return wand.map((ItemStack stack) -> BukkitWand.give(player, stack)).orElse(WandGift.NONE);
     }
     @Override public boolean prompt(Player player, Prompt prompt) { return prompts.open(player, prompt); }
     @Override public void chat(Player player, ChatLine line) {
@@ -361,18 +374,23 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         if (window.isEmpty()) return;
         event.setCancelled(true);
         if (!(event.getWhoClicked() instanceof Player player) || event.getRawSlot() < 0 || event.getRawSlot() >= event.getView().getTopInventory().getSize()) return;
-        GuiModel.Click click = switch (event.getClick()) {
-            case LEFT -> GuiModel.Click.LEFT;
-            case RIGHT -> GuiModel.Click.RIGHT;
-            case SHIFT_LEFT -> GuiModel.Click.SHIFT_LEFT;
-            case SHIFT_RIGHT -> GuiModel.Click.SHIFT_RIGHT;
-            default -> null;
-        };
-        if (click == null) return;
+        Optional<GuiModel.Click> click = click(event.getClick());
+        if (click.isEmpty()) return;
         int slot = event.getRawSlot();
         Window target = window.get();
         ScreenManager<Player, ItemStack> current = manager;
-        if (current != null) later.test(player, () -> { if (player.isOnline()) current.click(player, target, slot, click); });
+        if (current != null) later.test(player, () -> { if (player.isOnline()) current.click(player, target, slot, click.get()); });
+    }
+
+    /** The four bound clicks, as the mod host maps them; number keys, double clicks, drops, middle and border clicks are none. */
+    static Optional<GuiModel.Click> click(ClickType type) {
+        return switch (type) {
+            case LEFT -> Optional.of(GuiModel.Click.LEFT);
+            case RIGHT -> Optional.of(GuiModel.Click.RIGHT);
+            case SHIFT_LEFT -> Optional.of(GuiModel.Click.SHIFT_LEFT);
+            case SHIFT_RIGHT -> Optional.of(GuiModel.Click.SHIFT_RIGHT);
+            default -> Optional.empty();
+        };
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)

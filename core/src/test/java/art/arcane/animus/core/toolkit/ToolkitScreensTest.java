@@ -1,123 +1,309 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import art.arcane.animus.core.command.CommandActor;
-import art.arcane.animus.core.command.PermissionNodes;
-import art.arcane.animus.core.gui.FakeNpcRuntime;
 import art.arcane.animus.core.gui.GuiModel.Click;
 import art.arcane.animus.core.gui.MockScreenHost;
-import art.arcane.animus.core.gui.MockScreenHost.Player;
-import art.arcane.animus.core.gui.ScreenFrame;
-import art.arcane.animus.core.gui.ScreenHost;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.inventory.MockInventory.Stack;
-import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
-import art.arcane.animus.core.text.RichText;
-import art.arcane.animus.core.virtual.Hitbox;
-import art.arcane.animus.core.virtual.Vec3;
-import art.arcane.animus.core.virtual.VirtualNpcState;
-import art.arcane.animus.core.virtual.WorldPosition;
+import art.arcane.animus.core.text.Words;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Consumer;
-import org.junit.jupiter.api.AfterEach;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
-class ToolkitScreensTest {
-    static final UUID GUARD = UUID.fromString("12345678-1234-1234-1234-123456789abc"), BAKER = UUID.fromString("22345678-1234-1234-1234-123456789abc");
-    @TempDir Path root;
-    DocumentStore store;
-    NpcRepository npcs;
-    final MockScreenHost host = new MockScreenHost();
-    final Player alex = new Player("Alex");
-    final ScreenManager<Player, Stack> manager = new ScreenManager<>(host, (UUID npc) -> true, (String warning) -> { throw new AssertionError(warning); });
-    final List<Runnable> queue = new ArrayList<>();
-    final Map<UUID, NpcRuntimeView> active = new HashMap<>();
-    final List<String> calls = new ArrayList<>();
-    long now = 1_000_000_000L;
-    String primary;
-    Toolkit<Player, Stack> toolkit;
-    final Toolkit.Commands commands = new Toolkit.Commands((CommandActor actor, String id) -> calls.add("inspect " + id), (CommandActor actor) -> calls.add("pair"), (CommandActor actor, String id) -> calls.add("revive " + id));
-
-    record NpcRuntimeView(String id, VirtualNpcState.Snapshot state) {}
-
-    static String npc(String id, UUID uuid, String extra) {
-        return "{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"" + uuid + "\",\"id\":\"" + id + "\",\"group\":\"town\",\"name\":\"N\",\"type\":\"minecraft:player\",\"spawned\":true,"
-                + "\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}" + extra + "}";
-    }
-
-    static VirtualNpcState.Snapshot at(UUID uuid, double x) {
-        Vec3 point = new Vec3(x, 64, 0);
-        return new VirtualNpcState.Snapshot(uuid, new WorldPosition("world", point), new Hitbox(point.add(new Vec3(-0.3, 0, -0.3)), point.add(new Vec3(0.3, 1.8, 0.3))), 20, true, 1);
-    }
+/** Home, NPCs and the NPC screen per mode, the wand's clicks and how {@code /animus tools} routes. */
+class ToolkitScreensTest extends ToolkitHarness {
+    static final Set<String> NOT_ON_CENTRE = Set.of("Delete", "Close", "Stand still", "Discard", "Clear selection");
 
     @BeforeEach void setUp() throws IOException {
-        store = new DocumentStore(root);
-        List<DocumentStore.Change> files = new ArrayList<>(List.of(
-                new DocumentStore.Change("npcs/town/guard.json", "missing", npc("guard", GUARD, "")),
-                new DocumentStore.Change("npcs/town/baker.json", "missing", npc("baker", BAKER, ""))));
-        for (int i = 0; i < 50; i++) files.add(new DocumentStore.Change("groups/g" + (100 + i) + ".json", "missing", "{\"schemaVersion\":2,\"revision\":1,\"id\":\"g" + (100 + i) + "\",\"values\":{\"tags\":[\"t\"]}}"));
-        store.commit(files);
-        npcs = new NpcRepository(store);
-        assertTrue(npcs.reload().isEmpty());
-        active.put(GUARD, new NpcRuntimeView("guard", at(GUARD, 3)));
-        active.put(BAKER, new NpcRuntimeView("baker", at(BAKER, 6)));
-        alex.permissions.add(PermissionNodes.ADMIN);
-        alex.pose = new ScreenHost.Pose(Set.of("world"), 0, 64, 0, 65.62, 0, 0, false);
-        alex.wand = true;
-        FakeNpcRuntime<Player> living = new FakeNpcRuntime<>((UUID id) -> id.equals(alex.id) ? Optional.of(alex) : Optional.empty()) {
-            @Override public Optional<ActiveNpc> active(UUID npc) {
-                NpcRuntimeView view = active.get(npc);
-                return view == null ? Optional.empty() : Optional.of(new ActiveNpc(view.id(), view.id(), view.state()));
-            }
-            @Override public Optional<String> selection(UUID viewer) { return Optional.ofNullable(primary); }
-            @Override public void select(UUID viewer, String id) { primary = id; }
-            @Override public void followRoute(String id, String route) { calls.add("follow " + id + " " + route); }
-            @Override public boolean stopNavigation(String id) { calls.add("stop " + id); return true; }
-        };
-        toolkit = Toolkit.install(new Toolkit.Parts<>(() -> npcs, () -> store, manager, living, queue::add, (Player player) -> Optional.empty(), Optional.empty(), () -> now));
+        List<DocumentStore.Change> files = new ArrayList<>(List.of(npcFile("guard", GUARD, ""), npcFile("baker", BAKER, "")));
+        for (int i = 0; i < 50; i++) files.add(file("groups/g" + (100 + i) + ".json", "{\"schemaVersion\":2,\"revision\":1,\"id\":\"g" + (100 + i) + "\",\"values\":{\"tags\":[\"t\"]}}"));
+        start(files, true);
+        active.put(GUARD, 3.0);
+        active.put(BAKER, 6.0);
     }
 
-    @AfterEach void tearDown() throws IOException { toolkit.close(); store.close(); }
+    void advanced() { toolkit.mode(alex.id, ToolkitMode.ADVANCED); }
 
-    void drain() { while (!queue.isEmpty()) queue.removeFirst().run(); }
-
-    void click(String name, Click click) { manager.click(alex, alex.window, MockScreenHost.slot(alex, name), click); }
-
-    String lore(String name) {
-        ScreenFrame.Item item = alex.frame.items().get(MockScreenHost.slot(alex, name));
-        return String.join("\n", item.lore().stream().map(RichText::plain).toList());
+    void centreIsSafe() {
+        for (int slot : List.of(13, 22, 31, 34)) assertFalse(NOT_ON_CENTRE.contains(name(slot)), title() + " has " + name(slot) + " on slot " + slot);
     }
 
-    @Test void theWandSelectsOneNpcAndASneakClickTogglesIt() {
-        assertTrue(toolkit.interacted(alex, GUARD, false, false));
+    @Test void homeShowsTheCommonTasksInSimpleAndTheLibraryInAdvanced() {
+        toolkit.home(alex.id);
+        assertEquals("Animus", title());
+        assertEquals(Map.of(10, "New NPC", 12, "NPCs", 14, "Wand", 16, "Web editor", 18, "Close", 25, "Mode: Simple", 26, "Help"), buttons());
+        centreIsSafe();
+        click("Mode: Simple", Click.LEFT);
+        assertEquals(Map.ofEntries(Map.entry(10, "New NPC"), Map.entry(12, "NPCs"), Map.entry(14, "Wand"), Map.entry(16, "Web editor"),
+                Map.entry(18, "Folders"), Map.entry(19, "Behaviors"), Map.entry(20, "Shops"), Map.entry(21, "Routes"), Map.entry(22, "Recordings"), Map.entry(23, "Holograms"), Map.entry(24, "GUIs"),
+                Map.entry(25, "Skins"), Map.entry(26, "Trait groups"), Map.entry(27, "Close"), Map.entry(34, "Mode: Advanced"), Map.entry(35, "Help")), buttons(), "Advanced adds a row; Simple items stay where they were");
+        centreIsSafe();
+        click("Trait groups", Click.LEFT);
+        assertEquals("Trait groups", title());
+        click("Back", Click.LEFT);
+        click("Holograms", Click.LEFT);
+        assertEquals("Saved holograms", title());
+        click("Back", Click.LEFT);
+        assertEquals("Animus", title());
+        click("Close", Click.LEFT);
+        assertNull(alex.window);
+    }
+
+    @Test void theModeLeverSwitchesRedrawsAndIsSaved() throws IOException {
+        toolkit.home(alex.id);
+        assertTrue(lore("Mode: Simple").contains("Simple shows the common tasks."));
+        assertTrue(lore("Mode: Simple").contains("Click: switch to Advanced"));
+        click("Mode: Simple", Click.LEFT);
+        assertEquals(ToolkitMode.ADVANCED, toolkit.mode(alex.id));
+        assertTrue(shows("Mode: Advanced"));
+        drain();
+        assertTrue(java.nio.file.Files.readString(store.resolve(ToolkitPrefs.path(alex.id))).contains("advanced"));
+        List<Runnable> lane = new ArrayList<>();
+        ToolkitPrefs fresh = new ToolkitPrefs(() -> store, lane::add);
+        fresh.load(alex.id);
+        lane.forEach(Runnable::run);
+        assertEquals(ToolkitMode.ADVANCED, fresh.mode(alex.id), "the next join reads Advanced");
+    }
+
+    @Test void homeShowsTheFinishButtonWhileACaptureOrRecordingRuns() throws IOException {
+        toolkit.home(alex.id);
+        assertTrue(name(HomeScreen.RUNNING).isBlank());
+        recording = true;
+        toolkit.home(alex.id);
+        assertEquals("Stop recording", name(HomeScreen.RUNNING));
+        click("Stop recording", Click.LEFT);
+        assertEquals(List.of("animus record stop"), alex.commands);
+        recording = false;
+        toolkit.captures().start(alex, "walk", List.of());
+        toolkit.route(alex.id, "add", "");
+        stand(4, 0, false);
+        toolkit.route(alex.id, "add", "");
+        toolkit.home(alex.id);
+        assertEquals("Finish route (2 points)", name(HomeScreen.RUNNING));
+        click("Finish route", Click.LEFT);
+        assertEquals("Route points", title());
+        click("Save", Click.LEFT);
+        drain();
+        assertTrue(toolkit.captures().capture(alex.id).isEmpty());
+        assertNotNull(store.read("routes/walk.json"));
+    }
+
+    @Test void theNpcScreenListsItsJobsPerMode() {
+        toolkit.selectOnly(alex.id, "guard");
+        toolkit.open(alex.id);
+        assertEquals("guard", title());
+        assertEquals(Map.ofEntries(Map.entry(4, "guard"), Map.entry(10, "Name"), Map.entry(11, "Body"), Map.entry(12, "Skin"), Map.entry(13, "Equipment"), Map.entry(14, "Hologram"),
+                Map.entry(19, "Talk"), Map.entry(20, "Shop"), Map.entry(21, "Movement"), Map.entry(22, "Combat"),
+                Map.entry(28, "Bring here"), Map.entry(29, "Go to"), Map.entry(30, "Spawned: on"), Map.entry(31, "Copy"), Map.entry(35, "Delete"),
+                Map.entry(45, "Back"), Map.entry(52, "Mode: Simple"), Map.entry(53, "Help")), buttons());
+        centreIsSafe();
+        click("Mode: Simple", Click.LEFT);
+        Map<Integer, String> shown = buttons();
+        for (Map.Entry<Integer, String> added : Map.of(16, "All fields", 23, "Behaviors", 24, "GUIs", 32, "Folder", 33, "Trait groups", 37, "Attributes", 38, "Modules",
+                39, "Inspect", 40, "Revive", 41, "Open in editor").entrySet()) assertEquals(added.getValue(), shown.get(added.getKey()), shown.toString());
+        assertEquals("Mode: Advanced", shown.get(52));
+        assertEquals(28, shown.size());
+        centreIsSafe();
+        assertTrue(lore("guard").contains("Folder town"), "Advanced shows the folder in the header");
+    }
+
+    @Test void severalSelectedShareOneScreenAndOneOnlyJobsSaySo() {
+        toolkit.selectOnly(alex.id, "guard");
+        toolkit.selection().toggle(alex.id, "baker");
+        toolkit.open(alex.id);
+        assertEquals("2 NPCs", title());
+        assertTrue(lore("Name").contains("First only"));
+        assertTrue(lore("Go to").contains("First only"));
+        assertFalse(lore("Copy").contains("First only"));
+        assertTrue(lore("2 NPCs").contains("guard, baker"));
+    }
+
+    @Test void toolsOpensTheNpcScreenOverHomeOrHomeAlone() {
+        toolkit.open(alex.id);
+        assertEquals("Animus", title(), "nothing selected opens Home");
+        toolkit.selectOnly(alex.id, "baker");
+        toolkit.open(alex.id);
+        assertEquals("baker", title());
+        click("Back", Click.LEFT);
+        assertEquals("Animus", title(), "Back from the NPC screen goes Home");
+    }
+
+    @Test void deleteAsksOnceOnTheNpcScreen() {
+        toolkit.selectOnly(alex.id, "guard");
+        toolkit.open(alex.id);
+        click("Delete", Click.LEFT);
+        drain();
+        assertTrue(npcs.find("guard").isPresent(), "the first click only arms");
+        assertEquals("Click again to confirm", name(NpcScreen.DELETE));
+        assertTrue(lore(NpcScreen.DELETE).contains("Deletes guard"), lore(NpcScreen.DELETE));
+        assertTrue(lore(NpcScreen.DELETE).contains("Any other click cancels"));
+        click("Copy", Click.LEFT);
+        drain();
+        assertEquals("Delete", name(NpcScreen.DELETE), "another click cancels");
+        click("Delete", Click.LEFT);
+        click("Click again to confirm", Click.LEFT);
+        drain();
+        assertTrue(npcs.find("guard").isEmpty());
+        assertTrue(alex.messages.contains("[Animus]: Deleted guard"), alex.messages.toString());
+        assertTrue(toolkit.selected(alex.id).isEmpty(), "a deleted NPC leaves the selection");
+        assertEquals("NPCs", title());
+    }
+
+    @Test void aRefusalShowsOnTheWindowUntilTheNextClick() {
+        alex.permissions.clear();
+        alex.permissions.add(PermissionNodes.TOOLS);
+        toolkit.selectOnly(alex.id, "guard");
+        toolkit.open(alex.id);
+        assertEquals("No permission\nanimus.npc.create", lore(NpcScreen.COPY), "copy needs animus.npc.create, so it is greyed out");
+        click("Copy", Click.LEFT);
+        drain();
+        assertTrue(npcs.find("guard-copy").isEmpty());
+        toolkit.route(alex.id, "add", "");
+        assertEquals("No permission: animus.npc.move; ask an operator to grant it", name(ToolScreen.PAGE));
+        assertTrue(alex.messages.getLast().contains("No permission: animus.npc.move"), "and in chat");
+        assertTrue(alex.sounds.contains("minecraft:block.beacon.deactivate@0.2"), alex.sounds.toString());
+        click(0, Click.LEFT);
+        assertEquals("", name(ToolScreen.PAGE).replace(" ", ""), "any next click ends it");
+        assertEquals("No permission\nanimus.combat", lore(NpcScreen.COMBAT), "the combat screen needs animus.combat");
+        click("Combat", Click.LEFT);
+        assertEquals("guard", title());
+    }
+
+    @Test void manageRunsSpawnCopyInspectReviveAndTheEditorLink() {
+        toolkit.selectOnly(alex.id, "guard");
+        advanced();
+        toolkit.open(alex.id);
+        click("Spawned: on", Click.LEFT);
+        drain();
+        assertTrue(alex.messages.getLast().contains("Despawned 1 NPC; tx "), alex.messages.getLast());
+        assertEquals("Spawned: off", name(NpcScreen.SPAWNED));
+        click("Spawned: off", Click.LEFT);
+        drain();
+        assertTrue(alex.messages.getLast().contains("Spawned 1 NPC; tx "), alex.messages.getLast());
+        click("Copy", Click.LEFT);
+        drain();
+        assertTrue(npcs.find("guard-copy").isPresent());
+        click("Revive", Click.LEFT);
+        assertEquals(List.of("revive guard"), calls);
+        click("Inspect", Click.LEFT);
+        assertEquals(List.of("revive guard", "inspect guard"), calls);
+        assertNull(alex.window, "inspect closes the window so the chat shows");
+        toolkit.open(alex.id);
+        click("Open in editor", Click.LEFT);
+        assertEquals(List.of("revive guard", "inspect guard", "pair"), calls);
+    }
+
+    @Test void nameWritesTheDisplayNameOfTheFirstOnly() {
+        toolkit.selectOnly(alex.id, "guard");
+        toolkit.selection().toggle(alex.id, "baker");
+        toolkit.open(alex.id);
+        click("Name", Click.LEFT);
+        assertEquals("Name", alex.prompt.label());
+        MockScreenHost.answer(alex, Optional.of("Gate Guard"));
+        drain();
+        assertEquals("Gate Guard", npcs.find("guard").orElseThrow().name());
+        assertEquals("baker", npcs.find("baker").orElseThrow().name());
+    }
+
+    @Test void movementShowsWhatItDoesAndStandStillRemovesIt() throws IOException {
+        store.commit(List.of(file("routes/market.json", ToolkitRoutesTest.MARKET)));
+        toolkit.selectOnly(alex.id, "guard");
+        toolkit.open(alex.id);
+        click("Movement", Click.LEFT);
+        assertEquals("Movement", title());
+        assertTrue(lore("Route").contains("Walks point to point."));
+        assertTrue(lore("Recording").contains("Replays what you did."));
+        assertTrue(lore(MovementScreen.HEADER).contains("Now: stands still"));
+        toolkit.write(manager.viewer(alex.id).orElseThrow(), (ToolkitFiles files) -> files.route("market", List.of("guard")));
+        drain();
+        assertTrue(lore(MovementScreen.HEADER).contains("Now: walks route Market"), lore(MovementScreen.HEADER));
+        click("Stand still", Click.LEFT);
+        click("Click again to confirm", Click.LEFT);
+        drain();
+        assertTrue(calls.contains("stop guard"));
+        assertTrue(alex.messages.getLast().contains("guard stands still"), alex.messages.getLast());
+        assertFalse(alex.messages.stream().anyMatch((String line) -> line.contains("Stopped guard")), "one line, the saved change: " + alex.messages);
+        assertTrue(lore(MovementScreen.HEADER).contains("Now: stands still"), lore(MovementScreen.HEADER));
+        click("Route", Click.LEFT);
+        assertEquals("Routes", title());
+    }
+
+    @Test void npcsListsNearestFirstThenTheRestAndEditsOrVisits() throws IOException {
+        toolkit.home(alex.id);
+        click("NPCs", Click.LEFT);
+        assertEquals("NPCs", title());
+        assertTrue(MockScreenHost.slot(alex, "guard") < MockScreenHost.slot(alex, "baker"));
+        assertTrue(lore("baker").contains("6 blocks away"), lore("baker"));
+        assertEquals("Search", name(ToolScreen.SEARCH), "NPCs always offers Search");
+        assertFalse(lore("baker").contains("Sneak-click"), "Simple has no multi-select");
+        click("guard", Click.RIGHT);
+        assertTrue(alex.effects.contains("teleport:world:1,64,0"), "beside the guard at 3 64 0, on the player's side: " + alex.effects);
+        toolkit.home(alex.id);
+        click("NPCs", Click.LEFT);
+        click("baker", Click.LEFT);
+        assertEquals(List.of("baker"), toolkit.selected(alex.id));
+        assertEquals("baker", title(), "a click opens its NPC screen");
+        click("Back", Click.LEFT);
+        assertEquals("NPCs", title());
+    }
+
+    @Test void advancedNpcsMultiSelectsAndBuildsTheSelection() {
+        advanced();
+        toolkit.home(alex.id);
+        click("NPCs", Click.LEFT);
+        assertTrue(lore("baker").contains("Sneak-click: add or remove"));
+        click("guard", Click.SHIFT_LEFT);
+        click("baker", Click.SHIFT_RIGHT);
+        assertEquals(List.of("guard", "baker"), toolkit.selected(alex.id));
+        assertTrue(lore("baker").contains("Selected"));
+        assertEquals("Edit selection (2)", name(NpcsScreen.EDIT));
+        click("Clear selection", Click.LEFT);
+        assertTrue(toolkit.selected(alex.id).isEmpty());
+        assertTrue(alex.messages.contains("bar:Selection cleared"), alex.messages.toString());
+        click("All in world", Click.LEFT);
+        assertEquals(List.of("baker", "guard"), toolkit.selected(alex.id));
+        click("By folder", Click.LEFT);
+        assertEquals("By folder", title());
+        click("town", Click.LEFT);
+        assertEquals("NPCs", title(), "picking goes back");
+        assertTrue(alex.messages.getLast().contains("Selected 2 NPCs in town"), alex.messages.getLast());
+    }
+
+    @Test void theWandSelectsEditsAndTogglesNpcs() {
+        assertTrue(toolkit.interacted(alex, GUARD, true, false), "a left click selects only");
         assertEquals(List.of("guard"), toolkit.selected(alex.id));
         assertEquals("guard", primary, "the wand also sets the selection @selected names");
+        assertEquals(List.of("guard"), glows, "it glows a moment, as /animus select makes it");
+        assertNull(alex.window, "a left click opens nothing");
         now += Toolkit.REPEAT_NANOS / 2;
         assertTrue(toolkit.interacted(alex, GUARD, false, false), "the second hand of the same click is used and ignored");
+        assertNull(alex.window);
         now += Toolkit.REPEAT_NANOS;
-        assertTrue(toolkit.interacted(alex, BAKER, false, true));
-        assertEquals(List.of("guard", "baker"), toolkit.selected(alex.id));
-        alex.pose = new ScreenHost.Pose(Set.of("world"), 0, 64, 0, 65.62, 0, 0, true);
-        now += Toolkit.REPEAT_NANOS;
-        assertTrue(toolkit.interacted(alex, GUARD, true, false), "a left click reads sneaking from the pose");
+        assertTrue(toolkit.interacted(alex, BAKER, false, false), "a right-click selects and edits");
         assertEquals(List.of("baker"), toolkit.selected(alex.id));
-        assertTrue(alex.messages.contains("bar:Removed guard, 1 selected"), alex.messages.toString());
+        assertEquals("baker", title());
+        now += Toolkit.REPEAT_NANOS;
+        assertTrue(toolkit.interacted(alex, GUARD, false, true));
+        assertEquals(List.of("baker", "guard"), toolkit.selected(alex.id));
+        stand(0, 0, true);
+        now += Toolkit.REPEAT_NANOS;
+        assertTrue(toolkit.interacted(alex, BAKER, true, false), "a left click reads sneaking from the pose");
+        assertEquals(List.of("guard"), toolkit.selected(alex.id));
+        assertTrue(alex.messages.contains("bar:Removed baker, 1 selected"), alex.messages.toString());
 
         alex.wand = false;
         assertFalse(toolkit.interacted(alex, GUARD, false, false), "without the wand the click goes on to shops and GUIs");
@@ -126,236 +312,327 @@ class ToolkitScreensTest {
         assertFalse(toolkit.interacted(alex, GUARD, false, false), "only players with animus.tools use the wand");
     }
 
-    @Test void thePaletteHintsEveryClickAndOpensEachTool() {
-        toolkit.open(alex.id, Toolkit.Tool.PALETTE, commands);
-        assertEquals("Animus tools", RichText.plain(alex.frame.title()));
-        int buttons = 0;
-        for (ScreenFrame.Item item : alex.frame.items().values()) {
-            if (item.item().id().equals(ToolScreen.FILLER)) continue;
-            String text = String.join("\n", item.lore().stream().map(RichText::plain).toList());
-            assertTrue(text.contains("Click: ") || text.contains("Left ") && text.contains("Right") && text.contains("neak"), item.name() + " lacks click hints: " + text);
-            List<String> actions = item.lore().stream().map(RichText::plain).filter((String line) -> line.matches("^(Click:|Left|Right|Sneak).*"))
-                    .map((String line) -> line.replaceFirst("^(Click:|Left or right|Left or sneak|Right or sneak|Left|Right|Sneak) ", "")).toList();
-            assertEquals(actions.size(), Set.copyOf(actions).size(), item.name() + " repeats a click hint: " + text);
-            buttons++;
-        }
-        assertEquals(18, buttons);
-        click("Trait groups", Click.LEFT);
-        assertEquals("Trait groups", RichText.plain(alex.frame.title()));
-        click("Back", Click.LEFT);
-        assertEquals("Animus tools", RichText.plain(alex.frame.title()));
-        click("Animus wand", Click.LEFT);
-        assertTrue(alex.messages.getLast().contains("Wand given"), alex.messages.toString());
+    @Test void theWandOnAirOpensHomeClearsOrSaysItMissed() {
+        assertTrue(toolkit.used(alex, false));
+        assertNull(alex.window, "it waits a moment for an NPC click of the same press");
+        toolkit.tick(alex);
+        toolkit.tick(alex);
+        assertEquals("Animus", title());
+        manager.close(alex);
+
+        toolkit.used(alex, false);
+        now += Toolkit.REPEAT_NANOS;
+        toolkit.interacted(alex, GUARD, false, false);
+        assertEquals("guard", title(), "the NPC click of the same press wins");
+        manager.close(alex);
+        toolkit.tick(alex);
+        toolkit.tick(alex);
+        assertNull(alex.window, "and Home never opens after it");
+
+        now += Toolkit.REPEAT_NANOS;
+        toolkit.used(alex, true);
+        toolkit.tick(alex);
+        toolkit.tick(alex);
+        assertTrue(toolkit.selected(alex.id).isEmpty(), "sneak + right-click clears the selection");
+        assertTrue(alex.messages.contains("bar:Selection cleared"));
+
+        toolkit.swung(alex);
+        toolkit.tick(alex);
+        toolkit.tick(alex);
+        toolkit.swung(alex);
+        toolkit.tick(alex);
+        toolkit.tick(alex);
+        assertEquals(1, alex.messages.stream().filter("bar:No NPC there"::equals).count(), "at most once every 2 seconds");
+        now += Toolkit.MISS_NANOS;
+        toolkit.swung(alex);
+        toolkit.tick(alex);
+        toolkit.tick(alex);
+        assertEquals(2, alex.messages.stream().filter("bar:No NPC there"::equals).count());
+
+        alex.wand = false;
+        assertFalse(toolkit.used(alex, false), "without the wand the click is the item's own");
     }
 
-    @Test void groupsPageAndAssignOrUnassignTheSelectionInOneTransaction() throws IOException {
-        toolkit.interacted(alex, GUARD, false, false);
+    @Test void aSwingFarFromEveryNpcStaysQuietUnlessSneaking() {
+        stand(40, 0, false);
+        toolkit.swung(alex);
+        toolkit.tick(alex);
+        toolkit.tick(alex);
+        assertFalse(alex.messages.contains("bar:No NPC there"), "only holding the wand: " + alex.messages);
+        stand(40, 0, true);
+        toolkit.swung(alex);
+        toolkit.tick(alex);
+        toolkit.tick(alex);
+        assertTrue(alex.messages.contains("bar:No NPC there"), "a sneak-click was meant for an NPC: " + alex.messages);
+    }
+
+    @Test void aSwingWhileRecordingIsPartOfTheTakeAndSaysNothing() {
+        recording = true;
+        stand(0, 0, true);
+        toolkit.swung(alex);
+        toolkit.tick(alex);
+        toolkit.tick(alex);
+        assertFalse(alex.messages.contains("bar:No NPC there"), "the swing is recorded, not a missed click: " + alex.messages);
+    }
+
+    @Test void theWandAndTheLoreNameTheNpcAsPlayersSeeItAndAdvancedAddsTheId() {
+        toolkit.selectOnly(alex.id, "guard");
+        toolkit.open(alex.id);
+        drain();
+        click("Name", Click.LEFT);
+        MockScreenHost.answer(alex, Optional.of("Gate Guard"));
+        drain();
+        toolkit.interacted(alex, GUARD, true, false);
+        assertEquals("bar:Selected Gate Guard", alex.messages.stream().filter((String line) -> line.startsWith("bar:Selected")).reduce((String a, String b) -> b).orElseThrow());
+        toolkit.open(alex.id);
+        drain();
+        click(NpcScreen.DELETE, Click.LEFT);
+        assertTrue(lore(NpcScreen.DELETE).startsWith("Deletes Gate Guard;"), lore(NpcScreen.DELETE));
+        advanced();
+        toolkit.open(alex.id);
+        drain();
+        click(NpcScreen.DELETE, Click.LEFT);
+        assertTrue(lore(NpcScreen.DELETE).startsWith("Deletes Gate Guard (guard);"), lore(NpcScreen.DELETE));
+    }
+
+    @Test void theWandOpensNothingBeforeTheCommandTreeHooksInAndThenUsesItsCommands() {
+        toolkit.close();
+        toolkit = Toolkit.install(new Toolkit.Parts<>(() -> npcs, () -> store, manager, living, queue::add, (MockScreenHost.Player player) -> Optional.empty(), Optional.empty(), () -> now));
+        assertTrue(toolkit.interacted(alex, GUARD, false, false));
+        drain();
+        assertNull(alex.window, "no menu runs on commands that are not there");
+        assertTrue(alex.messages.getLast().contains("The Animus menu is still starting"), alex.messages.getLast());
+
+        recording = true;
+        UUID run = UUID.randomUUID();
+        runs = (String npc) -> CompletableFuture.completedFuture(List.of(new Toolkit.Run(run, npc, "town:talk")));
+        toolkit.hook(commands);
+        now += Toolkit.REPEAT_NANOS;
+        assertTrue(toolkit.used(alex, false));
+        toolkit.tick(alex);
+        toolkit.tick(alex);
+        drain();
+        assertEquals("Stop recording", name(HomeScreen.RUNNING), "a menu the wand opens right after a restart sees the recording");
+        click("Stop recording", Click.LEFT);
+        assertEquals(List.of("animus record stop"), alex.commands);
+        toolkit.open(alex.id, (Toolkit<MockScreenHost.Player, Stack> kit, ScreenManager<MockScreenHost.Player, Stack>.Viewer viewer, Toolkit.Commands lent) ->
+                new BehaviorRunsScreen<>(kit, viewer, lent, "town:talk", List.of("guard")));
+        drain();
+        assertEquals("On guard", name(0), "and Cancel a run lists the running runs");
+    }
+
+    @Test void bringHereMovesEverySelectedNpcInOneChange() {
+        toolkit.selectOnly(alex.id, "guard");
+        toolkit.selection().toggle(alex.id, "baker");
+        stand(10, 5, false);
+        toolkit.open(alex.id);
+        drain();
+        click("Bring here", Click.LEFT);
+        drain();
+        assertEquals(1, changes().size(), "one Undo puts both back: " + alex.messages);
+        for (String id : List.of("guard", "baker")) {
+            com.google.gson.JsonObject position = npcs.find(id).orElseThrow().json().getAsJsonObject("position");
+            assertEquals(10.0, position.get("x").getAsDouble(), id);
+            assertEquals(7.0, position.get("z").getAsDouble(), "two blocks in front of Alex, who looks south: " + id);
+            assertEquals(-180.0, position.get("yaw").getAsDouble(), "turned to face Alex: " + id);
+        }
+        assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("Moved 2 NPCs here")), alex.messages.toString());
+    }
+
+    @Test void deleteLeavesForTheNpcListAndForHomeWhenNoneAreLeft() {
+        toolkit.selectOnly(alex.id, "guard");
+        toolkit.open(alex.id);
+        drain();
+        click(NpcScreen.DELETE, Click.LEFT);
+        click(NpcScreen.DELETE, Click.LEFT);
+        drain();
+        assertTrue(npcs.find("guard").isEmpty());
+        assertEquals("NPCs", title(), "never an empty NPC window");
+        click(ToolScreen.BACK, Click.LEFT);
+        assertEquals("Animus", title(), "Back from the list goes Home");
+        toolkit.selectOnly(alex.id, "baker");
+        toolkit.open(alex.id);
+        drain();
+        click(NpcScreen.DELETE, Click.LEFT);
+        click(NpcScreen.DELETE, Click.LEFT);
+        drain();
+        assertEquals("Animus", title(), "with no NPC left the window goes Home");
+    }
+
+    @Test void undoingADeleteSelectsTheNpcsItBringsBack() throws IOException {
+        toolkit.selectOnly(alex.id, "baker");
+        String deleted = new ToolkitFiles(npcs, store).delete(List.of("guard"));
+        String tx = deleted.substring(deleted.indexOf("; tx ") + 5);
+        String renamed = new ToolkitFiles(npcs, store).copies(List.of("baker"));
+        store.rollback(tx);
+        npcs.reload();
+        toolkit.undone(alex.id, tx.substring(0, 8));
+        assertEquals(List.of("guard"), toolkit.selected(alex.id), "the restored NPC is selected for the player who undid it");
+        toolkit.selectOnly(alex.id, "baker");
+        store.rollback(renamed.substring(renamed.indexOf("; tx ") + 5));
+        npcs.reload();
+        toolkit.undone(alex.id, renamed.substring(renamed.indexOf("; tx ") + 5));
+        assertEquals(List.of("baker"), toolkit.selected(alex.id), "undoing anything but a delete leaves the selection alone");
+    }
+
+    @Test void aScreenWhoseNpcsVanishLeavesOnItsNextTick() throws IOException {
+        toolkit.selectOnly(alex.id, "guard");
+        toolkit.open(alex.id);
+        drain();
+        click("Equipment", Click.LEFT);
+        assertEquals("Equipment", title());
+        new ToolkitFiles(npcs, store).delete(List.of("guard"));
+        manager.tick(alex);
+        assertEquals("NPCs", title());
+    }
+
+    @Test void theNpcScreenShowsTheRouteBeingMadeAndTheRecordingRunning() {
+        toolkit.selectOnly(alex.id, "guard");
+        toolkit.open(alex.id);
+        drain();
+        assertFalse(buttons().containsKey(NpcScreen.RUNNING));
+        toolkit.captures().start(alex, "walk", List.of("guard"));
+        toolkit.open(alex.id);
+        drain();
+        assertEquals("guard", title(), "/animus with a selection still opens the NPC screen");
+        assertEquals("Finish route (0 points)", name(NpcScreen.RUNNING));
+        click(NpcScreen.RUNNING, Click.LEFT);
+        assertEquals("Route points", title());
+        toolkit.captures().quit(alex.id);
+        recording = true;
+        toolkit.open(alex.id);
+        drain();
+        assertEquals("Stop recording", name(NpcScreen.RUNNING));
+        click(NpcScreen.RUNNING, Click.LEFT);
+        assertEquals(List.of("animus record stop"), alex.commands);
+    }
+
+    @Test void theLibraryOpensFoldersWithNothingSelectedSoAFolderCanBeRenamed() {
+        advanced();
+        toolkit.home(alex.id);
+        drain();
+        click("Folders", Click.LEFT);
+        drain();
+        assertEquals("Folders", title());
+        assertTrue(toolkit.selected(alex.id).isEmpty());
+        click("town", Click.RIGHT);
+        assertTrue(shows("Rename"), "rename works without a selected NPC: " + buttons());
+    }
+
+    @Test void theWandIsGivenOnceAndMovedAfterThat() {
+        alex.wand = false;
+        toolkit.home(alex.id);
+        click("Wand", Click.LEFT);
+        assertTrue(alex.messages.getLast().contains("Wand given; right-click an NPC to edit it"), alex.messages.getLast());
+        click("Wand", Click.LEFT);
+        assertTrue(alex.messages.getLast().contains("The wand is in your hand"), alex.messages.getLast());
+        assertEquals(1, alex.wands, "a second request never makes a second wand");
+        assertEquals("minecraft:stick", Toolkit.WAND_ITEM.id());
+        assertEquals(3, Toolkit.WAND_LORE.size());
+    }
+
+    @Test void theOutlineDrawsWhileSomethingIsSelectedAndStopsWhenCleared() {
+        toolkit.interacted(alex, GUARD, true, false);
+        assertEquals(Set.of(alex.id), toolkit.watching());
+        for (int tick = 0; tick < ToolkitOutline.PERIOD; tick++) toolkit.tick(alex);
+        assertEquals(ToolkitOutline.POINTS, alex.effects.stream().filter((String effect) -> effect.startsWith("particle:minecraft:end_rod")).count(), "one outline per period");
+        toolkit.clear(alex);
+        assertTrue(toolkit.watching().isEmpty());
+        toolkit.interacted(alex, BAKER, true, false);
+        toolkit.quit(alex.id);
+        assertTrue(toolkit.selected(alex.id).isEmpty(), "quitting clears the selection");
+        assertTrue(toolkit.watching().isEmpty());
+    }
+
+    @Test void aHandledClickTicksQuietly() {
+        toolkit.home(alex.id);
+        click(0, Click.LEFT);
+        assertTrue(alex.sounds.isEmpty(), "filler is not a button");
+        click("NPCs", Click.LEFT);
+        assertEquals(List.of(Toolkit.CLICK_SOUND + "@0.3"), alex.sounds);
+    }
+
+    @Test void helpPrintsALineWithTheWikiAndKeepsTheWindow() {
+        toolkit.home(alex.id);
+        Object window = alex.window;
+        click("Help", Click.LEFT);
+        assertTrue(alex.messages.getLast().contains("https://docs.volmitsoftware.com/animus/21-in-game-toolkit"), alex.messages.getLast());
+        assertTrue(alex.messages.getLast().contains("/animus gui opens this menu"), "Home's help names the command that opens it: " + alex.messages.getLast());
+        assertEquals(window, alex.window);
+    }
+
+    @Test void listsPageThirtySixEntriesAndSearchFiltersThem() {
+        advanced();
+        toolkit.home(alex.id);
+        click("Trait groups", Click.LEFT);
+        assertEquals("Next page", name(ToolScreen.NEXT));
+        assertEquals("Page 1 of 2", name(ToolScreen.PAGE));
+        assertEquals(36, alex.frame.items().values().stream().filter((art.arcane.animus.core.gui.ScreenFrame.Item item) -> item.item().id().equals("minecraft:book")).count());
+        click("Next page", Click.LEFT);
+        assertEquals(14, alex.frame.items().values().stream().filter((art.arcane.animus.core.gui.ScreenFrame.Item item) -> item.item().id().equals("minecraft:book")).count());
+        assertEquals("Previous page", name(ToolScreen.PREVIOUS));
+        click("Search", Click.LEFT);
+        assertEquals("Search", alex.prompt.label());
+        MockScreenHost.answer(alex, Optional.of("G14"));
+        assertEquals(10, alex.frame.items().values().stream().filter((art.arcane.animus.core.gui.ScreenFrame.Item item) -> item.item().id().equals("minecraft:book")).count(),
+                "g140 to g149, ignoring case, back on page 1");
+        assertTrue(lore(ToolScreen.SEARCH).contains("Now: G14"));
+        assertEquals("", name(ToolScreen.NEXT).replace(" ", ""));
+        click("Search", Click.LEFT);
+        assertNull(alex.prompt, "a click while filtered clears the search");
+        assertEquals("Page 1 of 2", name(ToolScreen.PAGE));
+    }
+
+    @Test void groupsAssignOrUnassignTheSelectionInOneTransaction() throws IOException {
+        toolkit.interacted(alex, GUARD, true, false);
         now += Toolkit.REPEAT_NANOS;
         toolkit.interacted(alex, BAKER, false, true);
-        toolkit.open(alex.id, Toolkit.Tool.PALETTE, commands);
+        advanced();
+        toolkit.home(alex.id);
         click("Trait groups", Click.LEFT);
-        assertTrue(RichText.plain(alex.frame.items().get(ToolScreen.NEXT).name().orElseThrow()).equals("Next page"));
-        assertFalse(RichText.plain(alex.frame.items().get(ToolScreen.PREVIOUS).name().orElseThrow()).contains("Previous"), "the first page has no previous arrow");
         click("Next page", Click.LEFT);
-        assertEquals("Page 2 of 2", RichText.plain(alex.frame.items().get(ToolScreen.INFO).name().orElseThrow()));
-        assertEquals(5, alex.frame.items().values().stream().filter((ScreenFrame.Item item) -> item.item().id().equals("minecraft:book")).count());
         click("g149", Click.LEFT);
         drain();
         String line = alex.messages.getLast();
         assertTrue(line.contains("Assigned g149 to 2 NPCs; tx "), line);
         String tx = line.substring(line.indexOf("tx ") + 3, line.indexOf("tx ") + 39);
         assertEquals(List.of("npcs/town/baker.json", "npcs/town/guard.json"), store.paths(tx).stream().filter((String path) -> path.startsWith("npcs/")).sorted().toList());
-        assertTrue(lore("g149").contains("In the selection 2 of 2"), lore("g149"));
+        assertTrue(lore("g149").contains("Now: on 2 NPCs"), lore("g149"));
         click("g149", Click.RIGHT);
+        click("Remove from NPC", Click.LEFT);
+        click(GroupDetailScreen.UNASSIGN, Click.LEFT);
         drain();
         assertTrue(alex.messages.getLast().contains("Unassigned g149 from 2 NPCs"), alex.messages.getLast());
         assertTrue(npcs.find("guard").orElseThrow().groups().isEmpty());
     }
 
-    @Test void deleteAsksTwiceOnTheSameScreen() {
-        toolkit.interacted(alex, GUARD, false, false);
-        toolkit.open(alex.id, Toolkit.Tool.MANAGE, commands);
-        assertEquals("Manage selection", RichText.plain(alex.frame.title()));
-        click("Delete", Click.LEFT);
-        drain();
-        assertTrue(npcs.find("guard").isPresent(), "the first click only arms");
-        assertTrue(lore("Click again to delete").contains("1 NPC affected"), lore("Click again to delete"));
-        click("Despawn", Click.LEFT);
-        drain();
-        assertTrue(lore("Delete").contains("Asks once more"), "another button disarms");
-        click("Delete", Click.LEFT);
-        click("Click again to delete", Click.LEFT);
-        drain();
-        assertTrue(npcs.find("guard").isEmpty());
-        assertTrue(alex.messages.getLast().contains("Deleted guard; tx "), alex.messages.getLast());
-        assertTrue(toolkit.selected(alex.id).isEmpty(), "a deleted NPC leaves the selection");
+    @Test void hintsSayClickRightClickAndSneakClick() {
+        assertEquals(List.of("&fClick: &7open it"), ToolScreen.hints("open it", "open it", "open it"));
+        assertEquals(List.of("&fClick: &7next", "&fRight-click: &7previous"), ToolScreen.hints("next", "previous", "next"));
+        assertEquals(List.of("&fClick: &7page 2", "&fSneak-click: &7last page"), ToolScreen.hints("page 2", "", "last page"));
+        assertEquals(List.of("&fClick: &7save", "&fRight-click: &7clear", "&fSneak-click: &7clear"), ToolScreen.hints("save", "clear", "clear"));
     }
 
-    @Test void selectByCommandReplacesThePaletteSelection() {
-        toolkit.interacted(alex, GUARD, false, false);
-        now += Toolkit.REPEAT_NANOS;
-        toolkit.interacted(alex, BAKER, false, true);
-        assertEquals(List.of("guard", "baker"), toolkit.selected(alex.id));
-        toolkit.selectOnly(alex.id, "baker");
-        assertEquals(List.of("baker"), toolkit.selected(alex.id), "the palette, Edit and @selected all read this one list");
-        toolkit.open(alex.id, Toolkit.Tool.PALETTE, commands);
-        assertTrue(alex.frame.items().values().stream().anyMatch((ScreenFrame.Item item) -> item.name().map(RichText::plain).orElse("").equals("1 selected")));
-        click("1 selected", Click.SHIFT_LEFT);
-        assertTrue(toolkit.selected(alex.id).isEmpty(), "clearing in the palette leaves nothing for @selected");
+    @Test void rawKeysReadAsWords() {
+        assertEquals("Team color", Words.readable("teamColor"));
+        assertEquals("Combat", Words.readable("animus:combat"));
+        assertEquals("Movement speed", Words.readable("movement_speed"));
+        assertEquals("Click redirect", Words.readable("clickRedirect"));
+        assertEquals("Player", Words.readable("minecraft:player"));
+        assertEquals("Max health", Words.readable("minecraft:max_health"));
     }
 
-    @Test void eachToolActionRechecksItsOwnNode() {
-        alex.permissions.clear();
-        alex.permissions.add(PermissionNodes.TOOLS);
-        assertTrue(toolkit.interacted(alex, GUARD, false, false), "animus.tools is enough for the wand");
-        toolkit.open(alex.id, Toolkit.Tool.MANAGE, commands);
-        click("Delete", Click.LEFT);
-        click("Click again to delete", Click.LEFT);
-        drain();
-        assertTrue(npcs.find("guard").isPresent(), "delete needs animus.npc.delete");
-        assertTrue(alex.messages.getLast().contains("No permission: animus.npc.delete"), alex.messages.getLast());
-        click("Clone", Click.LEFT);
-        drain();
-        assertTrue(npcs.find("guard-copy").isEmpty(), "clone needs animus.npc.create");
-        click("Open in editor", Click.LEFT);
-        assertTrue(calls.isEmpty(), "pairing needs animus.editor.pair: " + calls);
-        click("Combat", Click.LEFT);
-        assertEquals("Manage selection", RichText.plain(alex.frame.title()), "the combat screen needs animus.combat");
-        assertTrue(alex.messages.getLast().contains("No permission: animus.combat"), alex.messages.getLast());
-        toolkit.open(alex.id, Toolkit.Tool.PALETTE, commands);
-        click("New NPC", Click.LEFT);
-        assertNull(alex.prompt, "a new NPC needs animus.npc.create");
-        alex.permissions.add(PermissionNodes.NPC_DELETE);
-        toolkit.open(alex.id, Toolkit.Tool.MANAGE, commands);
-        click("Delete", Click.LEFT);
-        click("Click again to delete", Click.LEFT);
-        drain();
-        assertTrue(npcs.find("guard").isEmpty(), "granted, it runs");
-    }
-
-    @Test void manageRunsSpawnCloneInspectAndTheEditorLink() {
-        toolkit.interacted(alex, GUARD, false, false);
-        toolkit.open(alex.id, Toolkit.Tool.MANAGE, commands);
-        click("Despawn", Click.LEFT);
-        drain();
-        assertTrue(alex.messages.getLast().contains("Despawned 1 NPC; tx "), alex.messages.getLast());
-        click("Spawn", Click.LEFT);
-        drain();
-        assertTrue(alex.messages.getLast().contains("Spawning 1 NPC; tx "), alex.messages.getLast());
-        click("Clone", Click.LEFT);
-        drain();
-        assertTrue(npcs.find("guard-copy").isPresent());
-        click("Inspect", Click.LEFT);
-        assertEquals(List.of("inspect guard"), calls);
-        assertNull(alex.window, "inspect closes the window so the chat shows");
-        toolkit.open(alex.id, Toolkit.Tool.MANAGE, commands);
-        click("Open in editor", Click.LEFT);
-        assertEquals(List.of("inspect guard", "pair"), calls);
-        toolkit.open(alex.id, Toolkit.Tool.MANAGE, commands);
-        click("Revive", Click.LEFT);
-        assertEquals(List.of("inspect guard", "pair", "revive guard"), calls);
-    }
-
-    @Test void newNpcAsksForAnIdThenSavesSelectsAndSpawnsItInFrontOfThePlayer() {
-        alex.pose = new ScreenHost.Pose(Set.of("world", "minecraft:overworld"), 12.3, 64, -7.8, 65.62, 90, 0, false);
-        toolkit.open(alex.id, Toolkit.Tool.PALETTE, commands);
-        click("New NPC", Click.LEFT);
-        assertEquals("New NPC id", alex.prompt.label());
-        MockScreenHost.answer(alex, Optional.of("miller"));
-        drain();
-        assertTrue(npcs.find("miller").isPresent(), "the NPC is saved");
-        assertEquals(List.of("miller"), toolkit.selected(alex.id));
-        com.google.gson.JsonObject position = npcs.find("miller").orElseThrow().json().getAsJsonObject("position");
-        assertEquals("world", position.get("world").getAsString(), "the world NPC positions already use");
-        assertEquals(10.3, position.get("x").getAsDouble(), "two blocks ahead, where the player looks");
-        assertEquals(-7.8, position.get("z").getAsDouble());
-        assertEquals(-90f, position.get("yaw").getAsFloat(), "facing the player");
-        assertTrue(npcs.find("miller").orElseThrow().spawned());
-        drain();
-        List<String> created = alex.messages.stream().filter((String line) -> line.contains("; tx ") || line.contains("[Undo]")).toList();
-        assertEquals(1, created.size(), "one transaction: " + alex.messages);
-        assertTrue(created.getFirst().contains("Created npcs/miller.json and spawned it; tx "), created.getFirst());
-        assertFalse(alex.messages.toString().contains("dormant"), alex.messages.toString());
-        click("New NPC", Click.LEFT);
-        MockScreenHost.answer(alex, Optional.of("miller"));
-        drain();
-        assertTrue(alex.messages.getLast().contains("already exists"), alex.messages.getLast());
-        click("New NPC", Click.RIGHT);
-        assertEquals("Body type", alex.prompt.label());
-        MockScreenHost.answer(alex, Optional.of("minecraft:villager"));
-        MockScreenHost.answer(alex, Optional.of("trader"));
-        drain();
-        assertEquals("minecraft:villager", npcs.find("trader").orElseThrow().json().get("type").getAsString());
-    }
-
-    @Test void theOutlineDrawsWhileSomethingIsSelectedAndStopsWhenCleared() {
-        toolkit.interacted(alex, GUARD, false, false);
-        assertEquals(Set.of(alex.id), toolkit.watching());
-        for (int tick = 0; tick < ToolkitOutline.PERIOD; tick++) toolkit.tick(alex);
-        assertEquals(ToolkitOutline.POINTS, alex.effects.stream().filter((String effect) -> effect.startsWith("particle:minecraft:end_rod")).count(), "one outline per period");
-        toolkit.open(alex.id, Toolkit.Tool.PALETTE, commands);
-        click("1 selected", Click.SHIFT_LEFT);
-        assertTrue(toolkit.watching().isEmpty());
-        toolkit.interacted(alex, BAKER, false, false);
-        toolkit.quit(alex.id);
-        assertTrue(toolkit.selected(alex.id).isEmpty(), "quitting clears the selection");
-        assertTrue(toolkit.watching().isEmpty());
-    }
-
-    @Test void routePointsComeFromTheWandSneakAndSaveAsAPlayerRoute() throws IOException {
-        toolkit.open(alex.id, Toolkit.Tool.PALETTE, commands);
-        click("Routes", Click.RIGHT);
-        assertTrue(toolkit.capture(alex.id).isPresent());
-        Consumer<Double> step = (Double x) -> {
-            alex.pose = new ScreenHost.Pose(Set.of("world"), x, 64, 0, 65.62, 0, 0, false);
-            toolkit.tick(alex);
-            alex.pose = new ScreenHost.Pose(Set.of("world"), x, 64, 0, 65.62, 0, 0, true);
-            toolkit.tick(alex);
-            toolkit.tick(alex);
-        };
-        step.accept(5.0);
-        step.accept(9.0);
-        assertEquals(3, toolkit.capture(alex.id).orElseThrow().points().size(), "one point per sneak press");
-        click("Routes", Click.SHIFT_LEFT);
-        assertEquals(2, toolkit.capture(alex.id).orElseThrow().points().size());
-        click("Routes", Click.LEFT);
-        click("Save route", Click.LEFT);
-        drain();
-        assertTrue(alex.messages.getLast().contains("Saved wp-alex, 2 points; sneak-click it in Routes to rename routes/wp-alex.json"), alex.messages.getLast());
-        assertNotNull(store.read("routes/wp-alex.json"));
-        assertTrue(toolkit.capture(alex.id).isEmpty());
-        drain();
-        assertTrue(alex.frame.items().values().stream().anyMatch((ScreenFrame.Item item) -> item.name().map(RichText::plain).orElse("").equals("wp-alex")));
-        toolkit.interacted(alex, GUARD, false, false);
-        click("wp-alex", Click.LEFT);
-        drain();
-        assertTrue(alex.messages.getLast().contains("Route wp-alex on guard; tx "), alex.messages.getLast());
-        click("wp-alex", Click.RIGHT);
-        assertTrue(calls.contains("follow guard wp-alex"));
-        click("Stop moving", Click.LEFT);
-        assertTrue(calls.contains("stop guard"));
-        assertTrue(alex.messages.getLast().endsWith("Stopped guard"), alex.messages.getLast());
-    }
-
-    @Test void captureClosesTheWindowSoThePlayerWalksAndCountsOnePoint() {
-        toolkit.open(alex.id, Toolkit.Tool.PALETTE, commands);
-        click("Routes", Click.LEFT);
-        click("Capture a route", Click.LEFT);
-        assertNull(alex.window, "the window closes so the player can walk the route");
-        assertEquals(1, toolkit.capture(alex.id).orElseThrow().points().size());
-        toolkit.open(alex.id, Toolkit.Tool.PALETTE, commands);
-        click("Routes", Click.LEFT);
-        assertEquals("Capturing, 1 point", RichText.plain(alex.frame.items().get(MockScreenHost.slot(alex, "Capturing")).name().orElseThrow()));
-    }
-
-    @Test void findListsNearestFirstAndTeleportsOrSelects() {
-        toolkit.open(alex.id, Toolkit.Tool.PALETTE, commands);
-        click("Find", Click.LEFT);
-        assertTrue(MockScreenHost.slot(alex, "guard") < MockScreenHost.slot(alex, "baker"));
-        assertTrue(lore("baker").contains("6.0 blocks away"), lore("baker"));
-        click("baker", Click.RIGHT);
-        assertEquals(List.of("baker"), toolkit.selected(alex.id));
-        click("guard", Click.LEFT);
-        assertTrue(alex.effects.contains("teleport:world:1,64,0"), "beside the guard at 3 64 0, on the player's side: " + alex.effects);
+    @Test void everyButtonSaysWhatItsClicksDoInTheNewWords() {
+        advanced();
+        toolkit.selectOnly(alex.id, "guard");
+        toolkit.open(alex.id);
+        for (int slot : buttons().keySet()) {
+            String text = lore(slot);
+            if (slot == NpcScreen.SKIN && name(slot).equals("Skin") && text.contains("Player bodies only") && !text.contains("Click")) continue;
+            assertTrue(text.contains("Click: "), name(slot) + " lacks click hints: " + text);
+            assertFalse(text.matches("(?s).*\\b(Left|Right|Sneak) .*"), name(slot) + " uses the old wording: " + text);
+        }
+        UUID unused = UUID.randomUUID();
+        assertFalse(toolkit.interacted(alex, unused, false, false), "an NPC that is not spawned is not the wand's");
     }
 }

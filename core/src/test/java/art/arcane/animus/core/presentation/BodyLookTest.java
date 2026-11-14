@@ -184,4 +184,16 @@ class BodyLookTest {
         assertTrue(BodyLook.of(ID, "minecraft:player", "Guard", traits).team());
         assertFalse(BodyLook.of(ID, "minecraft:player", "Guard", NpcAppearance.PLAIN).team());
     }
+
+    /** The client hides the name tag of a body that carries passengers unless a team shows it, and text rows ride the body. */
+    @Test void aPlayerBodyShowingItsOwnNameUnderTextRowsHasATeamThatShowsTheName() {
+        BodyLook hologram = BodyLook.of(ID, "minecraft:player", "Bob", appearance(List.of("Welcome"), true, NpcPose.STANDING));
+        assertTrue(hologram.aboveNativeNameplate());
+        assertFalse(hologram.hideProfileName(), "the team shows the name, it does not hide it");
+        assertTrue(hologram.team(), "a hologram line rides the body, so only a team keeps Bob's name tag");
+        assertTrue(BodyLook.of(ID, "minecraft:player", "Bob", NpcAppearance.PLAIN.withBubble("")).team(), "a speech bubble row rides it too");
+        assertFalse(BodyLook.of(ID, "minecraft:player", "Bob", NpcAppearance.PLAIN).team(), "nothing rides a plain body");
+        assertFalse(BodyLook.of(ID, "minecraft:villager", "Baker", appearance(List.of("Bread"), true, NpcPose.STANDING)).team(),
+                "a villager's name is a text row, not its name tag");
+    }
 }

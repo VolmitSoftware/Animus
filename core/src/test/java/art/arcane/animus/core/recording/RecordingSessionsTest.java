@@ -78,6 +78,7 @@ class RecordingSessionsTest {
         Actor(Optional<UUID> player) { this.player = player; }
         @Override public boolean permitted(String node) { return true; }
         @Override public void tell(String message) { lines.add(message); }
+        @Override public void rich(art.arcane.animus.core.text.ChatLine line) { lines.add(line.visible()); }
         @Override public Optional<UUID> player() { return player; }
         @Override public boolean reply(Runnable action) { action.run(); return true; }
         String last() { return lines.getLast(); }
@@ -107,7 +108,8 @@ class RecordingSessionsTest {
         Player player = join();
         Actor actor = new Actor(Optional.of(player.id));
         sessions.start(actor, "demo");
-        assertTrue(actor.last().contains("Recording demo: every 2 ticks, up to "), actor.last());
+        assertTrue(actor.last().contains("Recording Demo.") && actor.last().contains("[Stop and save]") && actor.last().contains("[Cancel]"), actor.last());
+        assertFalse(actor.last().contains("tick") || actor.last().contains("/animus"), "seconds only, chips instead of a typed command: " + actor.last());
         for (int tick = 0; tick < 40; tick++) {
             player.x += 0.2;
             player.sneaking = tick >= 20;
@@ -117,7 +119,8 @@ class RecordingSessionsTest {
         }
         sessions.stop(actor);
         host.tick();
-        assertTrue(actor.last().startsWith("Saved recording demo: 40 ticks"), actor.last());
+        assertTrue(actor.last().contains("Saved recording Demo, 2 s; tx "), actor.last());
+        assertFalse(actor.last().contains("frames") || actor.last().contains("events") || actor.last().contains("ticks"), actor.last());
         RecordingDocument document = RecordingDocument.parse(Files.readString(saved("demo")), RecordingSettings.DEFAULT.maximumFileBytes());
         assertEquals(player.id, document.recordedBy());
         assertEquals("minecraft:overworld", document.world());
@@ -137,15 +140,20 @@ class RecordingSessionsTest {
         host.tick();
         host.tick();
         assertTrue(Files.isRegularFile(saved("walk")));
-        assertTrue(host.log.stream().anyMatch((String line) -> line.contains("Saved recording walk (the recorder left)")), host.log.toString());
+        assertTrue(host.log.stream().anyMatch((String line) -> line.contains("Saved recording Walk (the recorder left)")), host.log.toString());
 
         Player other = join();
         Actor second = new Actor(Optional.of(other.id));
         sessions.start(second, "short");
         for (int tick = 0; tick < 4; tick++) host.tick();
         sessions.stop(second);
-        assertTrue(second.last().contains("discarded: under 20 ticks"), second.last());
+        assertTrue(second.last().contains("Recording Short discarded: shorter than 1 s"), second.last());
         assertFalse(Files.exists(saved("short")));
+
+        sessions.start(second, "swing-test");
+        host.tick();
+        sessions.cancel(second);
+        assertTrue(second.last().contains("Discarded recording Swing test"), "the player reads the name, not the id: " + second.last());
     }
 
     @Test void shouldEndOnALongTeleportAndRefuseTheConsoleAndASecondSession() {

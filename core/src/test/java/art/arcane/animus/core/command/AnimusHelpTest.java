@@ -33,12 +33,14 @@ class AnimusHelpTest {
     @Test void theRootIsGroupedByTopicWithTheNewcomerToolsFirst() {
         AnimusHelp.Page page = rootPage(0);
         List<String> titles = page.sections().stream().map(AnimusHelp.Section::title).toList();
-        assertEquals(List.of("Tools", "NPCs", "Movement", "Combat", "Content", "Services", "Quests", "Behaviors", "Groups", "Diagnostics"), titles);
-        assertEquals(List.of("setup", "tools"), page.sections().getFirst().entries().stream().map((DirectorRuntimeNode node) -> node.getDescriptor().getName()).toList());
+        assertEquals(List.of("Tools", "NPCs", "Movement", "Recordings", "Combat", "Content", "Services", "Web editor", "Quests", "Behaviors", "Trait groups", "Diagnostics"), titles);
+        assertEquals(List.of("setup", "gui", "tools"), page.sections().getFirst().entries().stream().map((DirectorRuntimeNode node) -> node.getDescriptor().getName()).toList());
         String first = String.join("\n", AnimusHelp.lines(page));
-        assertTrue(first.contains("setup") && first.contains("tools"), "setup and tools are on the first page");
+        assertTrue(first.contains("setup") && first.contains("gui") && first.contains("tools"), "setup, gui and tools are on the first page");
+        assertTrue(first.contains("Open the Animus menu; "), "gui says first that it opens the menu");
         List<String> npcs = page.sections().get(1).entries().stream().map((DirectorRuntimeNode node) -> node.getDescriptor().getName()).toList();
-        assertEquals(List.of("status", "list", "create", "mythic", "inspect", "edit", "clone", "delete", "spawn", "despawn", "select", "selection", "validate", "reload", "rollback", "npc"), npcs);
+        assertEquals(List.of("status", "list", "create", "mythic", "inspect", "edit", "clone", "delete", "spawn", "despawn", "undo", "select", "selection", "validate", "reload",
+                "rollback", "npc"), npcs);
         assertFalse(page.entries().stream().anyMatch((DirectorRuntimeNode node) -> node.getDescriptor().getName().equals("choice")), "the hidden click target stays out");
     }
 
@@ -49,7 +51,7 @@ class AnimusHelpTest {
         assertEquals(ClickEvent.Action.SUGGEST_COMMAND, click.action());
         assertEquals("/animus create ", ((ClickEvent.Payload.Text) click.payload()).value());
         String hover = PLAIN.serialize(hovers(create).getFirst());
-        assertTrue(hover.startsWith("create\n✎ Save and spawn a new NPC where you stand"), hover);
+        assertTrue(hover.startsWith("create\n✎ Make an NPC where you stand"), hover);
         assertTrue(hover.contains("✦ " + AnimusDirector.usage(child(root, "create"))), hover);
         assertFalse(hover.contains("<String>"), "the example names arguments as the list line does: " + hover);
         assertEquals(ClickEvent.Action.RUN_COMMAND, first(MINI.deserialize(AnimusHelp.entry(child(root, "validate")))).action(), "a command without parameters runs on click");
@@ -88,6 +90,27 @@ class AnimusHelpTest {
         }
         assertEquals(rootPage(0).entries().size(), seen.size());
         assertEquals(AnimusHelp.lines(rootPage(pages - 1)), AnimusHelp.lines(rootPage(pages + 5)), "past the end shows the last page");
+    }
+
+    @Test void recordingsAndTheWebEditorLinkTheirOwnPages() {
+        assertEquals(art.arcane.animus.core.text.DocsLink.RECORDINGS, AnimusHelp.topic(child(root, "record")).docs());
+        assertEquals(art.arcane.animus.core.text.DocsLink.PAIRING, AnimusHelp.topic(child(child(root, "editor"), "pair")).docs());
+    }
+
+    @Test void theShortPageListsTheCommonCommandsInlineAndLinksEveryCommand() {
+        List<DirectorRuntimeNode> common = List.of(child(root, "create"), child(child(root, "editor"), "pair"), child(root, "list"));
+        AnimusHelp.Page page = AnimusHelp.common(root, common);
+        assertTrue(page.brief());
+        List<art.arcane.animus.core.text.ChatLine> lines = AnimusHelp.brief(page);
+        assertEquals(List.of("[Animus]: Common commands; click one to use it", "⇀ create - Make an NPC where you stand, or at x y z",
+                "⇀ editor pair - Pair the web editor with a one-time link", "⇀ list - List saved NPCs; click an id to inspect it", "[All commands]"),
+                lines.stream().map((art.arcane.animus.core.text.ChatLine line) -> PLAIN.serialize(line.component())).toList());
+        Component create = lines.get(1).component();
+        ClickEvent fill = first(create);
+        assertEquals(ClickEvent.Action.SUGGEST_COMMAND, fill.action());
+        assertEquals("/animus create ", ((ClickEvent.Payload.Text) fill.payload()).value());
+        assertTrue(PLAIN.serialize(hovers(create).getFirst()).startsWith("/animus create <id> [type=minecraft:player]"), "the hover is the usage line");
+        assertEquals(List.of("/animus help all"), runs(lines.getLast().component()));
     }
 
     @Test void aCutTopicRepeatsItsHeadingOnTheNextPage() {

@@ -12,11 +12,13 @@ import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.SelectionPick;
+import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.DocsLink;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.toolkit.Toolkit;
+import art.arcane.animus.core.toolkit.ToolkitMode;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import art.arcane.volmlib.util.director.DirectorOrigin;
@@ -27,11 +29,14 @@ import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.function.Predicate;
 
 /**
  * The {@code /animus} root: saved NPCs and selection, plus every command group. The same
@@ -61,6 +66,8 @@ public final class AnimusCommandTree extends CommandGroup {
     DiagnosticCommands.Proof proof;
     ToolkitCommands tools;
     SetupCommands setup;
+    /** Each player's changes for {@code /animus undo} where the Animus menu does not run; see {@link #changes()}. */
+    private final RecentChanges own = new RecentChanges();
 
     public AnimusCommandTree(CommandServices services) {
         super(services);
@@ -88,12 +95,24 @@ public final class AnimusCommandTree extends CommandGroup {
         setup = new SetupCommands(services);
     }
 
-    @Director(description = "Show the first steps: import, create an NPC, set its skin, pair the web editor")
+    @Director(description = "Show the first steps: make an NPC, change it, pair the web editor")
     @AnimusPermission(PermissionNodes.TOOLS)
     void setup(@Param(name = "dismiss", defaultValue = "false", description = "Turn the join hint off for every admin") boolean dismiss) { setup.run(actor(), dismiss); }
 
-    /** The engine for this tree, with completion values and running plugins from the services; a tree without services runs every plugin. */
-    public AnimusDirector director() { return new AnimusDirector(this, this::values, services == null ? (String plugin) -> true : services.plugins()); }
+    /**
+     * The engine for this tree, with completion values, running plugins and each player's menu mode from the services; a
+     * tree without services runs every plugin and treats every player as Simple.
+     */
+    public AnimusDirector director() {
+        return new AnimusDirector(this, this::values, services == null ? (String plugin) -> true : services.plugins(),
+                (UUID player) -> services == null || services.mode(player) == ToolkitMode.SIMPLE, this::changes);
+    }
+
+    /**
+     * Each player's changes for {@code /animus undo}, filled by {@link ReplyActor} as replies report them: the Animus
+     * menu's, so a change made there is undone here too, else this tree's own.
+     */
+    RecentChanges changes() { return toolkit().map(Toolkit::changes).orElse(own); }
 
     /** Completion values by parameter name; {@code given} holds the values already typed. */
     Collection<String> values(String parameter, CommandActor actor, Map<String, String> given) { return new CommandCompletions(this).values(parameter, actor, given); }
@@ -148,7 +167,7 @@ public final class AnimusCommandTree extends CommandGroup {
         } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
-    @Director(description = "Save and spawn a new NPC where you stand, facing your way, or at x y z; ~ is relative to you")
+    @Director(description = "Make an NPC where you stand, or at x y z")
     @AnimusPermission(PermissionNodes.NPC_CREATE)
     void create(@Param(name = "id", description = "The new NPC id; its file is npcs/<folder>/<id>.json") String id,
                 @Param(name = "type", defaultValue = DEFAULT_TYPE, description = "The body type, such as minecraft:player") String type,
@@ -162,7 +181,7 @@ public final class AnimusCommandTree extends CommandGroup {
         create(id, type, name, folder, world, x, y, z, spawned, "");
     }
 
-    @Director(description = "Save and spawn a new NPC with a MythicMobs mob's look and skills, where you stand or at x y z")
+    @Director(description = "Make an NPC with a MythicMobs mob's look and skills, where you stand or at x y z")
     @AnimusPermission(PermissionNodes.NPC_CREATE)
     @NeedsPlugin("MythicMobs")
     void mythic(@Param(name = "id", description = "The new NPC id; its file is npcs/<folder>/<id>.json") String id,
@@ -198,16 +217,33 @@ public final class AnimusCommandTree extends CommandGroup {
                     creation = look.isEmpty() ? plain : administration.templated(plain, look.get().fields(), !name.isEmpty());
                 }
                 catch (IOException | RuntimeException failure) { reply(actor, Palette.error(reason(failure))); return; }
-                String where = placement.world() + " " + Coordinates.shown(placement.point());
                 String notes = look.map((NpcTemplates.Template chosen) -> chosen.notes().isEmpty() ? "" : "; " + String.join("; ", chosen.notes())).orElse("");
-                if (!stopping()) actor.reply(() -> commit(actor, creation.definition(), creation.draft(), PermissionNodes.NPC_CREATE, "create",
-                        (String tx) -> "Created " + id + (look.isPresent() ? " from Mythic mob " + mythic : "") + " at " + where + (spawned ? "" : ", despawned") + notes + "; tx " + tx
-                                + (spawned ? "; /" + BuildIdentity.ID + " npc skin " + id + " <player> sets its skin" : "; /" + BuildIdentity.ID + " spawn " + id + " shows it")));
+                String extra = (look.isPresent() ? " from Mythic mob " + mythic : "") + notes;
+                if (!stopping()) actor.reply(() -> commit(actor, creation.definition(), creation.draft(), PermissionNodes.NPC_CREATE, "create", (String tx) -> {
+                    actor.player().ifPresent((UUID player) -> toolkit().ifPresent((Toolkit<?, ?> found) -> found.selectOnly(player, id)));
+                    return made(actor.player().isPresent(), id, id, extra, spawned, tx);
+                }));
             });
         } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
     static final String DEFAULT_TYPE = "minecraft:player";
+
+    /**
+     * {@code Made guard [Edit] [Undo]}: {@code [Edit]} opens the new NPC's screen in the Animus menu; the console gets no
+     * {@code [Edit]}. {@code shown} is how the line names it: the id a command was given, or the name the menu made it
+     * with. A despawned NPC adds the command that spawns it.
+     */
+    public static ChatLine made(boolean player, String id, String shown, String extra, boolean spawned, String tx) {
+        ChatLine line = ChatLine.success("Made " + shown + extra + (spawned ? "" : ", despawned")).transaction(tx);
+        if (player) line.run("Edit", ToolkitCommands.edit(id), "Open it in the Animus menu");
+        line.undo(tx);
+        String spawn = "/" + BuildIdentity.ID + " spawn " + id;
+        return spawned ? line : line.text("&a; Next: ").command(spawn, Palette.PINK, spawn, false, "Click to put it in your chat box");
+    }
+
+    /** The toolkit, where the menus and the wand keep each player's selection; empty without services. */
+    private Optional<Toolkit<?, ?>> toolkit() { return services == null ? Optional.empty() : Toolkit.of(services.shops().screens()); }
 
     /** Where {@code create} puts an NPC. */
     record Placement(String world, Vec3 point) {}
@@ -245,7 +281,7 @@ public final class AnimusCommandTree extends CommandGroup {
      */
     static void inspect(CommandActor actor, Administration.Inspection inspection, String runtime) {
         String summary = inspection.summary(), id = inspection.effective().qualifiedId(), position = inspection.position();
-        String problem = inspection.problem().map((String text) -> " | group problem: " + text).orElse("");
+        String problem = inspection.problem().map((String text) -> " | trait group problem: " + text).orElse("");
         if (actor.player().isEmpty()) {
             actor.tell(summary + (position.isEmpty() ? "" : " | " + position) + problem);
             actor.tell(runtime);
@@ -278,29 +314,33 @@ public final class AnimusCommandTree extends CommandGroup {
         npc(actor, npc).ifPresent((String source) -> files(actor, () -> {
             String line = administration().duplicate(source, id);
             living().refresh();
-            return List.of(Palette.success(line + "; /" + BuildIdentity.ID + " spawn " + id + " shows it"));
+            return List.of(Palette.success(line + "; Next: /" + BuildIdentity.ID + " spawn " + id));
         }));
     }
 
-    @Director(description = "Delete an NPC's file; rollback restores it")
+    @Director(description = "Delete an NPC's file; undo brings it back")
     @AnimusPermission(PermissionNodes.NPC_DELETE)
     void delete(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
         CommandActor actor = actor();
         npc(actor, npc).ifPresent((String id) -> files(actor, () -> { String line = administration().delete(id); living().refresh(); return List.of(Palette.success(line)); }));
     }
 
-    @Director(description = "Mark an NPC spawned after checking it can run here")
+    @Director(description = "Put an NPC in the world after checking it can run here")
     @AnimusPermission(PermissionNodes.NPC_EDIT)
     void spawn(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
         CommandActor actor = actor();
         npc(actor, npc).ifPresent((String id) -> change(actor, id, Optional.empty()));
     }
 
-    @Director(description = "Mark an NPC despawned; its file stays")
+    @Director(description = "Take an NPC out of the world; its file stays")
     @AnimusPermission(PermissionNodes.NPC_EDIT)
     void despawn(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
         CommandActor actor = actor();
-        npc(actor, npc).ifPresent((String id) -> files(actor, () -> { String line = administration().spawned(id, false); living().refresh(); return List.of(Palette.success(line)); }));
+        npc(actor, npc).ifPresent((String id) -> files(actor, () -> {
+            String line = administration().spawned(id, false);
+            living().refresh();
+            return List.of(Palette.success(line + "; Next: /" + BuildIdentity.ID + " spawn " + id));
+        }));
     }
 
     @Director(description = "Check every definition file without loading it")
@@ -318,34 +358,118 @@ public final class AnimusCommandTree extends CommandGroup {
         });
     }
 
-    @Director(description = "Undo a change by its transaction id")
-    void rollback(@Param(name = "transaction", description = "The transaction id a change reported, or its first characters") String transaction) {
+    @Director(description = "Undo any change by its id, the one after tx in a reply")
+    void rollback(@Param(name = "transaction", description = "The id after tx in a reply, or its first characters") String transaction) {
         CommandActor actor = actor();
-        files(actor, () -> {
-            AnimusMetrics metrics = AnimusMetrics.current();
-            long started = metrics.start();
-            try { return administration().rollback(transaction); }
-            finally { metrics.stop(Subsystem.IMPORTS, started); living().refresh(); }
-        });
+        files(actor, () -> rolledBack(transaction));
     }
 
-    @Director(description = "Select an NPC for the commands that take @selected; the one you look at, or the nearest, when left out", origin = DirectorOrigin.PLAYER)
-    @AnimusPermission(PermissionNodes.NPC_VIEW)
-    @Positional("npc")
-    void select(@Param(name = "npc", defaultValue = "", description = "The NPC id; the one you look at, or the nearest within 16 blocks, when left out") String npc) {
-        CommandActor actor = actor();
-        Optional<Toolkit<?, ?>> toolkit = Toolkit.of(services.shops().screens());
-        select(actor, living(), npc, (String id) -> toolkit.ifPresent((Toolkit<?, ?> found) -> found.selectOnly(actor.player().orElseThrow(), id)));
+    /** Rolls a transaction back and reloads what it touched. File lane. */
+    private List<String> rolledBack(String transaction) throws IOException {
+        AnimusMetrics metrics = AnimusMetrics.current();
+        long started = metrics.start();
+        try { return administration().rollback(transaction); }
+        finally { metrics.stop(Subsystem.IMPORTS, started); living().refresh(); }
     }
 
     /**
-     * Selects {@code npc}, or with none the NPC the player looks at or stands nearest, and makes it glow for that player
-     * briefly. {@code chosen} makes it the toolkit's whole selection too, so the wand and {@code @selected} agree.
+     * Reverts the chosen change when the player still holds the node it needs (see {@link UndoPermission}). It leaves the
+     * player's list whether or not it could be undone, so a change someone else already undid, later edited over, or one
+     * the player may no longer make does not stand in front of the older ones; the reply says which happened.
      */
-    static void select(CommandActor actor, NpcRuntime<?, ?> living, String npc, java.util.function.Consumer<String> chosen) {
+    @Director(description = "Undo your last change, or the one an [Undo] names")
+    @AnimusPermission(PermissionNodes.TOOLS)
+    @Positional("change")
+    void undo(@Param(name = "change", defaultValue = "", description = "The id an [Undo] carries; your last change when left out") String change) {
+        CommandActor actor = actor();
+        RecentChanges changes = changes();
+        undoing(actor, changes, change).ifPresent((RecentChanges.Change chosen) -> {
+            Predicate<String> holds = holds(actor, chosen);
+            files(actor, () -> {
+                try {
+                    List<String> lines = undo(chosen, holds, runtime().documents(), this::rolledBack);
+                    actor.player().ifPresent((UUID player) -> toolkit().ifPresent((Toolkit<?, ?> menu) -> menu.undone(player, chosen.transaction())));
+                    return lines;
+                }
+                finally { actor.player().ifPresent((UUID player) -> changes.forget(player, chosen.transaction())); }
+            });
+        });
+    }
+
+    /** The nodes the actor holds now, on its owner, for the file lane to check: every Animus node and the change's own. */
+    private static Predicate<String> holds(CommandActor actor, RecentChanges.Change change) {
+        Set<String> held = new HashSet<>();
+        List<String> asked = new ArrayList<>(PermissionNodes.CHILDREN);
+        asked.add(PermissionNodes.ADMIN);
+        if (!change.node().isEmpty()) asked.add(change.node());
+        for (String node : asked) if (actor.permitted(node)) held.add(node);
+        return held::contains;
+    }
+
+    @FunctionalInterface interface Rollback { List<String> run(String transaction) throws IOException; }
+
+    /** Reverts {@code change} when {@code holds} grants a node it needs, else names the node. File lane. */
+    static List<String> undo(RecentChanges.Change change, Predicate<String> holds, DocumentStore documents, Rollback rollback) throws IOException {
+        List<String> needed = UndoPermission.needed(change, documents);
+        if (needed.stream().noneMatch(holds)) return List.of(Palette.error("No permission: " + needed.getFirst() + "; ask an operator to grant it"));
+        return undone(change, rollback.run(change.transaction()));
+    }
+
+    static final String NOTHING_TO_UNDO = "Nothing to undo";
+
+    /**
+     * The change {@code /animus undo} reverts: the player's newest, or the one {@code given} names among their own. An
+     * admin, and the console, may name any change; the console has no newest change of its own. Empty after saying why.
+     */
+    static Optional<RecentChanges.Change> undoing(CommandActor actor, RecentChanges changes, String given) {
+        if (actor.player().isEmpty()) {
+            if (!given.isBlank()) return Optional.of(new RecentChanges.Change(given, "", ""));
+            actor.tell(Palette.error("The console has no last change; /animus rollback <id> undoes a change by its id"));
+            return Optional.empty();
+        }
+        UUID player = actor.player().get();
+        Optional<RecentChanges.Change> found = given.isBlank() ? changes.latest(player) : changes.find(player, given);
+        if (found.isPresent()) return found;
+        if (given.isBlank()) actor.tell(Palette.error(NOTHING_TO_UNDO));
+        else if (actor.permitted(AnimusDirector.ADMIN)) return Optional.of(new RecentChanges.Change(given, "", ""));
+        else actor.tell(Palette.error("Change " + given + " is not one of your recent changes; an admin can undo it with /animus rollback " + given));
+        return Optional.empty();
+    }
+
+    /** {@code Undid: <what the change was>}, then any note the rollback added after its own line. */
+    static List<String> undone(RecentChanges.Change change, List<String> rolledBack) {
+        List<String> lines = new ArrayList<>(List.of(Palette.success("Undid: " + (change.what().isEmpty() ? "change " + ChatLine.shortId(change.transaction()) : change.what()))));
+        lines.addAll(rolledBack.subList(Math.min(1, rolledBack.size()), rolledBack.size()));
+        return lines;
+    }
+
+    /** What {@code /animus select none} reads as while no NPC is saved under that id: clear the selection. */
+    static final String NONE = "none";
+
+    @Director(description = "Select an NPC for the commands that take @selected: the one you look at, an id, or none to clear", origin = DirectorOrigin.PLAYER)
+    @AnimusPermission(PermissionNodes.NPC_VIEW)
+    @Positional("npc")
+    void select(@Param(name = "npc", defaultValue = "", description = "The NPC id, @selected or none; the one you look at, or the nearest within 16 blocks, when left out") String npc) {
+        CommandActor actor = actor();
+        UUID player = actor.player().orElseThrow();
+        Optional<Toolkit<?, ?>> toolkit = toolkit();
+        select(actor, living(), npc, (String typed) -> npc(actor, typed), (String id) -> runtime().npcs().find(id).isPresent(),
+                (String id) -> toolkit.ifPresent((Toolkit<?, ?> found) -> found.selectOnly(player, id)),
+                () -> toolkit.ifPresent((Toolkit<?, ?> found) -> found.clear(player)));
+    }
+
+    /**
+     * Selects {@code npc}, read by {@code named} as every command reads an NPC, or with none the NPC the player looks at or
+     * stands nearest, and makes it glow for that player briefly. {@code chosen} makes it the toolkit's whole selection
+     * too, so the wand and {@code @selected} agree; {@link #NONE} runs {@code cleared} instead, unless {@code saved} says
+     * an NPC has that id.
+     */
+    static void select(CommandActor actor, NpcRuntime<?, ?> living, String npc, java.util.function.Function<String, Optional<String>> named,
+                       Predicate<String> saved, java.util.function.Consumer<String> chosen, Runnable cleared) {
+        if (npc.equalsIgnoreCase(NONE) && !saved.test(npc)) { cleared.run(); actor.tell(Palette.success("Selection cleared")); return; }
         UUID viewer = actor.player().orElseThrow();
-        Optional<String> picked = npc.isEmpty() ? living.pick(viewer) : Optional.of(npc);
-        if (picked.isEmpty()) { actor.tell(Palette.error(NOTHING_IN_VIEW)); return; }
+        Optional<String> picked = npc.isEmpty() ? living.pick(viewer) : named.apply(npc);
+        if (picked.isEmpty()) { if (npc.isEmpty()) actor.tell(Palette.error(NOTHING_IN_VIEW)); return; }
         try { living.select(viewer, picked.get()); }
         catch (RuntimeException refused) { actor.tell(Palette.error(reason(refused) + "; /animus list shows ids")); return; }
         chosen.accept(picked.get());
@@ -417,11 +541,12 @@ public final class AnimusCommandTree extends CommandGroup {
                     NpcRepository.Draft draft = new NpcRepository.Draft(before.path(), before.expectedHash(), before.expectedRevision(), document);
                     String changed = Administration.describe(changes);
                     if (!stopping()) actor.reply(() -> {
-                        if (patch.isEmpty()) commit(actor, candidate, draft, PermissionNodes.NPC_EDIT, "spawn", (String tx) -> "Spawning " + id + "; tx " + tx + "; it becomes active once its chunk loads");
+                        if (patch.isEmpty()) commit(actor, candidate, draft, PermissionNodes.NPC_EDIT, "spawn",
+                                (String tx) -> ChatLine.parse(Palette.success("Spawning " + id + "; tx " + tx + "; it becomes active once its chunk loads")));
                         else {
                             Optional<String> commands = EditorCommands.scheduleRefusal(actor, document);
                             if (commands.isPresent()) { actor.tell(Palette.error("Cannot save " + id + ": " + commands.get())); return; }
-                            commit(actor, candidate, draft, PermissionNodes.NPC_EDIT, "save", (String tx) -> "Saved " + id + ": " + changed + "; tx " + tx);
+                            commit(actor, candidate, draft, PermissionNodes.NPC_EDIT, "save", (String tx) -> ChatLine.parse(Palette.success("Saved " + id + ": " + changed + "; tx " + tx)));
                         }
                     });
                 } catch (IOException | RuntimeException e) { reply(actor, Palette.error(reason(e))); }
@@ -431,9 +556,10 @@ public final class AnimusCommandTree extends CommandGroup {
 
     /**
      * On the actor's owner: refuses a spawned candidate this platform cannot run, then writes the draft with the revision it
-     * was read at. {@code node} is checked again here, {@code verb} names the refusal and {@code done} words the success.
+     * was read at. {@code node} is checked again here, {@code verb} names the refusal, and {@code done} runs on the file
+     * lane once the draft is saved and words the reply.
      */
-    private void commit(CommandActor actor, NpcDefinition candidate, NpcRepository.Draft draft, String node, String verb, java.util.function.Function<String, String> done) {
+    private void commit(CommandActor actor, NpcDefinition candidate, NpcRepository.Draft draft, String node, String verb, java.util.function.Function<String, ChatLine> done) {
         if (stopping() || !actor.permitted(node)) return;
         JsonElement spawned = draft.document().get("spawned");
         List<String> errors = spawned != null && spawned.isJsonPrimitive() && spawned.getAsBoolean() ? living().validateActivation(candidate) : List.of();
@@ -448,7 +574,8 @@ public final class AnimusCommandTree extends CommandGroup {
                 try {
                     String tx = runtime().npcs().apply(draft);
                     living().refresh();
-                    reply(actor, Palette.success(done.apply(tx)));
+                    ChatLine line = done.apply(tx);
+                    if (!stopping()) actor.reply(() -> { if (!stopping()) actor.rich(line); });
                 } catch (IOException | RuntimeException e) { reply(actor, Palette.error(reason(e))); }
             });
         } catch (RejectedExecutionException e) { actor.tell(Palette.error(CommandActor.BUSY + "; nothing was saved")); }

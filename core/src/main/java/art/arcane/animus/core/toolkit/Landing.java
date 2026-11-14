@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.gui.ScreenHost;
 import art.arcane.animus.core.virtual.Vec3;
 import java.util.Optional;
 
@@ -10,6 +11,9 @@ final class Landing {
     record Spot(Vec3 at, float yaw) {}
 
     private Landing() {}
+
+    /** Where a new or brought NPC stands: {@link #GAP} blocks in front of the player's feet, facing them. */
+    static Spot ahead(ScreenHost.Pose pose) { return ahead(new Vec3(pose.x(), pose.y(), pose.z()), pose.yaw()); }
 
     /** {@link #GAP} blocks ahead of {@code from} along {@code yaw}, turned back toward {@code from}. */
     static Spot ahead(Vec3 from, float yaw) {

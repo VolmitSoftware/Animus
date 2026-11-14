@@ -28,6 +28,8 @@ public final class Onboarding {
     /** How long after a join the hint waits, so the join messages do not bury it. */
     public static final long JOIN_DELAY_TICKS = 40;
     public static final String DISMISS = SetupGuide.SETUP + " dismiss=true";
+    /** The hint on a server without NPCs, pointing at the Animus menu. */
+    static final String READY = "Ready. /animus gui opens the menu";
     private final DocumentStore store;
     private final NpcRepository npcs;
     private final CitizensDropIn.Host host;
@@ -67,10 +69,12 @@ public final class Onboarding {
         String found = switch (migration.phase()) {
             case FOUND -> "Found " + migration.source().orElse("Citizens data") + "; nothing imported yet";
             case STAGED -> "Citizens import staged, not installed yet";
-            case NONE, DONE -> npcs.all().isEmpty() ? "Animus is running with no NPCs yet" : null;
+            case NONE, DONE -> npcs.all().isEmpty() ? READY : null;
         };
         if (found == null || !hinted.add(player)) return Optional.empty();
-        return Optional.of(ChatLine.reply(found).run("Setup", SetupGuide.SETUP, "Show the first steps").run("Dismiss", DISMISS, "Stop this hint for every admin"));
+        ChatLine hint = found.equals(READY) ? ChatLine.reply(found).run("Menu", SetupGuide.MENU, "Open the Animus menu")
+                : ChatLine.reply(found).run("Setup", SetupGuide.SETUP, "Show the first steps");
+        return Optional.of(hint.run("Dismiss", DISMISS, "Stop this hint for every admin"));
     }
 
     /** The startup migration line for the log, or empty. */

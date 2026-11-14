@@ -67,11 +67,11 @@ public final class ScreenManager<P, S> {
         public UUID id() { return id; }
         public Optional<UUID> npc() { return npc; }
         public ScreenHost<P, S> host() { return host; }
-    /** Where each frame's placeholders are filled from; none until the platform connects them. */
-    public void placeholders(Supplier<Placeholders> source) { placeholders = Objects.requireNonNull(source, "source"); }
         public Map<String, String> session() { return session; }
         public long tick() { return tick; }
         public boolean open() { return !closed; }
+        /** Whether {@code screen} is the one this open window shows now, for work that finishes after the player may have moved on. */
+        public boolean shows(Screen screen) { return !closed && this.screen == screen; }
 
         /** Shows another screen in this window without remembering the current one. */
         public void replace(Screen next) { if (!closed) { screen = next; render(true); } }

@@ -9,6 +9,8 @@ import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.storage.NpcPaths;
+import art.arcane.animus.core.text.RichText;
+import art.arcane.animus.core.text.Words;
 import art.arcane.animus.core.virtual.Vec3;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -20,7 +22,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -53,7 +54,7 @@ final class ToolkitFiles {
 
     /** Adds or removes the trait group on every listed NPC. */
     String groups(String group, List<String> ids, boolean assign) throws IOException {
-        if (assign && npcs.groups().find(group).isEmpty()) throw new IOException("Unknown group " + group + "; save groups/" + group + ".json, then /animus reload");
+        if (assign && npcs.groups().find(group).isEmpty()) throw new IOException("Unknown trait group " + group + "; New trait group in Trait groups makes one");
         int[] unchanged = {0};
         List<NpcRepository.Draft> drafts = drafts(ids, (JsonObject document) -> {
             List<String> listed = strings(document.get("groups"));
@@ -87,7 +88,7 @@ final class ToolkitFiles {
             removals.add(new DocumentStore.Change(draft.path(), draft.expectedHash(), null));
             pointer(draft.path()).ifPresent(removals::add);
         }
-        String where = "npcs/" + (folder.isEmpty() ? "" : folder + "/");
+        String where = folder.isEmpty() ? "the top level" : FolderFiles.shown(folder);
         if (moved.isEmpty()) return "Already in " + where;
         String tx = DefinitionBatch.commit(store, moved, expected, removals);
         npcs.reload();
@@ -96,8 +97,15 @@ final class ToolkitFiles {
 
     /** Points every listed NPC at {@code routes/<route>.json}, replacing its own route settings. */
     String route(String route, List<String> ids) throws IOException {
-        if (!route.matches(NpcPaths.SEGMENT) || store.read("routes/" + route + ".json") == null) throw new IOException("No route routes/" + route + ".json");
-        List<NpcRepository.Draft> drafts = drafts(ids, (JsonObject document) -> {
+        if (!route.matches(NpcPaths.SEGMENT) || store.read("routes/" + route + ".json") == null) throw new IOException("No route " + route);
+        List<NpcRepository.Draft> drafts = routeDrafts(route, ids);
+        if (drafts.isEmpty()) return "Route " + Words.readable(route) + " already set";
+        return "Route " + Words.readable(route) + " on " + named(drafts) + "; tx " + npcs.applyAll(drafts);
+    }
+
+    /** The drafts that point the listed NPCs at the route, for a route saved in the same transaction; NPCs already on it are left out. */
+    List<NpcRepository.Draft> routeDrafts(String route, List<String> ids) throws IOException {
+        return drafts(ids, (JsonObject document) -> {
             JsonObject modules = document.has("modules") && document.get("modules").isJsonObject() ? document.getAsJsonObject("modules") : new JsonObject();
             JsonObject previous = modules.has(NAVIGATION) && modules.get(NAVIGATION).isJsonObject() ? modules.getAsJsonObject(NAVIGATION) : new JsonObject();
             JsonObject navigation = new JsonObject();
@@ -108,13 +116,11 @@ final class ToolkitFiles {
             document.add("modules", modules);
             return true;
         });
-        if (drafts.isEmpty()) return "Route " + route + " already set";
-        return "Route " + route + " on " + named(drafts) + "; tx " + npcs.applyAll(drafts);
     }
 
-    /** Sets or, when empty, removes the skin of every listed player body; other bodies are skipped. */
+    /** Sets or, when empty, removes the skin of every listed player body; other bodies are skipped. The reply names the skin by its label. */
     String skin(Optional<String> hash, List<String> ids) throws IOException {
-        if (hash.isPresent() && store.read("skins/" + hash.get() + ".json") == null) throw new IOException("No skin file skins/" + hash.get() + ".json");
+        if (hash.isPresent() && store.read("skins/" + hash.get() + ".json") == null) throw new IOException("That skin was deleted; pick another");
         int[] skipped = {0};
         List<NpcRepository.Draft> drafts = drafts(ids, (JsonObject document) -> {
             if (!PLAYER.equals(document.get("type").getAsString())) { skipped[0]++; return false; }
@@ -124,31 +130,22 @@ final class ToolkitFiles {
             document.addProperty("skin", hash.get());
             return true;
         });
-        if (drafts.isEmpty() && skipped[0] == ids.size()) return "No player bodies in the selection; skins only show on " + PLAYER;
+        if (drafts.isEmpty() && skipped[0] == ids.size()) return "No player bodies in the selection; skins only show on player bodies";
         Optional<String> label = hash.isPresent() ? SkinFiles.label(store.read("skins/" + hash.get() + ".json")) : Optional.empty();
-        String head = "Skin " + label.map((String name) -> name + " ").orElse("") + hash.orElse("removed") + " on " + named(drafts) + (skipped[0] == 0 ? "" : ", " + skipped[0] + " skipped (not a player body)");
+        String shown = hash.isEmpty() ? "removed" : label.orElse(hash.get().substring(0, Math.min(12, hash.get().length())));
+        String head = "Skin " + shown + " on " + named(drafts) + (skipped[0] == 0 ? "" : ", " + skipped[0] + " skipped (not a player body)");
         return drafts.isEmpty() ? head : head + "; tx " + npcs.applyAll(drafts);
     }
 
-    /** Saves a captured route as {@code wp-<player>}, or the first free {@code wp-<player>-<n>}; returns the id. */
-    String saveRoute(String player, String document) throws IOException {
-        String base = "wp-" + player.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]", "");
-        base = base.substring(0, Math.min(base.length(), 58));
-        String id = base;
-        for (int n = 2; store.read("routes/" + id + ".json") != null; n++) id = base + "-" + n;
-        store.commit(List.of(new DocumentStore.Change("routes/" + id + ".json", "missing", document)));
-        return id;
-    }
-
-    /** Saves where the NPC stands, keeping its world. */
-    String position(String id, Vec3 at, float yaw, float pitch) throws IOException {
-        List<NpcRepository.Draft> drafts = drafts(List.of(id), (JsonObject document) -> {
+    /** Saves where the NPCs stand, keeping each one's world, in one transaction; {@code note} goes before the change id. */
+    String positions(List<String> ids, Vec3 at, float yaw, float pitch, String note) throws IOException {
+        List<NpcRepository.Draft> drafts = drafts(ids, (JsonObject document) -> {
             JsonObject position = document.getAsJsonObject("position");
             position.addProperty("x", at.x()); position.addProperty("y", at.y()); position.addProperty("z", at.z());
             position.addProperty("yaw", yaw); position.addProperty("pitch", pitch);
             return true;
         });
-        return "Moved " + id + " here; tx " + npcs.applyAll(drafts);
+        return "Moved " + named(drafts) + " here" + note + "; tx " + npcs.applyAll(drafts);
     }
 
     /** The drafts that spawn or despawn the listed NPCs; NPCs already in that state are left out. */
@@ -166,39 +163,7 @@ final class ToolkitFiles {
 
     String apply(Batch batch, boolean spawn) throws IOException {
         if (batch.drafts().isEmpty()) return spawn ? "Already spawned" : "Already despawned";
-        return (spawn ? "Spawning " : "Despawned ") + count(batch.drafts().size()) + "; tx " + npcs.applyAll(batch.drafts());
-    }
-
-    /** A new NPC's file, checked and ready to write. */
-    record Created(NpcDefinition definition, NpcRepository.Draft draft) {}
-
-    /**
-     * The file {@code /animus create} would write for a new NPC: {@code npcs/<id>.json} with the id as its name and
-     * {@code owner}, the player who made it, as its owner. Refused when the id is taken or malformed.
-     */
-    Created draft(String id, String type, String world, Vec3 at, float yaw, UUID owner, boolean spawn) throws IOException {
-        if (!id.matches(NpcPaths.SEGMENT)) throw new IOException("An id is 1 to 64 lowercase letters, digits, _ or -");
-        if (npcs.stored().stream().anyMatch((NpcDefinition existing) -> existing.id().equals(id))) throw new IOException("An NPC named " + id + " already exists");
-        JsonObject document = new JsonObject();
-        document.addProperty("schemaVersion", NpcDefinition.SCHEMA_VERSION); document.addProperty("revision", 1);
-        document.addProperty("uuid", UUID.randomUUID().toString()); document.addProperty("id", id);
-        document.addProperty("type", type); document.addProperty("group", "");
-        document.addProperty("name", id);
-        document.addProperty("spawned", spawn);
-        document.addProperty("owner", owner.toString());
-        JsonObject position = new JsonObject();
-        position.addProperty("world", world);
-        position.addProperty("x", Math.round(at.x() * 100) / 100.0); position.addProperty("y", Math.round(at.y() * 100) / 100.0); position.addProperty("z", Math.round(at.z() * 100) / 100.0);
-        position.addProperty("yaw", Math.round(yaw * 100) / 100f); position.addProperty("pitch", 0);
-        document.add("position", position);
-        NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(document));
-        return new Created(definition, new NpcRepository.Draft(definition.path(), "missing", 0, document));
-    }
-
-    /** Writes the new NPC in one transaction. */
-    String create(Created created) throws IOException {
-        String tx = npcs.apply(created.draft());
-        return "Created " + created.definition().path() + (created.definition().spawned() ? " and spawned it" : ", despawned") + "; tx " + tx;
+        return (spawn ? "Spawned " : "Despawned ") + count(batch.drafts().size()) + "; tx " + npcs.applyAll(batch.drafts());
     }
 
     /** Deletes every listed NPC in one transaction; rollback restores them all. */
@@ -210,12 +175,13 @@ final class ToolkitFiles {
             pointer(draft.path()).ifPresent(changes::add);
         }
         if (changes.isEmpty()) return "Nothing to delete";
+        String gone = named(npcs, ids);
         String tx = store.commit(changes);
         npcs.reload();
-        return "Deleted " + (ids.size() == 1 ? ids.getFirst() : count(ids.size())) + "; tx " + tx;
+        return "Deleted " + gone + "; tx " + tx;
     }
 
-    /** Copies every listed NPC as a dormant {@code <id>-copy}, numbered when that id is taken. */
+    /** Copies every listed NPC as a despawned {@code <id>-copy}, numbered when that id is taken. */
     String copies(List<String> ids) throws IOException {
         Set<String> taken = new HashSet<>();
         for (NpcDefinition definition : npcs.stored()) taken.add(definition.id());
@@ -236,11 +202,11 @@ final class ToolkitFiles {
             copies.add(definition);
             expected.put(definition.path(), "missing");
         }
-        if (copies.isEmpty()) return "Nothing to clone";
+        if (copies.isEmpty()) return "Nothing to copy";
+        String copied = named(npcs, ids);
         String tx = DefinitionBatch.commit(store, copies, expected, List.of());
         npcs.reload();
-        List<String> names = copies.stream().map(NpcDefinition::id).toList();
-        return (ids.size() == 1 ? "Cloned " + ids.getFirst() + " as dormant " + names.getFirst() : "Cloned " + count(ids.size()) + " as dormant " + String.join(", ", names)) + "; tx " + tx;
+        return "Copied " + copied + ", despawned; tx " + tx;
     }
 
     /** Saved route ids. */
@@ -289,13 +255,20 @@ final class ToolkitFiles {
 
     static String count(int npcs) { return npcs + (npcs == 1 ? " NPC" : " NPCs"); }
 
-    /** The one id, else how many NPCs. */
-    static String named(Collection<String> ids) { return ids.size() == 1 ? ids.iterator().next() : count(ids.size()); }
+    /** The one NPC by the name players see, its id when it has none or is gone, else how many NPCs. */
+    static String named(NpcRepository npcs, Collection<String> ids) {
+        if (ids.size() != 1) return count(ids.size());
+        String id = ids.iterator().next();
+        return npcs.find(id).map(NpcsScreen::name).orElse(id);
+    }
 
-    /** The one NPC's id, else how many. */
+    /** The one NPC by the name its file gives it, else how many. */
     static String named(List<NpcRepository.Draft> drafts) {
         if (drafts.size() != 1) return count(drafts.size());
-        JsonElement id = drafts.getFirst().document().get("id");
+        JsonObject document = drafts.getFirst().document();
+        JsonElement name = document.get("name"), id = document.get("id");
+        String shown = name != null && name.isJsonPrimitive() ? RichText.plain(RichText.colorize(name.getAsString())).strip() : "";
+        if (!shown.isEmpty()) return shown;
         return id != null && id.isJsonPrimitive() ? id.getAsString() : count(1);
     }
 

@@ -398,6 +398,7 @@ public final class AnimusModRuntime {
 
     private boolean interactionAllowed(ServerPlayer player, UUID npc, RuntimeHost.Interaction action) {
         Running active = running;
+        if (active != null && active.toolkit != null && active.toolkit.claims(player, npc, action == RuntimeHost.Interaction.ATTACK)) return false;
         if (active != null && action == RuntimeHost.Interaction.ATTACK) active.combat.playerHit(player, npc);
         return true;
     }
@@ -415,10 +416,20 @@ public final class AnimusModRuntime {
     void swung(ServerPlayer player, net.minecraft.world.InteractionHand hand) {
         Running active = running;
         if (active != null && active.recordings != null) active.recordings.swung(player, hand);
+        if (active != null && active.toolkit != null && hand == net.minecraft.world.InteractionHand.MAIN_HAND) active.toolkit.swung(player);
     }
     void usedBlock(ServerPlayer player, net.minecraft.world.InteractionHand hand, net.minecraft.core.BlockPos at) {
         Running active = running;
         if (active != null && active.recordings != null) active.recordings.used(player, hand, at);
+    }
+    /** A main-hand click on a block; true when the wand took it, so the block is not used. */
+    boolean wandOnBlock(ServerPlayer player, net.minecraft.world.InteractionHand hand) {
+        Running active = running;
+        return active != null && active.toolkit != null && hand == net.minecraft.world.InteractionHand.MAIN_HAND && active.toolkit.used(player);
+    }
+    void usedItem(ServerPlayer player) {
+        Running active = running;
+        if (active != null && active.toolkit != null) active.toolkit.used(player);
     }
     void input(ServerPlayer player, Input input) {
         Running active = running;
@@ -445,6 +456,7 @@ public final class AnimusModRuntime {
         if (active.serverBehaviors != null) active.serverBehaviors.joined(player);
         if (active.onboarding != null) active.onboarding.joined(player);
         if (active.quests != null) active.quests.joined(player);
+        if (active.toolkit != null) active.toolkit.joined(player);
     }
     void quit(ServerPlayer player) {
         Running active = running;

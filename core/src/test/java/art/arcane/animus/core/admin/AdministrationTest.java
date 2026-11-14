@@ -200,12 +200,12 @@ class AdministrationTest {
             String saved = admin.edit("guard", "{\"name\":\"Captain\"}");
             String tx = saved.substring(saved.lastIndexOf(' ') + 1);
             admin.rollback(tx);
-            assertEquals("Transaction " + art.arcane.animus.core.text.ChatLine.shortId(tx) + " is already rolled back; nothing changed",
+            assertEquals("Change " + art.arcane.animus.core.text.ChatLine.shortId(tx) + " is already undone; nothing changed",
                     assertThrows(IOException.class, () -> admin.rollback(tx)).getMessage());
             String first = admin.edit("guard", "{\"name\":\"One\"}");
             admin.edit("guard", "{\"name\":\"Two\"}");
             String early = first.substring(first.lastIndexOf(' ') + 1);
-            assertEquals("Cannot roll back " + art.arcane.animus.core.text.ChatLine.shortId(early) + ": npcs/guard.json changed after it; roll back the later change first",
+            assertEquals("Cannot undo " + art.arcane.animus.core.text.ChatLine.shortId(early) + ": npcs/guard.json changed after it; undo the later change first",
                     assertThrows(IOException.class, () -> admin.rollback(early)).getMessage());
         }
     }

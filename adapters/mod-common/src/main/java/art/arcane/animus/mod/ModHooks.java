@@ -51,10 +51,23 @@ public final class ModHooks {
         AnimusModRuntime active = runtime;
         if (active != null) active.swung(player, hand);
     }
+    /** The player's use-item packet (a right-click on air, or after a block that did nothing), on the owner pass. */
+    public static void usedItem(ServerPlayer player) {
+        AnimusModRuntime active = runtime;
+        if (active != null) active.usedItem(player);
+    }
     /** The player's use-on-block packet, on the owner pass, before vanilla validates or applies it. */
     public static void usedBlock(ServerPlayer player, InteractionHand hand, BlockPos at) {
         AnimusModRuntime active = runtime;
         if (active != null) active.usedBlock(player, hand, at);
+    }
+    /**
+     * A block click vanilla is about to apply; true when the wand opened the menu with it instead, as Bukkit denies the
+     * same click. The caller refuses the use, and the packet handler sends the block back.
+     */
+    public static boolean wandOnBlock(ServerPlayer player, InteractionHand hand) {
+        AnimusModRuntime active = runtime;
+        return active != null && active.wandOnBlock(player, hand);
     }
     public static void input(ServerPlayer player, Input input) {
         AnimusModRuntime active = runtime;

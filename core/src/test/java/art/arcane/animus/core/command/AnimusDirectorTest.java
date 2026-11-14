@@ -73,6 +73,21 @@ class AnimusDirectorTest {
         @Director void run(@Param(name = "first") int first, @Param(name = "second") int second) { calls.add("run " + first + " " + second); }
     }
 
+    /** A command that reports a change, as a save does. */
+    @Director(name = "saver")
+    static final class Saver {
+        @Director @AnimusPermission("probe.shop") void save() { AnimusDirector.actor().tell(art.arcane.animus.core.text.Palette.success("Saved bakery; tx 0f1e2d3c-4b5a-4968-8776-655443322110")); }
+    }
+
+    @Test void aChangeIsRememberedWithTheNodeItsCommandNeeded() {
+        RecentChanges changes = new RecentChanges();
+        AnimusDirector saver = new AnimusDirector(new Saver(), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
+                (String plugin) -> true, (UUID player) -> false, () -> changes);
+        Actor keeper = new Actor(true, "probe.shop");
+        saver.execute(keeper, new String[]{"save"});
+        assertEquals("probe.shop", changes.latest(keeper.player().orElseThrow()).orElseThrow().node());
+    }
+
     private final Probe probe = new Probe();
     private final AnimusDirector director = new AnimusDirector(probe, (String parameter, CommandActor actor) -> parameter.equals("npc") ? List.of("guard", "smith") : List.of());
 
@@ -102,7 +117,8 @@ class AnimusDirectorTest {
         assertFalse(admin.text().contains("(String)"), "no Java type in the refusal: " + admin.text());
         admin.lines.clear();
         run(admin, "group", "run", "1", "two");
-        assertTrue(admin.text().contains("Cannot convert \"two\""), admin.text());
+        assertTrue(admin.text().contains("second takes a number"), admin.text());
+        assertFalse(admin.text().contains("Cannot convert") || admin.text().contains(" int "), "no Java type in the refusal: " + admin.text());
         assertTrue(probe.calls.isEmpty(), "no refused command ran: " + probe.calls);
     }
 
@@ -192,8 +208,8 @@ class AnimusDirectorTest {
         assertEquals("/probe", admin.pages.getLast().group().path());
         int shown = admin.pages.size();
         run(admin, "nothing-like-this");
-        assertTrue(admin.text().contains("Unknown command \"nothing-like-this\" in /probe"), admin.text());
-        assertTrue(admin.text().contains("Usage: /probe <command>"), admin.text());
+        assertTrue(admin.text().contains("Unknown command \"nothing-like-this\" /probe help"), admin.text());
+        assertFalse(admin.text().contains("Did you mean"), "nothing is close: " + admin.text());
         assertEquals(shown, admin.pages.size(), "an unknown word shows no help");
     }
 
@@ -210,9 +226,10 @@ class AnimusDirectorTest {
             };
             real.execute(listening, typed.toArray(String[]::new));
             assertTrue(admin.pages.isEmpty(), typed + " showed help");
-            assertTrue(admin.text().contains("Unknown command \"" + typed.get(typed.size() == 3 ? 1 : typed.size() - 1) + "\""), typed + " -> " + admin.text());
             String group = typed.size() == 1 ? "/animus" : "/animus " + typed.getFirst();
-            assertTrue(admin.text().contains("Usage: " + group + " <command>"), typed + " -> " + admin.text());
+            assertTrue(admin.text().contains("Unknown command \"" + typed.get(typed.size() == 3 ? 1 : typed.size() - 1) + "\"" + (typed.size() == 1 ? "" : " in " + group)),
+                    typed + " -> " + admin.text());
+            assertTrue(admin.text().endsWith(" " + group + " help"), "a [Help] chip for the group: " + typed + " -> " + admin.text());
             assertEquals(List.of(CommandSound.FAILURE), heard);
         }
         Actor paged = new Actor(true, AnimusDirector.ADMIN);
@@ -227,10 +244,190 @@ class AnimusDirectorTest {
         assertTrue(admin.lines.isEmpty(), admin.text());
     }
 
+    @Test void anUnknownCommandNamesTheNearestOneWhenItIsClose() {
+        AnimusDirector real = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
+        Actor admin = new Actor(true, AnimusDirector.ADMIN);
+        real.execute(admin, new String[]{"creat", "guard"});
+        assertEquals("[Animus]: Unknown command \"creat\". Did you mean create? /animus help", admin.lines.getLast());
+        real.execute(admin, new String[]{"npc", "skn"});
+        assertEquals("[Animus]: Unknown command \"skn\" in /animus npc. Did you mean skin? /animus npc help", admin.lines.getLast());
+        real.execute(admin, new String[]{"desp"});
+        assertTrue(admin.lines.getLast().contains("Did you mean despawn?"), "a prefix counts: " + admin.lines.getLast());
+        real.execute(admin, new String[]{"xy"});
+        assertFalse(admin.lines.getLast().contains("Did you mean"), "two letters that share nothing are not close: " + admin.lines.getLast());
+        assertEquals(java.util.Optional.of("create"), AnimusDirector.nearest(List.of("clone", "create", "delete"), "craete"));
+        assertEquals(java.util.Optional.empty(), AnimusDirector.nearest(List.of("clone", "create"), "zzzzzz"));
+    }
+
+    @Test void helpForACommandShowsItsDescriptionUsageAndDocs() {
+        AnimusDirector real = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
+        Actor admin = new Actor(true, AnimusDirector.ADMIN);
+        real.execute(admin, new String[]{"help", "create"});
+        assertTrue(admin.pages.isEmpty(), "one command is not a help page");
+        assertEquals("[Animus]: create: Make an NPC where you stand, or at x y z", admin.lines.get(0));
+        assertTrue(admin.lines.get(1).startsWith("[Animus]: Usage: /animus create <id> [type=minecraft:player] [name=]"), admin.lines.get(1));
+        assertTrue(admin.lines.get(1).endsWith("https://docs.volmitsoftware.com/animus/02-commands-permissions#status-and-npc-management"), admin.lines.get(1));
+        admin.lines.clear();
+        real.execute(admin, new String[]{"help", "npc", "skin"});
+        assertTrue(admin.lines.getFirst().startsWith("[Animus]: npc skin: "), admin.text());
+        assertTrue(admin.text().contains("Usage: /animus npc skin <npc> <player>"), admin.text());
+        admin.lines.clear();
+        real.execute(admin, new String[]{"help", "record", "start"});
+        assertTrue(admin.text().endsWith(art.arcane.animus.core.text.DocsLink.RECORDINGS.url()), admin.text());
+        real.execute(admin, new String[]{"help", "npc"});
+        assertEquals("/animus npc", admin.pages.getLast().group().path(), "a group name opens its page");
+        admin.lines.clear();
+        real.execute(admin, new String[]{"help", "routes"});
+        assertEquals(List.of("[Animus]: No help for \"routes\" /animus help"), admin.lines);
+        Actor visitor = new Actor(true, "animus.status");
+        real.execute(visitor, new String[]{"help", "delete"});
+        assertTrue(visitor.text().contains("No permission: animus.npc.delete"), visitor.text());
+        assertEquals(List.of("create"), real.complete(admin, new String[]{"help", "cre"}), "help completes command names");
+        assertEquals(List.of("skin"), real.complete(admin, new String[]{"help", "npc", "sk"}));
+        assertTrue(real.complete(admin, new String[]{"help", "a"}).contains("all"));
+        assertEquals(List.of(), real.complete(admin, new String[]{"help", "create", ""}), "no values after a command name");
+    }
+
+    @Test void aSimplePlayerGetsTheShortHelpAndAllCommandsIsOneClickAway() {
+        AnimusDirector simple = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
+                (String plugin) -> true, (UUID player) -> true, RecentChanges::new);
+        Actor player = new Actor(true, AnimusDirector.ADMIN);
+        simple.execute(player, new String[]{"help"});
+        AnimusHelp.Page brief = player.pages.getLast();
+        assertTrue(brief.brief());
+        assertEquals(List.of("/animus gui", "/animus create", "/animus select", "/animus spawn", "/animus despawn", "/animus delete", "/animus list", "/animus undo",
+                "/animus editor pair"), brief.entries().stream().map(DirectorRuntimeNode::path).toList());
+        assertEquals("⇀ gui - Open the Animus menu", AnimusHelp.brief(brief).get(1).visible(), "the menu's line calls it the Animus menu");
+        player.pages.clear();
+        simple.execute(player, new String[0]);
+        assertTrue(player.pages.getLast().brief(), "a bare /animus is the same short page");
+        simple.execute(player, new String[]{"help", "all"});
+        assertFalse(player.pages.getLast().brief(), "help all is the whole tree");
+        simple.execute(player, new String[]{"help", "2"});
+        assertFalse(player.pages.getLast().brief(), "a page number is a page of the whole tree");
+        assertEquals(1, player.pages.getLast().index());
+        Actor console = new Actor(false, AnimusDirector.ADMIN);
+        simple.execute(console, new String[]{"help"});
+        assertFalse(console.pages.getLast().brief(), "the console reads every command");
+        Actor viewer = new Actor(true, PermissionNodes.NPC_VIEW);
+        simple.execute(viewer, new String[0]);
+        assertEquals(List.of("/animus select", "/animus list"), viewer.pages.getLast().entries().stream().map(DirectorRuntimeNode::path).toList(),
+                "only what the player may run");
+        Actor advanced = new Actor(true, AnimusDirector.ADMIN);
+        new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of()).execute(advanced, new String[]{"help"});
+        assertFalse(advanced.pages.getLast().brief(), "Advanced keeps the whole tree");
+    }
+
+    /** A probe with a menu, as {@code /animus gui} and {@code /animus tools} open it, and a {@code gui} group of its own commands. */
+    @Director(name = "probe")
+    static final class WithMenu {
+        final List<String> calls = new ArrayList<>();
+        Tools tools = new Tools(calls);
+        Gui gui = new Gui(calls);
+        @Director void list() { calls.add("list"); }
+    }
+
+    @Director(name = ToolkitCommands.GROUP, aliases = "tool")
+    @AnimusPermission(PermissionNodes.TOOLS)
+    static final class Tools {
+        final List<String> calls;
+        Tools(List<String> calls) { this.calls = calls; }
+        @Director(name = ToolkitCommands.MENU, hidden = true) void menu() { calls.add("menu"); }
+        @Director(name = ToolkitCommands.HOME, hidden = true) void home() { calls.add("home"); }
+        @Director void wand() { calls.add("wand"); }
+    }
+
+    @Director(name = ToolkitCommands.GUI, aliases = "guis")
+    @AnimusPermission(PermissionNodes.GUI)
+    static final class Gui {
+        final List<String> calls;
+        Gui(List<String> calls) { this.calls = calls; }
+        @Director void reload() { calls.add("reload"); }
+    }
+
+    @Test void theBareCommandShowsHelpAndGuiOpensTheMenuAtHome() {
+        WithMenu menu = new WithMenu();
+        AnimusDirector director = new AnimusDirector(menu, (String parameter, CommandActor actor) -> List.of());
+        Actor builder = new Actor(true, PermissionNodes.TOOLS);
+        director.execute(builder, new String[0]);
+        assertTrue(menu.calls.isEmpty(), "a bare /probe opens nothing: " + menu.calls);
+        assertEquals(1, builder.pages.size(), "a bare /probe is help");
+        assertEquals("/probe", builder.pages.getLast().group().path());
+        director.execute(builder, new String[]{"gui"});
+        director.execute(builder, new String[]{"GUI"});
+        director.execute(builder, new String[]{"guis"});
+        assertEquals(List.of("home", "home", "home"), menu.calls, "/probe gui opens Home, and so does the alias a client suggests beside it");
+        director.execute(builder, new String[]{"tools"});
+        director.execute(builder, new String[]{"tool"});
+        assertEquals(List.of("home", "home", "home", "menu", "menu"), menu.calls, "/probe tools still opens the selected NPC's screen");
+        director.execute(builder, new String[]{"gui", "reload"});
+        assertEquals(5, menu.calls.size(), "the gui commands keep their own node");
+        Actor admin = new Actor(true, AnimusDirector.ADMIN);
+        director.execute(admin, new String[]{"gui", "reload"});
+        assertEquals("reload", menu.calls.getLast());
+        director.execute(admin, new String[]{"guis", "help"});
+        assertEquals("/probe gui", admin.pages.getLast().group().path(), "help lists the gui commands");
+        Actor visitor = new Actor(true, "probe.other");
+        director.execute(visitor, new String[]{"gui"});
+        Actor console = new Actor(false, AnimusDirector.ADMIN);
+        director.execute(console, new String[]{"gui"});
+        director.execute(console, new String[0]);
+        assertEquals(6, menu.calls.size(), "no menu without the node, and none for the console: " + menu.calls);
+        assertEquals(List.of("/probe gui", "/probe"), console.pages.stream().map((AnimusHelp.Page page) -> page.group().path()).toList(),
+                "the console gets the gui commands, then the root help");
+    }
+
+    @Test void helpForGuiSaysItOpensTheMenuAndLeadsToTheGuiCommands() {
+        AnimusDirector real = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
+        Actor builder = new Actor(true, PermissionNodes.TOOLS);
+        real.execute(builder, new String[]{"help", "gui"});
+        assertTrue(builder.pages.isEmpty(), "no paged help that wipes the chat");
+        assertEquals("[Animus]: gui: Open the Animus menu", builder.lines.getFirst());
+        assertTrue(builder.lines.get(1).contains("Usage: /animus gui"), builder.text());
+        assertFalse(builder.text().contains("/animus gui help"), "nothing a menu user may not run");
+        Actor admin = new Actor(true, AnimusDirector.ADMIN);
+        real.execute(admin, new String[]{"help", "gui"});
+        assertTrue(admin.pages.isEmpty());
+        assertTrue(admin.text().contains("/animus gui help"), "one click to the chest GUI commands: " + admin.text());
+        Actor console = new Actor(false, AnimusDirector.ADMIN);
+        real.execute(console, new String[]{"help", "gui"});
+        assertEquals("/animus gui", console.pages.getLast().group().path(), "the console reads the gui commands");
+    }
+
+    @Test void guiIsOfferedToEveryPlayerWhoMayOpenTheMenu() {
+        AnimusDirector real = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
+        Actor builder = new Actor(true, PermissionNodes.TOOLS);
+        assertTrue(real.complete(builder, new String[]{""}).contains("gui"), "a menu user without animus.gui still completes gui");
+        assertEquals(List.of("gui"), real.complete(builder, new String[]{"gu"}));
+        assertEquals(List.of(), real.complete(builder, new String[]{"gui", ""}), "the gui commands stay behind animus.gui");
+        builder.lines.clear();
+        real.execute(builder, new String[]{"giu"});
+        assertTrue(builder.text().contains("Did you mean gui?"), builder.text());
+        Actor viewer = new Actor(true, PermissionNodes.NPC_VIEW);
+        assertFalse(real.complete(viewer, new String[]{""}).contains("gui"), "no menu, no gui");
+    }
+
+    @Test void theMenuCommandsStayOutOfHelp() {
+        AnimusDirector real = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
+        Actor admin = new Actor(true, AnimusDirector.ADMIN);
+        real.execute(admin, new String[]{"help", "tools"});
+        assertEquals(List.of("mode", "wand"), admin.entries());
+        assertEquals(List.of("[Animus]: No help for \"tools menu\" /animus help"), help(real, "tools", "menu"));
+        assertEquals(List.of("[Animus]: No help for \"tools home\" /animus help"), help(real, "tools", "home"));
+    }
+
+    private static List<String> help(AnimusDirector director, String... topic) {
+        Actor admin = new Actor(true, AnimusDirector.ADMIN);
+        List<String> words = new ArrayList<>(List.of("help"));
+        words.addAll(List.of(topic));
+        director.execute(admin, words.toArray(String[]::new));
+        return admin.lines;
+    }
+
     @Test void groupsAnswerToTheOtherNumberToo() {
         AnimusDirector real = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
-        java.util.Map<String, String> spelled = java.util.Map.of("shops", "shop", "guis", "gui", "builds", "build", "records", "record", "behavior", "behaviors",
-                "module", "modules", "rig", "rigs", "group", "groups", "tool", "tools", "imports", "import");
+        java.util.Map<String, String> spelled = java.util.Map.of("shops", "shop", "builds", "build", "records", "record", "behavior", "behaviors",
+                "module", "modules", "rig", "rigs", "group", "groups", "imports", "import");
         spelled.forEach((String typed, String group) -> {
             Actor admin = new Actor(true, AnimusDirector.ADMIN);
             real.execute(admin, new String[]{typed});
@@ -241,7 +438,7 @@ class AnimusDirectorTest {
         assertEquals(List.of("apply", "beautyquests", "betonquest", "citizens", "denizen", "gloss", "plan", "preview", "quests", "shops", "stage"), admin.entries(), "every import lives under /animus import");
         real.execute(admin, new String[]{"shop"});
         assertFalse(admin.entries().contains("import"));
-        real.execute(admin, new String[]{"gui"});
+        real.execute(admin, new String[]{"gui", "help"});
         assertFalse(admin.entries().contains("import"));
         assertTrue(admin.entries().contains("export"));
     }
@@ -360,7 +557,7 @@ class AnimusDirectorTest {
         without.execute(admin, new String[]{"npc"});
         assertFalse(admin.entries().contains("model"));
         assertFalse(admin.entries().contains("disguise"));
-        without.execute(admin, new String[]{});
+        without.execute(admin, new String[]{"help"});
         assertFalse(admin.entries().contains("mythic"));
         assertTrue(without.complete(admin, new String[]{"import", ""}).stream().noneMatch(LINKS::contains));
         assertFalse(without.complete(admin, new String[]{"npc", ""}).contains("model"));
@@ -380,7 +577,7 @@ class AnimusDirectorTest {
         assertTrue(admin.entries().containsAll(LINKS), admin.entries().toString());
         with.execute(admin, new String[]{"npc"});
         assertTrue(admin.entries().containsAll(List.of("model", "disguise")));
-        with.execute(admin, new String[]{});
+        with.execute(admin, new String[]{"help"});
         assertTrue(admin.entries().contains("mythic"));
         assertTrue(with.complete(admin, new String[]{"import", ""}).containsAll(LINKS));
         assertTrue(with.complete(admin, new String[]{""}).contains("mythic"));

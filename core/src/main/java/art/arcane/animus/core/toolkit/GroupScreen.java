@@ -14,18 +14,18 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Trait groups with their member counts. A left click assigns the group to the whole selection and a right click
- * unassigns it, each in one transaction; a sneak click opens the group. New group saves an empty group file.
+ * Trait groups with their member counts. A click puts the trait group on the whole selection in one transaction, a
+ * right-click opens its details, where it comes off again. New trait group saves an empty one.
  */
 final class GroupScreen<P, S> extends ToolScreen<P, S> {
-    static final int SELECTION = 46, CREATE = 47, FOLDERS = 53;
-    private final BulkGuard guard = new BulkGuard();
+    static final int CREATE = ACTIONS, SELECTION = ACTIONS + 8;
 
     GroupScreen(Toolkit<P, S> toolkit, ScreenManager<P, S>.Viewer viewer, Toolkit.Commands commands) { super(toolkit, viewer, commands); }
 
     @Override String title() { return "Trait groups"; }
     @Override String node() { return PermissionNodes.NPC_EDIT; }
     @Override int rows() { return 6; }
+    @Override boolean searchable() { return true; }
 
     @Override void draw() {
         NpcRepository npcs = toolkit.npcs();
@@ -39,41 +39,22 @@ final class GroupScreen<P, S> extends ToolScreen<P, S> {
             }
         List<GroupDocument> groups = new ArrayList<>(npcs.groups().groups().values());
         groups.sort((GroupDocument a, GroupDocument b) -> a.id().compareTo(b.id()));
-        list(groups, "No trait groups; click New group", (Integer slot, GroupDocument group) -> {
-            String assign = "assign:" + group.id(), unassign = "unassign:" + group.id();
-            boolean armed = guard.armed(assign) || guard.armed(unassign);
-            List<String> lines = new ArrayList<>();
-            if (armed) {
-                lines.add("&c" + ToolkitFiles.count(selected.size()) + " affected");
-                lines.add("&c" + (guard.armed(assign) ? "Left" : "Right") + " click again to " + (guard.armed(assign) ? "assign" : "unassign"));
-            } else if (!group.description().isEmpty()) lines.add("&7" + group.description());
-            lines.add("&7Members &f" + members.getOrDefault(group.id(), 0));
-            lines.add("&7In the selection &f" + picked.getOrDefault(group.id(), 0) + "&7 of &f" + selected.size());
-            button(slot, "minecraft:book", title((armed ? "&c" : "") + group.id()), lore(lines, hints("assign to the selection", "unassign from the selection", "open the group")),
-                    (GuiModel.Click click) -> {
-                        if (sneak(click)) {
-                            guard.clear();
-                            viewer.push(new GroupDetailScreen<>(toolkit, viewer, commands, group.id()));
-                            return;
-                        }
-                        boolean adding = !right(click);
-                        chosen().ifPresent((List<String> ids) -> {
-                            if (guard.ready(adding ? assign : unassign, ids.size()))
-                                toolkit.write(viewer, (ToolkitFiles files) -> files.groups(group.id(), ids, adding));
-                        });
-                    });
+        String who = selected.isEmpty() ? "" : named(selected);
+        list(groups, (GroupDocument group) -> group.id() + " " + group.description(), "No trait groups yet; New trait group makes one", (Integer slot, GroupDocument group) -> {
+            int count = members.getOrDefault(group.id(), 0), on = picked.getOrDefault(group.id(), 0);
+            List<String> lines = new ArrayList<>(List.of("&7" + (group.description().isEmpty() ? count + (count == 1 ? " member" : " members") : group.description())));
+            if (on > 0) lines.add(FieldScreen.now(on == selected.size() ? "on " + who : "on " + on + " of " + ToolkitFiles.count(selected.size()), false));
+            button(slot, "minecraft:book", title(group.id()), lore(lines, hints(selected.isEmpty() ? "details" : "use on " + who, "details", "")), (GuiModel.Click click) -> {
+                if (right(click) || selected.isEmpty()) { push(new GroupDetailScreen<>(toolkit, viewer, commands, group.id())); return; }
+                chosen().ifPresent((List<String> ids) -> ask(slot, "Puts " + group.id() + " on " + named(ids), ids.size(), false,
+                        () -> toolkit.write(viewer, (ToolkitFiles files) -> files.groups(group.id(), ids, true))));
+            });
         });
+        NpcsScreen.summary(this, SELECTION, selected);
+        button(CREATE, "minecraft:writable_book", title("New trait group"), lore(List.of("&7Starts empty; the selection gets it"), any("type its id")),
+                (GuiModel.Click click) -> ask(CREATE, "Puts a new trait group on " + who, selected.size(), false, () -> prompt("Trait group id", "",
+                        (String id) -> toolkit.write(viewer, (ToolkitFiles files) -> new GroupFiles(toolkit.npcs(), toolkit.documents()).create(id.strip(), selected)))));
         back();
-        SelectionScreen.summary(this, SELECTION, selected);
-        button(CREATE, "minecraft:writable_book", title("New group"),
-                lore(List.of("&7Saves an empty groups/<id>.json", "&7and assigns it to the selection"), any("type its id")),
-                (GuiModel.Click click) -> {
-                    guard.clear();
-                    prompt("New group id", "", (String id) -> {
-                        List<String> ids = toolkit.selected(viewer.id());
-                        toolkit.write(viewer, (ToolkitFiles files) -> new GroupFiles(toolkit.npcs(), toolkit.documents()).create(id.trim(), ids));
-                    });
-                });
-        button(FOLDERS, "minecraft:chest", title("Folders"), any("move the selection to a folder"), (GuiModel.Click click) -> viewer.push(new FolderScreen<>(toolkit, viewer, commands)));
+        help("A trait group holds settings many NPCs share; change it once and every member follows. Click one to use it on the selection.", "21-in-game-toolkit", "trait-groups");
     }
 }

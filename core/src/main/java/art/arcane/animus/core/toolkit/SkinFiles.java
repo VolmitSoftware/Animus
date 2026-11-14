@@ -53,15 +53,30 @@ public final class SkinFiles {
         return entries;
     }
 
-    /** Writes the signed skin labelled {@code label} when that file is new; returns its hash. */
-    String save(BodySkin skin, String label) throws IOException {
+    /** A skin to wear by its hash, with the file's text when the file may not be saved yet. */
+    record Skin(String hash, Optional<String> text) {
+        /** The change that saves the file, when it is new. */
+        Optional<DocumentStore.Change> file(DocumentStore store) throws IOException {
+            return text.isEmpty() || store.read(path(hash)) != null ? Optional.empty() : Optional.of(new DocumentStore.Change(path(hash), "missing", text.get()));
+        }
+    }
+
+    /** The file for a signed skin labelled {@code label}, not yet saved. */
+    static Skin skin(BodySkin skin, String label) throws IOException {
         JsonObject document = new JsonObject();
         document.addProperty("textureRaw", skin.textureValue());
         if (skin.signature() != null) document.addProperty("signature", skin.signature());
         document.addProperty("label", checked(label).orElseThrow(() -> new IOException("A skin label needs at least one character")));
-        String text = JsonDocuments.write(document), hash = JsonDocuments.hash(text);
-        if (store.read(path(hash)) == null) store.commit(List.of(new DocumentStore.Change(path(hash), "missing", text)));
-        return hash;
+        String text = JsonDocuments.write(document);
+        return new Skin(JsonDocuments.hash(text), Optional.of(text));
+    }
+
+    /** Writes the signed skin labelled {@code label} when that file is new; returns its hash. */
+    String save(BodySkin skin, String label) throws IOException {
+        Skin file = skin(skin, label);
+        Optional<DocumentStore.Change> change = file.file(store);
+        if (change.isPresent()) store.commit(List.of(change.get()));
+        return file.hash();
     }
 
     /**
@@ -70,8 +85,7 @@ public final class SkinFiles {
      */
     public String wear(BodySkin skin, String label, List<String> ids) throws IOException {
         String hash = save(skin, label);
-        String saved = "Saved " + label + "'s skin as skins/" + hash.substring(0, 12);
-        return ids.isEmpty() ? saved + "; select NPCs and click it to wear it" : saved + "; " + new ToolkitFiles(npcs, store).skin(Optional.of(hash), ids);
+        return ids.isEmpty() ? "Saved " + label + "'s skin; select NPCs and click it to wear it" : new ToolkitFiles(npcs, store).skin(Optional.of(hash), ids);
     }
 
     /** Takes the skin off the listed player bodies. */
@@ -80,7 +94,7 @@ public final class SkinFiles {
     /** Relabels the skin; a blank label removes it. The wearers move to the new file in the same transaction. */
     String rename(String hash, String label) throws IOException {
         String current = store.read(path(hash));
-        if (current == null) throw new IOException("No skin file skins/" + hash + ".json");
+        if (current == null) throw new IOException("That skin was deleted");
         JsonObject document = JsonDocuments.object(current);
         Optional<String> next = checked(label);
         if (next.equals(label(current))) return "Skin " + hash.substring(0, 12) + " already " + next.map((String name) -> "labelled " + name).orElse("has no label");
@@ -114,19 +128,19 @@ public final class SkinFiles {
         String tx = DefinitionBatch.commit(store, wearers, expected, changes);
         npcs.reload();
         String what = next.map((String name) -> "Labelled skin " + hash.substring(0, 12) + " " + name).orElse("Removed the label of skin " + hash.substring(0, 12));
-        String carried = wearers.isEmpty() && groups.isEmpty() ? "" : ", moved " + ToolkitFiles.named(wearers.stream().map(NpcDefinition::id).toList()) + (groups.isEmpty() ? "" : " and " + groups.size() + (groups.size() == 1 ? " group" : " groups"));
+        String carried = wearers.isEmpty() && groups.isEmpty() ? "" : ", moved " + ToolkitFiles.named(npcs, wearers.stream().map(NpcDefinition::id).toList()) + (groups.isEmpty() ? "" : " and " + groups.size() + (groups.size() == 1 ? " trait group" : " trait groups"));
         return what + "; now " + moved.substring(0, 12) + carried + "; tx " + tx;
     }
 
     /** Deletes a skin file nothing wears. */
     String delete(String hash) throws IOException {
         String current = store.read(path(hash));
-        if (current == null) throw new IOException("No skin file skins/" + hash + ".json");
+        if (current == null) throw new IOException("That skin was deleted");
         for (Entry entry : skins())
             if (entry.hash().equals(hash) && entry.used())
                 throw new IOException("Skin " + entry.title() + " is still worn by " + ToolScreen.names(concat(entry.npcs(), entry.groups()), 4) + "; take it off them first");
         String tx = store.commit(List.of(new DocumentStore.Change(path(hash), JsonDocuments.hash(current), null)));
-        return "Deleted skins/" + hash.substring(0, 12) + "; tx " + tx;
+        return "Deleted skin " + label(current).orElse(hash.substring(0, 12)) + "; tx " + tx;
     }
 
     /** The trimmed label, or empty when blank. Refuses control characters and labels over {@link #LABEL} characters. */

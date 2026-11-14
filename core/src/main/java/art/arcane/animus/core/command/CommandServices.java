@@ -9,8 +9,11 @@ import art.arcane.animus.core.gui.HoloService;
 import art.arcane.animus.core.quest.QuestService;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.shop.ShopService;
+import art.arcane.animus.core.toolkit.Toolkit;
+import art.arcane.animus.core.toolkit.ToolkitMode;
 import java.util.Collection;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
@@ -31,5 +34,10 @@ public record CommandServices(AnimusRuntime runtime, Executor files, NpcRuntime<
         Objects.requireNonNull(combat); Objects.requireNonNull(shops); Objects.requireNonNull(guis); Objects.requireNonNull(quests); Objects.requireNonNull(builds);
         Objects.requireNonNull(editor); Objects.requireNonNull(debug); Objects.requireNonNull(proof); Objects.requireNonNull(recordings); Objects.requireNonNull(players);
         Objects.requireNonNull(stopping); Objects.requireNonNull(plugins);
+    }
+
+    /** The player's menu mode, for replies and help that differ by mode; Simple where the toolkit does not run. */
+    public ToolkitMode mode(UUID player) {
+        return Toolkit.of(shops.screens()).map((Toolkit<?, ?> toolkit) -> toolkit.mode(player)).orElse(ToolkitMode.SIMPLE);
     }
 }

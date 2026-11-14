@@ -26,6 +26,8 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
         public final Set<String> permissions = new HashSet<>();
         public final Map<String, Object> facts = new HashMap<>();
         public final List<String> messages = new ArrayList<>();
+        /** Every chat line with its chips, as sent; {@link #messages} holds its console text too. */
+        public final List<art.arcane.animus.core.text.ChatLine> lines = new ArrayList<>();
         public final List<String> commands = new ArrayList<>();
         public final List<Stack> dropped = new ArrayList<>();
         public int levels;
@@ -34,7 +36,11 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
         public ScreenHost.Pose pose;
         public final List<String> effects = new ArrayList<>();
         public int opened, closed, experience;
+        /** Whether the main hand holds a wand, and how many wands the host has handed out. */
         public boolean wand;
+        public int wands;
+        /** Sounds played to the player, as {@code sound@volume}. */
+        public final List<String> sounds = new ArrayList<>();
         /** The text prompt waiting for an answer, or null. Tests answer it through {@code prompt.answer()}. */
         public ScreenHost.Prompt prompt;
         /** True makes the host refuse prompts, as a platform without text input does. */
@@ -74,9 +80,10 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
     }
 
     @Override public void message(Player player, String text) { player.messages.add(RichText.plain(text)); }
+    @Override public void chat(Player player, art.arcane.animus.core.text.ChatLine line) { player.lines.add(line); message(player, line.console()); }
     @Override public void actionBar(Player player, String text) { player.messages.add("bar:" + RichText.plain(text)); }
     @Override public void title(Player player, String title, String subtitle, int fadeIn, int stay, int fadeOut) { player.messages.add("title:" + RichText.plain(title)); }
-    @Override public void sound(Player player, String sound, String source, float volume, float pitch) { player.messages.add("sound:" + sound); }
+    @Override public void sound(Player player, String sound, String source, float volume, float pitch) { player.sounds.add(sound + "@" + volume); }
     @Override public void command(Optional<Player> player, String command) {
         if (player.isPresent()) player.get().commands.add(command); else console.add(command);
     }
@@ -119,7 +126,12 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
     }
     @Override public boolean experience(Player player, int points) { player.experience += points; return true; }
     @Override public boolean holdsWand(Player player) { return player.wand; }
-    @Override public boolean giveWand(Player player) { player.wand = true; return true; }
+    @Override public ScreenHost.WandGift giveWand(Player player) {
+        if (player.wand) return ScreenHost.WandGift.MOVED;
+        player.wand = true;
+        player.wands++;
+        return ScreenHost.WandGift.GIVEN;
+    }
     @Override public boolean prompt(Player player, ScreenHost.Prompt prompt) {
         if (player.noPrompt) return false;
         player.prompt = prompt;

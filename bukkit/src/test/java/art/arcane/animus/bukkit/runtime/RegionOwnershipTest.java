@@ -213,6 +213,7 @@ class RegionOwnershipTest {
         regions.execute(A, () -> owner.unloading(A)); regions.tick(1); regions.unload(A);
         assertEquals(NpcOwnership.Phase.DORMANT, owner.ownership().state().phase());
         assertEquals(1, refused.size());
+        assertTrue(refused.getFirst().startsWith("NPC not active: "), "plain words in traces players read: " + refused.getFirst());
         assertFalse(owner.submit(work(() -> fail("must not run"), refused::add)));
     }
 

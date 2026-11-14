@@ -236,7 +236,8 @@ public final class AnimusPlugin extends JavaPlugin {
             bossBarTicks = ownerTicks.apply(measured.timed(Subsystem.PRESENTATION, bossBars::tick));
             ShopService<Player, ItemStack> screenService = shops;
             HoloService<Player, ItemStack> holoService = guis;
-            toolkit = new BukkitToolkit(this, runtime, shops.screens(), living, commands, (Player player) -> { BukkitRecordings current = recordings; return current == null ? Optional.empty() : current.skin(player); }, mainThread, ownerTicks);
+            toolkit = new BukkitToolkit(this, runtime, shops.screens(), living, commands, (Player player) -> { BukkitRecordings current = recordings; return current == null ? Optional.empty() : current.skin(player); },
+                    mainThread != null ? mainThread::relocate : ((RegionNpcRuntime) living)::relocate, ownerTicks);
             BukkitToolkit tools = toolkit;
             living.interactions((Player player, UUID npc, boolean attack, boolean sneaking) -> tools.interacted(player, npc, attack, sneaking) ||
                     hireDesk.interacted(player, npc, attack, sneaking) || questService.interacted(player, npc, attack, sneaking)

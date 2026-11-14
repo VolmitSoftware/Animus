@@ -41,7 +41,7 @@ class NavigationReportTest {
     }
 
     @Test void stopAnswersOnce() {
-        assertEquals("Stopped guard's route", WorldCommands.Navigation.stopped("guard", true));
-        assertEquals("guard has no route to stop", WorldCommands.Navigation.stopped("guard", false));
+        assertEquals("Stopped guard's walk", WorldCommands.Navigation.stopped("guard", true));
+        assertEquals("guard is not walking anywhere", WorldCommands.Navigation.stopped("guard", false));
     }
 }

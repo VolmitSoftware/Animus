@@ -7,6 +7,7 @@ import art.arcane.animus.core.gui.GuiBinding;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.npc.GroupDocument;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.shop.ShopBinding;
 import art.arcane.animus.core.shop.ShopDocument;
@@ -19,11 +20,14 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * The shop and GUI screens' file work, on the file lane: {@code shops/} and the four {@code gui/} folders, and the
@@ -31,18 +35,26 @@ import java.util.Set;
  * whole when any module would no longer parse; a file that something still uses is never deleted.
  */
 final class ShopFiles {
-    /** The kinds the GUI screen lists, in tab order. */
-    static final List<DocumentKind> GUIS = List.of(DocumentKind.HOLOGRAM, DocumentKind.INVENTORY, DocumentKind.MENU, DocumentKind.TEXT_ANIMATION);
     static final String VILLAGER = "minecraft:villager";
     /** How a shop binding field reads in a reply, as the shop screen labels it. */
-    private static final Map<String, String> LABELS = Map.of("style", "Window", "openOn", "Opens on", "villager", "Villager");
+    /** The namespace of a shop made with no NPC to name it after. */
+    static final String LOOSE = "shops";
+    /** How a trait group reads in a list of users. */
+    static final String TRAIT_GROUP = "trait group ";
+    private static final Map<String, String> LABELS = Map.of("style", "Window", "openOn", "Opens on", "profession", "Profession", "level", "Level");
     private final NpcRepository npcs;
     private final DocumentStore store;
 
     ShopFiles(NpcRepository npcs, DocumentStore store) { this.npcs = npcs; this.store = store; }
 
-    /** A shop file: its offers and style when it loads, its first problem when it does not. */
-    record Shop(String id, String path, int offers, Optional<ShopDocument.Style> style, Optional<String> problem) {}
+    /** A shop file: its title (the id without one), its offers and style when it loads, its first problem when it does not. */
+    record Shop(String id, String name, String path, int offers, Optional<ShopDocument.Style> style, Optional<String> problem) {}
+
+    /** A new shop and its chat line. */
+    record Created(String line, Shop shop) {}
+
+    /** One offer of a shop: the page it is on (from 0), its grid and slot there, and the entry. */
+    record Offer(int page, ShopDocument.Mode mode, int slot, ShopDocument.Entry entry) {}
 
     /** A GUI file and its title or first line, when it has one. */
     record Gui(DocumentKind kind, String id, String path, Optional<String> title) {}
@@ -71,10 +83,45 @@ final class ShopFiles {
             Optional<ShopDocument> shop = result.shop();
             int offers = 0;
             if (shop.isPresent()) for (ShopDocument.Page page : shop.get().pages()) for (Map<Integer, ShopDocument.Entry> grid : page.grids().values()) offers += grid.size();
-            shops.add(new Shop(location.id(), location.path(), offers, shop.flatMap(ShopDocument::style), result.problems().stream().findFirst()));
+            shops.add(new Shop(location.id(), shop.map(ShopDocument::title).orElse(location.id()), location.path(), offers, shop.flatMap(ShopDocument::style), result.problems().stream().findFirst()));
         }
         shops.sort((Shop a, Shop b) -> a.id().compareTo(b.id()));
         return shops;
+    }
+
+    /** The shop file with this id, when there is one. */
+    Optional<Shop> shop(String id) throws IOException { return shops().stream().filter((Shop shop) -> shop.id().equals(id)).findFirst(); }
+
+    /** Every offer of a loading shop, page by page, buy, sell then trade, by slot. */
+    List<Offer> offers(String id) throws IOException {
+        Shop shop = shop(id).orElseThrow(() -> new IOException("No shop file for " + id));
+        Optional<ShopDocument> document = ShopDocument.parse(id, store.read(shop.path())).shop();
+        if (document.isEmpty()) throw new IOException(shop.problem().orElse(id + " does not load"));
+        List<Offer> offers = new ArrayList<>();
+        List<ShopDocument.Page> pages = document.get().pages();
+        for (int page = 0; page < pages.size(); page++)
+            for (ShopDocument.Mode mode : ShopDocument.Mode.values())
+                for (Map.Entry<Integer, ShopDocument.Entry> slot : new TreeMap<>(pages.get(page).grid(mode)).entrySet())
+                    offers.add(new Offer(page, mode, slot.getKey(), slot.getValue()));
+        return offers;
+    }
+
+    /** Takes one offer out of its shop with the next revision, refused when the slot holds another entry by now. */
+    String removeOffer(String id, Offer offer) throws IOException {
+        Shop shop = shop(id).orElseThrow(() -> new IOException("No shop file for " + id));
+        String current = store.read(shop.path());
+        JsonObject document = JsonDocuments.object(current);
+        JsonElement page = document.getAsJsonArray("pages").get(offer.page());
+        JsonElement grid = page.isJsonObject() ? page.getAsJsonObject().get(offer.mode().key()) : null;
+        JsonElement held = grid != null && grid.isJsonObject() ? grid.getAsJsonObject().get(String.valueOf(offer.slot())) : null;
+        if (held == null || !held.isJsonObject() || !offer.entry().id().equals(held.getAsJsonObject().get("id").getAsString()))
+            throw new IOException("The shop changed meanwhile; open Offers again");
+        grid.getAsJsonObject().remove(String.valueOf(offer.slot()));
+        long revision = document.has("revision") && document.get("revision").isJsonPrimitive() ? document.get("revision").getAsLong() : 0;
+        document.addProperty("revision", revision + 1);
+        List<String> problems = ShopDocument.parse(id, document).problems();
+        if (!problems.isEmpty()) throw new IOException("The shop would not load: " + problems.getFirst());
+        return "Removed " + offer.entry().id() + " from " + id + "; tx " + store.commit(List.of(new DocumentStore.Change(shop.path(), JsonDocuments.hash(current), JsonDocuments.write(document))));
     }
 
     /** Every file of one GUI kind, sorted by id. */
@@ -91,68 +138,132 @@ final class ShopFiles {
         return guis;
     }
 
-    /** Points every listed NPC at the shop, keeping its open click, window style and villager looks. */
+    /** Points every listed NPC at the shop, keeping its open click, window style and villager looks. The reply names the shop by its title. */
     String bindShop(String shop, List<String> ids) throws IOException {
-        if (shops().stream().noneMatch((Shop known) -> known.id().equals(shop))) throw new IOException("No shop file for " + shop);
-        List<NpcRepository.Draft> drafts = drafts(ids, (JsonObject document) -> {
+        Shop known = shop(shop).orElseThrow(() -> new IOException("No shop file for " + shop));
+        List<NpcRepository.Draft> drafts = binding(shop, ids);
+        if (drafts.isEmpty()) return "Shop " + known.name() + " already bound";
+        return "Shop " + known.name() + " on " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
+    }
+
+    /** The drafts that point the listed NPCs at the shop; NPCs already on it are left out. */
+    private List<NpcRepository.Draft> binding(String shop, List<String> ids) throws IOException {
+        return drafts(ids, (JsonObject document) -> {
             JsonObject module = module(document, ShopBinding.MODULE).orElseGet(JsonObject::new);
             if (module.has("shop") && module.get("shop").isJsonPrimitive() && module.get("shop").getAsString().equals(shop)) return false;
             module.addProperty("shop", shop);
             put(document, ShopBinding.MODULE, Optional.of(module));
             return true;
         });
-        if (drafts.isEmpty()) return "Shop " + shop + " already bound";
-        return "Shop " + shop + " on " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
+    }
+
+    /** Whether the NPC's own shop opens on a right-click, the click that also starts a conversation. */
+    static boolean opensOnRightClick(JsonObject npc) {
+        return module(npc, ShopBinding.MODULE).filter((JsonObject module) -> module.has("shop"))
+                .map((JsonObject module) -> !module.has("openOn") || !"left".equals(text(module, "openOn"))).orElse(false);
     }
 
     /**
-     * Sets or, when empty, removes one field of the shop binding on every listed NPC that binds {@code shop}. A
-     * villager field goes on villager bodies only.
+     * Sells the held item for {@code price} as a buy offer in the first free slot of the shop's first page, as
+     * {@code /animus shop stock} adds it, named the way players read it, with the price as {@code shown}, the server's
+     * economy text for it. Advanced adds where the offer went.
      */
-    String shopField(String shop, List<String> ids, String field, Optional<JsonElement> value) throws IOException {
+    String stock(String id, NpcItem item, BigDecimal price, String shown, boolean advanced) throws IOException {
+        Shop shop = shop(id).orElseThrow(() -> new IOException("No shop file for " + id));
+        String current = store.read(shop.path());
+        ShopOffers.Added added = ShopOffers.add(JsonDocuments.object(current), ShopDocument.Mode.BUY, item, Optional.empty(), Optional.of(price), 1);
+        String tx = store.commit(List.of(new DocumentStore.Change(shop.path(), JsonDocuments.hash(current), JsonDocuments.write(added.document()))));
+        String where = advanced ? " (offer " + added.entry() + ", slot " + added.slot() + ")" : "";
+        return "Added " + goods(item) + " for " + shown + where + "; tx " + tx;
+    }
+
+    /** {@code Diamond sword}, or {@code 16 Bread} for a stack: the item as the Offers list names it. */
+    static String goods(NpcItem item) {
+        String name = ToolScreen.itemName(new NpcItem(item.id(), 1, Optional.empty(), Optional.empty())).toLowerCase(Locale.ROOT);
+        String named = Character.toUpperCase(name.charAt(0)) + name.substring(1);
+        return item.count() == 1 ? named : item.count() + " " + named;
+    }
+
+    /**
+     * Sets or, when empty, removes one setting of the {@code animus:shop} binding on every listed NPC that binds
+     * {@code shop}: {@code style}, {@code openOn}, or a key under {@code villager}, which only villager bodies take. Only
+     * that key changes, so a villager's level keeps its profession and the other way round. The reply names the value as
+     * {@code shown}, the way the screen shows it.
+     */
+    String shopField(String shop, List<String> ids, List<String> path, Optional<JsonElement> value, String shown) throws IOException {
+        boolean villagers = path.getFirst().equals("villager");
         int[] skipped = {0};
         List<NpcRepository.Draft> drafts = drafts(ids, (JsonObject document) -> {
             Optional<JsonObject> found = module(document, ShopBinding.MODULE).filter((JsonObject module) -> bound(module, shop));
-            boolean villager = VILLAGER.equals(type(document));
-            if (found.isEmpty() || (field.equals("villager") && !villager)) { skipped[0]++; return false; }
-            JsonObject module = found.get();
-            if (value.map((JsonElement next) -> next.equals(module.get(field))).orElse(!module.has(field))) return false;
-            if (value.isPresent()) module.add(field, value.get()); else module.remove(field);
+            if (found.isEmpty() || (villagers && !VILLAGER.equals(type(document)))) { skipped[0]++; return false; }
+            JsonObject module = found.get(), before = module.deepCopy();
+            CombatFiles.put(module, path, value);
+            if (module.equals(before)) return false;
             put(document, ShopBinding.MODULE, Optional.of(module));
             return true;
         });
-        String shown = value.map((JsonElement next) -> next.isJsonPrimitive() ? next.getAsString() : villager(next)).orElse("default");
         if (drafts.isEmpty() && skipped[0] == ids.size())
-            return field.equals("villager") ? "No selected villager binds " + shop : "No selected NPC binds " + shop;
-        String head = LABELS.getOrDefault(field, field) + " set to " + shown + " on " + ToolkitFiles.named(drafts) + (skipped[0] == 0 ? "" : ", " + skipped[0] + " skipped");
+            return villagers ? "No selected villager binds " + shop : "No selected NPC binds " + shop;
+        String head = LABELS.getOrDefault(path.getLast(), path.getLast()) + " set to " + shown + " on " + ToolkitFiles.named(drafts) + (skipped[0] == 0 ? "" : ", " + skipped[0] + " skipped");
         return drafts.isEmpty() ? head : head + "; tx " + npcs.applyAll(drafts);
     }
 
-    /** Removes the shop binding from every listed NPC that binds {@code shop}. */
+    /** Removes the shop binding from every listed NPC that binds {@code shop}; the reply names the shop by its title while its file exists. */
     String unbindShop(String shop, List<String> ids) throws IOException {
+        String title = shop(shop).map(Shop::name).orElse(shop);
         List<NpcRepository.Draft> drafts = drafts(ids, (JsonObject document) -> {
             if (module(document, ShopBinding.MODULE).filter((JsonObject module) -> bound(module, shop)).isEmpty()) return false;
             put(document, ShopBinding.MODULE, Optional.empty());
             return true;
         });
-        if (drafts.isEmpty()) return "No selected NPC binds " + shop;
-        return "Unbound " + shop + " from " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
+        if (drafts.isEmpty()) return "No selected NPC binds " + title;
+        return "Unbound " + title + " from " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
     }
 
-    /** Writes {@code shops/<namespace>/<path>.json} with one empty page, ready to stock with /animus shop stock or the web editor. */
-    String newShop(String id) throws IOException {
-        String path = path(DocumentKind.SHOP, id);
-        if (store.read(path) != null) throw new IOException(path + " already exists");
-        String text = JsonDocuments.write(ShopOffers.empty(id));
-        List<String> problems = ShopDocument.parse(id, text).problems();
+    /**
+     * Writes a shop with one empty page, ready for Add held item, and puts it on the NPCs it is made for, in one
+     * transaction so one Undo takes both back. A typed {@code namespace:path} is the id as given; a name becomes the
+     * shop's title and, in lowercase, its id in the folder of the first NPC ({@code Bakery} in town is
+     * {@code town:bakery}). For an NPC in no folder the namespace is its id ({@code guard:bakery}), and with no NPC it is
+     * {@value #LOOSE}. A clash gets a number.
+     */
+    Created create(String typed, List<String> ids) throws IOException {
+        Optional<NpcDefinition> npc = ids.isEmpty() ? Optional.empty() : npcs.find(ids.getFirst());
+        String name = typed.strip();
+        boolean id = name.contains(":");
+        String slug = id ? "" : slug(name), folder = npc.map(NpcDefinition::group).orElse("");
+        String chosen = id ? name : free(!folder.isEmpty() ? BehaviorFiles.scoped(folder, slug) : npc.map(NpcDefinition::id).orElse(LOOSE) + ":" + slug);
+        String path = path(DocumentKind.SHOP, chosen);
+        if (store.read(path) != null) throw new IOException("Shop " + chosen + " already exists");
+        JsonObject document = ShopOffers.empty(chosen);
+        if (!id) document.addProperty("title", name);
+        String text = JsonDocuments.write(document);
+        List<String> problems = ShopDocument.parse(chosen, text).problems();
         if (!problems.isEmpty()) throw new IOException(problems.getFirst());
-        return "Created " + path + "; hold an item and /animus shop stock " + id + " price=<n> adds it; tx " + store.commit(List.of(new DocumentStore.Change(path, "missing", text)));
+        List<NpcRepository.Draft> drafts = binding(chosen, ids);
+        String tx = RouteFiles.commit(npcs, store, drafts, List.of(new DocumentStore.Change(path, "missing", text)));
+        String on = drafts.isEmpty() ? "" : " on " + ToolkitFiles.named(drafts);
+        return new Created("Made shop " + (id ? chosen : name) + on + "; tx " + tx, shop(chosen).orElseThrow(() -> new IOException("No shop file for " + chosen)));
+    }
+
+    /** {@code Old Bakery!} as {@code old-bakery}. */
+    static String slug(String name) throws IOException {
+        String slug = name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]+", "-").replaceAll("^-+|-+$", "");
+        if (slug.isEmpty()) throw new IOException("A shop name needs a letter or a digit");
+        return slug.substring(0, Math.min(slug.length(), 60));
+    }
+
+    /** {@code id}, or {@code id-2} and on when a shop file already has it. */
+    private String free(String id) throws IOException {
+        String chosen = id;
+        for (int n = 2; store.read(path(DocumentKind.SHOP, chosen)) != null; n++) chosen = id + "-" + n;
+        return chosen;
     }
 
     /** Deletes the shop file; refused while an NPC or trait group binds it. */
     String deleteShop(String id) throws IOException {
         List<String> users = shopUsers(id);
-        if (!users.isEmpty()) throw new IOException("Shop " + id + " is bound to " + ToolScreen.names(users, 4) + "; unbind it first");
+        if (!users.isEmpty()) throw new IOException("Shop " + id + " is on " + ToolScreen.names(users, 4) + "; remove it from them first");
         return delete(DocumentKind.SHOP, id);
     }
 
@@ -234,6 +345,29 @@ final class ShopFiles {
         return "Hologram " + id + " " + shown + " on " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
     }
 
+    /**
+     * Sets one axis of the hologram's offset from the feet on every listed NPC that shows {@code id}, keeping its other
+     * two; an NPC without an offset starts from {@link HologramScreen#HEAD}, just above the head.
+     */
+    String offset(String id, List<String> ids, int axis, double value) throws IOException {
+        List<NpcRepository.Draft> drafts = drafts(ids, (JsonObject document) -> {
+            Optional<JsonObject> found = module(document, GuiBinding.MODULE).filter((JsonObject module) -> module.has("hologram") && bound(module.getAsJsonObject("hologram"), id));
+            if (found.isEmpty()) return false;
+            JsonObject module = found.get(), hologram = module.getAsJsonObject("hologram");
+            double[] at = HologramScreen.offset(hologram).orElse(HologramScreen.HEAD).clone();
+            if (hologram.has("offset") && at[axis] == value) return false;
+            at[axis] = value;
+            JsonArray vector = new JsonArray();
+            for (double each : at) vector.add(each);
+            hologram.add("offset", vector);
+            put(document, GuiBinding.MODULE, Optional.of(module));
+            return true;
+        });
+        String shown = new String[]{"X", "Y", "Z"}[axis] + " " + HologramScreen.number(value);
+        if (drafts.isEmpty()) return "Hologram " + id + " already has " + shown + ", or no selected NPC shows it";
+        return "Hologram " + id + " offset " + shown + " on " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
+    }
+
     /** Removes the GUI from the click or the hologram of every listed NPC that uses {@code id}. */
     String unbindGui(DocumentKind kind, String id, List<String> ids) throws IOException {
         String part = kind == DocumentKind.HOLOGRAM ? "hologram" : "open";
@@ -256,11 +390,11 @@ final class ShopFiles {
         return delete(kind, id);
     }
 
-    /** The NPCs and trait groups ({@code group:<id>}) that bind the shop through either module, sorted. */
+    /** The NPCs and trait groups ({@code trait group <id>}) that bind the shop through either module, sorted. */
     List<String> shopUsers(String shop) {
         List<String> users = new ArrayList<>();
         for (NpcDefinition definition : npcs.stored()) if (usesShop(definition.json(), shop)) users.add(definition.id());
-        for (GroupDocument group : npcs.groups().groups().values()) if (usesShop(group.values(), shop)) users.add("group:" + group.id());
+        for (GroupDocument group : npcs.groups().groups().values()) if (usesShop(group.values(), shop)) users.add(TRAIT_GROUP + group.id());
         users.sort(null);
         return users;
     }
@@ -281,7 +415,7 @@ final class ShopFiles {
             return users;
         }
         for (NpcDefinition definition : npcs.stored()) if (usesGui(definition.json(), kind, id)) users.add(definition.id());
-        for (GroupDocument group : npcs.groups().groups().values()) if (usesGui(group.values(), kind, id)) users.add("group:" + group.id());
+        for (GroupDocument group : npcs.groups().groups().values()) if (usesGui(group.values(), kind, id)) users.add(TRAIT_GROUP + group.id());
         users.sort(null);
         if (kind == DocumentKind.INVENTORY)
             for (Shop shop : shops()) {
@@ -310,11 +444,6 @@ final class ShopFiles {
 
     static String type(JsonObject document) {
         return document.has("type") && document.get("type").isJsonPrimitive() ? document.get("type").getAsString() : "";
-    }
-
-    static String villager(JsonElement value) {
-        JsonObject villager = value.getAsJsonObject();
-        return villager.get("profession").getAsString() + " level " + villager.get("level").getAsInt();
     }
 
     /** The shop module names {@code id} in {@code shop}; an open target or hologram names it in {@code id}. */

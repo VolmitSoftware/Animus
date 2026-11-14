@@ -19,14 +19,17 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** Block clicks and breaks for server behaviors. The packet handlers around these send the clicked block back after a refusal. */
+/**
+ * Block clicks and breaks for the wand and server behaviors. The packet handlers around these send the clicked block
+ * back after a refusal.
+ */
 @Mixin(ServerPlayerGameMode.class)
 public abstract class PlayerGameModeHooks {
     @Shadow @Final protected ServerPlayer player;
 
     @Inject(method = "useItemOn", at = @At("HEAD"), cancellable = true)
     private void animus$rightClick(ServerPlayer user, Level level, ItemStack stack, InteractionHand hand, BlockHitResult hit, CallbackInfoReturnable<InteractionResult> callback) {
-        if (!ModHooks.clickingBlock(user, false, hand, hit.getBlockPos())) return;
+        if (!ModHooks.wandOnBlock(user, hand) && !ModHooks.clickingBlock(user, false, hand, hit.getBlockPos())) return;
         callback.setReturnValue(InteractionResult.FAIL);
         user.containerMenu.sendAllDataToRemote();
     }

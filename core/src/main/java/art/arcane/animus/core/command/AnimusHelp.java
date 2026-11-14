@@ -1,6 +1,9 @@
 package art.arcane.animus.core.command;
 
+import art.arcane.animus.core.BuildIdentity;
+import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.DocsLink;
+import art.arcane.animus.core.text.Palette;
 import art.arcane.volmlib.util.director.help.DirectorHelpMessages;
 import art.arcane.volmlib.util.director.help.DirectorMiniMenu;
 import art.arcane.volmlib.util.localization.MessageArgs;
@@ -18,24 +21,33 @@ import java.util.Objects;
  * banner, one {@code ⇀ name [required] ⊰optional⊱} line per entry whose hover holds the description, usage and an
  * example, a click that fills in a command with parameters, runs one without and opens a group, and the page bar with
  * {@code 〈 Page N} and {@code Page N ❭}. The root page groups its entries under topic headings that link the wiki; a
- * topic cut by a page break repeats its heading. The console gets every entry as plain text.
+ * topic cut by a page break repeats its heading. The console gets every entry as plain text. A player in Simple mode
+ * gets the short page instead: the {@link #COMMON} commands with their descriptions, then {@code [All commands]}.
  */
 public final class AnimusHelp {
     /** A heading of the root page, the docs section it links and the root entries under it, in order. */
     record Topic(String title, DocsLink docs, List<String> names) {}
 
     static final List<Topic> TOPICS = List.of(
-            new Topic("Tools", DocsLink.TOOLS, List.of("setup", "tools")),
+            new Topic("Tools", DocsLink.TOOLS, List.of("setup", ToolkitCommands.GUI, "tools")),
             new Topic("NPCs", DocsLink.COMMANDS, List.of("status", "list", "create", "mythic", "inspect", "edit", "clone", "delete", "spawn", "despawn",
-                    "select", "selection", "validate", "reload", "rollback", "npc")),
+                    "undo", "select", "selection", "validate", "reload", "rollback", "npc")),
             new Topic("Movement", DocsLink.MOVEMENT, List.of("navigation", "schedule", "ride")),
+            new Topic("Recordings", DocsLink.RECORDINGS, List.of("record")),
             new Topic("Combat", DocsLink.COMBAT, List.of("combat")),
-            new Topic("Content", DocsLink.CONTENT, List.of("modules", "rigs", "pack", "import", "record")),
-            new Topic("Services", DocsLink.SERVICES, List.of("shop", "gui", "hologram", "build", "editor")),
+            new Topic("Content", DocsLink.CONTENT, List.of("modules", "rigs", "pack", "import")),
+            new Topic("Services", DocsLink.SERVICES, List.of("shop", "hologram", "build")),
+            new Topic("Web editor", DocsLink.PAIRING, List.of("editor")),
             new Topic("Quests", DocsLink.QUESTS, List.of("quest")),
             new Topic("Behaviors", DocsLink.BEHAVIORS, List.of("behaviors")),
-            new Topic("Groups", DocsLink.GROUPS, List.of("groups")),
+            new Topic("Trait groups", DocsLink.GROUPS, List.of("groups")),
             new Topic("Diagnostics", DocsLink.DIAGNOSTICS, List.of("debug", "proof")));
+
+    /** The commands the short page lists, by their words after {@code /animus}, in order; {@code gui} only for a player it opens the menu for. */
+    static final List<String> COMMON = List.of(ToolkitCommands.GUI, "create", "select", "spawn", "despawn", "delete", "list", "undo", "editor pair");
+    /** What the short page says {@code /animus gui} does; the group's own description goes on to its chest GUI commands. */
+    static final String MENU = "Open the Animus menu";
+    static final String ALL = "/" + BuildIdentity.ID + " help all";
 
     /** Verbs in the order a group lists them: reading first, then doing, then undoing; unlisted verbs follow A-Z. */
     private static final List<String> VERBS = List.of("status", "list", "inspect", "members", "summary", "capabilities", "problems", "packs", "triggers",
@@ -50,8 +62,8 @@ public final class AnimusHelp {
         public Section { entries = List.copyOf(entries); }
     }
 
-    /** One help request: every section of the group, and the page a player asked for, counted from 0. */
-    public record Page(DirectorRuntimeNode group, List<Section> sections, int index) {
+    /** One help request: every section of the group, and the page a player asked for, counted from 0; {@code brief} is the short page. */
+    public record Page(DirectorRuntimeNode group, List<Section> sections, int index, boolean brief) {
         public Page {
             Objects.requireNonNull(group);
             sections = List.copyOf(sections);
@@ -78,7 +90,29 @@ public final class AnimusHelp {
         } else if (!visible.isEmpty()) {
             sections.add(new Section("", topic(group).docs(), sorted(visible)));
         }
-        return new Page(group, sections, Math.max(0, index));
+        return new Page(group, sections, Math.max(0, index), false);
+    }
+
+    /** The short page of the root: {@code entries}, the {@link #COMMON} commands the actor may run, in that order. */
+    public static Page common(DirectorRuntimeNode root, List<DirectorRuntimeNode> entries) {
+        return new Page(root, entries.isEmpty() ? List.of() : List.of(new Section("", DocsLink.COMMANDS, entries)), 0, true);
+    }
+
+    /**
+     * The short page as chat lines that leave the chat window as it was: a header, each command with its description, a
+     * click that puts it in the chat box and its usage on hover, then {@code [All commands]}.
+     */
+    public static List<ChatLine> brief(Page page) {
+        List<ChatLine> lines = new ArrayList<>(List.of(ChatLine.reply("Common commands; click one to use it")));
+        for (DirectorRuntimeNode node : page.entries()) {
+            String usage = AnimusDirector.usage(node);
+            String typed = usage.equals(node.path()) ? node.path() : node.path() + " ";
+            boolean menu = node.getParent() == page.group() && node.getDescriptor().getName().equals(ToolkitCommands.GUI);
+            lines.add(ChatLine.of(Palette.DARK_GREY + "⇀ ").command(node.path().substring(page.group().path().length() + 1), Palette.PINK, typed, false, usage)
+                    .text(Palette.GREY + " - " + (menu ? MENU : description(node))));
+        }
+        lines.add(ChatLine.of("").run("All commands", ALL, "Show every command you may run"));
+        return lines;
     }
 
     /** The root topic a node sits under; NPCs for one no topic lists. */
@@ -223,7 +257,7 @@ public final class AnimusHelp {
         return out.toString();
     }
 
-    private static String description(DirectorRuntimeNode node) {
+    static String description(DirectorRuntimeNode node) {
         String text = node.getDescriptor().getDescription();
         return text == null || text.isBlank() ? node.getDescriptor().getName() : text;
     }

@@ -25,14 +25,21 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The words replies use: spawned and despawned are the saved intent, active means loaded in a world now, dormant is a
- * saved NPC that is not spawned. Problem replies name the next step, and long replies say what they left out.
+ * The words replies use, the same as the menus: spawned and despawned are the saved intent, active means loaded in a
+ * world now; the in-game chest menu is the Animus menu. Problem replies name the next step, and long replies say what
+ * they left out.
  */
 class CommandVocabularyTest {
     @TempDir Path root;
 
     /** Sentences a player can read that use a word the vocabulary replaced, or an old command name. */
-    private static final Pattern BANNED = Pattern.compile("activat|inactive|it starts when|apply-plan|foliaproof|—", Pattern.CASE_INSENSITIVE);
+    private static final Pattern BANNED = Pattern.compile("activat|inactive|it starts when|apply-plan|foliaproof|dormant|palette|toolkit|hotload|—", Pattern.CASE_INSENSITIVE);
+    /**
+     * What the Animus menu says otherwise: Undo, not rollback; "group" alone is a trait group or a folder; a route has
+     * points, not waypoints; folders read {@code town / market}.
+     */
+    private static final Pattern MENU = Pattern.compile("rollback|(?<!trait |permission )\\bgroups?\\b|waypoint|npcs/", Pattern.CASE_INSENSITIVE);
+    private static final String TOOLKIT = "core/src/main/java/art/arcane/animus/core/toolkit";
     private static final Pattern LITERAL = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"");
     private static final List<String> SOURCES = List.of("core/src/main/java/art/arcane/animus/core/admin/Administration.java",
             "core/src/main/java/art/arcane/animus/core/runtime/PersistedNpcService.java", "core/src/main/java/art/arcane/animus/core/runtime/ActivationWarnings.java",
@@ -46,10 +53,14 @@ class CommandVocabularyTest {
     @Test void replyStringsKeepTheVocabulary() throws IOException {
         Path repository = repository();
         List<Path> files = new ArrayList<>();
-        try (Stream<Path> commands = Files.list(repository.resolve("core/src/main/java/art/arcane/animus/core/command"))) { commands.forEach(files::add); }
+        try (Stream<Path> listed = Files.list(repository.resolve("core/src/main/java/art/arcane/animus/core/command"))) { listed.forEach(files::add); }
+        List<Path> menu = new ArrayList<>();
+        try (Stream<Path> walked = Files.walk(repository.resolve(TOOLKIT))) { walked.filter((Path file) -> file.toString().endsWith(".java")).forEach(menu::add); }
+        files.addAll(menu);
         for (String source : SOURCES) files.add(repository.resolve(source));
         List<String> found = new ArrayList<>();
         for (Path file : files) {
+            boolean inMenu = menu.contains(file);
             List<String> lines = Files.readAllLines(file);
             for (int index = 0; index < lines.size(); index++) {
                 String line = lines.get(index).strip();
@@ -57,10 +68,13 @@ class CommandVocabularyTest {
                 Matcher literal = LITERAL.matcher(line);
                 while (literal.find()) {
                     String text = literal.group(1);
-                    if (text.contains(" ") && BANNED.matcher(text).find()) found.add(file.getFileName() + ":" + (index + 1) + " " + text);
+                    boolean sentence = text.contains(" ");
+                    if (sentence && BANNED.matcher(text).find() || inMenu && (sentence || text.contains("npcs/")) && MENU.matcher(text).find())
+                        found.add(file.getFileName() + ":" + (index + 1) + " " + text);
                 }
             }
         }
+        assertTrue(menu.size() > 50, "the whole menu folder is read: " + menu.size());
         assertTrue(found.isEmpty(), String.join("\n", found));
     }
 
@@ -76,12 +90,12 @@ class CommandVocabularyTest {
             runtime.start();
             Administration admin = new Administration(runtime);
             String created = admin.create("guard", "minecraft:player", "world", 0, 64, 0, "", "Guard");
-            assertTrue(created.startsWith("Created dormant guard; tx "), created);
+            assertTrue(created.startsWith("Created guard, despawned; tx "), created);
             admin.create("smith", "minecraft:player", "world", 2, 64, 0, "town", "Smith");
             admin.spawned("smith", true);
             assertEquals(List.of("All definitions valid; 2 saved, 1 spawned"), admin.validate());
             assertEquals(List.of("Reloaded; 2 saved, 1 spawned"), admin.reload());
-            assertTrue(admin.spawned("guard", false).endsWith("; /animus spawn guard brings it back"));
+            assertTrue(admin.spawned("guard", false).startsWith("Despawned guard; tx "));
         }
     }
 

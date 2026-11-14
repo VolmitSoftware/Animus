@@ -1,8 +1,9 @@
 package art.arcane.animus.core.toolkit;
 
-import art.arcane.animus.core.gui.GuiModel;
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.npc.NpcItem;
+import art.arcane.animus.core.text.Words;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -16,16 +17,22 @@ import java.util.Set;
 import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
 import java.util.function.UnaryOperator;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The base of the schema-driven editors: the {@link Scope} they read and write, the path inside it a screen shows, and
- * what every field button shares: schema lore, value text, step sizes and the second click a change to more than
- * {@link #BULK} NPCs needs.
+ * what every field row shares: humanised names, a short description, value text, step sizes and the one confirm a
+ * change to more than {@link #BULK} NPCs asks for.
  */
 abstract class ValueScreen<P, S> extends ToolScreen<P, S> {
     /** Lore lines a schema description is cut into, and their width in characters. */
-    static final int LINES = 4, CHARS = 40;
-    static final int ADD = 53;
+    static final int LINES = 2, CHARS = 40;
+    /** Ticks in a second: fields counted in ticks read and take seconds. */
+    static final double TICKS = 20;
+    /** Root NPC fields the menus call by another word than their key. */
+    private static final Map<String, String> ROOT_NAMES = Map.of("type", "Body", "groups", "Trait groups", "group", "Folder", "uuid", "UUID");
+    private static final Pattern STATED = Pattern.compile("(?:^|\\s)(-?\\d+(?:\\.\\d+)?|[a-z_]+) by default");
 
     /**
      * Writes a change on the file lane. {@code before} is the scope's whole object as the screen read it and
@@ -36,7 +43,7 @@ abstract class ValueScreen<P, S> extends ToolScreen<P, S> {
 
     /**
      * What an editor works on: {@code values} reads the whole object on the player's owner, {@code save} writes it, and
-     * {@code affected} says how many NPCs a change at a path touches (above {@link #BULK} asks twice).
+     * {@code affected} says how many NPCs a change at a path touches (above {@link #BULK} asks once more).
      */
     record Scope(Supplier<JsonObject> values, Save save, ToIntFunction<List<String>> affected) {}
 
@@ -45,7 +52,6 @@ abstract class ValueScreen<P, S> extends ToolScreen<P, S> {
 
     final Scope scope;
     final List<String> path;
-    private int armed = -1, armedPage = -1;
 
     ValueScreen(Toolkit<P, S> toolkit, ScreenManager<P, S>.Viewer viewer, Toolkit.Commands commands, Scope scope, List<String> path) {
         super(toolkit, viewer, commands);
@@ -55,45 +61,46 @@ abstract class ValueScreen<P, S> extends ToolScreen<P, S> {
 
     @Override int rows() { return 6; }
 
+    /** Every value editor writes NPC files or trait group values, which {@code animus.npc.edit} covers. */
+    @Override String node() { return PermissionNodes.NPC_EDIT; }
+
     /** The element this screen shows, or null when it is not set. */
     JsonElement current() { return at(scope.values().get(), path); }
 
-    /** Forgets an armed change when the page moved, so a second click never lands on another field. */
-    void pageCheck() { if (armedPage != page) armed = -1; }
+    /** How many NPCs a change at {@code target} touches. */
+    int affected(List<String> target) { return scope.affected().applyAsInt(target); }
 
     /**
-     * A field button. While armed for a bulk change the name turns red and asks for the second click; any click on
-     * another field disarms it.
+     * A field row: its lines, the click hints and, in Advanced, the raw key as the last line in dark grey so the file and
+     * the web editor can be matched up.
      */
-    void field(int slot, String icon, String name, List<String> lines, List<String> hints, List<String> target, Handler handler) {
-        field(slot, new NpcItem(icon, 1, Optional.empty(), Optional.empty()), name, lines, hints, target, handler);
+    void field(int slot, NpcItem icon, String name, List<String> lines, List<String> hints, String key, Handler handler) {
+        List<String> lore = lore(lines, hints);
+        if (!key.isEmpty() && advanced()) lore.add("&8" + key);
+        button(slot, icon, title(name), lore, handler);
     }
 
-    void field(int slot, NpcItem icon, String name, List<String> lines, List<String> hints, List<String> target, Handler handler) {
-        boolean ready = armed == slot;
-        String shown = ready ? "&cClick again to change " + ToolkitFiles.count(scope.affected().applyAsInt(target)) : name;
-        List<String> lore = ready ? List.of("&cSame click applies it", "&7Any other click cancels") : lore(lines, hints);
-        button(slot, icon, shown, lore, (GuiModel.Click click) -> {
-            if (armed != slot) armed = -1;
-            handler.click(click);
-        });
+    void field(int slot, String icon, String name, List<String> lines, List<String> hints, String key, Handler handler) {
+        field(slot, new NpcItem(icon, 1, Optional.empty(), Optional.empty()), name, lines, hints, key, handler);
     }
 
-    /** True when this click only armed a change to more than {@link #BULK} NPCs; the next click on the slot runs it. */
-    boolean arm(int slot, List<String> target) {
-        if (scope.affected().applyAsInt(target) <= BULK || armed == slot) { armed = -1; return false; }
-        armed = slot;
-        armedPage = page;
-        return true;
-    }
+    /** Runs a change now, or asks once more on {@code slot} when it reaches more than {@link #BULK} NPCs. */
+    void change(int slot, List<String> target, String what, Runnable run) { ask(slot, what, affected(target), false, run); }
 
     /** Applies one edit to a copy of the scope's object and saves it on the file lane; nothing happens when it changes nothing. */
-    void apply(UnaryOperator<JsonObject> edit) {
+    void apply(UnaryOperator<JsonObject> edit) { apply(edit, () -> { }); }
+
+    /** As {@link #apply(UnaryOperator)}; {@code saved} runs on the file lane once the save went through. */
+    void apply(UnaryOperator<JsonObject> edit, Runnable saved) {
         JsonObject before = scope.values().get();
         JsonObject after = edit.apply(before.deepCopy());
         if (after.equals(before)) return;
         Save save = scope.save();
-        toolkit.write(viewer, (ToolkitFiles files) -> save.save(before, after));
+        toolkit.write(viewer, (ToolkitFiles files) -> {
+            String line = save.save(before, after);
+            saved.run();
+            return line;
+        });
     }
 
     /** Sets or, when empty, removes the value at {@code target}. */
@@ -273,7 +280,7 @@ abstract class ValueScreen<P, S> extends ToolScreen<P, S> {
     static double maximum(JsonObject node) { return node.has("maximum") ? node.get("maximum").getAsDouble() : 1_000_000_000d; }
     static boolean integer(JsonObject node) { return node.has("type") && node.get("type").getAsString().equals("integer"); }
 
-    /** One click's change: {@code multipleOf}, else 1 for whole numbers, else a share of the range. */
+    /** One click's change: {@code multipleOf}, else 1 for whole numbers, else a share of the range; ten seconds' worth of a tick field. */
     static double stepOf(JsonObject node) {
         if (node.has("multipleOf")) return node.get("multipleOf").getAsDouble();
         if (integer(node)) return 1;
@@ -281,22 +288,47 @@ abstract class ValueScreen<P, S> extends ToolScreen<P, S> {
         return range <= 1 ? 0.05 : range <= 50 ? 0.1 : 1;
     }
 
-    /** The number shown and stepped from: the value, else the schema default, else zero within bounds. */
+    /** The value the schema states applies when the field is not set: its {@code default}, else "N by default" in its description. */
+    static Optional<String> stated(JsonObject node) {
+        if (node.has("default") && node.get("default").isJsonPrimitive()) return Optional.of(node.get("default").getAsString());
+        if (!node.has("description")) return Optional.empty();
+        Matcher found = STATED.matcher(node.get("description").getAsString());
+        return found.find() ? Optional.of(found.group(1)) : Optional.empty();
+    }
+
+    /** The number shown and stepped from: the value, else what the schema says applies, else zero within bounds. */
     static double numberOf(JsonElement value, JsonObject node) {
         if (value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()) return value.getAsDouble();
-        if (node.has("default") && node.get("default").isJsonPrimitive()) return node.get("default").getAsDouble();
+        Optional<String> stated = stated(node);
+        if (stated.isPresent() && stated.get().matches("-?\\d+(\\.\\d+)?")) return Double.parseDouble(stated.get());
         return Math.clamp(0, minimum(node), maximum(node));
     }
 
     static JsonPrimitive number(double value, JsonObject node) { return integer(node) ? new JsonPrimitive(Math.round(value)) : new JsonPrimitive(value); }
 
-    /** A typed number within the bounds, or empty with nothing changed. */
-    Optional<JsonPrimitive> typed(String text, JsonObject node) {
+    /**
+     * Whether a whole number counts ticks: its key ends in {@code Ticks} or is {@code ticks}, or its description starts
+     * with the word. These fields read and take seconds.
+     */
+    static boolean ticks(String key, JsonObject node) {
+        if (!integer(node)) return false;
+        String description = node.has("description") ? node.get("description").getAsString() : "";
+        return key.endsWith("Ticks") || key.equals("ticks") || description.startsWith("Ticks ");
+    }
+
+    /** {@code 2.5 seconds} for 50 ticks. */
+    static String seconds(double ticks) {
+        double seconds = ticks / TICKS;
+        return plain(Math.round(seconds * 100) / 100d) + (seconds == 1 ? " second" : " seconds");
+    }
+
+    /** A typed number within the bounds, or empty after saying why nothing changed. Tick fields take seconds. */
+    Optional<JsonPrimitive> typed(String text, JsonObject node, boolean ticks) {
         try {
-            double value = Double.parseDouble(text.trim());
+            double value = Double.parseDouble(text.trim()) * (ticks ? TICKS : 1);
             if (Double.isFinite(value) && value >= minimum(node) && value <= maximum(node)) return Optional.of(number(value, node));
         } catch (NumberFormatException notNumber) { /* refused below */ }
-        toolkit.say(viewer.player(), art.arcane.animus.core.text.ChatLine.error(text + " is not a number from " + plain(minimum(node)) + " to " + plain(maximum(node))));
+        refuse(text.trim() + " is not a number from " + (ticks ? plain(minimum(node) / TICKS) + " to " + seconds(maximum(node)) : plain(minimum(node)) + " to " + plain(maximum(node))));
         return Optional.empty();
     }
 
@@ -314,6 +346,12 @@ abstract class ValueScreen<P, S> extends ToolScreen<P, S> {
         return value.getAsJsonObject().size() + (value.getAsJsonObject().size() == 1 ? " field" : " fields");
     }
 
+    /** An option as people read it: {@code light_purple} reads {@code Light purple}, numbers stay numbers. */
+    static String option(JsonElement value) {
+        if (value == null || value.isJsonNull()) return "not set";
+        return value.isJsonPrimitive() && value.getAsJsonPrimitive().isString() ? Words.readable(value.getAsString()) : text(value);
+    }
+
     static String plain(double value) {
         if (value == Math.rint(value) && Math.abs(value) < 1e15) return Long.toString((long) value);
         return java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
@@ -321,26 +359,63 @@ abstract class ValueScreen<P, S> extends ToolScreen<P, S> {
 
     static String clip(String text, int length) { return text.length() <= length ? text : text.substring(0, length - 3) + "..."; }
 
-    /** The schema description cut into short grey lore lines; the last line ends in ... when text was left out. */
-    static List<String> describe(JsonObject node) {
+    /**
+     * A field's name as people read it. Root NPC fields ({@code root}) use the words players see in the menus, so {@code type} reads
+     * Body; a tick field loses the word, as its value reads in seconds.
+     */
+    static String name(String key, boolean root) {
+        if (root && ROOT_NAMES.containsKey(key)) return ROOT_NAMES.get(key);
+        if (key.equals("ticks")) return "Time";
+        return Words.readable(key.endsWith("Ticks") ? key.substring(0, key.length() - "Ticks".length()) : key);
+    }
+
+    /** A prompt label from a field name, within what an anvil title shows. */
+    static String asking(String name) { return clip(name, 20); }
+
+    /**
+     * The schema description cut into at most {@link #LINES} short grey lines; the last ends in ... when text was left
+     * out, and the Help item points at the wiki for the rest. A tick field's description reads in seconds.
+     */
+    static List<String> describe(JsonObject node, boolean ticks) { return describe(node, ticks, LINES); }
+
+    /**
+     * As {@link #describe(JsonObject, boolean)} in at most {@code most} lines; one line keeps only the first sentence, so a
+     * Simple row stays within four lines.
+     */
+    static List<String> describe(JsonObject node, boolean ticks, int most) {
         List<String> lines = new ArrayList<>();
         if (!node.has("description")) return lines;
+        String text = node.get("description").getAsString();
+        if (ticks) text = secondsIn(text);
+        int sentence = text.indexOf(". ");
+        if (most == 1 && sentence > 0) text = text.substring(0, sentence + 1);
         StringBuilder line = new StringBuilder();
-        for (String word : node.get("description").getAsString().split("\\s+")) {
+        for (String word : text.split("\\s+")) {
             if (!line.isEmpty() && line.length() + 1 + word.length() > CHARS) { lines.add(line.toString()); line.setLength(0); }
             if (!line.isEmpty()) line.append(' ');
             line.append(word);
         }
         if (!line.isEmpty()) lines.add(line.toString());
-        if (lines.size() > LINES) {
-            lines = new ArrayList<>(lines.subList(0, LINES));
+        if (lines.size() > most) {
+            lines = new ArrayList<>(lines.subList(0, most));
             String last = lines.getLast();
-            lines.set(LINES - 1, last.substring(0, Math.min(last.length(), CHARS - 3)) + "...");
+            lines.set(most - 1, last.substring(0, Math.min(last.length(), CHARS - 3)) + "...");
         }
-        lines.replaceAll((String text) -> "&7" + text);
+        lines.replaceAll((String shown) -> "&7" + shown);
         return lines;
     }
 
-    /** The screen title for a path: the label, then the last key, cut to what a window shows. */
-    static String label(String label, String key) { return clip(label + " / " + key, 32); }
+    static List<String> describe(JsonObject node) { return describe(node, false); }
+
+    /** A tick field's description in seconds: "100 by default" reads "5 seconds by default", "Ticks between" reads "Time between". */
+    static String secondsIn(String description) {
+        Matcher stated = Pattern.compile("(\\d+) by default").matcher(description);
+        StringBuilder out = new StringBuilder();
+        while (stated.find()) stated.appendReplacement(out, seconds(Double.parseDouble(stated.group(1))) + " by default");
+        stated.appendTail(out);
+        return out.toString().replace("many ticks", "many seconds").replace("Ticks", "Time").replace("ticks", "time");
+    }
+
+    /** The screen title for a path: the label, then the field's name, cut to what a window shows. */
+    static String label(String label, String name) { return clip(label + " / " + name, 32); }
 }

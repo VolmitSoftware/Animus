@@ -17,11 +17,11 @@ def minimal(**changes: Any) -> dict[str, Any]:
     data: dict[str, Any] = {
         'id': '99-sample',
         'title': 'Sample',
-        'description': 'Opening the palette',
+        'description': 'Opening the menu',
         'target': 20,
         'stage': {'world': 'town'},
-        'beats': [{'palette': True}, {'click': 'Edit'}, {'result': 'Edit screen lists the fields'}],
-        'closing': 'The Edit screen is open',
+        'beats': [{'menu': True}, {'click': 'NPCs'}, {'result': 'NPCs lists the nearest first'}],
+        'closing': 'The NPCs list is open',
     }
     data.update(changes)
     return data
@@ -74,7 +74,7 @@ class LoadAndValidate(unittest.TestCase):
         self.assertEqual([], problems_of(minimal(beats=[{'result': 'reply', 'ms': 2500}])))
 
     def test_every_clip_shows_at_least_one_result(self) -> None:
-        found: list[str] = problems_of(minimal(beats=[{'palette': True}]))
+        found: list[str] = problems_of(minimal(beats=[{'menu': True}]))
         self.assertTrue(any('result' in p for p in found), found)
 
     def test_click_rest_must_stay_short(self) -> None:
@@ -135,6 +135,25 @@ class LoadAndValidate(unittest.TestCase):
         self.assertTrue(problems_of(minimal(stage={'world': 'flat', 'platform': 'forge'})))
         self.assertEqual([], problems_of(minimal(stage={'world': 'flat', 'platform': 'fabric'})))
 
+    def test_review_ids_take_the_ux_prefix(self) -> None:
+        self.assertEqual([], problems_of(minimal(id='ux-01-first-menu')))
+        self.assertTrue(problems_of(minimal(id='ux-first-menu')))
+        self.assertTrue(problems_of(minimal(id='uy-01-first-menu')))
+
+    def test_menu_takes_only_true(self) -> None:
+        self.assertEqual([], problems_of(minimal(beats=[{'menu': True}, {'result': 'x'}])))
+        self.assertTrue(problems_of(minimal(beats=[{'menu': 'Greeter Bob'}, {'result': 'x'}])), '/animus gui always opens Home')
+        self.assertTrue(problems_of(minimal(beats=[{'menu': ''}, {'result': 'x'}])))
+        self.assertTrue(problems_of(minimal(beats=[{'menu': False}, {'result': 'x'}])))
+
+    def test_palette_beat_no_longer_exists(self) -> None:
+        found: list[str] = problems_of(minimal(beats=[{'palette': True}, {'result': 'x'}]))
+        self.assertTrue(any('palette' in p for p in found), found)
+
+    def test_anvil_takes_an_empty_answer(self) -> None:
+        self.assertEqual([], problems_of(minimal(beats=[{'anvil': ''}, {'result': 'x'}])), 'typing nothing resets a value')
+        self.assertTrue(problems_of(minimal(beats=[{'anvil': 5}, {'result': 'x'}])))
+
     def test_notes_are_allowed_on_any_beat(self) -> None:
         self.assertEqual([], problems_of(minimal(beats=[{'click': 'Edit', 'note': 'opens Edit'}, {'result': 'x'}])))
 
@@ -151,7 +170,7 @@ class Compile(unittest.TestCase):
         self.assertEqual({'settings': {'seed': zlib.crc32(b'99-sample'), 'clickRest': sheet.CLICK_REST_MS}}, steps[1])
         self.assertEqual({'record': 'start', 'file': '/clips/99-sample-ingame.webm'}, steps[2])
         self.assertEqual([
-            {'caption': 'The Edit screen is open', 'ms': sheet.CLOSING_MS},
+            {'caption': 'The NPCs list is open', 'ms': sheet.CLOSING_MS},
             {'wait': sheet.CLOSING_MS},
             {'record': 'stop'},
             {'disconnect': True},
@@ -171,12 +190,13 @@ class Compile(unittest.TestCase):
         steps: list[dict[str, Any]] = self.compiled(beats=[
             {'tp': [0.5, 64, -5.5, 104.1, 5]},
             {'type': '/animus inspect trader'},
-            {'palette': True},
+            {'menu': True},
             {'click': 'Behaviors', 'button': 'right', 'rest': 600},
             {'clickSlot': 8},
             {'hover': 'Line 1', 'ms': 1800},
             {'hoverSlot': 10},
             {'anvil': 'plaza:welcome'},
+            {'anvil': ''},
             {'screen': 'Anvil'},
             {'expect': 'Saved'},
             {'result': 'Saved line', 'ms': 2200},
@@ -187,7 +207,7 @@ class Compile(unittest.TestCase):
         self.assertEqual([
             {'chat': '/tp @s 0.5 64 -5.5 104.1 5', 'typing': False},
             {'chat': '/animus inspect trader', 'typing': True},
-            {'chat': '/animus tools', 'typing': True},
+            {'chat': '/animus gui', 'typing': True},
             {'waitForScreen': 'Animus', 'timeout': 8000},
             {'wait': 350},
             {'clickSlotNamed': 'Behaviors', 'button': 'right', 'rest': 600},
@@ -195,12 +215,23 @@ class Compile(unittest.TestCase):
             {'hoverSlotNamed': 'Line 1', 'ms': 1800},
             {'hoverSlot': 10, 'ms': sheet.HOVER_MS},
             {'anvilText': 'plaza:welcome'},
+            {'anvilText': ''},
             {'waitForScreen': 'Anvil', 'timeout': 8000},
             {'waitForChat': 'Saved', 'timeout': 8000},
             {'log': 'Result: Saved line'},
             {'wait': 2200},
             {'chat': '/execute as @s[tag=!cue_wheat] if entity @s', 'typing': False},
             {'perspective': 'first'},
+        ], body)
+
+    def test_menu_types_animus_gui_and_waits_for_home(self) -> None:
+        body: list[dict[str, Any]] = self.compiled(beats=[{'menu': True}, {'result': 'x'}])[3:-5]
+        self.assertEqual([
+            {'chat': '/animus gui', 'typing': True},
+            {'waitForScreen': 'Animus', 'timeout': 8000},
+            {'wait': 350},
+            {'log': 'Result: x'},
+            {'wait': 2000},
         ], body)
 
     def test_placeholders_are_filled_but_json_braces_kept(self) -> None:
@@ -244,6 +275,18 @@ class Estimate(unittest.TestCase):
             longer: sheet.Sheet = sheet.load(write(Path(tmp), minimal(beats=minimal()['beats'] + [{'wait': 3000}])))
             self.assertAlmostEqual(sheet.estimate_seconds(short) + 3.0, sheet.estimate_seconds(longer), places=3)
             self.assertGreater(sheet.estimate_seconds(short), sheet.CLOSING_MS / 1000.0)
+
+
+class TutorialSet(unittest.TestCase):
+    def test_review_sheets_stay_out_of_the_tutorial_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            folder: Path = Path(tmp)
+            write(folder, minimal())
+            write(folder, minimal(id='ux-01-first-menu'))
+            sheets, found = sheet.load_all(folder)
+        self.assertEqual([], found)
+        self.assertTrue(sheets['99-sample'].tutorial)
+        self.assertFalse(sheets['ux-01-first-menu'].tutorial)
 
 
 class TrackedSheets(unittest.TestCase):

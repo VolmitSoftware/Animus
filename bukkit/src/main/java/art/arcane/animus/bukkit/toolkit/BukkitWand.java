@@ -1,6 +1,8 @@
 package art.arcane.animus.bukkit.toolkit;
 
+import art.arcane.animus.core.gui.ScreenHost;
 import art.arcane.animus.core.toolkit.Toolkit;
+import java.util.Collection;
 import java.util.Objects;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
@@ -12,7 +14,7 @@ import org.bukkit.persistence.PersistentDataType;
 
 /**
  * The selection wand on Bukkit: any item whose persistent data holds {@code animus:tool = "wand"}. Renaming or moving
- * the item keeps it a wand; a renamed blaze rod without the marker is not one.
+ * the item keeps it a wand; a renamed stick without the marker is not one.
  */
 public final class BukkitWand {
     public static final NamespacedKey KEY = Objects.requireNonNull(NamespacedKey.fromString(Toolkit.MARKER));
@@ -42,21 +44,30 @@ public final class BukkitWand {
 
     /**
      * A wand the player already carries goes to the main hand: on the hotbar by selecting its slot, elsewhere by
-     * swapping it with the held item. Otherwise a new one goes into the inventory, or at the player's feet when full.
+     * swapping it with the held item. Otherwise {@code wand} goes into the inventory, or at the player's feet when full.
      */
-    public static void give(Player player, ItemStack wand) {
+    public static ScreenHost.WandGift give(Player player, ItemStack wand) {
         PlayerInventory inventory = player.getInventory();
+        if (held(player)) return ScreenHost.WandGift.MOVED;
+        if (is(inventory.getItemInOffHand())) {
+            ItemStack main = inventory.getItemInMainHand();
+            inventory.setItemInMainHand(inventory.getItemInOffHand());
+            inventory.setItemInOffHand(main);
+            return ScreenHost.WandGift.MOVED;
+        }
         ItemStack[] contents = inventory.getStorageContents();
         for (int slot = 0; slot < contents.length; slot++) {
             if (!is(contents[slot])) continue;
             if (slot < HOTBAR) inventory.setHeldItemSlot(slot);
             else {
-                ItemStack held = inventory.getItemInMainHand();
+                ItemStack main = inventory.getItemInMainHand();
                 inventory.setItemInMainHand(contents[slot]);
-                inventory.setItem(slot, held);
+                inventory.setItem(slot, main);
             }
-            return;
+            return ScreenHost.WandGift.MOVED;
         }
-        for (ItemStack left : inventory.addItem(mark(wand)).values()) player.getWorld().dropItemNaturally(player.getLocation(), left);
+        Collection<ItemStack> left = inventory.addItem(mark(wand)).values();
+        for (ItemStack rest : left) player.getWorld().dropItemNaturally(player.getLocation(), rest);
+        return left.isEmpty() ? ScreenHost.WandGift.GIVEN : ScreenHost.WandGift.DROPPED;
     }
 }

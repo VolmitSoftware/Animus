@@ -105,8 +105,8 @@ final class PropertyFiles {
             if (retyped) body(document);
             if (!document.equals(draft.document())) drafts.add(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
         }
-        String who = targets.size() == 1 ? targets.getFirst() : ToolkitFiles.count(drafts.size()) + (drafts.size() == targets.size() ? "" : ", " + (targets.size() - drafts.size()) + " unchanged");
-        if (drafts.isEmpty()) return "Nothing changed on " + (targets.size() == 1 ? targets.getFirst() : ToolkitFiles.count(targets.size()));
+        String who = targets.size() == 1 ? ToolkitFiles.named(npcs, targets) : ToolkitFiles.count(drafts.size()) + (drafts.size() == targets.size() ? "" : ", " + (targets.size() - drafts.size()) + " unchanged");
+        if (drafts.isEmpty()) return "Nothing changed on " + ToolkitFiles.named(npcs, targets);
         return describe(changes.getFirst()) + " on " + who + "; tx " + npcs.applyAll(drafts);
     }
 
@@ -137,14 +137,32 @@ final class PropertyFiles {
         if (!type.equals(ToolkitFiles.PLAYER) && pose != null && !pose.getAsString().equals("standing")) document.remove("pose");
     }
 
-    private static String describe(Change change) {
-        String field = String.join(".", change.path());
+    /** The chat line's start for a change, in words: {@code Set team color to red}, {@code Reset scale}. Ticks read as seconds. */
+    static String describe(Change change) {
+        String key = change.path().getLast(), name = ValueScreen.name(key, change.path().size() == 1);
+        String field = name.equals(name.toUpperCase(java.util.Locale.ROOT)) ? name : Character.toLowerCase(name.charAt(0)) + name.substring(1);
+        boolean ticks = schemaAt(change.path()).map((JsonObject node) -> ValueScreen.ticks(key, node)).orElse(false);
+        String value = change.value() == null ? "" : ticks && change.value().isJsonPrimitive() && change.value().getAsJsonPrimitive().isNumber()
+                ? ValueScreen.seconds(change.value().getAsDouble()) : ValueScreen.text(change.value());
         return switch (change.op()) {
-            case SET -> "Set " + field + " to " + ValueScreen.text(change.value());
+            case SET -> "Set " + field + " to " + value;
             case REMOVE, PRUNE -> "Reset " + field;
-            case ADD -> "Added " + ValueScreen.text(change.value()) + " to " + field;
-            case DROP -> "Removed " + ValueScreen.text(change.value()) + " from " + field;
+            case ADD -> "Added " + value + " to " + field;
+            case DROP -> "Removed " + value + " from " + field;
         };
+    }
+
+    /** The schema of the field at {@code path} in an NPC file, when the schema names it. */
+    static Optional<JsonObject> schemaAt(List<String> path) {
+        JsonObject here = PropertyScreen.SCHEMA;
+        for (String key : path) {
+            JsonObject shaped = ValueScreen.shape(here);
+            if (shaped.has("properties") && shaped.getAsJsonObject("properties").has(key)) here = shaped.getAsJsonObject("properties").getAsJsonObject(key);
+            else if (key.matches("\\d+") && shaped.has("items") && shaped.get("items").isJsonObject()) here = shaped.getAsJsonObject("items");
+            else if (shaped.has("additionalProperties") && shaped.get("additionalProperties").isJsonObject()) here = shaped.getAsJsonObject("additionalProperties");
+            else return Optional.empty();
+        }
+        return Optional.of(ValueScreen.shape(here));
     }
 
     /** Renames the NPC and its file in one transaction; rollback brings the old file back. */

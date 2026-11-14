@@ -6,74 +6,41 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import art.arcane.animus.core.behavior.conversation.ConversationDocument;
-import art.arcane.animus.core.command.CommandActor;
-import art.arcane.animus.core.command.PermissionNodes;
-import art.arcane.animus.core.editor.DocumentKind;
-import art.arcane.animus.core.editor.EditorDocuments;
-import art.arcane.animus.core.gui.FakeNpcRuntime;
 import art.arcane.animus.core.gui.GuiModel.Click;
 import art.arcane.animus.core.gui.MockScreenHost;
-import art.arcane.animus.core.gui.MockScreenHost.Player;
-import art.arcane.animus.core.gui.ScreenFrame;
-import art.arcane.animus.core.gui.ScreenHost;
-import art.arcane.animus.core.gui.ScreenManager;
-import art.arcane.animus.core.inventory.MockInventory.Stack;
-import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
-import art.arcane.animus.core.text.RichText;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
-import org.junit.jupiter.api.AfterEach;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
-/** The behavior list, its run controls and the conversation editor, through the mock screen host. */
-class BehaviorScreensTest {
+/** The Advanced behavior list, its details and the running runs Cancel a run lists. */
+class BehaviorScreensTest extends ToolkitHarness {
     static final String PATROL = "{\"schemaVersion\":1,\"revision\":1,\"id\":\"town:patrol\",\"entry\":\"main\",\"routines\":{\"main\":{\"type\":\"wait\",\"ticks\":20}},"
             + "\"triggers\":[{\"id\":\"tick\",\"event\":\"timer\",\"intervalTicks\":200}]}";
-    static final String RUN = "00000000-0000-0000-0000-00000000000a";
-    @TempDir Path root;
-    DocumentStore store;
-    NpcRepository npcs;
-    final MockScreenHost host = new MockScreenHost();
-    final Player alex = new Player("Alex");
-    final ScreenManager<Player, Stack> manager = new ScreenManager<>(host, (UUID npc) -> true, (String warning) -> { throw new AssertionError(warning); });
-    final List<Runnable> queue = new ArrayList<>();
-    Toolkit<Player, Stack> toolkit;
-    final Toolkit.Commands commands = new Toolkit.Commands((CommandActor actor, String id) -> {}, (CommandActor actor) -> {}, (CommandActor actor, String id) -> {});
+    static final UUID RUN = UUID.fromString("00000000-0000-0000-0000-00000000000a");
 
     @BeforeEach void setUp() throws IOException {
-        store = new DocumentStore(root);
         List<DocumentStore.Change> files = new ArrayList<>(List.of(
-                new DocumentStore.Change("npcs/town/guard.json", "missing", ToolkitScreensTest.npc("guard", ToolkitScreensTest.GUARD, ",\"groups\":[\"talkers\"]")),
-                new DocumentStore.Change("npcs/town/baker.json", "missing", ToolkitScreensTest.npc("baker", ToolkitScreensTest.BAKER, ",\"behaviors\":[\"town:patrol\"]")),
+                npcFile("guard", GUARD, ",\"groups\":[\"talkers\"]"),
+                npcFile("baker", BAKER, ",\"behaviors\":[\"town:patrol\"]"),
                 new DocumentStore.Change("groups/talkers.json", "missing", "{\"schemaVersion\":2,\"revision\":1,\"id\":\"talkers\",\"values\":{\"behaviors\":[\"harbor:ferryman\"]}}"),
                 new DocumentStore.Change("behaviors/town/talk.json", "missing", fixture("talk")),
                 new DocumentStore.Change("behaviors/harbor/ferryman.json", "missing", fixture("ferryman")),
                 new DocumentStore.Change("behaviors/town/patrol.json", "missing", PATROL)));
         for (int i = 0; i < ToolScreen.BULK; i++)
-            files.add(new DocumentStore.Change("npcs/crowd/c" + i + ".json", "missing", ToolkitScreensTest.npc("c" + i, UUID.nameUUIDFromBytes(("c" + i).getBytes()), "").replace("\"town\"", "\"crowd\"")));
-        store.commit(files);
-        npcs = new NpcRepository(store);
-        assertTrue(npcs.reload().isEmpty(), npcs.diagnostics().toString());
-        alex.permissions.add(PermissionNodes.ADMIN);
-        alex.pose = new ScreenHost.Pose(Set.of("world"), 0, 64, 0, 65.62, 0, 0, false);
-        alex.wand = true;
-        FakeNpcRuntime<Player> living = new FakeNpcRuntime<>((UUID id) -> id.equals(alex.id) ? Optional.of(alex) : Optional.empty());
-        toolkit = Toolkit.install(new Toolkit.Parts<>(() -> npcs, () -> store, manager, living, queue::add, (Player player) -> Optional.empty(), Optional.empty(), System::nanoTime));
+            files.add(new DocumentStore.Change("npcs/crowd/c" + i + ".json", "missing", npc("c" + i, UUID.nameUUIDFromBytes(("c" + i).getBytes()), "").replace("\"town\"", "\"crowd\"")));
+        start(files, true);
+        toolkit.mode(alex.id, ToolkitMode.ADVANCED);
     }
-
-    @AfterEach void tearDown() throws IOException { toolkit.close(); store.close(); }
 
     static String fixture(String name) throws IOException {
         try (java.io.InputStream in = java.util.Objects.requireNonNull(BehaviorScreensTest.class.getResourceAsStream("/conversation/" + name + ".json"), name)) {
@@ -81,18 +48,11 @@ class BehaviorScreensTest {
         }
     }
 
-    void drain() { while (!queue.isEmpty()) queue.removeFirst().run(); }
-
     void select(String... ids) { for (String id : ids) toolkit.selection().toggle(alex.id, id); }
 
-    void click(String name, Click click) { manager.click(alex, alex.window, MockScreenHost.slot(alex, name), click); drain(); }
+    @Override void click(String name, Click click) { super.click(name, click); drain(); }
 
-    String name(String name) { return RichText.plain(alex.frame.items().get(MockScreenHost.slot(alex, name)).name().orElseThrow()); }
-
-    String lore(String name) {
-        ScreenFrame.Item item = alex.frame.items().get(MockScreenHost.slot(alex, name));
-        return String.join("\n", item.lore().stream().map(RichText::plain).toList());
-    }
+    @Override void click(int slot, Click click) { super.click(slot, click); drain(); }
 
     void type(String text) { MockScreenHost.answer(alex, Optional.of(text)); drain(); }
 
@@ -106,182 +66,130 @@ class BehaviorScreensTest {
     String last() { return alex.messages.getLast(); }
 
     void openList() {
-        toolkit.open(alex.id, commands, BehaviorScreen::new);
+        toolkit.open(alex.id, BehaviorScreen::new);
         drain();
-        assertEquals("Behaviors", RichText.plain(alex.frame.title()));
+        assertEquals("Behaviors", title());
     }
 
-    @Test void theListShowsEachBehaviorWithItsTriggersAndWhoHasIt() {
+    @Test void theListNamesEachBehaviorWithItsKindAndWhoHasItInFourLines() {
         select("guard", "baker");
         openList();
-        assertTrue(lore("town:talk").contains("on interaction, dialogue_choice x2"), lore("town:talk"));
-        assertTrue(lore("town:talk").contains("Conversation"));
-        assertTrue(lore("town:patrol").contains("1 of 2 selected list it"), lore("town:patrol"));
-        assertTrue(lore("town:patrol").contains("Node graph"), "a timer behavior is no conversation");
-        assertTrue(lore("harbor:ferryman").replace("\n", " ").contains("0 of 2 selected list it, 1 more through a trait group"), lore("harbor:ferryman"));
-        assertTrue(lore("town:talk").contains("Left attach to the selection"));
+        assertEquals(Map.of(0, "harbor:ferryman", 1, "town:patrol", 2, "town:talk", BehaviorScreen.CREATE, "New conversation", BehaviorScreen.RELOAD, "Reload",
+                BehaviorScreen.TRIGGERS, "Trigger bindings", ToolScreen.BACK, "Back", ToolScreen.SEARCH, "Search", ToolScreen.HELP, "Help"), buttons());
+        assertEquals("Conversation\nNow: on 0 of 2\nClick: use on 2 NPCs\nRight-click: details", lore("town:talk"));
+        assertEquals("Node graph\nNow: on 1 of 2\nClick: use on 2 NPCs\nRight-click: details", lore("town:patrol"));
+        assertTrue(lore("harbor:ferryman").contains("Now: on 0 of 2, 1 by trait group"), lore("harbor:ferryman"));
+        assertFalse(lore("town:talk").contains("Loose file"), "the file's place shows only in details");
+        assertTrue(lore("Trigger bindings").contains("Shows in chat"), lore("Trigger bindings"));
     }
 
-    @Test void leftAttachesAndRightDetachesInOneTransaction() throws IOException {
+    @Test void aClickUsesItOnTheSelectionAndDetachIsInTheDetails() throws IOException {
         select("guard", "baker");
         openList();
         click("town:talk", Click.LEFT);
-        assertTrue(last().contains("Attached town:talk to 2 NPCs; tx "), last());
+        assertTrue(last().contains("Attached town:talk to 2 NPCs"), last());
         assertEquals(List.of("town:talk"), behaviorsOf("npcs/town/guard.json"));
         assertEquals(List.of("town:patrol", "town:talk"), behaviorsOf("npcs/town/baker.json"));
-        assertTrue(lore("town:talk").contains("2 of 2 selected list it"), "the list reads the files again after a write");
+        assertTrue(lore("town:talk").contains("Now: on 2 of 2"), "the list reads the files again after a write");
         click("town:patrol", Click.RIGHT);
-        assertTrue(last().contains("Detached town:patrol from baker, 1 unchanged; tx "), last());
+        assertEquals("town:patrol", title());
+        click("Remove from NPC", Click.LEFT);
+        assertTrue(last().contains("Detached town:patrol from baker, 1 unchanged"), last());
         assertEquals(List.of("town:talk"), behaviorsOf("npcs/town/baker.json"));
     }
 
-    @Test void attachingToMoreThanTwentyNpcsAsksTwice() throws IOException {
+    @Test void removeFromNpcShowsOnTheListAtOnce() throws IOException {
+        select("baker");
+        openList();
+        assertTrue(lore("town:patrol").contains("Now: on 1 of 1"), lore("town:patrol"));
+        click("town:patrol", Click.RIGHT);
+        click("Remove from NPC", Click.LEFT);
+        assertEquals(List.of(), behaviorsOf("npcs/town/baker.json"));
+        click(ToolScreen.BACK, Click.LEFT);
+        assertEquals("Behaviors", title());
+        assertTrue(lore("town:patrol").contains("Now: on 0 of 1"), lore("town:patrol"));
+    }
+
+    @Test void moreThanTwentyNpcsAskOnceWithTheSharedConfirm() throws IOException {
         select("guard");
         for (int i = 0; i < ToolScreen.BULK; i++) select("c" + i);
         openList();
         click("town:talk", Click.LEFT);
-        assertTrue(name("town:talk").startsWith("Click again"), "the first click arms it");
+        assertEquals(ToolScreen.CONFIRM, name(2));
+        assertTrue(lore(2).contains("21 NPCs affected"), lore(2));
         assertTrue(behaviorsOf("npcs/town/guard.json").isEmpty());
-        click("town:talk", Click.LEFT);
+        click(2, Click.LEFT);
         assertTrue(last().contains("Attached town:talk to 21 NPCs"), last());
         assertEquals(List.of("town:talk"), behaviorsOf("npcs/crowd/c0.json"));
     }
 
-    @Test void theDetailScreenRunsTracesValidatesAndCancelsThroughTheCommands() {
+    @Test void withNothingSelectedAClickOpensTheDetails() {
+        openList();
+        assertTrue(lore("town:talk").endsWith("Click: details"), lore("town:talk"));
+        click("town:talk", Click.LEFT);
+        assertEquals("town:talk", title());
+    }
+
+    @Test void theDetailsRunTraceValidateAndOpenTheConversation() {
         select("guard", "baker");
         openList();
-        click("town:talk", Click.SHIFT_LEFT);
-        assertEquals("town:talk", RichText.plain(alex.frame.title()));
+        click("town:talk", Click.RIGHT);
+        assertEquals(Map.of(BehaviorDetailScreen.HEADER, "town:talk", BehaviorDetailScreen.RUN, "Run", BehaviorDetailScreen.TRACE, "Trace", BehaviorDetailScreen.CANCEL, "Cancel a run",
+                BehaviorDetailScreen.VALIDATE, "Validate", BehaviorDetailScreen.CONVERSATION, "Open as conversation", BehaviorDetailScreen.REMOVE, "Remove from NPC",
+                ToolScreen.BACK, "Back", ToolScreen.HELP, "Help"), buttons());
+        assertTrue(lore(BehaviorDetailScreen.HEADER).contains("Loose file"), lore(BehaviorDetailScreen.HEADER));
         click("Run", Click.LEFT);
         assertEquals(List.of("animus behaviors run npc=guard behavior=town:talk", "animus behaviors run npc=baker behavior=town:talk"), alex.commands);
         click("Validate", Click.LEFT);
         assertEquals("animus behaviors validate behavior=town:talk", alex.commands.getLast());
-        click("Cancel a run", Click.LEFT);
-        assertEquals(List.of("animus behaviors trace npc=guard", "animus behaviors trace npc=baker"), alex.commands.subList(3, 5), "the run ids reach chat first");
-        assertEquals("Run id to cancel", alex.prompt.label());
-        type("not-a-run");
-        assertTrue(last().contains("not-a-run is not a run id"), last());
-        click("Cancel a run", Click.LEFT);
-        type(RUN);
-        assertEquals("animus behaviors cancel execution=" + RUN, alex.commands.getLast());
+        assertTrue(lore("Validate").contains("Shows in chat"));
+        click("Open as conversation", Click.LEFT);
+        assertEquals("Talk: town", title());
+        assertEquals("Start", name(ConversationScreen.BLOCK));
+        click(ToolScreen.BACK, Click.LEFT);
         click("Trace", Click.LEFT);
-        assertNull(alex.window, "trace closes the window so the chat can be read and clicked");
+        assertNull(alex.window, "trace closes the window so the runs in chat can be clicked");
         assertEquals("animus behaviors trace npc=baker", alex.commands.getLast());
     }
 
-    @Test void aBehaviorThatIsNoConversationSaysSo() {
+    @Test void aBehaviorThatIsNoConversationSaysWhy() {
         openList();
-        click("town:patrol", Click.SHIFT_LEFT);
+        click("town:patrol", Click.RIGHT);
         assertTrue(lore("Not a conversation").contains("Starts on timer."), lore("Not a conversation"));
     }
 
-    @Test void theBottomRowListsTriggersAndReloads() {
+    @Test void cancelARunListsTheRunningRunsToClick() {
+        runs = (String npc) -> CompletableFuture.completedFuture(npc.equals("baker")
+                ? List.of(new Toolkit.Run(RUN, "baker", "town:talk"), new Toolkit.Run(UUID.randomUUID(), "baker", "town:patrol")) : List.of());
+        select("guard", "baker");
         openList();
-        click("Reload behaviors", Click.LEFT);
-        assertEquals("animus behaviors reload", alex.commands.getLast());
+        click("town:talk", Click.RIGHT);
+        click("Cancel a run", Click.LEFT);
+        assertEquals("Runs of town:talk", title());
+        assertEquals(Map.of(0, "On baker", BehaviorRunsScreen.RELOAD, "Reload", ToolScreen.BACK, "Back", ToolScreen.HELP, "Help"), buttons());
+        assertFalse(alex.prompt != null && alex.prompt.label().contains("id"), "no run id is typed");
+        click("On baker", Click.LEFT);
+        assertEquals(ToolScreen.CONFIRM, name(0));
+        click(0, Click.LEFT);
+        assertEquals("animus behaviors cancel execution=" + RUN, alex.commands.getLast());
+    }
+
+    @Test void cancelARunSaysWhenNothingRuns() {
+        runs = (String npc) -> CompletableFuture.completedFuture(List.of());
+        select("guard");
+        openList();
+        click("town:talk", Click.RIGHT);
+        click("Cancel a run", Click.LEFT);
+        assertTrue(shows("Nothing running"), buttons().toString());
+    }
+
+    @Test void theActionRowListsTriggersAndReloads() {
+        openList();
+        click("Reload", Click.LEFT);
+        assertEquals(BehaviorScreen.RELOAD_COMMAND, alex.commands.getLast());
         click("Trigger bindings", Click.LEFT);
         assertEquals("animus behaviors triggers", alex.commands.getLast());
         assertNull(alex.window);
-    }
-
-    void openTalk() {
-        openList();
-        click("town:talk", Click.SHIFT_LEFT);
-        click("Open as conversation", Click.LEFT);
-        assertEquals("town:talk", RichText.plain(alex.frame.title()));
-        assertEquals("Block main", name("Block main"));
-    }
-
-    @Test void linesEditInsertMoveAndDeleteInOrder() {
-        openTalk();
-        click("Line 1", Click.LEFT);
-        assertEquals("Hello, {player_name}.", alex.prompt.initial());
-        type("Welcome to {npc.name}'s shop.");
-        assertTrue(lore("Line 1").contains("Welcome to {npc.name}'s shop."), lore("Line 1"));
-        click("Line 1", Click.RIGHT);
-        type("Look around.");
-        assertTrue(lore("Line 2").contains("Look around."), "right inserts after");
-        click("Line 2", Click.SHIFT_LEFT);
-        assertTrue(lore("Line 1").contains("Look around."), "sneak-left moves it up");
-        click("Line 1", Click.SHIFT_RIGHT);
-        assertTrue(name("Delete Line 1").startsWith("Delete"), "the first sneak-right arms the delete");
-        click("Delete Line 1", Click.SHIFT_RIGHT);
-        assertTrue(lore("Line 1").contains("Welcome"), "the second deletes it");
-        assertTrue(lore("Save").contains("Unsaved changes"));
-    }
-
-    @Test void choicesEditOpenTheirBlockAndGoBack() {
-        openTalk();
-        click("Choice: Just looking", Click.LEFT);
-        type("Only browsing");
-        assertTrue(name("Choice: Only browsing").contains("Only browsing"));
-        click("Choice: Only browsing", Click.RIGHT);
-        assertEquals("Block just-looking", name("Block just-looking"), "right opens the block the choice leads to");
-        assertEquals("town:talk > just-looking", RichText.plain(alex.frame.title()), "the window names the block it shows");
-        assertTrue(lore("Line 1").contains("Take your time."));
-        click("Add choice", Click.LEFT);
-        type("Show me");
-        assertTrue(lore("Question").contains("Choose one."), "a block without a question gets one");
-        click("Choice: Show me", Click.RIGHT);
-        assertEquals("Block show-me", name("Block show-me"));
-        click("Add line", Click.LEFT);
-        type("Here you go.");
-        click("Back to just-looking", Click.LEFT);
-        click("Back to main", Click.LEFT);
-        assertEquals("Block main", name("Block main"));
-        assertEquals("town:talk", RichText.plain(alex.frame.title()));
-    }
-
-    @Test void deletingAChoiceRemovesTheBlocksOnlyItReachedAfterAsking() {
-        openTalk();
-        click("Choice: Goodbye", Click.SHIFT_LEFT);
-        assertTrue(name("Delete goodbye").contains("Delete"));
-        click("Delete goodbye", Click.SHIFT_LEFT);
-        assertTrue(last().contains("Removed blocks goodbye"), last());
-        assertFalse(alex.frame.items().values().stream().anyMatch((ScreenFrame.Item item) -> item.name().map(RichText::plain).orElse("").contains("Goodbye")));
-    }
-
-    @Test void saveWritesOneValidRevisionAndReloadsBehaviors() throws IOException {
-        openTalk();
-        click("Starts on Right-click", Click.LEFT);
-        assertEquals("Starts on Sneak + right-click", name("Starts on"));
-        for (int i = 0; i < 7; i++) click("Starts on", Click.LEFT);
-        assertEquals("Starts on Walk near", name("Starts on"));
-        click("Within 6 blocks", Click.LEFT);
-        assertEquals("Within 7 blocks", name("Within"));
-        click("Add choice", Click.LEFT);
-        type("Tell me more");
-        click("Save", Click.LEFT);
-        assertTrue(last().contains("Saved town:talk; tx "), last());
-        assertEquals("animus behaviors reload", alex.commands.getLast());
-        JsonObject saved = JsonDocuments.object(store.read("behaviors/town/talk.json"));
-        assertEquals(2, saved.get("revision").getAsInt());
-        assertEquals(List.of(), new EditorDocuments(store, () -> 0).validate(DocumentKind.BEHAVIOR, "town:talk", saved).asList().stream()
-                .filter((JsonElement problem) -> "error".equals(problem.getAsJsonObject().get("severity").getAsString())).toList());
-        ConversationDocument back = ((ConversationDocument.Fits) ConversationDocument.read(saved)).conversation();
-        assertEquals(ConversationDocument.StartKind.PROXIMITY, back.start.kind);
-        assertEquals(7, back.start.radius);
-        assertTrue(back.blocks.containsKey("tell-me-more"));
-        assertEquals("Saved", name("Saved"), "the screen now edits what is on disk");
-        click("Saved", Click.LEFT);
-        assertTrue(last().endsWith("No changes to town:talk"), last());
-    }
-
-    @Test void leavingWithUnsavedEditsAsksFirst() {
-        openTalk();
-        click("Add line", Click.LEFT);
-        type("One more thing.");
-        click("Back", Click.LEFT);
-        assertTrue(name("Click again").contains("leave unsaved"));
-        click("Click again", Click.LEFT);
-        assertEquals("Run", name("Run"), "back on the detail screen");
-    }
-
-    @Test void attachFromTheConversationAddsItToTheSelection() throws IOException {
-        select("guard");
-        openTalk();
-        click("Attach to selection", Click.LEFT);
-        assertEquals(List.of("town:talk"), behaviorsOf("npcs/town/guard.json"));
     }
 
     @Test void newConversationAsksForAnIdAndOpensTheEditor() throws IOException {
@@ -292,10 +200,10 @@ class BehaviorScreensTest {
         assertTrue(last().contains("namespace:path"), last());
         click("New conversation", Click.LEFT);
         type("town:greeter");
-        assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("Created town:greeter; tx ")), alex.messages.toString());
-        assertEquals("animus behaviors reload", alex.commands.getLast());
+        assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("Created town:greeter")), alex.messages.toString());
+        assertEquals(BehaviorScreen.RELOAD_COMMAND, host.console.getLast());
         assertNotNull(alex.window);
-        assertEquals("town:greeter", RichText.plain(alex.frame.title()));
+        assertEquals("Talk: greeter", title());
         assertTrue(lore("Line 1").contains("Hello"));
         JsonObject made = JsonDocuments.object(store.read("behaviors/town/greeter.json"));
         assertEquals("interaction", made.getAsJsonArray("triggers").get(0).getAsJsonObject().get("event").getAsString());

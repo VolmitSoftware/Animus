@@ -52,6 +52,10 @@ final class VaultEconomy implements Economy {
         return provider().map((net.milkbowl.vault.economy.Economy economy) -> economy.format(amount.doubleValue())).orElse(amount.toPlainString());
     }
 
+    @Override public Optional<String> currency() {
+        return provider().map(net.milkbowl.vault.economy.Economy::currencyNamePlural).map(String::strip).filter((String name) -> !name.isEmpty());
+    }
+
     private OfflinePlayer player(UUID id) { return server.getOfflinePlayer(id); }
     private static boolean succeeded(EconomyResponse response) { return response != null && response.transactionSuccess(); }
 }

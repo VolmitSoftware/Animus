@@ -13,8 +13,6 @@ import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.inventory.TradeInventory;
 import art.arcane.animus.core.npc.NpcItem;
 import java.math.BigDecimal;
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -131,7 +129,7 @@ public final class ShopScreen<P, S> implements Screen {
         controls.clear();
         if (pending != null) return confirmFrame();
         if (pages.isEmpty()) return emptyFrame();
-        if (view.style() == ShopDocument.Style.NATIVE) return new ShopMerchant(shop, context.settings(), context.transactions().ledger(), viewer.id(),
+        if (view.style() == ShopDocument.Style.NATIVE) return new ShopMerchant(shop, context.settings(), prices(), context.transactions().ledger(), viewer.id(),
                 (String node) -> viewer.host().permitted(viewer.player(), node), context.clock().get(), this::display).frame(offers, view.villager());
         if (layout != null) return layout.render();
         ShopDocument.Page current = pages.get(page);
@@ -352,12 +350,9 @@ public final class ShopScreen<P, S> implements Screen {
 
     private String text(String key) { return context.settings().message(key); }
 
-    private String price(BigDecimal amount) { return price(context.settings(), amount); }
+    private String price(BigDecimal amount) { return prices().format(amount); }
 
-    static String price(ShopSettings settings, BigDecimal amount) {
-        DecimalFormat format = new DecimalFormat(settings.priceFormat(), DecimalFormatSymbols.getInstance(Locale.ROOT));
-        return format.format(amount);
-    }
+    private Prices prices() { return new Prices(context.transactions().economy(), context.settings()); }
 
     private String levelsLine(ShopDocument.Entry entry) { return text("levelsLine").replace("{levels}", Integer.toString(entry.levels())); }
 

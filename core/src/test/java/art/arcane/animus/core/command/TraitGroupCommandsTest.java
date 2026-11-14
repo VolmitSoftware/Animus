@@ -39,7 +39,7 @@ class TraitGroupCommandsTest {
             assertEquals("gold", repository.find("guard").orElseThrow().json().get("teamColor").getAsString());
             assertEquals(List.of("baker", "guard"), TraitGroupCommands.memberIds(repository, "watch"));
             assertEquals(List.of("watch | revision 1 | members 2 | Town watch"), TraitGroupCommands.rows(repository));
-            assertEquals("Group watch | revision 1 | members 2 | Town watch", TraitGroupCommands.inspect(repository, "watch").getFirst());
+            assertEquals("Trait group watch | revision 1 | members 2 | Town watch", TraitGroupCommands.inspect(repository, "watch").getFirst());
 
             assertTrue(TraitGroupCommands.change(repository, "watch", TraitGroupCommands.selector(repository, "", "watch", Set.of()), true).equals("Assigned watch to 0 NPCs, 2 unchanged"),
                     "tags are read from the effective definition");
@@ -50,7 +50,7 @@ class TraitGroupCommandsTest {
             assertFalse(repository.draft("baker").document().has("groups"));
 
             IOException unknown = assertThrows(IOException.class, () -> TraitGroupCommands.change(repository, "missing", TraitGroupCommands.selector(repository, "town", "", Set.of()), true));
-            assertTrue(unknown.getMessage().startsWith("Unknown group missing"), unknown.getMessage());
+            assertTrue(unknown.getMessage().startsWith("Unknown trait group missing"), unknown.getMessage());
             assertThrows(IOException.class, () -> TraitGroupCommands.inspect(repository, "missing"));
         }
     }

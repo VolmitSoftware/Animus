@@ -1,6 +1,7 @@
 package art.arcane.animus.core.toolkit;
 
 import art.arcane.animus.core.combat.CombatSettings;
+import art.arcane.animus.core.combat.HealthSettings;
 import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.mount.MountReference;
@@ -12,6 +13,7 @@ import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.presentation.BodyRules;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -19,13 +21,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 
 /**
- * The combat lane's file work: the combat and riding modules, mount pairs and equipment. Every change to several NPCs
- * is one transaction, checked the way the runtime reads it and refused whole when any NPC would be invalid.
+ * The combat lane's file work: the combat, health and riding modules, mount pairs and equipment. Every change to several NPCs
+ * is one transaction, checked the way the runtime reads it and refused whole when any NPC would be invalid. The Combat
+ * screen's replies name the NPCs, then the setting as it now is: {@code guard: can be hurt}.
  */
 final class CombatFiles {
-    static final String COMBAT = CombatSettings.MODULE, MOUNT = MountDeclaration.MODULE, RIDING = RideSettings.MODULE;
+    static final String COMBAT = CombatSettings.MODULE, HEALTH = HealthSettings.MODULE, MOUNT = MountDeclaration.MODULE, RIDING = RideSettings.MODULE;
     private final NpcRepository npcs;
 
     CombatFiles(NpcRepository npcs) { this.npcs = npcs; }
@@ -37,7 +41,7 @@ final class CombatFiles {
         Changes { values = Map.copyOf(values); }
     }
 
-    /** Turns combat on with literal true, or off by removing {@code enabled}. */
+    /** Turns combat on with literal true, or off by removing {@code enabled}; the rest of the module stays. */
     String enable(List<String> ids, boolean on) throws IOException {
         List<NpcRepository.Draft> drafts = drafts(ids, (JsonObject document) -> {
             JsonObject module = module(document, COMBAT);
@@ -46,27 +50,60 @@ final class CombatFiles {
             store(document, COMBAT, module);
             return true;
         });
-        if (drafts.isEmpty()) return "Combat already " + (on ? "on" : "off") + " for " + ToolkitFiles.count(ids.size());
-        return "Combat " + (on ? "on" : "off") + " for " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
+        if (drafts.isEmpty()) return ToolkitFiles.named(npcs, ids) + ": combat already " + (on ? "on" : "off");
+        return ToolkitFiles.named(drafts) + ": combat " + (on ? "on" : "off") + "; tx " + npcs.applyAll(drafts);
     }
 
-    /** Sets fields of the combat or riding module on every listed NPC. */
-    String settings(String key, List<String> ids, Changes changes) throws IOException {
+    /** Sets fields of the combat or riding module on every listed NPC; {@code title} names them in the reply, such as {@code Melee}. */
+    String settings(String key, String title, List<String> ids, Changes changes) throws IOException {
         int count = changes.values().size();
-        return change(key, ids, changes, (key.equals(COMBAT) ? "Combat: " : "Riding: ") + count + (count == 1 ? " change" : " changes"));
+        return change(key, ids, changes, (String who) -> title + ": " + count + (count == 1 ? " change" : " changes") + " on " + who);
     }
 
     /** Replaces one rule list ({@code targets}, {@code ignores} or {@code avoids}) on every listed NPC. */
     String rules(List<String> ids, String list, JsonObject rules) throws IOException {
         Optional<JsonElement> value = rules.isEmpty() ? Optional.empty() : Optional.of(rules);
         List<String> summary = TargetRulesScreen.summary(rules);
-        return change(COMBAT, ids, new Changes(Map.of(List.of(list), value)), "Combat " + list, summary.isEmpty() ? ": none" : ": " + String.join("; ", summary));
+        return change(COMBAT, ids, new Changes(Map.of(List.of(list), value)),
+                (String who) -> CombatFields.label(list) + " on " + who + ": " + (summary.isEmpty() ? "none" : String.join("; ", summary)));
     }
 
-    private String change(String key, List<String> ids, Changes changes, String what) throws IOException { return change(key, ids, changes, what, ""); }
+    /** Sets the targets list to one Attacks choice, replacing whatever rules it held. */
+    String attacks(List<String> ids, CombatFields.Attacks attacks) throws IOException {
+        JsonObject targets = CombatFields.targets(attacks);
+        return change(COMBAT, ids, new Changes(Map.of(List.of("targets"), targets.isEmpty() ? Optional.empty() : Optional.of(targets))),
+                (String who) -> who + ": attacks " + attacks.label().toLowerCase(java.util.Locale.ROOT));
+    }
 
-    /** {@code detail} follows the NPCs, such as the rules a list now holds. */
-    private String change(String key, List<String> ids, Changes changes, String what, String detail) throws IOException {
+    /** Lets nearby hostile mobs attack the NPCs, or stops it by removing {@code targetableByMobs}. */
+    String mobs(List<String> ids, boolean on) throws IOException {
+        return change(COMBAT, ids, new Changes(Map.of(List.of("targetableByMobs"), on ? Optional.of(new JsonPrimitive(true)) : Optional.empty())),
+                (String who) -> who + (on ? ": mobs can attack " : ": mobs no longer attack ") + (ids.size() == 1 ? "it" : "them"));
+    }
+
+    /** Makes the NPCs guard {@code player}, dropping any NPC they guarded, or with empty stops them guarding a player. */
+    String guard(List<String> ids, Optional<UUID> player) throws IOException {
+        Map<List<String>, Optional<JsonElement>> values = new HashMap<>();
+        values.put(List.of("guard", "player"), player.map((UUID id) -> new JsonPrimitive(id.toString())));
+        if (player.isPresent()) values.put(List.of("guard", "npc"), Optional.empty());
+        return change(COMBAT, ids, new Changes(values), (String who) -> who + ": guard me " + (player.isPresent() ? "on" : "off"));
+    }
+
+    /** Lets the NPCs take damage with {@code killable} in {@code animus:health}, or removes it so they cannot be hurt again. */
+    String hurt(List<String> ids, boolean on) throws IOException {
+        return change(HEALTH, ids, new Changes(Map.of(List.of("killable"), on ? Optional.of(new JsonPrimitive(true)) : Optional.empty())),
+                (String who) -> who + (on ? ": can be hurt" : ": cannot be hurt"));
+    }
+
+    /** Sets {@code maximumHealth} in {@code animus:health}, or with empty removes it so the attribute or 20 applies. */
+    String health(List<String> ids, Optional<Double> maximum) throws IOException {
+        Optional<JsonElement> value = maximum.map((Double health) -> health == Math.rint(health) ? new JsonPrimitive(health.longValue()) : new JsonPrimitive(health));
+        return change(HEALTH, ids, new Changes(Map.of(List.of("maximumHealth"), value)),
+                (String who) -> who + ": health " + maximum.map(SettingsScreen::number).orElse("back to default"));
+    }
+
+    /** Applies the changes to the module of every listed NPC in one transaction; {@code line} words the reply around the NPCs it changed. */
+    private String change(String key, List<String> ids, Changes changes, Function<String, String> line) throws IOException {
         if (changes.values().isEmpty()) return "Nothing to save";
         List<NpcRepository.Draft> drafts = drafts(ids, (JsonObject document) -> {
             JsonObject module = module(document, key);
@@ -76,8 +113,8 @@ final class CombatFiles {
             store(document, key, module);
             return true;
         });
-        if (drafts.isEmpty()) return what + " already set on " + ToolkitFiles.count(ids.size());
-        return what + " on " + ToolkitFiles.named(drafts) + detail + "; tx " + npcs.applyAll(drafts);
+        if (drafts.isEmpty()) return "Nothing changed on " + ToolkitFiles.named(npcs, ids);
+        return line.apply(ToolkitFiles.named(drafts)) + "; tx " + npcs.applyAll(drafts);
     }
 
     /** Puts {@code rider} on {@code vehicle}, refused when the vehicle is unknown or the pair would loop or overload. */
@@ -117,8 +154,8 @@ final class CombatFiles {
     }
 
     /**
-     * Sets each listed slot, an empty item clearing it, on every listed NPC. A slot the NPC's body cannot show is
-     * skipped on that NPC and counted.
+     * Sets each listed slot, an empty item clearing it, on every listed NPC. An item for a slot the NPC's body cannot
+     * show is skipped on that NPC and counted; clearing such a slot is no skip, since there is nothing to show.
      */
     String equip(List<String> ids, Map<EquipmentSlot, Optional<NpcItem>> items) throws IOException {
         int[] skipped = {0};
@@ -128,7 +165,7 @@ final class CombatFiles {
             JsonObject before = equipment.deepCopy();
             boolean skip = false;
             for (Map.Entry<EquipmentSlot, Optional<NpcItem>> item : items.entrySet()) {
-                if (!BodyRules.equipmentSlots(type).contains(item.getKey())) { skip = true; continue; }
+                if (!BodyRules.equipmentSlots(type).contains(item.getKey())) { skip |= item.getValue().isPresent(); continue; }
                 if (item.getValue().isPresent()) equipment.add(item.getKey().key(), item.getValue().get().toJson());
                 else equipment.remove(item.getKey().key());
             }
@@ -140,7 +177,8 @@ final class CombatFiles {
         String slots = items.size() == 1 ? items.keySet().iterator().next().key().replace('_', ' ') : "equipment";
         String skip = skipped[0] == 0 ? "" : ", " + skipped[0] + " skipped (body cannot show it)";
         if (drafts.isEmpty()) return "No change to " + slots + skip;
-        return "Set " + slots + " on " + ToolkitFiles.named(drafts) + skip + "; tx " + npcs.applyAll(drafts);
+        boolean clearing = items.values().stream().allMatch(Optional::isEmpty);
+        return (clearing ? "Cleared " : "Set ") + slots + " on " + ToolkitFiles.named(drafts) + skip + "; tx " + npcs.applyAll(drafts);
     }
 
     private static MountReference declared(JsonObject document) {

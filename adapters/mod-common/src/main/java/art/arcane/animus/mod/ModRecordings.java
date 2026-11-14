@@ -1,6 +1,7 @@
 package art.arcane.animus.mod;
 
 import art.arcane.animus.core.AnimusRuntime;
+import art.arcane.animus.mod.toolkit.ModWand;
 import art.arcane.animus.core.config.RecordingSettings;
 import art.arcane.animus.core.npc.BodyTraits;
 import art.arcane.animus.core.npc.BodyVariant;
@@ -127,7 +128,7 @@ final class ModRecordings implements RecordingHost<ServerPlayer, ItemStack>, Aut
                 ItemStack before = stacks.get(slot);
                 if (before != null && ItemStack.matches(before, stack)) continue;
                 stacks.put(slot, stack.copy());
-                items.put(slot, item(server, stack));
+                items.put(slot, ModWand.is(stack) ? Optional.empty() : item(server, stack));
             }
             return new RecordingCapture.Sample(ModWorldKeys.key(player.level()), player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot(),
                     player.onGround(), player.isShiftKeyDown(), player.isSprinting(), player.isSwimming(), player.isFallFlying(), items);

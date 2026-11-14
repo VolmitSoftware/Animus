@@ -2,7 +2,6 @@ package art.arcane.animus.mod;
 
 import art.arcane.animus.core.gui.ScreenHost;
 import art.arcane.animus.core.gui.TextPrompts;
-import art.arcane.animus.core.text.Palette;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -11,6 +10,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.player.Inventory;
@@ -37,14 +37,13 @@ final class ModPrompts {
     boolean open(ServerPlayer player, ScreenHost.Prompt prompt) {
         PromptMenu[] made = new PromptMenu[1];
         OptionalInt id = player.openMenu(new SimpleMenuProvider((int container, Inventory inventory, Player owner) -> {
-            made[0] = new PromptMenu(container, inventory, prompt.initial(), player.getUUID());
+            made[0] = new PromptMenu(container, inventory, prompt, player.getUUID());
             return made[0];
         }, ModText.component(prompt.title())));
         PromptMenu menu = made[0];
         if (id.isEmpty() || menu == null || player.containerMenu != menu) {
             prompts.start(player.getUUID(), new TextPrompts.Waiting(prompt, TextPrompts.Input.CHAT, null, owner(player, null)));
-            String start = prompt.initial().isBlank() ? "" : " (now " + prompt.initial() + ")";
-            player.sendSystemMessage(ModText.component(Palette.GREY + "Type " + prompt.label() + start + " in chat, or " + TextPrompts.CANCEL));
+            for (String line : TextPrompts.chat(prompt)) player.sendSystemMessage(ModText.component(line));
             return true;
         }
         prompts.start(player.getUUID(), new TextPrompts.Waiting(prompt, TextPrompts.Input.ANVIL, menu, owner(player, menu)));
@@ -79,9 +78,22 @@ final class ModPrompts {
         }
     }
 
+    /**
+     * A paper named {@code name}, upright and read as typed; a blank name becomes one space so the anvil's text field
+     * starts empty. Without its enchantments component the client, which prices each rename itself as the player
+     * types, never shows a cost.
+     */
     static ItemStack paper(String name) {
         ItemStack paper = new ItemStack(Items.PAPER);
-        paper.set(DataComponents.CUSTOM_NAME, Component.literal(name.isBlank() ? " " : name));
+        paper.remove(DataComponents.ENCHANTMENTS);
+        paper.set(DataComponents.CUSTOM_NAME, Component.literal(name.isBlank() ? " " : name).withStyle((Style style) -> style.withItalic(false)));
+        return paper;
+    }
+
+    /** The result paper: the typed name, then "Click to confirm" and the prompt's hint as upright lore. */
+    static ItemStack result(String name, ScreenHost.Prompt prompt) {
+        ItemStack paper = paper(name);
+        ModScreens.dress(paper, Optional.empty(), TextPrompts.lore(prompt));
         return paper;
     }
 
@@ -91,11 +103,13 @@ final class ModPrompts {
      */
     private final class PromptMenu extends AnvilMenu {
         private final UUID player;
+        private final ScreenHost.Prompt prompt;
         private String typed;
 
-        PromptMenu(int id, Inventory inventory, String initial, UUID player) {
+        PromptMenu(int id, Inventory inventory, ScreenHost.Prompt prompt, UUID player) {
             super(id, inventory, ContainerLevelAccess.NULL);
-            this.typed = initial;
+            this.prompt = prompt;
+            this.typed = prompt.initial();
             this.player = player;
         }
 
@@ -109,7 +123,7 @@ final class ModPrompts {
 
         /** {@code createResult} is final on some loaders, so the result is set after vanilla's. */
         void showResult() {
-            if (!getSlot(INPUT_SLOT).getItem().isEmpty()) resultSlots.setItem(0, paper(typed));
+            if (!getSlot(INPUT_SLOT).getItem().isEmpty()) resultSlots.setItem(0, result(typed, prompt));
         }
 
         @Override public void clicked(int slot, int button, ContainerInput input, Player who) {

@@ -25,11 +25,39 @@ class ChatLineTest {
         assertEquals("[Animus]: Pairing link ready. " + LINK, RichText.plain(line.console()));
     }
 
-    @Test void aTransactionCopiesItsFullIdAndSuggestsTheRollback() {
+    @Test void aTransactionCopiesItsFullIdAndUndoRunsTheUndoCommand() {
         ChatLine line = ChatLine.parse(Palette.success("Deleted guard; tx " + TX));
         assertEquals("[Animus]: Deleted guard; tx 0f1e2d3c [Undo]", plain(line.component()));
-        assertEquals(List.of("copy_to_clipboard " + TX, "suggest_command /animus rollback " + TX.substring(0, 8)), clicks(line.component()));
+        assertEquals(List.of("copy_to_clipboard " + TX, "run_command /animus undo " + TX.substring(0, 8)), clicks(line.component()));
         assertEquals("[Animus]: Deleted guard; tx " + TX, RichText.plain(line.console()));
+        assertEquals(List.of(TX), line.transactions());
+        assertEquals("Deleted guard", line.lead(), "what the change was, for /animus undo");
+    }
+
+    @Test void withoutTransactionIdsOnlyUndoStays() {
+        ChatLine line = ChatLine.parse(Palette.success("Deleted guard; tx " + TX)).withoutTransactionIds();
+        assertEquals("[Animus]: Deleted guard [Undo]", plain(line.component()));
+        assertEquals(List.of("run_command /animus undo " + TX.substring(0, 8)), clicks(line.component()));
+        assertEquals("[Animus]: Deleted guard", RichText.plain(line.console()));
+        assertEquals(List.of(TX), line.transactions(), "the change is still known");
+        ChatLine middle = ChatLine.parse(Palette.success("Spawning guard; tx " + TX + "; it becomes active once its chunk loads")).withoutTransactionIds();
+        assertEquals("[Animus]: Spawning guard [Undo]; it becomes active once its chunk loads", plain(middle.component()));
+        assertEquals("Spawning guard [Undo]; it becomes active once its chunk loads", middle.visible().substring("[Animus]: ".length()));
+    }
+
+    @Test void aBuiltChangeLinePlacesTheIdAndUndoWhereAsked() {
+        ChatLine made = ChatLine.success("Made guard").transaction(TX).run("Edit", "/animus tools", "Open the Animus menu").undo(TX);
+        assertEquals("[Animus]: Made guard; tx 0f1e2d3c [Edit] [Undo]", plain(made.component()));
+        assertEquals("[Animus]: Made guard [Edit] [Undo]", plain(made.withoutTransactionIds().component()));
+        assertEquals("Made guard", made.lead());
+        assertEquals(List.of("copy_to_clipboard " + TX, "run_command /animus tools", "run_command /animus undo 0f1e2d3c"), clicks(made.component()));
+    }
+
+    @Test void aRefusalIsALineThatStartsRed() {
+        assertTrue(ChatLine.error("No NPC named ghost").refusal());
+        assertTrue(ChatLine.parse(Palette.error("Disk full")).refusal());
+        assertFalse(ChatLine.reply("Selected guard").refusal());
+        assertFalse(ChatLine.success("Saved").refusal());
     }
 
     @Test void parsedTextKeepsItsColourAcrossAChip() {

@@ -15,15 +15,15 @@ class SetupGuideTest {
     private static final CitizensDropIn.Progress NOTHING = new CitizensDropIn.Progress(CitizensDropIn.Phase.NONE, Optional.empty());
     private static final CitizensDropIn.Progress FOUND = new CitizensDropIn.Progress(CitizensDropIn.Phase.FOUND, Optional.of("plugins/Citizens/saves.yml"));
 
-    @Test void aFreshServerGetsCreateToolkitAndEditorInOrderWithTheDocsLast() {
+    @Test void aFreshServerGetsMakeChangeAndEditorInOrderWithTheDocsLast() {
         List<ChatLine> lines = SetupGuide.player(new SetupState(0, NOTHING, true, 0));
         assertEquals(List.of(
                 "[Animus]: Setup | no NPCs | editor not paired",
-                "1. Create an NPC where you stand [Create]",
-                "2. Set a skin and placement [Toolkit]",
-                "3. Edit NPCs in your browser [Pair editor]",
+                "1. Make an NPC [New NPC]",
+                "2. Change it [Menu]",
+                "3. Edit in your browser [Pair]",
                 "Every step in the wiki [Docs]"), plain(lines));
-        assertEquals(List.of("suggest_command /animus create guard", "run_command /animus tools", "run_command /animus editor pair",
+        assertEquals(List.of("run_command /animus gui", "run_command /animus gui", "run_command /animus editor pair",
                 "open_url https://docs.volmitsoftware.com/animus/20-tutorial-introduction"), clicks(lines));
     }
 
@@ -32,7 +32,7 @@ class SetupGuideTest {
         assertTrue(lines.size() <= SetupGuide.MAXIMUM_LINES, plain(lines).toString());
         assertEquals("1. Import plugins/Citizens/saves.yml [Preview]", plain(lines).get(1));
         assertEquals("run_command /animus import citizens preview", clicks(List.of(lines.get(1))).getFirst());
-        assertEquals("2. Create an NPC where you stand [Create]", plain(lines).get(2));
+        assertEquals("2. Make an NPC [New NPC]", plain(lines).get(2));
         assertEquals(6, lines.size());
     }
 
@@ -50,7 +50,7 @@ class SetupGuideTest {
         assertEquals(List.of(
                 "[Animus]: Setup | 3 NPCs | editor paired",
                 "1. 3 NPCs ready",
-                "2. Set a skin and placement [Toolkit]",
+                "2. Change it [Menu]",
                 "3. Web editor paired, 2 tokens",
                 "Every step in the wiki [Docs]"), plain(lines));
         assertFalse(lines.get(1).interactive());
@@ -61,7 +61,7 @@ class SetupGuideTest {
     @Test void aDisabledEditorNamesTheConfigKeyInsteadOfPairing() {
         List<ChatLine> lines = SetupGuide.player(new SetupState(0, NOTHING, false, 0));
         assertEquals("[Animus]: Setup | no NPCs | editor off", plain(lines).getFirst());
-        assertEquals("3. Web editor is off; set editor.enabled = true in config.toml", plain(lines).get(3));
+        assertEquals("3. Web editor is off; set [editor] enabled = true in config.toml", plain(lines).get(3));
         assertFalse(lines.get(3).interactive());
     }
 
@@ -69,11 +69,11 @@ class SetupGuideTest {
         assertEquals(List.of(
                 "Setup | no NPCs | editor not paired",
                 "1. Import plugins/Citizens/saves.yml: /animus import citizens preview",
-                "2. Create an NPC where you stand: /animus create guard, in game",
-                "3. Set a skin and placement: /animus tools, in game",
-                "4. Edit NPCs in your browser: /animus editor pair",
+                "2. Make an NPC: /animus gui, in game",
+                "3. Change it: /animus gui, in game",
+                "4. Edit in your browser: /animus editor pair",
                 "Every step in the wiki: https://docs.volmitsoftware.com/animus/20-tutorial-introduction"), SetupGuide.console(new SetupState(0, FOUND, true, 0)));
-        assertEquals("3. Web editor is off; set editor.enabled = true in config.toml", SetupGuide.console(new SetupState(2, NOTHING, false, 0)).get(3));
+        assertEquals("3. Web editor is off; set [editor] enabled = true in config.toml", SetupGuide.console(new SetupState(2, NOTHING, false, 0)).get(3));
     }
 
     @Test void noLineHasADash() {

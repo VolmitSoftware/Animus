@@ -24,7 +24,7 @@ python3 qa/demo/demo.py record 04-palette
 
 From the repository root. This builds the mod and `:bukkit:shadowJar`, creates the stage, installs the mod in the Prism instance, records, checks the clip, then deletes the stage and puts the Prism instance back as it was. The clip lands in `build/demo/clips/04-palette-ingame.webm`, the client's step log in `build/demo/clips/logs/`.
 
-All in-game clips: `python3 qa/demo/demo.py record --all`.
+All tutorial clips: `python3 qa/demo/demo.py record --all`. It leaves out the `ux-` sheets, which are recorded by id.
 
 Useful options:
 
@@ -53,11 +53,12 @@ Clips record one after another: one account holds one session. The client window
   "target": 52,
   "stage": {"world": "town", "console": ["animus create greeter name=greeter world=world x=-2.5 y=64 z=-9.5"]},
   "setup": [{"run": "/gamemode creative"}, {"tp": [-14, 64, 8, -90, 5]}],
-  "beats": [{"palette": true}, {"click": "Behaviors"}, {"result": "the Behaviors screen", "ms": 1800}],
+  "beats": [{"menu": true}, {"click": "Behaviors"}, {"result": "the Behaviors screen", "ms": 1800}],
   "closing": "plaza:welcome is saved: one line, one question, one answer"
 }
 ```
 
+- `id` is `NN-name` for a tutorial clip the docs embed, or `ux-NN-name` for a clip that shows a menu change for review; `ux-` clips never go to the docs.
 - `description` is the video's aria-label in the docs. `target` is the intended length in seconds.
 - `stage.world` is `town` (stand at y=64, the plaza and its cast) or `flat` (stand at y=61, empty). `stage.console` runs after the reset, before the client joins. `stage.files` writes files under `plugins/` before the server starts (on Fabric, `Animus/` lands in `config/animus/`) (JSON, text, `{"from": "stage/assets/<file>"}`, or `null` to remove a file from the reset copy). `stage.plugins` names third-party plugins. `stage.after` runs other sheets first, unrecorded, when a clip needs the state they leave. `stage.titleScreen` starts the client on the title screen instead of joining. `stage.reset: false` keeps the previous clip's world.
 - `cues` map a name to console commands. A `{"cue": "<name>"}` beat makes the player run a harmless command; the recorder sees it in the server log and sends those commands, for things only the console can do mid-clip.
@@ -74,10 +75,10 @@ Beats are one action each, plus an optional `note`. The shorthand ones:
 | `{"tp": [x, y, z, yaw, pitch]}` | Silent teleport. |
 | `{"run": "/cmd"}` | Silent command. |
 | `{"type": "/cmd"}` | Opens chat and types the command at typing speed. |
-| `{"palette": true}` | Types `/animus tools` and waits for the palette. |
+| `{"menu": true}` | Types `/animus gui` and waits for Home. |
 | `{"click": "Name"}`, `{"clickSlot": 8}` | Glides to the slot, rests, clicks. `button: "right"`, `sneak: true`, `rest`, `glide`. |
 | `{"hover": "Name", "ms": 1800}`, `{"hoverSlot": 10}` | Glides to the slot and holds so the tooltip and lore are read (default 1500 ms). |
-| `{"anvil": "text"}` | Types into the anvil and takes the result. |
+| `{"anvil": "text"}` | Types into the anvil and takes the result. `""` types nothing, which resets a number or a height. |
 | `{"screen": "Anvil"}`, `{"expect": "Saved"}` | Waits for a screen title or a chat line. |
 | `{"result": "what the viewer reads", "ms": 2000}` | Holds still on a visible result; 1500 to 2500 ms. Every clip has at least one. |
 | `{"cue": "name"}` | Fires a cue. |

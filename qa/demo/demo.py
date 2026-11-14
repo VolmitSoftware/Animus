@@ -67,7 +67,7 @@ def report_sheets(sheets: dict[str, sheet.Sheet]) -> None:
 
 
 def record(args: argparse.Namespace, sheets: dict[str, sheet.Sheet]) -> int:
-    chosen: list[sheet.Sheet] = list(sheets.values()) if args.all else [sheets[i] for i in args.ids]
+    chosen: list[sheet.Sheet] = [c for c in sheets.values() if c.tutorial] if args.all else [sheets[i] for i in args.ids]
     output: Path = args.output.resolve()
     (output / 'logs').mkdir(parents=True, exist_ok=True)
     plugin_folder: Path = args.plugins.resolve()
@@ -158,7 +158,7 @@ def main() -> int:
     commands.add_parser('list', help='list sheets with target and estimated length')
     rec: argparse.ArgumentParser = commands.add_parser('record', help='record clips')
     rec.add_argument('ids', nargs='*', help='sheet ids, e.g. 04-palette')
-    rec.add_argument('--all', action='store_true', help='record every sheet in id order')
+    rec.add_argument('--all', action='store_true', help='record every tutorial sheet in id order (not the ux- review sheets)')
     rec.add_argument('--output', type=Path, default=BUILD / 'clips')
     rec.add_argument('--player', help='the recording account name; default the active Prism account')
     rec.add_argument('--port', type=int, default=25640, help='first port to try for the stage')

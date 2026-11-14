@@ -31,15 +31,18 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /**
  * Runs {@code /animus} through VolmLib's Director, the same on every platform. Bare words bind to required parameters,
  * then to the optional ones a command lists in {@link Positional}; any other optional one is {@code key=value}. Unknown
  * keys and leftover words fail with the command's usage and the key to write.
  * Commands carry their node in {@link AnimusPermission}; help and completion show only what the actor may run, and only
- * the {@link NeedsPlugin} commands whose plugin is running.
+ * the {@link NeedsPlugin} commands whose plugin is running. A player in Simple mode gets the short help page and replies
+ * without transaction ids; see {@link ReplyActor}.
  * Call {@link #execute} and {@link #complete} on the actor's owner; commands read the actor with {@link #actor()}.
  */
 public final class AnimusDirector {
@@ -49,18 +52,35 @@ public final class AnimusDirector {
     public static final DirectorMiniMenu.Theme THEME = new DirectorMiniMenu.Theme("#FF5FA8", "#E0408C", "#E0408C", "#555555", "#AAAAAA", "#FF5FA8", "#FFB3D6", "#777777");
     private static final TextKey UNEXPECTED = TextKey.of(DirectorRuntimeMessages.UNEXPECTED_ARGUMENT.id(),
             "Unexpected \"{argument}\"; optional values are key=value");
-    /** Director's English, with Animus's own example for an unkeyed optional value and no Java type on a missing argument. */
+    /**
+     * Director's English, with Animus's own example for an unkeyed optional value, and no Java type on a missing argument
+     * or on a value that does not convert: {@code page takes a number}.
+     */
     public static final DirectorTextResolver TEXT = (TextKey key, MessageArgs arguments) -> {
+        if (key.id().equals(DirectorRuntimeMessages.CONVERSION_FAILED.id())) return converted(arguments);
         String text = DirectorTextResolver.ENGLISH.resolve(key.id().equals(UNEXPECTED.id()) ? UNEXPECTED : key, arguments);
         return key.id().equals(DirectorRuntimeMessages.MISSING_ARGUMENT.id()) ? text.replaceFirst(" \\([^()]*\\)$", "") : text;
     };
+
+    private static String converted(MessageArgs arguments) {
+        String parameter = String.valueOf(arguments.require("parameter").value()), type = String.valueOf(arguments.require("type").value());
+        return switch (type) {
+            case "int", "Integer", "long", "Long", "short", "Short", "double", "Double", "float", "Float" -> parameter + " takes a number";
+            case "boolean", "Boolean" -> parameter + " takes true or false";
+            default -> parameter + " cannot be \"" + arguments.require("value").value() + "\"";
+        };
+    }
     private static final int SUGGESTIONS = 100;
     private static final Set<String> HELP = Set.of("help", "?");
+    /** After {@code help}: every command, not the short page. */
+    private static final String ALL = "all";
     private static final ThreadLocal<CommandActor> CURRENT = new ThreadLocal<>();
     private final String label;
     private final DirectorRuntimeEngine engine;
     private final Completer values;
     private final Predicate<String> plugins;
+    private final Predicate<UUID> simple;
+    private final Supplier<RecentChanges> changes;
 
     /** Completion values for a parameter name, such as NPC ids for {@code npc}; {@code given} holds the values already typed, by name. */
     @FunctionalInterface public interface Completer { Collection<String> values(String parameter, CommandActor actor, Map<String, String> given); }
@@ -69,16 +89,25 @@ public final class AnimusDirector {
      * @param root    the {@code @Director} root command object
      * @param values  completion values for a parameter name
      * @param plugins whether a server plugin a {@link NeedsPlugin} command names is running
+     * @param simple  whether a player is in Simple mode
+     * @param changes where each player's reported changes are kept for {@code /animus undo}, read for each command
      */
-    public AnimusDirector(Object root, Completer values, Predicate<String> plugins) {
+    AnimusDirector(Object root, Completer values, Predicate<String> plugins, Predicate<UUID> simple, Supplier<RecentChanges> changes) {
         this.values = Objects.requireNonNull(values);
         this.plugins = Objects.requireNonNull(plugins);
+        this.simple = Objects.requireNonNull(simple);
+        this.changes = Objects.requireNonNull(changes);
         engine = DirectorEngineFactory.create(Objects.requireNonNull(root), DirectorEngineOptions.builder()
                 .dispatcher((DirectorExecutionMode mode, Runnable task) -> task.run())
                 .textResolver(TEXT)
                 .build());
         label = engine.getRoot().getDescriptor().getName();
     }
+
+    /** Every player reads the Advanced forms of help and replies. */
+    public AnimusDirector(Object root, Completer values, Predicate<String> plugins) { this(root, values, plugins, (UUID player) -> false, kept(new RecentChanges())); }
+
+    private static Supplier<RecentChanges> kept(RecentChanges changes) { return () -> changes; }
 
     /** As {@link #AnimusDirector(Object, Completer, Predicate)}, for values that do not depend on what else was typed. */
     public AnimusDirector(Object root, BiFunction<String, CommandActor, Collection<String>> values, Predicate<String> plugins) {
@@ -98,20 +127,24 @@ public final class AnimusDirector {
     }
 
     /**
-     * Runs the words after {@code /animus}. Help words, a group name or an unknown command show help instead. The player
-     * hears one outcome sound once the command is done, decided as Iris's {@code CommandSVC.executeCommand} decides it: a
-     * help page or a handler that returns dings; an unknown command, a refusal, a value that does not map or convert, or a
-     * handler that throws plays the failure tone. What the handler answers does not change it.
+     * Runs the words after {@code /animus}. Nothing at all, help words or a group name show help; {@code gui} alone opens
+     * the Animus menu at Home for a player who may use it, and shows the gui commands otherwise. The player hears one
+     * outcome sound: an unknown command, a value that does not map or convert, a refusal or a handler that throws plays
+     * the failure tone; a help page or a handler that answers without a refusal dings. See {@link ReplyActor}.
      */
     public void execute(CommandActor actor, String[] arguments) {
-        CommandSound outcome = CommandSound.FAILURE;
-        try { if (run(actor, arguments)) outcome = CommandSound.SUCCESS; }
-        finally { actor.play(outcome); }
+        ReplyActor replies = new ReplyActor(actor, actor.player().map(simple::test).orElse(false), changes.get());
+        boolean ran = false;
+        try { ran = run(replies, CommandWords.tokens(arguments)); }
+        finally { replies.finish(ran); }
     }
 
     /** Runs one command; true when it showed help or its handler returned. */
-    private boolean run(CommandActor actor, String[] arguments) {
-        List<String> tokens = pages(actor, ToolkitCommands.expand(CommandWords.tokens(arguments)));
+    private boolean run(ReplyActor actor, List<String> typed) {
+        if (opensMenu(actor, typed)) return run(actor, List.of(ToolkitCommands.GROUP, ToolkitCommands.HOME));
+        List<String> tokens = pages(actor, ToolkitCommands.expand(typed));
+        if (tokens.isEmpty()) return root(actor, false, 0);
+        if (HELP.contains(tokens.getFirst().toLowerCase(Locale.ROOT))) return topic(actor, tokens.subList(1, tokens.size()));
         DirectorRuntimeNode group = engine.getRoot();
         for (String token : tokens) {
             if (group.isInvocable() || token.contains("=") || HELP.contains(token.toLowerCase(Locale.ROOT))) break;
@@ -121,7 +154,7 @@ public final class AnimusDirector {
             group = next;
         }
         Optional<DirectorMiniMenu.DirectorHelpPage> help = DirectorMiniMenu.resolveHelp(engine, tokens);
-        if (help.isPresent()) { help(actor, help.get().node(), help.get().pageIndex()); return true; }
+        if (help.isPresent()) return help.get().node() == engine.getRoot() ? root(actor, true, help.get().pageIndex()) : help(actor, help.get().node(), help.get().pageIndex());
         ActorSender sender = new ActorSender(actor);
         DirectorRoute route = engine.route(DirectorInvocation.pretokenized(sender, label, tokens));
         if (!route.invocable()) return unknown(actor, route.node() == null ? engine.getRoot() : route.node(), String.join(" ", tokens));
@@ -145,6 +178,7 @@ public final class AnimusDirector {
             return false;
         }
         sender.quiet = hidden;
+        actor.needs(permission(node));
         CommandActor previous = CURRENT.get();
         CURRENT.set(actor);
         DirectorExecutionResult result;
@@ -157,12 +191,125 @@ public final class AnimusDirector {
         return false;
     }
 
-    /** A word that names nothing in {@code group}: the reason in red, then the group's usage line. */
+    /**
+     * Whether {@code typed} is {@code gui} alone, or its alias {@code guis}, which a client suggests beside it, from a
+     * player who may open the Animus menu.
+     */
+    private boolean opensMenu(CommandActor actor, List<String> typed) {
+        if (typed.size() != 1 || !menu(actor)) return false;
+        DirectorRuntimeNode gui = named(engine.getRoot(), ToolkitCommands.GUI);
+        return gui != null && gui.allNames().stream().anyMatch((String name) -> name.equalsIgnoreCase(typed.getFirst()));
+    }
+
+    /** Whether {@code /animus gui} opens the menu for the actor: a player who may run {@code tools}. */
+    private boolean menu(CommandActor actor) {
+        DirectorRuntimeNode tools = named(engine.getRoot(), ToolkitCommands.GROUP);
+        return actor.player().isPresent() && tools != null && allowed(actor, tools) && needs(tools).isEmpty();
+    }
+
+    /** Whether {@code node} is the root's {@code gui} group, which a player who may open the menu runs alone without {@code animus.gui}. */
+    private boolean menuWord(CommandActor actor, DirectorRuntimeNode node) {
+        return node.getParent() == engine.getRoot() && node.getDescriptor().getName().equalsIgnoreCase(ToolkitCommands.GUI) && menu(actor);
+    }
+
+    /** The root help: the short page for a player in Simple mode unless {@code all}, else page {@code index} of every command. */
+    private boolean root(CommandActor actor, boolean all, int index) {
+        DirectorRuntimeNode root = engine.getRoot();
+        if (all || actor.player().isEmpty() || !simple.test(actor.player().get())) return help(actor, root, index);
+        if (!visible(actor, root)) { actor.tell(Palette.error(refused(root))); return true; }
+        List<DirectorRuntimeNode> common = new ArrayList<>();
+        for (String path : AnimusHelp.COMMON) {
+            if (path.equals(ToolkitCommands.GUI) && !menu(actor)) continue;
+            path(List.of(path.split(" "))).filter((DirectorRuntimeNode node) -> visible(actor, node)).ifPresent(common::add);
+        }
+        actor.help(AnimusHelp.common(root, common));
+        return true;
+    }
+
+    /**
+     * {@code /animus help} and what follows it: nothing is the root help, {@code all} every command, a group its page, a
+     * command its description and usage line; anything else says there is no such help. For a player who may open the
+     * menu, {@code gui} answers as a command does: what {@code /animus gui} does.
+     */
+    private boolean topic(CommandActor actor, List<String> words) {
+        if (words.isEmpty()) return root(actor, false, 0);
+        if (words.size() == 1 && words.getFirst().equalsIgnoreCase(ALL)) return root(actor, true, 0);
+        if (opensMenu(actor, words)) return menuHelp(actor);
+        Optional<DirectorRuntimeNode> found = path(words);
+        if (found.isEmpty() || hidden(found.get())) {
+            actor.rich(ChatLine.error("No help for \"" + String.join(" ", words) + "\"").run("Help", "/" + label + " help", "Show the commands"));
+            return true;
+        }
+        DirectorRuntimeNode node = found.get();
+        if (needs(node).isPresent()) return missing(actor, node);
+        if (!node.isInvocable()) return help(actor, node, 0);
+        if (!allowed(actor, node)) { actor.tell(Palette.error(refused(node))); return true; }
+        actor.tell(node.path().substring(label.length() + 2) + ": " + AnimusHelp.description(node));
+        actor.rich(ChatLine.of(Palette.PREFIX + "&7Usage: &f" + usage(node)).docs(AnimusHelp.topic(node).docs()));
+        return true;
+    }
+
+    /** {@code /animus help gui}: its description and usage, then {@code [GUI commands]} for a player who may run them. */
+    private boolean menuHelp(CommandActor actor) {
+        String gui = "/" + label + " " + ToolkitCommands.GUI;
+        actor.tell(ToolkitCommands.GUI + ": " + AnimusHelp.MENU);
+        ChatLine usage = ChatLine.of(Palette.PREFIX + "&7Usage: &f" + gui).docs(DocsLink.TOOLS);
+        DirectorRuntimeNode group = named(engine.getRoot(), ToolkitCommands.GUI);
+        if (group != null && allowed(actor, group)) usage.run("GUI commands", gui + " help", "Show the chest GUI commands");
+        actor.rich(usage);
+        return true;
+    }
+
+    /** The node {@code words} name from the root, by name or alias; the words after a command are its values and are ignored. */
+    private Optional<DirectorRuntimeNode> path(List<String> words) {
+        DirectorRuntimeNode cursor = engine.getRoot();
+        for (String word : words) {
+            if (cursor.isInvocable()) break;
+            cursor = named(cursor, word);
+            if (cursor == null) return Optional.empty();
+        }
+        return cursor == engine.getRoot() ? Optional.empty() : Optional.of(cursor);
+    }
+
+    /**
+     * A word that names nothing in {@code group}: the reason in red with the nearest command when one is close, as a chip
+     * that fills it in, then {@code [Help]} for the group.
+     */
     private boolean unknown(CommandActor actor, DirectorRuntimeNode group, String word) {
         DirectorRuntimeNode shown = group.isInvocable() && group.getParent() != null ? group.getParent() : group;
-        actor.tell(Palette.error("Unknown command \"" + word + "\" in " + shown.path()));
-        actor.rich(ChatLine.of(Palette.PREFIX + "&7Usage: &f" + shown.path() + " <command>").docs(DocsLink.COMMANDS));
+        ChatLine line = ChatLine.error("Unknown command \"" + word + "\"" + (shown.getParent() == null ? "" : " in " + shown.path()));
+        List<String> names = shown.getChildren().stream().filter((DirectorRuntimeNode child) -> visible(actor, child))
+                .map((DirectorRuntimeNode child) -> child.getDescriptor().getName()).toList();
+        nearest(names, word).ifPresent((String name) -> line.text("&c. Did you mean ")
+                .command(name, Palette.PINK, shown.path() + " " + name + " ", false, "Click to put it in your chat box").text("&c?"));
+        actor.rich(line.run("Help", shown.path() + " help", "Show the commands"));
         return false;
+    }
+
+    /**
+     * The name closest to {@code typed}: within two edits and closer than the word is long, else the shortest name it
+     * begins, for two letters or more; empty when none is close.
+     */
+    static Optional<String> nearest(List<String> names, String typed) {
+        String word = typed.toLowerCase(Locale.ROOT);
+        Optional<String> close = names.stream().filter((String name) -> { int edits = edits(name, word); return edits <= 2 && edits < word.length(); })
+                .min(java.util.Comparator.comparingInt((String name) -> edits(name, word)).thenComparing(java.util.Comparator.naturalOrder()));
+        if (close.isPresent() || word.length() < 2) return close;
+        return names.stream().filter((String name) -> name.startsWith(word))
+                .min(java.util.Comparator.comparingInt(String::length).thenComparing(java.util.Comparator.naturalOrder()));
+    }
+
+    /** Levenshtein distance. */
+    private static int edits(String from, String to) {
+        int[] previous = new int[to.length() + 1], current = new int[to.length() + 1];
+        for (int column = 0; column <= to.length(); column++) previous[column] = column;
+        for (int row = 1; row <= from.length(); row++) {
+            current[0] = row;
+            for (int column = 1; column <= to.length(); column++)
+                current[column] = Math.min(Math.min(current[column - 1], previous[column]) + 1, previous[column - 1] + (from.charAt(row - 1) == to.charAt(column - 1) ? 0 : 1));
+            int[] swap = previous; previous = current; current = swap;
+        }
+        return previous[to.length()];
     }
 
     /** A command whose plugin is not running: only that it needs the plugin. */
@@ -290,24 +437,28 @@ public final class AnimusDirector {
         return "No permission: " + permission(node) + "; ask an operator to grant it";
     }
 
-    /** One page of help for a group, listing what the actor may run, by topic at the root. */
-    public void help(CommandActor actor, DirectorRuntimeNode node, int page) {
+    /** One page of help for a group, listing what the actor may run, by topic at the root. True, after a refusal too. */
+    private boolean help(CommandActor actor, DirectorRuntimeNode node, int page) {
         DirectorRuntimeNode group = node.isInvocable() && node.getParent() != null ? node.getParent() : node;
-        if (!visible(actor, group)) { actor.tell(Palette.error(refused(group))); return; }
+        if (!visible(actor, group)) { actor.tell(Palette.error(refused(group))); return true; }
         List<DirectorRuntimeNode> entries = group.getChildren().stream().filter((DirectorRuntimeNode child) -> visible(actor, child)).toList();
         actor.help(AnimusHelp.page(group, entries, page));
+        return true;
     }
 
     /**
      * Suggestions for the word being typed, the last of {@code arguments}. Group and command names come first; inside a
      * command, bare values only for the next required parameter, then vanilla-style coordinates where it takes them, and
-     * {@code key=} for the optional ones. A player hears the typing chime on every request, as in every Volmit plugin.
+     * {@code key=} for the optional ones. After {@code help}, names only, and {@code all}. A player hears the typing chime
+     * on every request, as in every Volmit plugin.
      */
     public List<String> complete(CommandActor actor, String[] arguments) {
         if (actor.player().isPresent()) actor.play(CommandSound.TYPING);
         List<String> words = new ArrayList<>(List.of(arguments));
         String current = words.isEmpty() ? "" : words.removeLast();
         words.removeIf(String::isEmpty);
+        boolean help = !words.isEmpty() && HELP.contains(words.getFirst().toLowerCase(Locale.ROOT));
+        if (help) words.removeFirst();
         DirectorRuntimeNode cursor = engine.getRoot();
         int index = 0;
         while (index < words.size() && !cursor.isInvocable()) {
@@ -319,10 +470,11 @@ public final class AnimusDirector {
             List<String> names = new ArrayList<>();
             for (DirectorRuntimeNode child : cursor.getChildren())
                 if (visible(actor, child) && starts(child.getDescriptor().getName(), current)) names.add(child.getDescriptor().getName());
+            if (help && cursor == engine.getRoot() && starts(ALL, current)) names.add(ALL);
             names.sort(String.CASE_INSENSITIVE_ORDER);
             return names;
         }
-        if (!allowed(actor, cursor)) return List.of();
+        if (help || !allowed(actor, cursor)) return List.of();
         return parameters(actor, cursor, words.subList(index, words.size()), current);
     }
 
@@ -448,11 +600,11 @@ public final class AnimusDirector {
 
     /**
      * Whether help and completion list the node: its plugin runs, and the actor may run it, or for a group, something
-     * inside it.
+     * inside it; {@code gui} for every player who may open the menu with it.
      */
     public boolean visible(CommandActor actor, DirectorRuntimeNode node) {
         if (node.getDescriptor().isHidden() || needs(node).isPresent()) return false;
-        if (allowed(actor, node)) return true;
+        if (allowed(actor, node) || menuWord(actor, node)) return true;
         if (node.isInvocable()) return false;
         for (DirectorRuntimeNode child : node.getChildren()) if (visible(actor, child)) return true;
         return false;

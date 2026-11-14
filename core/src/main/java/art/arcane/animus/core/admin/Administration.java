@@ -50,7 +50,7 @@ public final class Administration {
     public List<String> status(String editorListener) {
         int problems = runtime.npcs().diagnostics().size() + runtime.npcs().groupProblems().size(), groups = runtime.npcs().groups().groups().size();
         String headline = "v" + art.arcane.animus.core.BuildIdentity.VERSION + " on " + runtime.environment().server() + " " + runtime.environment().minecraftVersion()
-                + " | " + runtime.npcs().all().size() + " NPCs" + (groups == 0 ? "" : ", " + groups + " groups")
+                + " | " + runtime.npcs().all().size() + " NPCs" + (groups == 0 ? "" : ", " + groups + " trait groups")
                 + (problems == 0 ? "" : " | " + problems + " file problem" + (problems == 1 ? "" : "s") + ", see /animus validate");
         return List.of(headline, settingsInEffect(editorListener), runtime.status());
     }
@@ -65,11 +65,11 @@ public final class Administration {
      * from when trait groups apply, and the group problem, if any.
      */
     public record Inspection(NpcDefinition effective, String stored, String merged, List<String> provenance, Optional<String> problem) {
-        /** {@code id | name | type | revision | spawned or dormant | groups} for the head line. */
+        /** {@code id | name | type | revision | spawned or despawned | trait groups} for the head line. */
         public String summary() {
             JsonObject data = effective.json();
             return effective.qualifiedId() + " | " + effective.name() + " | " + text(data, "type") + " | rev " + effective.revision()
-                    + " | " + (effective.spawned() ? "spawned" : "dormant") + (effective.groups().isEmpty() ? "" : " | groups " + String.join(", ", effective.groups()));
+                    + " | " + (effective.spawned() ? "spawned" : "despawned") + (effective.groups().isEmpty() ? "" : " | trait groups " + String.join(", ", effective.groups()));
         }
 
         /** {@code world x y z} of the definition's position, or empty when it has none. */
@@ -103,10 +103,10 @@ public final class Administration {
         return create(id, type, world, x, y, z, group, name, Optional.empty());
     }
 
-    /** Saves a new dormant NPC facing south; {@code owner} is the player who made it, written as {@code owner} and editable afterwards. */
+    /** Saves a new despawned NPC facing south; {@code owner} is the player who made it, written as {@code owner} and editable afterwards. */
     public String create(String id, String type, String world, double x, double y, double z, String group, String name, Optional<UUID> owner) throws IOException {
         Creation creation = creation(id, type, world, new art.arcane.animus.core.virtual.Vec3(x, y, z), 0, group, name, owner, false);
-        return "Created dormant " + creation.definition().id() + "; tx " + runtime.npcs().apply(creation.draft());
+        return "Created " + creation.definition().id() + ", despawned; tx " + runtime.npcs().apply(creation.draft());
     }
 
     /** A new NPC's checked definition and the draft that writes it. */
@@ -317,7 +317,7 @@ public final class Administration {
         JsonObject document = draft.document();
         document.addProperty("spawned", spawn);
         String tx = runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
-        return (spawn ? "Spawn requested for " : "Despawn requested for ") + id + "; tx " + tx + (spawn ? "" : "; /animus spawn " + id + " brings it back");
+        return (spawn ? "Spawn requested for " : "Despawned ") + id + "; tx " + tx;
     }
 
     public String duplicate(String id, String copy) throws IOException {
@@ -326,7 +326,7 @@ public final class Administration {
         object.addProperty("id", copy); object.addProperty("uuid", UUID.randomUUID().toString());
         object.addProperty("revision", 1); object.addProperty("spawned", false); object.remove("migration");
         NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(object));
-        return "Cloned " + id + " as dormant " + copy + "; tx " + runtime.npcs().apply(new NpcRepository.Draft(definition.path(), "missing", 0, object));
+        return "Cloned " + id + " as " + copy + ", despawned; tx " + runtime.npcs().apply(new NpcRepository.Draft(definition.path(), "missing", 0, object));
     }
 
     public String delete(String id) throws IOException { return "Deleted " + id + "; tx " + runtime.npcs().delete(id); }
@@ -369,7 +369,7 @@ public final class Administration {
                 // Behaviors and shops check the command allow-list when they load, so the changed list applies once they load again.
                 runtime.catalogs().reload(new CatalogChange(java.util.Set.of(DocumentKind.BEHAVIOR, DocumentKind.SHOP, DocumentKind.INVENTORY), java.util.Set.of(), false));
             }
-            catch (IOException | RuntimeException failure) { lines.add("config.toml changed but not applied: " + failure.getMessage() + "; it applies at the next hotload or restart"); }
+            catch (IOException | RuntimeException failure) { lines.add("config.toml changed but not applied: " + failure.getMessage() + "; it applies when the file is saved again, or at restart"); }
         }
         return lines;
     }
@@ -482,8 +482,8 @@ public final class Administration {
             if (!hash.equals(JsonDocuments.hash(change.content()))) undone = false;
             if (later == null && !hash.equals(change.expectedHash())) later = change.path();
         }
-        if (undone) throw new IOException("Transaction " + ChatLine.shortId(full) + " is already rolled back; nothing changed");
-        if (later != null) throw new IOException("Cannot roll back " + ChatLine.shortId(full) + ": " + later + " changed after it; roll back the later change first");
+        if (undone) throw new IOException("Change " + ChatLine.shortId(full) + " is already undone; nothing changed");
+        if (later != null) throw new IOException("Cannot undo " + ChatLine.shortId(full) + ": " + later + " changed after it; undo the later change first");
     }
 
     /**

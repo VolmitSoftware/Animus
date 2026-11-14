@@ -5,23 +5,19 @@
   "target": 15,
   "stage": {
     "world": "town",
-    "after": ["23-conversation-editor"],
-    "console": [
-      "animus edit greeter {\"name\":\"Town Greeter\",\"behaviors\":[\"plaza:welcome\"]}",
-      "animus behaviors reload"
-    ]
+    "after": ["23-conversation-editor"]
   },
   "setup": [
     {"run": "/gamemode creative"},
     {"hotbar": 8},
     {"tp": [-14, 64, 8, -90, 5]},
-    {"perspective": "third-front"},
     {"wait": 600},
     {"clearChat": true},
     {"wait": 3500}
   ],
   "beats": [
-    {"wait": 1100},
+    {"perspective": "third-front"},
+    {"wait": 2200, "note": "the owner's skin"},
     {"tp": [-2.5, 64, -6.5, 180, 8]},
     {"perspective": "first"},
     {"wait": 300},
@@ -29,12 +25,14 @@
     {"wait": 400},
     {"useItem": true},
     {"expect": "Where is the bakery", "timeout": 9000},
-    {"result": "Town Greeter says the welcome line and offers [ Where is the bakery? ]", "ms": 1500},
+    {"result": "the greeter says the welcome line and asks Choose one., offering Where is the bakery?", "ms": 1500},
     {"hoverChat": "Where is the bakery", "ms": 1500},
     {"clickChat": "Where is the bakery"},
     {"expect": "lanterns", "timeout": 9000},
-    {"wait": 1000},
-    {"result": "Town Greeter answers: Follow the lanterns to the stall.", "ms": 2500}
+    {"wait": 600},
+    {"closeScreen": true},
+    {"wait": 400},
+    {"result": "the greeter answers: Follow the lanterns north.", "ms": 2500}
   ],
   "closing": "The greeter asks its question and answers the choice in chat"
 }

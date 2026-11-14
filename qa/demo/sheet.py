@@ -19,7 +19,11 @@ WORLDS: tuple[str, ...] = ('town', 'flat')
 PLATFORMS: tuple[str, ...] = ('paper', 'fabric')
 PLACEHOLDERS: tuple[str, ...] = ('{player}', '{address}')
 PERSPECTIVES: tuple[str, ...] = ('first', 'third-back', 'third-front')
-ID_PATTERN: re.Pattern[str] = re.compile(r'^\d\d[a-z]?-[a-z0-9-]+$')
+ID_PATTERN: re.Pattern[str] = re.compile(r'^(ux-)?\d\d[a-z]?-[a-z0-9-]+$')
+# Sheets for reviewing menu changes; recorded on request, never part of the tutorial set the docs embed.
+REVIEW_PREFIX: str = 'ux-'
+MENU_COMMAND: str = '/animus gui'
+HOME_TITLE: str = 'Animus'
 TYPING_SECONDS_PER_CHAR: float = 0.05
 TYPED_HOLD_SECONDS: float = 1.0
 
@@ -28,7 +32,8 @@ ACTIONS: dict[str, set[str]] = {
     'tp': set(),
     'run': set(),
     'type': {'tab', 'send', 'hold'},
-    'palette': set(),
+    # The Animus menu: types /animus gui and waits for Home.
+    'menu': set(),
     'click': {'button', 'sneak', 'rest', 'glide'},
     'clickSlot': {'button', 'sneak', 'rest', 'glide'},
     'hover': {'ms', 'glide'},
@@ -149,6 +154,11 @@ class Sheet:
         return int(dict(self.data.get('pace', {})).get('clickRest', CLICK_REST_MS))
 
     @property
+    def tutorial(self) -> bool:
+        """Whether the sheet belongs to the tutorial set the docs embed, which record --all records."""
+        return not self.id.startswith(REVIEW_PREFIX)
+
+    @property
     def output_name(self) -> str:
         return f'{self.id}-ingame.webm'
 
@@ -193,7 +203,7 @@ def problems(loaded: Sheet, known_ids: set[str]) -> list[str]:
     if loaded.id and loaded.id != name:
         problem(f'id {loaded.id} does not match the file name')
     if loaded.id and not ID_PATTERN.match(loaded.id):
-        problem(f'id {loaded.id} must look like 04-palette')
+        problem(f'id {loaded.id} must look like 04-palette or ux-01-first-menu')
     target: Any = data.get('target')
     if not isinstance(target, (int, float)) or not 5 <= target <= 90:
         problem('target must be the intended length in seconds (5 to 90)')
@@ -311,6 +321,11 @@ def _text(value: Any, _: dict[str, Any]) -> str | None:
     return None if isinstance(value, str) and value else 'needs text'
 
 
+def _answer(value: Any, _: dict[str, Any]) -> str | None:
+    """An anvil answer may be empty: typing nothing resets a number or a height to its default."""
+    return None if isinstance(value, str) else 'needs text, empty to type nothing'
+
+
 def _command(value: Any, _: dict[str, Any]) -> str | None:
     return None if isinstance(value, str) and value.startswith('/') else 'needs a command starting with /'
 
@@ -371,8 +386,8 @@ def _cursor(value: Any, _: dict[str, Any]) -> str | None:
 
 
 _VALUE_CHECKS: dict[str, Callable[[Any, dict[str, Any]], str | None]] = {
-    'tp': _tp, 'run': _command, 'type': _text, 'palette': _true, 'click': _text, 'clickSlot': _slot,
-    'hover': _text, 'hoverSlot': _slot, 'anvil': _text, 'screen': _text, 'expect': _text, 'result': _result,
+    'tp': _tp, 'run': _command, 'type': _text, 'menu': _true, 'click': _text, 'clickSlot': _slot,
+    'hover': _text, 'hoverSlot': _slot, 'anvil': _answer, 'screen': _text, 'expect': _text, 'result': _result,
     'cue': _text, 'wait': _millis, 'perspective': _perspective, 'hotbar': _hotbar, 'look': _look, 'lookAt': _look_at,
     'lookAtEntity': _text, 'attackTarget': _true, 'useItem': _true, 'sneakHold': _flag, 'sprint': _flag, 'move': _move,
     'key': _text, 'closeScreen': _true, 'clearChat': _true, 'clickChat': _text, 'hoverChat': _text, 'clickButton': _text,
@@ -395,8 +410,8 @@ def expand(beat: dict[str, Any]) -> list[dict[str, Any]]:
         return [{'chat': value, 'typing': False}]
     if action == 'type':
         return [{'chat': value, 'typing': True, **body}]
-    if action == 'palette':
-        return [{'chat': '/animus tools', 'typing': True}, {'waitForScreen': 'Animus', 'timeout': SCREEN_TIMEOUT_MS}, {'wait': 350}]
+    if action == 'menu':
+        return [{'chat': MENU_COMMAND, 'typing': True}, {'waitForScreen': HOME_TITLE, 'timeout': SCREEN_TIMEOUT_MS}, {'wait': 350}]
     if action == 'click':
         return [{'clickSlotNamed': value, **body}]
     if action == 'hover':
@@ -475,8 +490,8 @@ def _beat_seconds(beat: dict[str, Any], click_rest: int) -> float:
         return beat.get('ms', RESULT_MS) / 1000.0
     if action == 'type':
         return len(value) * TYPING_SECONDS_PER_CHAR + 0.15 + TYPED_HOLD_SECONDS
-    if action == 'palette':
-        return len('/animus tools') * TYPING_SECONDS_PER_CHAR + 0.15 + TYPED_HOLD_SECONDS + 0.35 + 0.3
+    if action == 'menu':
+        return len(MENU_COMMAND) * TYPING_SECONDS_PER_CHAR + 0.15 + TYPED_HOLD_SECONDS + 0.35 + 0.3
     if action == 'anvil':
         return len(value) * TYPING_SECONDS_PER_CHAR + 0.2 + TYPED_HOLD_SECONDS + glide + click_rest / 1000.0 + 0.25
     if action in ('click', 'clickSlot', 'clickChat', 'clickButton'):

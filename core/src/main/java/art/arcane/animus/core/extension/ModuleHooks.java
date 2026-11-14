@@ -163,6 +163,8 @@ public final class ModuleHooks {
                 String text = call(hook.owner(), "economy", () -> hook.hook().format(amount), amount.toPlainString());
                 return text.length() > 128 ? amount.toPlainString() : text;
             }
+            /** A module's economy names no money; the platform's names its own. */
+            @Override public Optional<String> currency() { return hook() == null ? platform.currency() : Optional.empty(); }
         };
     }
 

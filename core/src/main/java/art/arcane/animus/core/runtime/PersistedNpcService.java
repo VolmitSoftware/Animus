@@ -95,7 +95,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                            int simulationPerTick, int queuePerViewer, int degradedIntervalTicks) {
         public static final Settings DEFAULT = from(NpcRuntimeSettings.DEFAULT);
         public Settings {
-            if (!Double.isFinite(viewDistance) || viewDistance < 8 || viewDistance > 256 || maximumVisible < 1 || maximumVisible > 128
+            if (!Double.isFinite(viewDistance) || viewDistance < 8 || viewDistance > 256 || maximumVisible < 1 || maximumVisible > NpcRuntimeSettings.MAXIMUM_VISIBLE
                     || maximumViewers < 1 || maximumViewers > 1024 || updatesPerTick < 1 || updatesPerTick > 64
                     || packetsPerTick < 1 || packetsPerTick > 1024 || pendingSpawnsPerViewer < 1 || pendingSpawnsPerViewer > 64
                     || lookUpdatesPerTick < 1 || lookUpdatesPerTick > 1024 || simulationPerTick < 16 || simulationPerTick > 65536
@@ -116,6 +116,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     static final int MAX_ACTIVE = 10_000;
     private static final int RECONCILE_WORK = 64;
     static final int MAX_ISSUED_IDS = 8192;
+    /**
+     * Each viewer's session guard. It allows the most {@code maximumVisible} may be, not the configured cap: the presenter
+     * holds a viewer to that cap before each spawn, and a cap lowered by a hotload must not refuse a spawn already sent.
+     */
+    static final ViewerSession.Limits VIEWER_LIMITS = new ViewerSession.Limits(NpcRuntimeSettings.MAXIMUM_VISIBLE, MAX_ISSUED_IDS, 100_000_000L, 4.5);
     /** How long a body that died stays shown lying down, as a vanilla death does. */
     private static final int DYING_TICKS = 20;
     private static final String DISABLED = "disabled in config.toml";
@@ -240,7 +245,6 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private void adoptSettings() {
         PluginSettings next = pendingSettings.getAndSet(null);
         if (next == null) return;
-        Settings previous = settings;
         settings = Settings.from(next.npcs());
         pressure.interval(settings.degradedIntervalTicks());
         views.limits(settings);
@@ -250,8 +254,6 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (rigSettings.enabled() != next.rigs().enabled()) rigs.toggled();
         rigSettings = next.rigs();
         recordingSettings = next.recordings();
-        if (previous.maximumVisible() != settings.maximumVisible())
-            for (ViewerPresenter<P, I>.Viewer viewer : views.viewers.values()) viewer.guard.limits(viewerLimits());
         if (!settings.enabled() && unavailable != DISABLED) suspend();
         else if (settings.enabled() && unavailable == DISABLED) bind();
     }
@@ -277,7 +279,6 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         packets = null;
         unavailable = DISABLED;
     }
-    ViewerSession.Limits viewerLimits() { return new ViewerSession.Limits(settings.maximumVisible(), MAX_ISSUED_IDS, 100_000_000L, 4.5); }
     /** Why the runtime cannot serve a request now. */
     private String down() { return "NPC runtime " + (closed ? "closed" : unavailable); }
     /** The NPC's current value, or null when it is not in the runtime. */
@@ -447,20 +448,22 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     }
     /**
      * Moves an active NPC at once onto clear, supported, loaded ground, in its own world or another loaded one; false
-     * leaves it in place. An NPC that carries a rider or rides another body stays where it is.
+     * leaves it in place. The destination may name its world as an NPC file does or by runtime key. An NPC that carries a
+     * rider or rides another body stays where it is.
      */
     public boolean relocate(String id, WorldPosition destination) {
         Optional<CombatBinding> binding = combat(id);
-        if (binding.isEmpty() || !binding.get().state().snapshot().active() || !host.worldLoaded(destination.world())) return false;
+        String world = world(destination.world());
+        if (binding.isEmpty() || !binding.get().state().snapshot().active() || world == null || !host.worldLoaded(world)) return false;
         UUID uuid = binding.get().state().snapshot().npcId();
         if (mountRuntime.vehicleOf(id) != null || riders.riderOf(uuid) != null || mountRuntime.carries(id)) return false;
         int chunkX = Math.floorDiv((int) Math.floor(destination.point().x()), 16), chunkZ = Math.floorDiv((int) Math.floor(destination.point().z()), 16);
-        if (!host.chunkLoaded(destination.world(), chunkX, chunkZ)) return false;
+        if (!host.chunkLoaded(world, chunkX, chunkZ)) return false;
         Hitbox box = binding.get().state().snapshot().bounds();
         MotionValidator.Result clear = MotionValidator.check(destination.point(), destination.point(), RouteRules.hullWidth(box.max().x() - box.min().x()),
-                RouteRules.hullHeight(box.max().y() - box.min().y()), MotionValidator.Medium.GROUND, true, RouteRules.MOTION_CELLS, host.collision(destination.world()));
+                RouteRules.hullHeight(box.max().y() - box.min().y()), MotionValidator.Medium.GROUND, true, RouteRules.MOTION_CELLS, host.collision(world));
         if (!clear.clear()) return false;
-        binding.get().changed().accept(binding.get().state().move(destination));
+        binding.get().changed().accept(binding.get().state().move(new WorldPosition(world, destination.point())));
         return true;
     }
     /**

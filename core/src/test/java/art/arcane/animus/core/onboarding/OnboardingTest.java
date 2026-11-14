@@ -35,8 +35,10 @@ class OnboardingTest {
             Onboarding onboarding = new Onboarding(store, npcs, host());
             UUID admin = UUID.randomUUID(), other = UUID.randomUUID();
             ChatLine hint = onboarding.joinHint(admin).orElseThrow();
-            assertEquals("[Animus]: Animus is running with no NPCs yet [Setup] [Dismiss]", SetupGuideTest.plain(List.of(hint)).getFirst());
-            assertEquals(List.of("run_command /animus setup", "run_command /animus setup dismiss=true"), SetupGuideTest.clicks(List.of(hint)));
+            assertEquals("[Animus]: Ready. /animus gui opens the menu [Menu] [Dismiss]", SetupGuideTest.plain(List.of(hint)).getFirst());
+            assertTrue(art.arcane.animus.core.text.ChatWidth.of(SetupGuideTest.plain(List.of(hint)).getFirst()) <= art.arcane.animus.core.text.ChatWidth.DEFAULT,
+                    "one line at the default chat width");
+            assertEquals(List.of("run_command /animus gui", "run_command /animus setup dismiss=true"), SetupGuideTest.clicks(List.of(hint)));
             assertTrue(onboarding.joinHint(admin).isEmpty(), "one hint per admin per server run");
             assertTrue(onboarding.joinHint(other).isPresent());
             assertFalse(onboarding.dismissed());

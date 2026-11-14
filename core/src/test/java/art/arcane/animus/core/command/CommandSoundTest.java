@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Random;
 import org.junit.jupiter.api.Test;
 
-/** The sounds {@code /animus} plays: Iris's typing chime, and its success ding or failure tone decided by how the handler finished. */
+/** The sounds {@code /animus} plays: Iris's typing chime, and one success ding or failure tone decided by how the command ended and what it answered. */
 class CommandSoundTest {
     /** Records the sounds a player would hear. */
     static class Listener extends AnimusDirectorTest.Actor {
@@ -30,6 +30,8 @@ class CommandSoundTest {
         @Director void status() { AnimusDirector.actor().tell("Behavior run: FAILED | npc=guard"); }
         @Director void twice() { CommandActor actor = AnimusDirector.actor(); actor.tell(Palette.success("one")); actor.tell(Palette.error("two")); }
         @Director void later() { CommandActor actor = AnimusDirector.actor(); actor.reply(() -> actor.tell(Palette.error("Disk full"))); }
+        @Director void saved() { CommandActor actor = AnimusDirector.actor(); actor.reply(() -> actor.tell(Palette.success("Saved"))); }
+        @Director void quiet() {}
         @Director void take(@Param(name = "npc") String npc) { AnimusDirector.actor().tell("Took " + npc); }
         @Director void count(@Param(name = "amount") int amount) { AnimusDirector.actor().tell("Counted " + amount); }
         @Director void broken() { throw new IllegalStateException("boom"); }
@@ -60,17 +62,22 @@ class CommandSoundTest {
         }
     }
 
-    @Test void aHandlerThatCompletesDingsWhateverItAnswers() {
+    @Test void aHandlerThatAnswersDingsUnlessItRefused() {
         assertEquals(List.of(CommandSound.SUCCESS), run("ok"));
-        assertEquals(List.of(CommandSound.SUCCESS), run("refuse"), "as in Iris, a red answer from a finished handler still dings");
+        assertEquals(List.of(CommandSound.FAILURE), run("refuse"), "a red answer is a refusal");
         assertEquals(List.of(CommandSound.SUCCESS), run("status"));
-        assertEquals(List.of(CommandSound.SUCCESS), run("twice"), "one sound per command");
+        assertEquals(List.of(CommandSound.FAILURE), run("twice"), "one sound per command, low when any answer was red");
         assertEquals(List.of(CommandSound.SUCCESS), run("take", "guard"));
+    }
+
+    @Test void anAnswerFromLaterPlaysTheSoundWhenItArrives() {
         Listener player = new Listener(AnimusDirector.ADMIN);
         director.execute(player, new String[]{"later"});
-        assertEquals(List.of(CommandSound.SUCCESS), player.heard, "the ding plays when the handler returns, before a later answer");
+        assertTrue(player.heard.isEmpty(), "nothing yet: the answer comes from the file lane");
         player.later.forEach(Runnable::run);
-        assertEquals(List.of(CommandSound.SUCCESS), player.heard, "a later answer plays nothing");
+        assertEquals(List.of(CommandSound.FAILURE), player.heard, "a refusal from later sounds low");
+        assertEquals(List.of(CommandSound.SUCCESS), run("saved"));
+        assertEquals(List.of(), run("quiet"), "a handler that answers nothing, such as one that opens a window, plays nothing");
     }
 
     @Test void aHandlerThatThrowsOrCannotRunSoundsLow() {
@@ -86,6 +93,9 @@ class CommandSoundTest {
 
     @Test void helpPagesDing() {
         assertEquals(List.of(CommandSound.SUCCESS), run(), "the root help");
+        Listener visitor = new Listener();
+        director.execute(visitor, new String[0]);
+        assertEquals(List.of(CommandSound.FAILURE), visitor.heard, "help with nothing the player may run is a refusal");
         assertEquals(List.of(CommandSound.SUCCESS), run("help=2"), "a page turn");
         assertEquals(List.of(CommandSound.SUCCESS), run("page=2"), "a page bar click");
     }

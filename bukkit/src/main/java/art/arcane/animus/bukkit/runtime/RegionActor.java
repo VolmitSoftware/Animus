@@ -363,13 +363,13 @@ final class RegionActor implements RegionOwner.Body {
         publish(true);
     }
     @Override public void suspended(String reason) {
-        riding.end("npc-dormant", ActorRide.Exit.RESTORE_POSITION);
+        riding.end("npc-waiting", ActorRide.Exit.RESTORE_POSITION);
         closeCombat();
         cancelPlan();
         doors.closeAll(host.doors);
         routeSleeping = false;
-        if (routeWatch != null) stopRoute("unavailable: NPC became dormant because " + reason);
-        else if (route != null) routeStatus(route, "suspended", "dormant: " + reason);
+        if (routeWatch != null) stopRoute("unavailable: NPC stopped being active because " + reason);
+        else if (route != null) routeStatus(route, "suspended", "not active: " + reason);
         host.transfers.remove(this);
         host.index.remove(uuid);
         host.anchor(this, anchored, null); anchored = null;

@@ -3,6 +3,7 @@ package art.arcane.animus.mod.mixin;
 import art.arcane.animus.mod.ModHooks;
 import net.minecraft.network.protocol.game.ServerboundPunchPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
+import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.world.InteractionHand;
@@ -13,7 +14,9 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * The arm swings and block use performance recordings keep, on the owner pass of each packet. 26.3 sends the main-arm swing as a punch with no hand.
+ * The arm swings and block use recordings keep, and the item use the wand opens the menu with, on the owner pass of
+ * each packet. A wand click on a block opens the menu where vanilla applies it; see {@code PlayerGameModeHooks}. 26.3
+ * sends the main-arm swing as a punch with no hand.
  */
 @Mixin(ServerGamePacketListenerImpl.class)
 public abstract class RecordingPacketHooks {
@@ -27,5 +30,10 @@ public abstract class RecordingPacketHooks {
     @Inject(method = "handleUseItemOn", at = @At("HEAD"))
     private void animus$useOn(ServerboundUseItemOnPacket packet, CallbackInfo callback) {
         if (ModHooks.owner(player)) ModHooks.usedBlock(player, packet.hand(), packet.hitResult().getBlockPos());
+    }
+
+    @Inject(method = "handleUseItem", at = @At("HEAD"))
+    private void animus$use(ServerboundUseItemPacket packet, CallbackInfo callback) {
+        if (ModHooks.owner(player)) ModHooks.usedItem(player);
     }
 }

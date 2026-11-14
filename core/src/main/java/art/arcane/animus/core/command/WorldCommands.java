@@ -28,12 +28,12 @@ final class WorldCommands {
         catch (RuntimeException refused) { actor.tell(Palette.error("Combat: " + refused.getMessage())); }
     }
 
-    @Director(name = "navigation", description = "Send NPCs somewhere, turn them, watch or stop their routes")
+    @Director(name = "navigation", description = "Send NPCs on a trip, turn them, watch or stop how they move")
     @AnimusPermission(PermissionNodes.NPC_MOVE)
     static final class Navigation extends CommandGroup {
         Navigation(CommandServices services) { super(services); }
 
-        @Director(description = "Walk, swim or fly an NPC to a point, or to you; whole-number x and z mean the block centre")
+        @Director(description = "Send an NPC on a trip to a point, or to you, walking, swimming or flying; whole-number x and z mean the block centre")
         void go(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
                 @Param(name = "x", defaultValue = "", description = "Target X: a number, ~ or ~N; yours when left out") String x,
                 @Param(name = "y", defaultValue = "", description = "Target Y: a number, ~ or ~N; yours when left out") String y,
@@ -47,7 +47,7 @@ final class WorldCommands {
             npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Navigation", () -> {
                 Vec3 goal = goal(target, mode);
                 WorldPosition destination = new WorldPosition(living().navigationOrigin(id).world(), goal);
-                return id + " heading to " + goal.brief() + " (" + mode.name().toLowerCase(Locale.ROOT) + "); route " + ChatLine.shortId(living().navigate(id, destination, mode, speed).toString());
+                return id + " heading to " + goal.brief() + " (" + mode.name().toLowerCase(Locale.ROOT) + "); trip " + ChatLine.shortId(living().navigate(id, destination, mode, speed).toString());
             }));
         }
 
@@ -77,7 +77,7 @@ final class WorldCommands {
             }));
         }
 
-        @Director(description = "Show an NPC's route and progress")
+        @Director(description = "Show where an NPC is walking: its trip, route or recording, and how far it got")
         void status(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
             CommandActor actor = actor();
             npc(actor, npc).ifPresent((String id) -> {
@@ -86,13 +86,13 @@ final class WorldCommands {
             });
         }
 
-        @Director(description = "Stop an NPC's route")
+        @Director(description = "Stop an NPC's trip or route walk")
         void stop(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
             CommandActor actor = actor();
             npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Navigation", () -> stopped(id, living().stopNavigation(id))));
         }
 
-        static String stopped(String id, boolean running) { return running ? "Stopped " + id + "'s route" : id + " has no route to stop"; }
+        static String stopped(String id, boolean running) { return running ? "Stopped " + id + "'s walk" : id + " is not walking anywhere"; }
     }
 
     @Director(name = "ride", description = "Watch or end NPC rides")

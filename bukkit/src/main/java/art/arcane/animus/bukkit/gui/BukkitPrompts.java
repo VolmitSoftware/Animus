@@ -2,16 +2,21 @@ package art.arcane.animus.bukkit.gui;
 
 import art.arcane.animus.core.gui.ScreenHost;
 import art.arcane.animus.core.gui.TextPrompts;
-import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.text.RichText;
 import java.lang.reflect.Method;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
@@ -47,6 +52,8 @@ final class BukkitPrompts implements Listener {
     private static final String UNPRICED = "minecraft:paper[!minecraft:enchantments]";
     private final BiPredicate<Player, Runnable> later;
     private final TextPrompts prompts = new TextPrompts();
+    /** Anvils whose prompt is answered but which have not closed yet, by player. */
+    private final Map<UUID, Inventory> closing = new ConcurrentHashMap<>();
 
     BukkitPrompts(BiPredicate<Player, Runnable> later) { this.later = Objects.requireNonNull(later); }
 
@@ -98,12 +105,20 @@ final class BukkitPrompts implements Listener {
         } catch (RuntimeException | LinkageError unsupported) { return false; }
         Inventory top = view.getTopInventory();
         if (!top.equals(player.getOpenInventory().getTopInventory())) return false;
-        prompts.start(player.getUniqueId(), new TextPrompts.Waiting(prompt, TextPrompts.Input.ANVIL, top, owner(player, top)));
+        watch(player, prompt, top);
         name(view, prompt.initial());
         top.setItem(INPUT, paper(prompt.initial()));
         view.setRepairCost(0);
         return true;
     }
+
+    /** The open anvil answers this prompt: from now until it closes, every click and drag in it is refused. */
+    void watch(Player player, ScreenHost.Prompt prompt, Inventory anvil) {
+        prompts.start(player.getUniqueId(), new TextPrompts.Waiting(prompt, TextPrompts.Input.ANVIL, anvil, owner(player, anvil)));
+    }
+
+    /** The anvil of the player's waiting prompt, or of one answered whose anvil has not closed yet. */
+    private boolean guarded(UUID player, Inventory top) { return prompts.owns(player, top) || top.equals(closing.get(player)); }
 
     /**
      * Gives a fresh anvil its rename text before the paper goes in. Until the client types, the server holds no name,
@@ -122,19 +137,26 @@ final class BukkitPrompts implements Listener {
     /** The chat fallback: the next line the player sends answers. */
     void ask(Player player, ScreenHost.Prompt prompt) {
         prompts.start(player.getUniqueId(), new TextPrompts.Waiting(prompt, TextPrompts.Input.CHAT, null, owner(player, null)));
-        String start = prompt.initial().isBlank() ? "" : " (now " + prompt.initial() + ")";
-        player.sendMessage(RichText.colorize(Palette.GREY + "Type " + prompt.label() + start + " in chat, or " + TextPrompts.CANCEL));
+        for (String line : TextPrompts.chat(prompt)) player.sendMessage(RichText.colorize(line));
     }
 
-    /** Answers run on the owner after the anvil, if still showing, is emptied and closed. */
+    /**
+     * Answers run on the owner after the anvil, if still showing, is emptied and closed. Until then the answered anvil
+     * stays guarded, so nothing is taken from it or put in it and then cleared.
+     */
     private Consumer<Runnable> owner(Player player, Inventory anvil) {
-        return (Runnable answer) -> later.test(player, () -> {
-            if (anvil != null) {
-                anvil.clear();
-                if (anvil.equals(player.getOpenInventory().getTopInventory())) player.closeInventory();
-            }
-            answer.run();
-        });
+        UUID id = player.getUniqueId();
+        return (Runnable answer) -> {
+            if (anvil != null) closing.put(id, anvil);
+            later.test(player, () -> {
+                if (anvil != null) {
+                    anvil.clear();
+                    if (anvil.equals(player.getOpenInventory().getTopInventory())) player.closeInventory();
+                    closing.remove(id, anvil);
+                }
+                answer.run();
+            });
+        };
     }
 
     /** A chat line; true when it answered a prompt and must not be broadcast. Safe on the async chat thread. */
@@ -143,25 +165,33 @@ final class BukkitPrompts implements Listener {
         return waiting.isPresent() && waiting.get().input() == TextPrompts.Input.CHAT && prompts.typed(player.getUniqueId(), line);
     }
 
-    /** A click in a prompt anvil: always cancelled; a click on the result answers with the edited name. */
+    /**
+     * A click in a prompt anvil, the player's own rows included: always cancelled, so the paper never leaves and nothing
+     * goes in. A left, right or shift click on the result of a waiting prompt answers with the edited name, as on mod
+     * servers; number keys, drops and middle clicks do not.
+     */
     boolean click(InventoryClickEvent event) {
-        if (!(event.getWhoClicked() instanceof Player player) || !prompts.owns(player.getUniqueId(), event.getView().getTopInventory())) return false;
+        if (!(event.getWhoClicked() instanceof Player player) || !guarded(player.getUniqueId(), event.getView().getTopInventory())) return false;
         event.setCancelled(true);
-        if (event.getRawSlot() == RESULT) prompts.typed(player.getUniqueId(), typed(event.getView(), event.getView().getTopInventory()));
+        if (event.getRawSlot() == RESULT && BukkitScreens.click(event.getClick()).isPresent() && prompts.owns(player.getUniqueId(), event.getView().getTopInventory()))
+            prompts.typed(player.getUniqueId(), typed(event.getView(), event.getView().getTopInventory()));
         return true;
     }
 
     boolean drag(InventoryDragEvent event) {
-        if (!(event.getWhoClicked() instanceof Player player) || !prompts.owns(player.getUniqueId(), event.getView().getTopInventory())) return false;
+        if (!(event.getWhoClicked() instanceof Player player) || !guarded(player.getUniqueId(), event.getView().getTopInventory())) return false;
         event.setCancelled(true);
         return true;
     }
 
     /** The prompt anvil closed: it is emptied first so the paper stays out of the player's inventory, then cancelled. */
     boolean closed(InventoryCloseEvent event) {
-        if (!(event.getPlayer() instanceof Player player) || !prompts.owns(player.getUniqueId(), event.getView().getTopInventory())) return false;
-        event.getView().getTopInventory().clear();
-        prompts.closed(player.getUniqueId(), event.getView().getTopInventory());
+        if (!(event.getPlayer() instanceof Player player)) return false;
+        Inventory top = event.getView().getTopInventory();
+        if (!guarded(player.getUniqueId(), top)) return false;
+        top.clear();
+        prompts.closed(player.getUniqueId(), top);
+        closing.remove(player.getUniqueId(), top);
         return true;
     }
 
@@ -169,11 +199,16 @@ final class BukkitPrompts implements Listener {
     void forget(Player player) {
         prompts.waiting(player.getUniqueId()).ifPresent((TextPrompts.Waiting waiting) -> { if (waiting.window() instanceof Inventory anvil) anvil.clear(); });
         prompts.cancel(player.getUniqueId());
+        Inventory answered = closing.remove(player.getUniqueId());
+        if (answered != null) answered.clear();
     }
 
     /** Shutdown: empties every prompt anvil so nothing is handed back when the server closes the windows. */
     void closeAll(Function<UUID, Player> online) {
-        for (UUID id : prompts.clear()) {
+        Set<UUID> players = new HashSet<>(prompts.clear());
+        players.addAll(closing.keySet());
+        closing.clear();
+        for (UUID id : players) {
             Player player = online.apply(id);
             if (player != null && player.getOpenInventory().getTopInventory().getType() == InventoryType.ANVIL) {
                 player.getOpenInventory().getTopInventory().clear();
@@ -182,27 +217,38 @@ final class BukkitPrompts implements Listener {
         }
     }
 
-    /** Keeps the result a paper with the typed name, whatever vanilla thinks a rename costs. */
+    /** Keeps the result a paper with the typed name and the confirm lore, whatever vanilla thinks a rename costs. */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void prepare(PrepareAnvilEvent event) {
         if (!(event.getView().getPlayer() instanceof Player player) || !prompts.owns(player.getUniqueId(), event.getInventory())) return;
         Optional<TextPrompts.Waiting> waiting = prompts.waiting(player.getUniqueId());
+        if (waiting.isEmpty()) return;
         String name = event.getView().getRenameText();
-        event.setResult(paper(name == null ? waiting.map((TextPrompts.Waiting found) -> found.prompt().initial()).orElse("") : name));
+        event.setResult(result(name == null ? waiting.get().prompt().initial() : name, waiting.get().prompt()));
         event.getView().setRepairCost(0);
     }
 
-    /** The edited name: the anvil's rename text, else the result paper's name. */
+    /** The edited name: the anvil's rename text, else the result paper's name without its codes. */
     private static String typed(InventoryView view, Inventory top) {
         if (view instanceof AnvilView anvil && anvil.getRenameText() != null) return anvil.getRenameText();
         ItemStack result = top.getItem(RESULT);
-        return result != null && result.getItemMeta() != null && result.getItemMeta().hasDisplayName() ? result.getItemMeta().getDisplayName() : "";
+        return result != null && result.getItemMeta() != null && result.getItemMeta().hasDisplayName() ? ChatColor.stripColor(result.getItemMeta().getDisplayName()) : "";
+    }
+
+    /** The result paper: the typed name, then "Click to confirm" and the prompt's hint as upright lore. */
+    private static ItemStack result(String name, ScreenHost.Prompt prompt) {
+        ItemStack paper = paper(name);
+        ItemMeta meta = paper.getItemMeta();
+        if (meta == null) return paper;
+        BukkitItems.dress(meta, Optional.empty(), TextPrompts.lore(prompt).stream().map(RichText::colorize).toList());
+        paper.setItemMeta(meta);
+        return paper;
     }
 
     /**
-     * A paper named {@code name}; a blank name becomes one space so the anvil's text field starts empty. It carries no
-     * enchantments component, so the client, which prices each rename itself as the player types, finds nothing an anvil
-     * can work on and never shows a cost.
+     * A paper named {@code name}, upright; a blank name becomes one space so the anvil's text field starts empty. It
+     * carries no enchantments component, so the client, which prices each rename itself as the player types, finds
+     * nothing an anvil can work on and never shows a cost.
      */
     static ItemStack paper(String name) {
         ItemStack paper;
@@ -210,7 +256,7 @@ final class BukkitPrompts implements Listener {
         catch (RuntimeException | LinkageError unsupported) { paper = new ItemStack(Material.PAPER); }
         ItemMeta meta = paper.getItemMeta();
         if (meta != null) {
-            meta.setDisplayName(name.isBlank() ? " " : name);
+            BukkitItems.dress(meta, Optional.of(name.isBlank() ? " " : name), List.of());
             paper.setItemMeta(meta);
         }
         return paper;

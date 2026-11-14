@@ -6,6 +6,7 @@ import art.arcane.animus.core.extension.ModuleHooks;
 import art.arcane.animus.core.extension.ModuleHost;
 import art.arcane.animus.core.gui.exchange.GlossIds;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.toolkit.ToolkitMode;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import com.google.gson.JsonObject;
@@ -34,9 +35,9 @@ final class CommandCompletions {
     static final List<String> PROOF_BODIES = List.of("minecraft:player", "minecraft:armor_stand", "minecraft:horse", "minecraft:turtle", "minecraft:frog",
             "minecraft:llama", "minecraft:armadillo", "minecraft:ender_dragon");
 
-    private final CommandGroup tree;
+    private final AnimusCommandTree tree;
 
-    CommandCompletions(CommandGroup tree) { this.tree = tree; }
+    CommandCompletions(AnimusCommandTree tree) { this.tree = tree; }
 
     /** Values for {@code parameter}; {@code given} holds what was typed already, by parameter name. */
     Collection<String> values(String parameter, CommandActor actor, Map<String, String> given) {
@@ -91,6 +92,8 @@ final class CommandCompletions {
             case "action" -> List.of("list", "add", "remove");
             case "style" -> List.of("native", "chest");
             case "mode" -> List.of("buy", "sell", "trade");
+            case ToolkitCommands.MENU_MODE -> Arrays.stream(ToolkitMode.values()).map(ToolkitMode::word).toList();
+            case ToolkitCommands.STEP -> ToolkitCommands.STEPS;
             case "price" -> List.of("1", "10", "100");
             case "rows" -> List.of("1", "2", "3", "4", "5", "6");
             case "recording" -> services.recordings().ids();
@@ -126,6 +129,7 @@ final class CommandCompletions {
             case "preview" -> CompletionFiles.previews(data());
             case "application" -> CompletionFiles.applications(data());
             case "transaction" -> CompletionFiles.transactions(data());
+            case "change" -> actor.player().map(tree.changes()::ids).orElse(List.of());
             case "skin" -> CompletionFiles.skins(data());
             case "time" -> List.of("day", "noon", "night", "midnight", "1000", "13000");
             case "chance" -> List.of("100", "50", "25");

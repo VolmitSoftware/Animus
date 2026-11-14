@@ -1,6 +1,7 @@
 package art.arcane.animus.core.command;
 
 import art.arcane.animus.core.text.ChatLine;
+import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import art.arcane.volmlib.util.director.help.DirectorMiniMenu;
@@ -11,7 +12,6 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 
 /** Whoever issued an Animus command: a player or the console. Read and answer only on the actor's own owner. */
 public interface CommandActor {
-    /** The reply when the shared file lane refuses work. */
     /** Shown when more edits wait than [files] maximumOperations allows; scripts should pause briefly and send the command again. */
     String BUSY = "File queue full ([files] maximumOperations edits are waiting); wait a moment and send it again";
     boolean permitted(String node);
@@ -43,9 +43,16 @@ public interface CommandActor {
     /** A line with click chips. Platforms that show hover and click override this; the default prints the console text. */
     default void rich(ChatLine line) { plain(line.console()); }
 
-    /** One {@code /animus} help page: the shared menu look for a player, the plain form for the console. */
+    /** {@code message} as the line {@link #tell} sends: the prefix, then transaction ids, long ids and links as chips. */
+    default ChatLine line(String message) { return ChatLine.parse(Palette.reply(message)); }
+
+    /**
+     * One {@code /animus} help page: the shared menu look for a player, the plain form for the console. A short page is
+     * a few chat lines that leave the chat window as it was.
+     */
     default void help(AnimusHelp.Page page) {
         if (player().isEmpty()) AnimusHelp.console(page).forEach(this::plain);
+        else if (page.brief()) AnimusHelp.brief(page).forEach(this::rich);
         else page(AnimusHelp.lines(page));
     }
 

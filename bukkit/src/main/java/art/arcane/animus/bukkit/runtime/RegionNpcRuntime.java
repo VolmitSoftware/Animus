@@ -331,8 +331,9 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         if (actor == null) return "Runtime " + id + ": " + (skinReads.containsKey(id) ? "loading skin" : error == null ? "spawned, waiting to become active (at most " + MAX_ACTIVE + " active)" : "unavailable; " + error);
         RegionActor.Publication view = actor.publication;
         NpcOwnership.Phase phase = actor.owner.ownership().state().phase();
-        String state = view.live() ? "active" : phase == NpcOwnership.Phase.DORMANT ? "waiting for its chunk to load or a player nearby" : phase.name().toLowerCase(java.util.Locale.ROOT);
-        return "Runtime " + id + ": " + state + "; uuid=" + actor.uuid + "; revision=" + definition.revision() + "; owner=" + phase.name().toLowerCase(java.util.Locale.ROOT)
+        String owner = phase == NpcOwnership.Phase.DORMANT ? "waiting" : phase.name().toLowerCase(java.util.Locale.ROOT);
+        String state = view.live() ? "active" : phase == NpcOwnership.Phase.DORMANT ? "waiting for its chunk to load or a player nearby" : owner;
+        return "Runtime " + id + ": " + state + "; uuid=" + actor.uuid + "; revision=" + definition.revision() + "; owner=" + owner
                 + "; health=" + view.snapshot().health() + "; position=" + view.snapshot().position().point() + "; navigation=" + view.navigation()
                 + NpcPresentation.describe(view.spec(), view.equipment().size(), packets.presentationAvailable())
                 + actor.mountStatus() + (view.ride() ? "; ride=" + actor.rideSummary() : "")
@@ -518,6 +519,15 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     @Override public boolean stopNavigation(String id) {
         RegionActor actor = owned(id);
         return actor != null && actor.stopNavigation();
+    }
+    /**
+     * On the NPC's region: moves it at once onto clear, supported ground that region holds, as the menu's Bring here and
+     * Stand still do. The destination may name its world as an NPC file does; false leaves the NPC where it is.
+     */
+    public boolean relocate(String id, WorldPosition destination) {
+        RegionActor actor = available() ? actors.get(id) : null;
+        String world = worldKey(destination.world());
+        return actor != null && actor.owner.owned() && world != null && actor.relocate(new WorldPosition(world, destination.point()));
     }
     @Override public void lookAt(String id, WorldPosition target) { navigable(id).lookAt(Objects.requireNonNull(target)); }
     @Override public void pose(String id, String pose) { navigable(id).pose(Objects.requireNonNull(pose)); }

@@ -41,9 +41,9 @@ final class GroupFiles {
 
     /** Saves {@code groups/<id>.json} with no values and, in the same transaction, assigns it to the listed NPCs. */
     String create(String id, List<String> ids) throws IOException {
-        if (!id.matches(NpcPaths.SEGMENT)) throw new IOException("Group id " + id + " is not 1-64 lowercase letters, digits, _ or -");
+        if (!id.matches(NpcPaths.SEGMENT)) throw new IOException("Trait group id " + id + " is not 1-64 lowercase letters, digits, _ or -");
         String path = path(id);
-        if (store.read(path) != null) throw new IOException(path + " already exists");
+        if (store.read(path) != null) throw new IOException("A trait group named " + id + " exists");
         JsonObject document = new JsonObject();
         document.addProperty("schemaVersion", GroupDocument.SCHEMA_VERSION);
         document.addProperty("revision", 1);
@@ -54,14 +54,14 @@ final class GroupFiles {
         for (String npc : ids) if (!strings(npcs.draft(npc).document()).contains(id)) assigned.add(npc);
         String tx = commit(Map.of(id, Optional.of(content)), List.of(new DocumentStore.Change(path, "missing", content)), assigned,
                 (List<String> groups) -> { groups.add(id); return groups; });
-        return "Created group " + id + (assigned.isEmpty() ? "" : ", assigned to " + ToolkitFiles.count(assigned.size())) + "; tx " + tx;
+        return "Created trait group " + id + (assigned.isEmpty() ? "" : ", assigned to " + ToolkitFiles.count(assigned.size())) + "; tx " + tx;
     }
 
     /** Renames the group file and points every member at the new id, keeping each member's group order. */
     String rename(String from, String to) throws IOException {
-        if (!to.matches(NpcPaths.SEGMENT)) throw new IOException("Group id " + to + " is not 1-64 lowercase letters, digits, _ or -");
-        if (to.equals(from)) return "Group " + from + " already has that id";
-        if (store.read(path(to)) != null) throw new IOException(path(to) + " already exists");
+        if (!to.matches(NpcPaths.SEGMENT)) throw new IOException("Trait group id " + to + " is not 1-64 lowercase letters, digits, _ or -");
+        if (to.equals(from)) return "Trait group " + from + " already has that id";
+        if (store.read(path(to)) != null) throw new IOException("A trait group named " + to + " exists");
         JsonObject document = current(from);
         document.addProperty("id", to);
         document.addProperty("revision", document.get("revision").getAsLong() + 1);
@@ -72,7 +72,7 @@ final class GroupFiles {
                     groups.replaceAll((String group) -> group.equals(from) ? to : group);
                     return new ArrayList<>(new LinkedHashSet<>(groups));
                 });
-        return "Renamed group " + from + " to " + to + ", " + ToolkitFiles.count(members.size()) + " repointed; tx " + tx;
+        return "Renamed trait group " + from + " to " + to + ", " + ToolkitFiles.count(members.size()) + " repointed; tx " + tx;
     }
 
     /** Sets the description; an empty one removes the field. */
@@ -104,7 +104,7 @@ final class GroupFiles {
             groups.remove(group);
             return groups;
         });
-        return "Deleted group " + group + ", unassigned from " + ToolkitFiles.count(members.size()) + "; tx " + tx;
+        return "Deleted trait group " + group + ", taken off " + ToolkitFiles.count(members.size()) + "; tx " + tx;
     }
 
     private String rewrite(String group, JsonObject document, String head) throws IOException {
@@ -147,7 +147,7 @@ final class GroupFiles {
             List<GroupDocument> listed = new ArrayList<>();
             for (String group : definition.groups()) {
                 GroupDocument found = catalog.get(group);
-                if (found == null) { errors.add(definition.id() + ": unknown group " + group); continue; }
+                if (found == null) { errors.add(definition.id() + ": unknown trait group " + group); continue; }
                 listed.add(found);
             }
             try { NpcDefinition.parse(JsonDocuments.write(GroupMerge.merge(definition.json(), listed).effective())); }
@@ -161,10 +161,10 @@ final class GroupFiles {
 
     /** The group file as it is on disk; refused when it is missing or currently invalid. */
     private JsonObject current(String group) throws IOException {
-        if (!group.matches(GroupDocument.ID) || store.read(path(group)) == null) throw new IOException("No group " + group);
+        if (!group.matches(GroupDocument.ID) || store.read(path(group)) == null) throw new IOException("No trait group " + group);
         String content = GroupDocuments.read(store, group);
         GroupDocument.Result parsed = GroupDocument.parse(group, content);
-        if (parsed.group().isEmpty()) throw new IOException(path(group) + " is invalid; fix it first: " + parsed.problems().getFirst());
+        if (parsed.group().isEmpty()) throw new IOException("Trait group " + group + " is invalid; fix it first: " + parsed.problems().getFirst());
         return JsonDocuments.object(content);
     }
 

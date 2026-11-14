@@ -18,6 +18,8 @@ public interface Economy {
     boolean deposit(UUID player, BigDecimal amount);
     /** The provider's display text for an amount, or the plain number. */
     String format(BigDecimal amount);
+    /** The money's plural name, such as Coins; empty when the provider names none. */
+    default Optional<String> currency() { return Optional.empty(); }
 
     static Economy none(String reason) {
         return new Economy() {

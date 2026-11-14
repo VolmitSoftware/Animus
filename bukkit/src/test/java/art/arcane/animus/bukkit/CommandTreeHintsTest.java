@@ -51,6 +51,9 @@ class CommandTreeHintsTest {
         assertTrue(parses(admin, "animus status"));
         assertTrue(parses(admin, "animus behaviors"));
         assertTrue(parses(admin, "animus behaviors help 2"), "help page links");
+        assertTrue(parses(admin, "animus help 2"));
+        assertTrue(parses(admin, "animus help npc skin"), "help for one command");
+        assertTrue(parses(admin, "animus help all"));
         assertTrue(parses(admin, "animus edit guard {\"name\": \"A B\"}"));
         assertTrue(parses(admin, "animus list page=2"));
         assertTrue(parses(admin, "animus navigation go guard ^ ^ ^2"));
@@ -62,6 +65,15 @@ class CommandTreeHintsTest {
         assertNotNull(visitor.getRoot().getChild("animus").getChild("status"));
         assertNull(visitor.getRoot().getChild("animus").getChild("edit"));
         assertTrue(parses(visitor, "animus choice sometoken 1"), "dialogue choice chips run a hidden command");
+    }
+
+    @Test void guiAloneParsesForEveryPlayerWhoMayOpenTheMenu() throws ReflectiveOperationException {
+        CommandDispatcher<Object> builder = client(new Actor(Set.of(art.arcane.animus.core.command.PermissionNodes.TOOLS)));
+        assertTrue(parses(builder, "animus gui"), "/animus gui opens the menu");
+        assertFalse(parses(builder, "animus gui reload"), "the gui commands stay behind animus.gui");
+        assertTrue(parses(builder, "animus"), "a bare /animus is help");
+        CommandDispatcher<Object> visitor = client(new Actor(Set.of("animus.status")));
+        assertFalse(parses(visitor, "animus gui"), "no menu, no gui");
     }
 
     @Test void integrationCommandsReachTheClientOnlyWithTheirPlugin() throws ReflectiveOperationException {

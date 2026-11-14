@@ -36,7 +36,7 @@ public final class ViewerSession implements AutoCloseable {
 
     private final UUID viewerId;
     private final UUID sessionId;
-    private Limits limits;
+    private final Limits limits;
     private final Map<Integer, VirtualNpcState.Snapshot> visible = new HashMap<>();
     private final Set<Integer> issued = new HashSet<>();
     private boolean closed;
@@ -50,9 +50,6 @@ public final class ViewerSession implements AutoCloseable {
     }
     public UUID viewerId() { return viewerId; }
     public UUID sessionId() { return sessionId; }
-    public synchronized Limits limits() { return limits; }
-    /** New limits for later binds and actions. Bodies already visible stay; a lowered cap only refuses new binds until under it. */
-    public synchronized void limits(Limits next) { limits = Objects.requireNonNull(next, "limits"); }
     public synchronized int visibleCount() { return visible.size(); }
     public synchronized int issuedCount() { return issued.size(); }
 

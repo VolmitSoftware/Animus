@@ -28,16 +28,18 @@ import java.util.function.Predicate;
 final class ShopMerchant {
     private final ShopDocument shop;
     private final ShopSettings settings;
+    private final Prices prices;
     private final ShopLedger ledger;
     private final UUID viewer;
     private final Predicate<String> permitted;
     private final Instant now;
     private final BiFunction<ShopDocument.Entry, Instant, ScreenFrame.Item> tooltip;
 
-    ShopMerchant(ShopDocument shop, ShopSettings settings, ShopLedger ledger, UUID viewer, Predicate<String> permitted, Instant now,
+    ShopMerchant(ShopDocument shop, ShopSettings settings, Prices prices, ShopLedger ledger, UUID viewer, Predicate<String> permitted, Instant now,
                  BiFunction<ShopDocument.Entry, Instant, ScreenFrame.Item> tooltip) {
         this.shop = shop;
         this.settings = settings;
+        this.prices = prices;
         this.ledger = ledger;
         this.viewer = viewer;
         this.permitted = permitted;
@@ -73,10 +75,10 @@ final class ShopMerchant {
             }
             case SELL -> {
                 costA = new ScreenFrame.Item(entry.item(), tip.name(), List.of(), Optional.empty());
-                result = token(settings.message("tokenPays").replace("{price}", ShopScreen.price(settings, price)), tip.lore());
+                result = token(settings.message("tokenPays").replace("{price}", prices.format(price)), tip.lore());
             }
             default -> {
-                costA = token(price.signum() > 0 ? settings.message("tokenPrice").replace("{price}", ShopScreen.price(settings, price)) : settings.message("tokenFree"), List.of());
+                costA = token(price.signum() > 0 ? settings.message("tokenPrice").replace("{price}", prices.format(price)) : settings.message("tokenFree"), List.of());
                 result = tip;
             }
         }

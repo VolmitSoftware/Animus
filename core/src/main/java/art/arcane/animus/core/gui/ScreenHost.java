@@ -93,8 +93,13 @@ public interface ScreenHost<P, S> {
 
     /** Whether the player holds the Animus selection wand in the main hand, found by its item marker, not its name. */
     default boolean holdsWand(P player) { return false; }
-    /** Gives the player a selection wand, in the inventory or at their feet; Bukkit moves one they already carry to the hand instead. False when the platform has none. */
-    default boolean giveWand(P player) { return false; }
+    /** Where {@link #giveWand} put the wand. */
+    enum WandGift { GIVEN, MOVED, DROPPED, NONE }
+    /**
+     * A wand the player already carries goes to the main hand ({@code MOVED}); otherwise a new one goes into the
+     * inventory ({@code GIVEN}), or at their feet when it is full ({@code DROPPED}). {@code NONE} on a platform without one.
+     */
+    default WandGift giveWand(P player) { return WandGift.NONE; }
     /** One chat line with its click chips; a platform without click text sends the console text. */
     default void chat(P player, art.arcane.animus.core.text.ChatLine line) { message(player, line.console()); }
     /** One chat line of formatted parts with click commands, such as dialogue answer buttons; without click text the parts are sent as plain text. */
@@ -107,14 +112,19 @@ public interface ScreenHost<P, S> {
     default boolean experience(P player, int points) { return false; }
 
     /**
-     * A line of text asked of the player: an anvil, a sign or a chat capture. {@code answer} runs once on the player's
-     * owner with the typed text, or empty when the player cancelled, closed the input or left; it never runs twice.
+     * A line of text asked of the player: an anvil, a sign or a chat capture. {@code hint} is an optional line shown
+     * with it, such as the characters an id allows. {@code answer} runs once on the player's owner with the typed text,
+     * or empty when the player cancelled, closed the input or left; it never runs twice.
      */
-    record Prompt(String label, String initial, java.util.function.Consumer<Optional<String>> answer) {
+    record Prompt(String label, String initial, String hint, java.util.function.Consumer<Optional<String>> answer) {
         /** The characters an anvil title shows before it runs past the window's edge. */
         public static final int TITLE = 20;
 
-        public Prompt { java.util.Objects.requireNonNull(label); java.util.Objects.requireNonNull(initial); java.util.Objects.requireNonNull(answer); }
+        public Prompt {
+            java.util.Objects.requireNonNull(label); java.util.Objects.requireNonNull(initial); java.util.Objects.requireNonNull(hint); java.util.Objects.requireNonNull(answer);
+        }
+
+        public Prompt(String label, String initial, java.util.function.Consumer<Optional<String>> answer) { this(label, initial, "", answer); }
 
         /** The label cut to fit an anvil title; the chat line keeps the whole label. */
         public String title() { return label.length() <= TITLE ? label : label.substring(0, TITLE - 3).stripTrailing() + "..."; }

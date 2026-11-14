@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import art.arcane.animus.core.text.RichText;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -60,6 +61,24 @@ class TextPromptsTest {
         run();
         assertEquals(List.of(Optional.<String>empty()), answers);
         assertFalse(prompts.owns(alex, second));
+    }
+
+    static List<String> plain(List<String> lines) { return lines.stream().map((String line) -> RichText.plain(RichText.colorize(line))).toList(); }
+
+    @Test void aPromptHasNoHintUnlessGivenOne() {
+        assertEquals("", new ScreenHost.Prompt("Name", "", answers::add).hint());
+        assertEquals("Letters, digits, - and _", new ScreenHost.Prompt("Id", "", "Letters, digits, - and _", answers::add).hint());
+    }
+
+    @Test void theAnvilResultSaysHowToAnswerThenTheHint() {
+        assertEquals(List.of("Click to confirm"), plain(TextPrompts.lore(new ScreenHost.Prompt("Name", "old", answers::add))));
+        assertEquals(List.of("Click to confirm", "Letters, digits, - and _"), plain(TextPrompts.lore(new ScreenHost.Prompt("Id", "", "Letters, digits, - and _", answers::add))));
+    }
+
+    @Test void theChatFallbackSaysWhatToTypeAndHowToCancel() {
+        assertEquals(List.of("Type Player name (now Notch) in chat, or type cancel"), plain(TextPrompts.chat(new ScreenHost.Prompt("Player name", "Notch", answers::add))),
+                "chat cannot show the current text in a box, so the line names it");
+        assertEquals(List.of("Type Id in chat, or type cancel", "Letters, digits, - and _"), plain(TextPrompts.chat(new ScreenHost.Prompt("Id", "", "Letters, digits, - and _", answers::add))));
     }
 
     @Test void shutdownForgetsWithoutAnswering() {

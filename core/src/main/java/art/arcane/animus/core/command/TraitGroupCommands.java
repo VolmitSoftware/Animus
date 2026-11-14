@@ -44,13 +44,13 @@ final class TraitGroupCommands extends CommandGroup {
         } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
-    @Director(description = "Show a group's values and problems")
+    @Director(description = "Show a trait group's values and problems")
     void inspect(@Param(name = "group", description = "The trait group id") String group) {
         NpcRepository repository = runtime().npcs();
         files(actor(), () -> inspect(repository, group));
     }
 
-    @Director(description = "List the NPCs that use a group; click one to inspect it")
+    @Director(description = "List the NPCs in a trait group; click one to inspect it")
     @Positional("page")
     void members(@Param(name = "group", description = "The trait group id") String group,
                  @Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
@@ -65,7 +65,7 @@ final class TraitGroupCommands extends CommandGroup {
         } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
-    @Director(description = "Add a group to every matching NPC in one transaction")
+    @Director(description = "Add a trait group to every matching NPC as one change")
     void assign(@Param(name = "group", description = "The trait group id") String group,
                 @Param(name = "folder", defaultValue = "", description = "NPCs whose folder under npcs/ is exactly this") String folder,
                 @Param(name = "tag", defaultValue = "", description = "NPCs whose effective tags include this") String tag,
@@ -73,7 +73,7 @@ final class TraitGroupCommands extends CommandGroup {
         change(group, folder, tag, ids, true);
     }
 
-    @Director(description = "Remove a group from every matching NPC in one transaction")
+    @Director(description = "Remove a trait group from every matching NPC as one change")
     void unassign(@Param(name = "group", description = "The trait group id") String group,
                   @Param(name = "folder", defaultValue = "", description = "NPCs whose folder under npcs/ is exactly this") String folder,
                   @Param(name = "tag", defaultValue = "", description = "NPCs whose effective tags include this") String tag,
@@ -123,8 +123,8 @@ final class TraitGroupCommands extends CommandGroup {
     }
 
     static List<String> inspect(NpcRepository repository, String id) throws IOException {
-        GroupDocument group = repository.groups().find(id).orElseThrow(() -> new IOException("Unknown group " + id + "; /animus groups list shows ids"));
-        List<String> lines = new ArrayList<>(List.of("Group " + group.id() + " | revision " + group.revision() + " | members " + memberIds(repository, id).size()
+        GroupDocument group = repository.groups().find(id).orElseThrow(() -> new IOException("Unknown trait group " + id + "; /animus groups list shows ids"));
+        List<String> lines = new ArrayList<>(List.of("Trait group " + group.id() + " | revision " + group.revision() + " | members " + memberIds(repository, id).size()
                 + (group.description().isEmpty() ? "" : " | " + group.description())));
         lines.add(group.values().toString());
         repository.groups().problems().stream().filter((String problem) -> problem.startsWith(group.path() + ": ")).forEach(lines::add);
@@ -134,7 +134,7 @@ final class TraitGroupCommands extends CommandGroup {
     /** Adds or removes {@code id} in the {@code groups} of every matching stored NPC, as one transaction. File lane. */
     static String change(NpcRepository repository, String id, Predicate<NpcDefinition> matches, boolean assign) throws IOException {
         if (assign && repository.groups().find(id).isEmpty())
-            throw new IOException("Unknown group " + id + "; save groups/" + id + ".json, then /animus reload");
+            throw new IOException("Unknown trait group " + id + "; save groups/" + id + ".json, then /animus reload");
         List<NpcRepository.Draft> drafts = new ArrayList<>();
         int unchanged = 0;
         for (NpcDefinition definition : List.copyOf(repository.stored())) {

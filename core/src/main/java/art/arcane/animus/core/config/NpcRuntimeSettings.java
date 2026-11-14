@@ -14,14 +14,20 @@ import art.arcane.animus.core.presentation.BodyRules;
  * A hotload applies every key on the owner's next tick (on Folia, each region's next tick). A lowered cap keeps the
  * viewers and bodies already shown and only holds back new ones; a shorter view distance retires far bodies as usual.
  * {@code enabled} turns the main-thread runtime off and on live; on Folia it needs a restart.
+ * <p>
+ * {@code maximumVisible} bounds the bodies one client draws; with more NPCs in range, that player is shown the nearest.
+ * Its default is also its most: a body with one text row takes two of the {@code BodyRules.MAX_BODIES_PER_VIEWER} (256)
+ * native IDs a viewer may hold, so past 128 that budget, not the cap, would stop most crowds anyway. Packet work does not
+ * grow with it: {@code packetsPerTick}, {@code queuePerViewer} and {@code pendingSpawnsPerViewer} bound that on their own.
  */
 public record NpcRuntimeSettings(boolean enabled, int viewDistance, int maximumVisible, int maximumViewers, int updatesPerTick,
                                  int packetsPerTick, int pendingSpawnsPerViewer, int lookUpdatesPerTick,
                                  int simulationPerTick, int queuePerViewer, int degradedIntervalTicks) {
-    public static final NpcRuntimeSettings DEFAULT = new NpcRuntimeSettings(true, 48, 64, 256, 64, 512, 8, 32, 512, 24, 4);
+    public static final int MAXIMUM_VISIBLE = 128;
+    public static final NpcRuntimeSettings DEFAULT = new NpcRuntimeSettings(true, 48, MAXIMUM_VISIBLE, 256, 64, 512, 8, 32, 512, 24, 4);
     public NpcRuntimeSettings {
         require("viewDistance", viewDistance, 8, 256);
-        require("maximumVisible", maximumVisible, 1, 128);
+        require("maximumVisible", maximumVisible, 1, MAXIMUM_VISIBLE);
         require("maximumViewers", maximumViewers, 1, 1024);
         require("updatesPerTick", updatesPerTick, 1, 64);
         require("packetsPerTick", packetsPerTick, 1, 1024);

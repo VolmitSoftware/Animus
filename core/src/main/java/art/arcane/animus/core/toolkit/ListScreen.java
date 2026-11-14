@@ -2,6 +2,7 @@ package art.arcane.animus.core.toolkit;
 
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
+import art.arcane.animus.core.text.Words;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -12,11 +13,14 @@ import java.util.Optional;
 import java.util.stream.IntStream;
 
 /**
- * The entries of one list field: tags, behaviors, hologram lines, drops, a pose's [x, y, z]. Text entries are retyped on
- * a left click, objects open as fields, numbers step; right removes an entry and sneak moves it up (left) or down
- * (right). A list of fixed length, such as [x, y, z], keeps its length: its entries only step and nothing is added.
+ * The entries of one list field: tags, behaviors, hologram lines, a pose's [x, y, z]. A click edits an entry (retypes
+ * text, steps an option, opens an object) and a right-click opens its details with Move up, Move down and Remove. A list
+ * of fixed length, such as [x, y, z], keeps its length: its entries are number rows and nothing is added or removed.
  */
 final class ListScreen<P, S> extends ValueScreen<P, S> {
+    static final int ADD = ACTIONS, RESET = ACTIONS + 8;
+    /** Slots of an entry's details: the entry, Move up, Move down and Remove at the right end of the row. */
+    static final int ENTRY = 4, UP = 11, DOWN = 12, REMOVE = 17;
     private final String label;
     private final JsonObject schema, items;
     private final Kind kind;
@@ -47,66 +51,75 @@ final class ListScreen<P, S> extends ValueScreen<P, S> {
     }
 
     @Override void draw() {
-        pageCheck();
         JsonArray entries = entries();
-        List<String> lines = describe(schema);
-        list(IntStream.range(0, entries.size()).boxed().toList(), "Empty; add one below", (Integer slot, Integer index) -> entry(slot, index, entries.get(index), lines));
-        back();
+        list(IntStream.range(0, entries.size()).boxed().toList(), (Integer index) -> text(entries.get(index)), "No entries yet; Add an entry adds one",
+                (Integer slot, Integer index) -> entry(slot, index, entries.get(index)));
         if (fixed() < 0 && entries.size() < most()) add(entries);
+        if (current() != null) confirm(RESET, "minecraft:lava_bucket", "Reset", "Removes the whole list; Undo in chat brings it back", affected(path), true, () -> set(path, Optional.empty()));
+        back();
+        help("Click an entry to change it, right-click it to move or remove it. Each change saves at once; Undo is in the chat line.", "21-in-game-toolkit", "fields");
     }
 
-    private void entry(int slot, int index, JsonElement value, List<String> about) {
-        List<String> lines = new ArrayList<>(about);
-        String name = title("#" + (index + 1) + " " + text(value));
-        String move = "left moves up, right moves down";
+    /** {@code #2 vip}: an option as people read it, an object by its first text field. */
+    private String entryName(int index, JsonElement value) {
+        String shown = value.isJsonObject() ? firstText(items).map((String key) -> value.getAsJsonObject().get(key)).map(ValueScreen::text).orElse(text(value))
+                : kind == Kind.CHOICE ? option(value) : text(value);
+        return "#" + (index + 1) + " " + shown;
+    }
+
+    private void entry(int slot, int index, JsonElement value) {
+        String name = entryName(index, value), what = "Changes " + name;
+        if (fixed() > 0) { tuple(slot, index, value, name); return; }
         switch (kind) {
-            case TEXT -> field(slot, FieldScreen.TEXT, name, lines, hints("type a new value", "remove", move), path, (GuiModel.Click click) -> {
-                if (arm(slot, path)) return;
-                if (click == GuiModel.Click.LEFT) prompt("Entry " + (index + 1), value.getAsString(), (String typed) -> replace(index, typed.isBlank() ? Optional.empty() : Optional.of(new JsonPrimitive(typed.trim()))));
-                else edit(click, index);
+            case TEXT -> field(slot, FieldScreen.TEXT, name, List.of(), hints("type a new value", "move or remove", ""), "", (GuiModel.Click click) -> {
+                if (right(click)) { push(new EntryScreen(index)); return; }
+                change(slot, path, what, () -> prompt("Entry " + (index + 1), value.getAsString(), (String typed) -> {
+                    if (typed.isBlank()) refuse("An entry needs text; right-click it to remove it");
+                    else replace(index, new JsonPrimitive(typed.strip()));
+                }));
             });
-            case CHOICE -> field(slot, FieldScreen.CHOICE, name, lines, hints("next option", "remove", move), path, (GuiModel.Click click) -> {
-                if (arm(slot, path)) return;
-                if (click == GuiModel.Click.LEFT) replace(index, Optional.of(cycle(click, items.getAsJsonArray("enum").asList(), value)));
-                else edit(click, index);
-            });
-            case NUMBER -> {
-                double now = numberOf(value, items), step = stepOf(items);
-                if (items.has("minimum") || items.has("maximum")) lines.add("&7From &f" + plain(minimum(items)) + "&7 to &f" + plain(maximum(items)));
-                boolean tuple = fixed() > 0;
-                field(slot, FieldScreen.NUMBER, name, lines, hints("+" + plain(step), "-" + plain(step), "left types a value, right " + (tuple ? "resets the list" : "removes")), path, (GuiModel.Click click) -> {
-                    if (arm(slot, path)) return;
-                    if (click == GuiModel.Click.SHIFT_RIGHT) { if (tuple) set(path, Optional.empty()); else replace(index, Optional.empty()); }
-                    else if (click == GuiModel.Click.SHIFT_LEFT) prompt("Entry " + (index + 1), plain(now), (String typed) -> typed(typed, items).ifPresent((JsonPrimitive number) -> replace(index, Optional.of(number))));
-                    else replace(index, Optional.of(number(step(click, now, step, minimum(items), maximum(items)), items)));
+            case CHOICE -> {
+                List<JsonElement> options = items.getAsJsonArray("enum").asList();
+                boolean picker = options.size() > FieldScreen.CYCLE;
+                field(slot, FieldScreen.CHOICE, name, List.of(), hints(picker ? "pick from " + options.size() : "next", "move or remove", ""), "", (GuiModel.Click click) -> {
+                    if (right(click)) push(new EntryScreen(index));
+                    else if (picker) push(new ChoiceScreen<>(toolkit, viewer, commands, label, ChoiceScreen.values(options), value,
+                            (JsonElement chosen) -> change(slot, path, what, () -> replace(index, chosen))));
+                    else change(slot, path, what, () -> replace(index, cycle(click, options, value)));
                 });
             }
-            case FIELDS -> field(slot, FieldScreen.FIELDS, name, lines, hints("open", "remove", move), path, (GuiModel.Click click) -> {
-                if (click == GuiModel.Click.LEFT) { viewer.push(new FieldScreen<>(toolkit, viewer, commands, label(label, "#" + (index + 1)), items, scope, append(path, Integer.toString(index)))); return; }
-                if (arm(slot, path)) return;
-                edit(click, index);
+            case NUMBER -> field(slot, FieldScreen.NUMBER, name, List.of(), hints("type a value", "move or remove", ""), "", (GuiModel.Click click) -> {
+                if (right(click)) { push(new EntryScreen(index)); return; }
+                change(slot, path, what, () -> prompt("Entry " + (index + 1), plain(numberOf(value, items)),
+                        (String typed) -> typed(typed, items, false).ifPresent((JsonPrimitive number) -> replace(index, number))));
             });
-            default -> icon(slot, "minecraft:structure_void", name, List.of("&7Edit in the web editor"), Optional.empty());
+            case FIELDS -> field(slot, FieldScreen.FIELDS, name, List.of(), hints("open", "move or remove", ""), "", (GuiModel.Click click) -> {
+                if (right(click)) push(new EntryScreen(index));
+                else push(new FieldScreen<>(toolkit, viewer, commands, label(label, "#" + (index + 1)), items, scope, append(path, Integer.toString(index))));
+            });
+            default -> icon(slot, "minecraft:structure_void", title(name), List.of("&7Edit it in the web editor"), Optional.empty());
         }
     }
 
-    /** Right removes the entry; sneak-left moves it up, sneak-right down. */
-    private void edit(GuiModel.Click click, int index) {
-        if (click == GuiModel.Click.RIGHT) { replace(index, Optional.empty()); return; }
-        int other = click == GuiModel.Click.SHIFT_LEFT ? index - 1 : index + 1;
-        JsonArray entries = entries();
-        if (other < 0 || other >= entries.size()) return;
-        JsonElement moved = entries.get(index);
-        entries.set(index, entries.get(other));
-        entries.set(other, moved);
-        save(entries);
+    /** An entry of a fixed-length list: a number row, as the list keeps its length. */
+    private void tuple(int slot, int index, JsonElement value, String name) {
+        double now = numberOf(value, items), step = stepOf(items);
+        List<String> lines = new ArrayList<>(describe(schema));
+        lines.add(FieldScreen.now(plain(now), false));
+        field(slot, FieldScreen.NUMBER, name, lines, hints("+" + plain(step), "-" + plain(step), "type a value"), "", (GuiModel.Click click) -> {
+            if (sneak(click)) change(slot, path, "Changes " + name, () -> prompt("Entry " + (index + 1), plain(now), (String typed) -> {
+                if (typed.isBlank()) replace(index, initial(items).orElse(new JsonPrimitive(0)));
+                else typed(typed, items, false).ifPresent((JsonPrimitive number) -> replace(index, number));
+            }));
+            else change(slot, path, "Changes " + name, () -> replace(index, number(step(click, now, step, minimum(items), maximum(items)), items)));
+        });
     }
 
-    /** Sets or removes the entry at {@code index}. */
-    private void replace(int index, Optional<JsonElement> value) {
+    /** Sets the entry at {@code index}. */
+    private void replace(int index, JsonElement value) {
         JsonArray entries = entries();
         if (index >= entries.size()) return;
-        if (value.isPresent()) entries.set(index, value.get()); else entries.remove(index);
+        entries.set(index, value);
         save(entries);
     }
 
@@ -120,32 +133,76 @@ final class ListScreen<P, S> extends ValueScreen<P, S> {
         String what = switch (kind) {
             case TEXT -> "type the new entry";
             case CHOICE -> "pick the new entry";
-            case FIELDS -> firstText(items).map((String key) -> "type its " + key).orElse("add one");
+            case FIELDS -> firstText(items).map((String key) -> "type its " + Words.readable(key).toLowerCase(java.util.Locale.ROOT)).orElse("add one");
             default -> "add one";
         };
-        field(ADD, FieldScreen.ON, title("Add an entry"), List.of("&7" + entries.size() + " of " + (most() == Integer.MAX_VALUE ? "any number" : most())), any(what), path, (GuiModel.Click click) -> {
-            if (arm(ADD, path)) return;
+        List<String> lines = new ArrayList<>(describe(schema));
+        lines.add(FieldScreen.now(entries.size() + " of " + (most() == Integer.MAX_VALUE ? "any number" : most()), false));
+        button(ADD, FieldScreen.ON, title("Add an entry"), lore(lines, any(what)), (GuiModel.Click click) -> change(ADD, path, "Adds an entry", () -> {
             switch (kind) {
-                case TEXT -> prompt("New entry", "", (String typed) -> { if (!typed.isBlank()) append(new JsonPrimitive(typed.trim())); });
-                case CHOICE -> viewer.push(new ChoiceScreen<>(toolkit, viewer, commands, label, items.getAsJsonArray("enum").asList(), null, this::append));
+                case TEXT -> prompt("New entry", "", (String typed) -> { if (!typed.isBlank()) append(new JsonPrimitive(typed.strip())); });
+                case CHOICE -> push(new ChoiceScreen<>(toolkit, viewer, commands, label, ChoiceScreen.values(items.getAsJsonArray("enum").asList()), null, this::append));
                 case FIELDS -> {
                     JsonObject seeded = seeded(items);
                     Optional<String> asked = firstText(items);
                     if (asked.isEmpty()) { append(seeded); return; }
-                    prompt(asked.get(), "", (String typed) -> {
+                    prompt(asking(Words.readable(asked.get())), "", (String typed) -> {
                         if (typed.isBlank()) return;
-                        seeded.addProperty(asked.get(), typed.trim());
+                        seeded.addProperty(asked.get(), typed.strip());
                         append(seeded);
                     });
                 }
                 default -> append(initial(items).orElse(new JsonPrimitive(0)));
             }
-        });
+        }));
     }
 
     private void append(JsonElement value) {
         JsonArray entries = entries();
         entries.add(value);
         save(entries);
+    }
+
+    /** One entry's details: Move up, Move down and Remove, named, so nothing hides on a right-click. Follows the entry as it moves. */
+    private final class EntryScreen extends ToolScreen<P, S> {
+        private volatile int index;
+
+        EntryScreen(int index) {
+            super(ListScreen.this.toolkit, ListScreen.this.viewer, ListScreen.this.commands);
+            this.index = index;
+        }
+
+        @Override String title() { return clip(label + " #" + (index + 1), 32); }
+        @Override String node() { return ListScreen.this.node(); }
+        @Override int rows() { return 3; }
+
+        @Override void draw() {
+            back();
+            help("Move up and Move down change its place in the list. Remove takes it out; Undo in chat brings it back.", "21-in-game-toolkit", "fields");
+            int at = index;
+            JsonArray entries = entries();
+            if (at >= entries.size()) { icon(ENTRY, "minecraft:paper", "&7This entry is gone", List.of("&7Go back to see the list"), Optional.empty()); return; }
+            JsonElement value = entries.get(at);
+            icon(ENTRY, FieldScreen.TEXT, title(entryName(at, value)), List.of("&7Entry " + (at + 1) + " of " + entries.size()), Optional.empty());
+            if (at > 0) button(UP, "minecraft:arrow", title("Move up"), any("move it up"), (GuiModel.Click click) -> move(UP, at, -1));
+            if (at < entries.size() - 1) button(DOWN, "minecraft:arrow", title("Move down"), any("move it down"), (GuiModel.Click click) -> move(DOWN, at, 1));
+            confirm(REMOVE, "minecraft:lava_bucket", "Remove", "Removes " + entryName(at, value) + "; Undo in chat brings it back", affected(path), true, () -> {
+                JsonArray next = entries();
+                if (at < next.size()) next.remove(at);
+                save(next);
+                viewer.back();
+            });
+        }
+
+        private void move(int slot, int at, int by) {
+            ask(slot, "Moves " + entryName(at, entries().get(at)), affected(path), false, () -> {
+                JsonArray next = entries();
+                if (at + by < 0 || at + by >= next.size()) return;
+                JsonElement moved = next.get(at);
+                next.set(at, next.get(at + by));
+                next.set(at + by, moved);
+                apply((JsonObject root) -> with(root, path, Optional.of(next)), () -> index = at + by);
+            });
+        }
     }
 }

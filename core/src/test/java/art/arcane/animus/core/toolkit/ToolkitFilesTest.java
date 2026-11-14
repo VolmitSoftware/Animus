@@ -54,14 +54,6 @@ class ToolkitFilesTest {
 
     static String tx(String line) { return line.substring(line.lastIndexOf(' ') + 1); }
 
-    @Test void createdNpcsAreOwnedByTheirMaker() throws IOException {
-        java.util.UUID player = java.util.UUID.fromString("0000000a-0000-4000-8000-0000000000c3");
-        String line = files.create(files.draft("smith", "minecraft:player", "world", new art.arcane.animus.core.virtual.Vec3(1, 64, 2), 90, player, false));
-        assertTrue(line.startsWith("Created npcs/smith.json, despawned; tx "), line);
-        assertEquals(1, store.paths(tx(line)).stream().filter((String path) -> path.startsWith("npcs/")).count());
-        assertEquals(java.util.Optional.of(player), npcs.find("smith").orElseThrow().owner());
-    }
-
     @Test void assignAndUnassignWriteOneTransaction() throws IOException {
         String assigned = files.groups("watch", List.of("guard", "baker", "cow"), true);
         assertTrue(assigned.startsWith("Assigned watch to 2 NPCs, 1 unchanged; tx "), assigned);
@@ -76,18 +68,18 @@ class ToolkitFilesTest {
 
     @Test void folderMoveRenamesTheFilesInOneTransaction() throws IOException {
         String moved = files.folder("harbor/dock", List.of("guard", "cow"));
-        assertTrue(moved.startsWith("Moved 2 NPCs to npcs/harbor/dock/; tx "), moved);
+        assertTrue(moved.startsWith("Moved 2 NPCs to harbor / dock; tx "), moved);
         assertEquals("harbor/dock", npcs.find("guard").orElseThrow().group());
         assertEquals("npcs/harbor/dock/cow.json", npcs.find("cow").orElseThrow().path());
         assertTrue(store.read("npcs/town/guard.json") == null);
-        assertTrue(files.folder("", List.of("guard")).startsWith("Moved 1 NPC to npcs/; tx "));
+        assertTrue(files.folder("", List.of("guard")).startsWith("Moved 1 NPC to the top level; tx "));
         assertEquals("", npcs.find("guard").orElseThrow().group());
         assertThrows(IOException.class, () -> files.folder("Bad Folder", List.of("guard")));
     }
 
     @Test void routeAssignmentWritesTheNavigationModule() throws IOException {
         String line = files.route("patrol", List.of("guard", "baker"));
-        assertTrue(line.startsWith("Route patrol on 2 NPCs; tx "), line);
+        assertTrue(line.startsWith("Route Patrol on 2 NPCs; tx "), line);
         JsonObject navigation = npcs.find("guard").orElseThrow().json().getAsJsonObject("modules").getAsJsonObject("animus:navigation");
         assertTrue(navigation.get("enabled").getAsBoolean());
         assertEquals("patrol", navigation.get("route").getAsString());
@@ -107,18 +99,18 @@ class ToolkitFilesTest {
         assertTrue(hash.matches("[a-f0-9]{64}"));
         assertEquals(hash, new SkinFiles(npcs, store).save(new BodySkin(texture, Base64.getEncoder().encodeToString(new byte[]{1, 2, 3})), "Alex"), "saving the same skin again is a no-op");
         String applied = files.skin(Optional.of(hash), List.of("guard", "cow"));
-        assertTrue(applied.startsWith("Skin Alex " + hash + " on guard, 1 skipped (not a player body); tx "), applied);
+        assertTrue(applied.startsWith("Skin Alex on N, 1 skipped (not a player body); tx "), "named as players see it: " + applied);
         assertEquals(hash, npcs.find("guard").orElseThrow().json().get("skin").getAsString());
-        assertTrue(files.skin(Optional.empty(), List.of("guard")).startsWith("Skin removed on guard; tx "));
+        assertTrue(files.skin(Optional.empty(), List.of("guard")).startsWith("Skin removed on N; tx "));
         assertFalse(npcs.find("guard").orElseThrow().json().has("skin"));
-        assertEquals("No player bodies in the selection; skins only show on minecraft:player", files.skin(Optional.of(hash), List.of("cow")));
+        assertEquals("No player bodies in the selection; skins only show on player bodies", files.skin(Optional.of(hash), List.of("cow")));
     }
 
     @Test void deleteAndCloneHandleTheWholeSelection() throws IOException {
         String cloned = files.copies(List.of("guard"));
-        assertTrue(cloned.startsWith("Cloned guard as dormant guard-copy; tx "), cloned);
+        assertTrue(cloned.startsWith("Copied N, despawned; tx "), cloned);
         String again = files.copies(List.of("guard", "baker"));
-        assertTrue(again.startsWith("Cloned 2 NPCs as dormant guard-copy-2, baker-copy; tx "), again);
+        assertTrue(again.startsWith("Copied 2 NPCs, despawned; tx "), again);
         NpcDefinition copy = npcs.find("guard-copy").orElseThrow();
         assertEquals("town", copy.group());
         assertFalse(copy.spawned());
@@ -136,22 +128,15 @@ class ToolkitFilesTest {
         assertEquals(2, batch.candidates().size());
         assertTrue(batch.candidates().stream().allMatch(NpcDefinition::spawned));
         String line = files.apply(batch, true);
-        assertTrue(line.startsWith("Spawning 2 NPCs; tx "), line);
+        assertTrue(line.startsWith("Spawned 2 NPCs; tx "), line);
         assertTrue(npcs.find("guard").orElseThrow().spawned());
         assertTrue(files.spawned(List.of("guard"), true).drafts().isEmpty(), "already spawned NPCs are left alone");
 
-        String moved = files.position("guard", new Vec3(10.5, 70, -3.25), 90, 0);
-        assertTrue(moved.startsWith("Moved guard here; tx "), moved);
+        String moved = files.positions(List.of("guard"), new Vec3(10.5, 70, -3.25), 90, 0, "");
+        assertTrue(moved.startsWith("Moved N here; tx "), moved);
         JsonObject position = npcs.find("guard").orElseThrow().json().getAsJsonObject("position");
         assertEquals(10.5, position.get("x").getAsDouble());
         assertEquals("world", position.get("world").getAsString());
         assertEquals(90, position.get("yaw").getAsFloat());
-    }
-
-    @Test void capturedRoutesTakeAFreePlayerId() throws IOException {
-        String document = "{\"schemaVersion\":1,\"points\":[{\"x\":0.5,\"y\":64,\"z\":0.5}]}";
-        assertEquals("wp-alex_2", files.saveRoute("Alex_2", document));
-        assertEquals("wp-alex_2-2", files.saveRoute("Alex_2", document));
-        assertTrue(store.read("routes/wp-alex_2-2.json") != null);
     }
 }
