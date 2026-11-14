@@ -289,7 +289,7 @@ Browser checks beyond the schemas are in `lib/logic/gui/gui_validation.dart`. Th
 
 ## Deploying
 
-The editor is live at https://animus.volmitsoftware.com. To deploy a new build from this folder:
+The editor is live at https://animus.volmitsoftware.com. Pushes to master that change `animus-web/`, `schema/` or `examples/` deploy it through `.github/workflows/animus-web-firebase-hosting.yml` once its analysis, tests and build pass. To deploy by hand from this folder:
 
 ```sh
 dart run tool/extract_minecraft_world_assets.dart --jar=<26.3 client jar> --version=26.3

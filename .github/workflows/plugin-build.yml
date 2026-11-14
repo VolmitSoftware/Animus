@@ -1,0 +1,61 @@
+name: Build plugin
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  JAVA_VERSION: 25
+
+concurrency:
+  group: animus-plugin-build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      # Full history so animus-api's apiCompatibility check can read the api-1.1.0 tag.
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      # No VolmLib checkout sits beside the clone here, so VolmLib comes from JitPack.
+      - name: Build and test
+        run: ./gradlew build -PuseLocalVolmLib=false
+
+      - name: Upload plugin jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: animus-plugin
+          path: build/distributions/*.jar
+          if-no-files-found: error
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: animus-test-reports
+          path: '**/build/reports/tests/'
+          if-no-files-found: ignore
+          retention-days: 7
