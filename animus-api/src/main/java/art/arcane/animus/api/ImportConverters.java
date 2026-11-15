@@ -31,6 +31,12 @@ public final class ImportConverters {
     public record Source(String fileName,String text) {
         public Source {ApiText.text(fileName,255,"file name");Objects.requireNonNull(text);if(text.length()>16*1024*1024)throw new IllegalArgumentException("Source exceeds 16 MiB");}
     }
+    /**
+     * Whether a converter recognizes a file, and why or why not.
+     *
+     * @param recognized whether the file is this converter's
+     * @param reason why, for the import preview
+     */
     public record Detection(boolean recognized,String reason) {
         public Detection {ApiText.text(reason,1024,"reason");}
     }
@@ -46,12 +52,20 @@ public final class ImportConverters {
     public record Record(int sourceId,String definitionJson,List<String> warnings) {
         public Record {if(sourceId<0)throw new IllegalArgumentException("Negative source id");ApiText.text(definitionJson,1024*1024,"definition JSON");warnings=List.copyOf(warnings);if(warnings.size()>64)throw new IllegalArgumentException("Too many warnings");warnings.forEach(w->ApiText.text(w,1024,"warning"));}
     }
+    /**
+     * Every NPC a converter produced from one file, with file-level warnings.
+     *
+     * @param records 1 to 10000 converted NPCs
+     * @param warnings at most 256 warnings about the whole file
+     */
     public record Conversion(List<Record> records,List<String> warnings) {
         public Conversion {records=List.copyOf(records);warnings=List.copyOf(warnings);if(records.isEmpty()||records.size()>10_000||warnings.size()>256)throw new IllegalArgumentException("Conversion needs 1..10000 records and at most 256 warnings");warnings.forEach(w->ApiText.text(w,1024,"warning"));}
     }
+    /** What a module implements to read another plugin's saved NPCs. */
     public interface Converter {
         Detection detect(Source source,Capabilities.Cancellation cancellation) throws Exception;
         Conversion convert(Source source,Capabilities.Cancellation cancellation) throws Exception;
     }
+    /** Registers converters during enable. */
     public interface Registrar {void converter(Descriptor descriptor,Converter converter);}
 }

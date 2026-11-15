@@ -12,7 +12,6 @@ import art.arcane.animus.api.Platform;
 import art.arcane.animus.core.behavior.ServerNpc;
 import art.arcane.animus.core.config.BuiltinActionSettings;
 import art.arcane.animus.core.extension.CapabilityRefusal;
-import art.arcane.animus.core.extension.DefinitionGateway;
 import art.arcane.animus.core.extension.ModuleHost;
 import java.time.Duration;
 import java.util.List;
@@ -32,18 +31,12 @@ class RecordingPlaybackActionTest {
     private static final Key PLAY = new Key("animus", "play-recording");
     private static final Key RESUME = new Key("animus", "resume-patrol");
     private static final String ONCE_WAIT = "{\"recording\":\"market-walk\",\"playback\":\"once\",\"wait\":true}";
-    private static final DefinitionGateway DEFINITIONS = new DefinitionGateway() {
-        @Override public DefinitionService scoped(BooleanSupplier available) { return this; }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> find(NpcHandle npc) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-    };
     private final RecordingPlatform platform = new RecordingPlatform();
     private ModuleHost host;
     private BuiltinCapabilities builtins;
 
     private void start(long deadlineMillis) {
-        host = new ModuleHost(Platform.PAPER, DEFINITIONS, 16, Duration.ofMillis(deadlineMillis));
+        host = new ModuleHost(Platform.PAPER, 16, Duration.ofMillis(deadlineMillis));
         builtins = new BuiltinCapabilities(platform, new MemoryBehaviorState(), choice -> {}, BuiltinActionSettings.DEFAULT, line -> {});
         assertEquals(Outcome.Status.OK, host.installBuiltin(builtins, builtins).status());
     }

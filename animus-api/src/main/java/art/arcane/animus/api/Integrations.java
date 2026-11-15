@@ -12,11 +12,19 @@ import java.util.*;
  */
 public final class Integrations {
     private Integrations() {}
+    /** The extension points a module may provide. */
     public enum Point { PROTECTION, ECONOMY }
+    /**
+     * One provided extension point: a description and the platforms it runs on.
+     *
+     * @param description what the provider does
+     * @param platforms platforms it runs on
+     */
     public record Descriptor(String description,Set<Platform> platforms) {
         public Descriptor {ApiText.text(description,2048,"description");platforms=Set.copyOf(platforms);if(platforms.isEmpty())throw new IllegalArgumentException("No supported platforms");}
     }
 
+    /** A protection hook's answer. */
     public enum Decision { ALLOW, DENY }
     /**
      * Combat actions, NPC build block changes and an NPC opening a door, fence gate or trapdoor on its route
@@ -25,8 +33,23 @@ public final class Integrations {
      * did not ask.
      */
     public enum ProtectionAction { NPC_ATTACK, PLAYER_ATTACK, MOB_ATTACK, MOB_CONTROL, BLOCK_PLACE, BLOCK_BREAK, BLOCK_USE }
+    /** What kind of party acts or is acted on. */
     public enum PartyKind { PLAYER, MOB, NPC }
+    /**
+     * A player, mob or NPC taking part in a protected action.
+     *
+     * @param kind player, mob or NPC
+     * @param uuid its UUID
+     */
     public record Party(PartyKind kind,UUID uuid) {public Party {Objects.requireNonNull(kind);Objects.requireNonNull(uuid);}}
+    /**
+     * A point in a world, by world key.
+     *
+     * @param world world key
+     * @param x block x
+     * @param y block y
+     * @param z block z
+     */
     public record Position(String world,double x,double y,double z) {
         public Position {Objects.requireNonNull(world);if(!Double.isFinite(x)||!Double.isFinite(y)||!Double.isFinite(z))throw new IllegalArgumentException("Non-finite position");}
     }
@@ -54,6 +77,7 @@ public final class Integrations {
         boolean deposit(UUID player,BigDecimal amount) throws Exception;
         String format(BigDecimal amount) throws Exception;
     }
+    /** Registers extension points during enable. */
     public interface Registrar {
         void protection(Descriptor descriptor,Protection protection);
         void economy(Descriptor descriptor,Economy economy);

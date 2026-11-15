@@ -1,0 +1,15 @@
+plugins {
+    id 'java'
+}
+ext.animusRoot = projectDir.parentFile.parentFile.parentFile
+apply from: "${animusRoot}/gradle/java.gradle"
+// A plugin that uses only the public API. It is built with Animus but never shipped in the Animus jar.
+repositories {
+    maven { url = uri('https://hub.spigotmc.org/nexus/content/repositories/snapshots/') }
+}
+dependencies {
+    compileOnly(project(':animus-api'))
+    compileOnly(project(':animus-bukkit-api'))
+    compileOnly('org.spigotmc:spigot-api:26.1.2-R0.1-SNAPSHOT')
+}
+tasks.named('jar', Jar).configure { archiveBaseName.set('NpcDemo') }

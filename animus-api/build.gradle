@@ -7,7 +7,7 @@ apply from: '../gradle/java.gradle'
 // API coordinates and Java identity remain stable when the plugin's custom group changes.
 // The version follows AnimusApi.API_VERSION; core's ApiContractTest keeps them equal.
 group = 'art.arcane.animus'
-version = '1.2.0-SNAPSHOT'
+version = '1.3.0-SNAPSHOT'
 java { withSourcesJar(); withJavadocJar() }
 tasks.named('jar', Jar).configure { manifest { attributes('Automatic-Module-Name': 'art.arcane.animus.api') } }
 if (rootProject.projectDir != animusRoot) {
@@ -37,9 +37,10 @@ publishing {
 
 // Binary compatibility with the last published API tag. The baseline is compiled from the tag's own sources, so the
 // check needs the tag in the local clone (git fetch --tags). japicmp counts added enum constants and added default
-// methods as compatible, which is the minor-version rule: 1.2 adds Integrations.ProtectionAction.BLOCK_USE on purpose.
+// methods as compatible, which is the minor-version rule. 1.3 broke it on purpose (ModuleContext.definitions() became
+// npcs().definitions()), so the baseline is 1.3's own tag and the check runs once that tag exists.
 // Abstract methods on interfaces modules implement are pinned by core's ApiContractTest instead.
-String apiBaseline = 'api-1.1.0'
+String apiBaseline = 'api-1.3.0'
 configurations { japicmp { canBeConsumed = false; canBeResolved = true } }
 dependencies { japicmp('com.github.siom79.japicmp:japicmp:0.23.1') }
 Provider<Directory> baselineRoot = layout.buildDirectory.dir("api-baseline/${apiBaseline}")

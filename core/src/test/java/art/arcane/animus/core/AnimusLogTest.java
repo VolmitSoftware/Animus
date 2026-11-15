@@ -7,12 +7,20 @@ import art.arcane.animus.core.command.CommandWords;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 class AnimusLogTest {
     private final AtomicLong nanos = new AtomicLong();
-    private final AnimusLog log = new AnimusLog(nanos::get, Duration.ofMinutes(5));
+    /** The timer threads this log made; other tests' runtimes start the shared log's timer under the same name. */
+    private final List<Thread> timers = new CopyOnWriteArrayList<>();
+    private final AnimusLog log = new AnimusLog(nanos::get, Duration.ofMinutes(5), (Runnable task) -> {
+        Thread thread = new Thread(task, "Animus-Log");
+        thread.setDaemon(true);
+        timers.add(thread);
+        return thread;
+    });
     private final List<String> lines = new ArrayList<>();
 
     private void minutes(long count) { nanos.addAndGet(Duration.ofMinutes(count).toNanos()); }
@@ -64,21 +72,19 @@ class AnimusLogTest {
         assertEquals(1, lines.size());
     }
 
-    @Test void theWindowTimerRunsOnlyBetweenStartAndStop() throws Exception {
+    @Test void theWindowTimerRunsOnlyBetweenStartAndStop() throws InterruptedException {
         log.start();
         log.start();
-        assertEquals(1, logThreads(), "one timer however often it starts");
+        assertEquals(1, running(), "one timer however often it starts");
         log.stop();
-        for (int i = 0; i < 200 && logThreads() > 0; i++) Thread.sleep(10);
-        assertEquals(0, logThreads(), "stopping leaves no thread holding the plugin's classes");
+        for (Thread timer : timers) timer.join(Duration.ofSeconds(30));
+        assertEquals(0, running(), "stopping leaves no thread holding the plugin's classes");
         log.start();
-        assertEquals(1, logThreads(), "a later start runs the timer again");
+        assertEquals(1, running(), "a later start runs the timer again");
         log.stop();
     }
 
-    private static long logThreads() {
-        return Thread.getAllStackTraces().keySet().stream().filter((Thread thread) -> thread.isAlive() && thread.getName().equals("Animus-Log")).count();
-    }
+    private long running() { return timers.stream().filter(Thread::isAlive).count(); }
 
     @Test void shutdownFlushesTheLastBatch() {
         log.routine("NPCs hit route legs the planner could not path", "guard", "detail", java.util.Optional.of("guard, failed: PARTIAL"), lines::add);

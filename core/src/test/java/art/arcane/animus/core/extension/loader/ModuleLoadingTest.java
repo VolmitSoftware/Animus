@@ -22,14 +22,8 @@ class ModuleLoadingTest {
     @TempDir Path temp;
     private final Path api=Path.of(System.getProperty("apiJar"));
     private static final Gson JSON=new GsonBuilder().setPrettyPrinting().create();
-    private static final DefinitionGateway DEFINITIONS=new DefinitionGateway(){
-        public DefinitionService scoped(BooleanSupplier available){return this;}
-        public CompletionStage<Outcome<DefinitionSnapshot>> find(NpcHandle npc){return CompletableFuture.completedFuture(Outcome.rejected(Outcome.Status.NOT_FOUND,"missing","Missing"));}
-        public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit){return CompletableFuture.completedFuture(Outcome.rejected(Outcome.Status.UNAVAILABLE,"offline","Offline"));}
-        public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit){return CompletableFuture.completedFuture(Outcome.rejected(Outcome.Status.UNAVAILABLE,"offline","Offline"));}
-    };
     @BeforeEach void reset()throws IOException {temp=temp.toRealPath();System.clearProperty("qa.module.events");for(String id:List.of("base","child","other","bad","alpha","beta","leaf","unrelated","mismatch","held"))System.clearProperty("module.init."+id);}
-    private ModuleHost host(){return new ModuleHost(Platform.PAPER,DEFINITIONS,4,Duration.ofSeconds(1));}
+    private ModuleHost host(){return new ModuleHost(Platform.PAPER,4,Duration.ofSeconds(1));}
     private static JsonObject descriptor(String id,String...dependencies){
         JsonObject d=new JsonObject();d.addProperty("schemaVersion",1);d.addProperty("id",id);d.addProperty("version","1.0.0");
         JsonObject api=new JsonObject();api.addProperty("minimumMajor",1);api.addProperty("maximumMajor",1);d.add("api",api);
@@ -205,7 +199,7 @@ class ModuleLoadingTest {
     @Test void orchestratorStartAndCloseReturnWhileEnableBlocksAndSkipLaterInitialization()throws Exception {
         Path modules=temp.resolve("modules");System.clearProperty("qa.module.lifecycle-release");
         jar(modules,"alpha.jar",descriptor("alpha"),"mark(\"alpha-entered\");context.onClose(()->mark(\"alpha-resource\"));while(!Boolean.getBoolean(\"qa.module.lifecycle-release\")){Thread.sleep(5);}","mark(\"alpha-disable\");",Map.of(),List.of());jar(modules,"beta");
-        var runtime=new ExtensionRuntime(modules,Platform.PAPER,DEFINITIONS,new ModuleSettings(true,4,1000,250),ignored->{});
+        var runtime=new ExtensionRuntime(modules,Platform.PAPER,new ModuleSettings(true,4,1000,250),ignored->{});
         try{
             CompletableFuture.runAsync(runtime::start).get(1,TimeUnit.SECONDS);until(()->System.getProperty("qa.module.events","").contains("alpha-entered"));
             var status=CompletableFuture.supplyAsync(runtime::status).get(1,TimeUnit.SECONDS);assertEquals(ExtensionRuntime.State.STARTING,status.state());assertEquals("enable",status.lifecycle().phase());
@@ -220,7 +214,7 @@ class ModuleLoadingTest {
         // Use an inline descriptor so this external JAR needs only the public API.
         enable=enable.replace("action()","new Capabilities.Descriptor(new Capabilities.Key(\"held\",\"hold\"),Capabilities.Kind.ACTION,\"Hold\",\"{}\",Set.of(Platform.PAPER),false)");
         jar(modules,"held.jar",descriptor("held"),enable,"mark(\"held-disable\");",Map.of(),List.of());List<String> reports=new CopyOnWriteArrayList<>();
-        var runtime=new ExtensionRuntime(modules,Platform.PAPER,DEFINITIONS,new ModuleSettings(true,4,5000,250),reports::add);
+        var runtime=new ExtensionRuntime(modules,Platform.PAPER,new ModuleSettings(true,4,5000,250),reports::add);
         try{
             runtime.start();until(()->runtime.status().state()==ExtensionRuntime.State.READY);
             var result=runtime.action(new Capabilities.Key("held","hold"),new NpcHandle(UUID.randomUUID()),Optional.empty(),"{}");until(()->System.getProperty("qa.module.events","").contains("handler-entered"));
@@ -231,16 +225,16 @@ class ModuleLoadingTest {
     }
     @Test void orchestratorDiscoveryFailureStopsAutomaticallyAndKeepsFailureDiagnostic()throws Exception {
         Path invalid=temp.resolve("not-a-directory");Files.writeString(invalid,"synthetic");List<String> reports=new CopyOnWriteArrayList<>();
-        var runtime=new ExtensionRuntime(invalid,Platform.PAPER,DEFINITIONS,new ModuleSettings(true,4,1000,250),reports::add);
+        var runtime=new ExtensionRuntime(invalid,Platform.PAPER,new ModuleSettings(true,4,1000,250),reports::add);
         try{runtime.start();assertTrue(runtime.awaitStopped(Duration.ofSeconds(3)));assertEquals(ExtensionRuntime.State.STOPPED,runtime.status().state());assertEquals("module-startup: IOException",runtime.status().failure());assertTrue(runtime.status().invocations().closed());assertTrue(runtime.startupStatuses().isEmpty());assertTrue(reports.contains("module-startup: IOException"));}finally{runtime.close();}
     }
     @Test void orchestratorDisabledSettingsDoNotInitializeArchives()throws Exception {
-        Path modules=temp.resolve("modules");jar(modules,"base");var runtime=new ExtensionRuntime(modules,Platform.PAPER,DEFINITIONS,new ModuleSettings(false,4,1000,250),ignored->{});
+        Path modules=temp.resolve("modules");jar(modules,"base");var runtime=new ExtensionRuntime(modules,Platform.PAPER,new ModuleSettings(false,4,1000,250),ignored->{});
         try{runtime.start();assertEquals(ExtensionRuntime.State.DISABLED,runtime.status().state());assertNull(System.getProperty("module.init.base"));assertTrue(runtime.startupStatuses().isEmpty());assertEquals(Outcome.Status.UNAVAILABLE,runtime.action(new Capabilities.Key("base","none"),new NpcHandle(UUID.randomUUID()),Optional.empty(),"{}").toCompletableFuture().get(1,TimeUnit.SECONDS).status());}finally{runtime.close();assertTrue(runtime.awaitStopped(Duration.ofSeconds(2)));}
     }
     @Test void orchestratorHotloadSwitchLoadsArchivesOnceThenSuspendsAndResumes()throws Exception {
         Path modules=temp.resolve("late-modules");jar(modules,"late");List<String> states=new CopyOnWriteArrayList<>();
-        var runtime=new ExtensionRuntime(modules,Platform.PAPER,DEFINITIONS,new ModuleSettings(false,4,1000,250),ignored->{},state->states.add(state.name()));
+        var runtime=new ExtensionRuntime(modules,Platform.PAPER,new ModuleSettings(false,4,1000,250),ignored->{},state->states.add(state.name()));
         try{
             runtime.start();assertNull(System.getProperty("module.init.late"));
             runtime.settings(new ModuleSettings(true,4,1000,250));until(()->runtime.status().state()==ExtensionRuntime.State.READY);
@@ -255,14 +249,14 @@ class ModuleLoadingTest {
     @Test void engineInitializationObserverReceivesExactlyOneTerminalStartupState()throws Exception {
         for(ExtensionRuntime.State expected:List.of(ExtensionRuntime.State.READY,ExtensionRuntime.State.DISABLED,ExtensionRuntime.State.FAILED)){
             Path path=temp.resolve("observer-"+expected);if(expected==ExtensionRuntime.State.FAILED)Files.writeString(path,"not a module directory");
-            List<ExtensionRuntime.State> observed=new CopyOnWriteArrayList<>();var runtime=new ExtensionRuntime(path,Platform.PAPER,DEFINITIONS,new ModuleSettings(expected!=ExtensionRuntime.State.DISABLED,4,1000,250),ignored->{},observed::add);
+            List<ExtensionRuntime.State> observed=new CopyOnWriteArrayList<>();var runtime=new ExtensionRuntime(path,Platform.PAPER,new ModuleSettings(expected!=ExtensionRuntime.State.DISABLED,4,1000,250),ignored->{},observed::add);
             try{runtime.start();until(()->!observed.isEmpty());assertEquals(List.of(expected),observed);assertThrows(IllegalStateException.class,runtime::start);}
             finally{runtime.close();assertTrue(runtime.awaitStopped(Duration.ofSeconds(3)));}assertEquals(List.of(expected),observed);
         }
     }
     @Test void initializationObserverFailureIsVisibleWithoutFailingReadyModulesOrRetryingHook()throws Exception {
         List<String> reports=new CopyOnWriteArrayList<>();java.util.concurrent.atomic.AtomicInteger calls=new java.util.concurrent.atomic.AtomicInteger();
-        var runtime=new ExtensionRuntime(temp.resolve("observer-failure"),Platform.PAPER,DEFINITIONS,ModuleSettings.DEFAULT,reports::add,state->{calls.incrementAndGet();throw new RejectedExecutionException("engine file admission rejected");});
+        var runtime=new ExtensionRuntime(temp.resolve("observer-failure"),Platform.PAPER,ModuleSettings.DEFAULT,reports::add,state->{calls.incrementAndGet();throw new RejectedExecutionException("engine file admission rejected");});
         try{runtime.start();until(()->!reports.isEmpty());assertEquals(ExtensionRuntime.State.READY,runtime.status().state());assertTrue(runtime.status().failure().contains("module-initialization-observer"));assertEquals(1,calls.get());}
         finally{runtime.close();assertTrue(runtime.awaitStopped(Duration.ofSeconds(3)));}assertEquals(1,calls.get());
     }
@@ -271,7 +265,7 @@ class ModuleLoadingTest {
         String privileged=action.replace("\"plain\"","\"privileged\"").replace("false)","true)");
         String condition="new Capabilities.Descriptor(new Capabilities.Key(\"base\",\"check\"),Capabilities.Kind.CONDITION,\"Check\",\"{}\",Set.of(Platform.PAPER),false)";
         String enable="context.registrations().action("+action+",i->CompletableFuture.completedFuture(\"{\\\"preview\\\":\"+i.preview()+\"}\"));context.registrations().action("+privileged+",i->CompletableFuture.completedFuture(\"{}\"));context.registrations().condition("+condition+",i->CompletableFuture.completedFuture(!i.preview()));";
-        jar(modules,"base.jar",descriptor("base"),enable,"",Map.of(),List.of());var runtime=new ExtensionRuntime(modules,Platform.PAPER,DEFINITIONS,ModuleSettings.DEFAULT,ignored->{});var adapter=runtime.behaviorInvoker();
+        jar(modules,"base.jar",descriptor("base"),enable,"",Map.of(),List.of());var runtime=new ExtensionRuntime(modules,Platform.PAPER,ModuleSettings.DEFAULT,ignored->{});var adapter=runtime.behaviorInvoker();
         var plain=new Capabilities.Key("base","plain");var invocation=new art.arcane.animus.core.behavior.BehaviorInvoker.Invocation(plain,new NpcHandle(UUID.randomUUID()),Optional.empty(),"{}",Map.of(),true,()->true,"sample:test");
         try{
             assertFalse(adapter.available(plain,Capabilities.Kind.ACTION));assertEquals(Outcome.Status.UNAVAILABLE,adapter.action(invocation).result().toCompletableFuture().get(1,TimeUnit.SECONDS).status());
@@ -289,7 +283,7 @@ class ModuleLoadingTest {
     @Test void closeDuringBlockedEnableSuppressesLateInitializationObserver()throws Exception {
         Path modules=temp.resolve("observer-blocked");System.clearProperty("qa.behavior.observer-release");List<ExtensionRuntime.State> observed=new CopyOnWriteArrayList<>();
         jar(modules,"base.jar",descriptor("base"),"mark(\"behavior-enable-blocked\");while(!Boolean.getBoolean(\"qa.behavior.observer-release\")){Thread.sleep(5);}","",Map.of(),List.of());
-        var runtime=new ExtensionRuntime(modules,Platform.PAPER,DEFINITIONS,ModuleSettings.DEFAULT,ignored->{},observed::add);
+        var runtime=new ExtensionRuntime(modules,Platform.PAPER,ModuleSettings.DEFAULT,ignored->{},observed::add);
         try{runtime.start();until(()->System.getProperty("qa.module.events","").contains("behavior-enable-blocked"));runtime.close();System.setProperty("qa.behavior.observer-release","true");assertTrue(runtime.awaitStopped(Duration.ofSeconds(3)));assertTrue(observed.isEmpty());}
         finally{System.setProperty("qa.behavior.observer-release","true");runtime.close();assertTrue(runtime.awaitStopped(Duration.ofSeconds(3)));System.clearProperty("qa.behavior.observer-release");}
     }

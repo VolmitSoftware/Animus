@@ -598,22 +598,36 @@ final class RegionActor implements RegionOwner.Body {
      * the NPC to that region like any chunk crossing. False when the destination is not known to be loaded.
      */
     boolean combatTeleport(WorldPosition destination) {
-        if (!placeable(state.snapshot().active(), carried(), riding)) return false;
+        return placeAt(destination, () -> placeable(state.snapshot().active(), carried(), riding), (WorldPosition spot) -> {}, (Boolean moved) -> {});
+    }
+    /**
+     * A plugin's teleport within this NPC's world, into this region or another one, as {@link #combatTeleport} places it,
+     * then turned to the facing. Refused while the NPC rides a vehicle, carries players or sits on a seat. On the owner;
+     * false when it cannot try, otherwise {@code done} hears whether it moved.
+     */
+    boolean teleport(WorldPosition destination, float facingYaw, float facingPitch, java.util.function.Consumer<Boolean> done) {
+        if (!destination.world().equals(state.snapshot().position().world())) return false;
+        return placeAt(destination, () -> placeable(state.snapshot().active(), carried(), riding) && !mount && owner.riders().isEmpty(),
+                (WorldPosition spot) -> setPose(facingYaw, Math.max(-90, Math.min(90, facingPitch)), true), done);
+    }
+    private boolean placeAt(WorldPosition destination, java.util.function.BooleanSupplier movable, java.util.function.Consumer<WorldPosition> placed, java.util.function.Consumer<Boolean> done) {
         World world = host.world(destination.world());
         if (world == null) return false;
-        ChunkPosition chunk = destination.chunk();
         double width = hullWidth(), height = hullHeight();
-        if (host.regions.owns(world, chunk.x(), chunk.z(), chunk.x(), chunk.z())) {
-            Optional<WorldPosition> spot = clearSpot(world, destination, width, height);
-            spot.ifPresent(this::place);
-            return spot.isPresent();
-        }
-        if (!host.knownLoaded(chunk)) return false;
-        long epoch = owner.ownership().state().token() == null ? -1 : owner.ownership().state().token().epoch();
-        return host.regions.execute(chunk, () -> clearSpot(world, destination, width, height).ifPresent((WorldPosition spot) -> owner.submit(new OwnerMailbox.Work() {
-            @Override public void run() { if (placeable(state.snapshot().active(), carried(), riding)) place(spot); }
-            @Override public void refuse(String reason) { /* The NPC went dormant; it stays where it was. */ }
-        })));
+        return RegionPlacement.place(new RegionPlacement.Host() {
+            @Override public boolean ownsDestination(ChunkPosition chunk) { return host.regions.owns(world, chunk.x(), chunk.z(), chunk.x(), chunk.z()); }
+            @Override public boolean knownLoaded(ChunkPosition chunk) { return host.knownLoaded(chunk); }
+            @Override public boolean onDestination(ChunkPosition chunk, Runnable work) { return host.regions.execute(chunk, work); }
+            @Override public Optional<WorldPosition> clearSpot(WorldPosition target) { return RegionActor.this.clearSpot(world, target, width, height); }
+            @Override public boolean onOwner(Runnable work, Runnable refused) {
+                return owner.submit(new OwnerMailbox.Work() {
+                    @Override public void run() { work.run(); }
+                    @Override public void refuse(String reason) { refused.run(); }
+                });
+            }
+            @Override public boolean placeable() { return movable.getAsBoolean(); }
+            @Override public void place(WorldPosition spot) { RegionActor.this.place(spot); placed.accept(spot); }
+        }, destination, done);
     }
     /** Whether combat may place the NPC somewhere else: it is active, sits on no seat and carries no rider. */
     static boolean placeable(boolean active, boolean seated, ActorRide riding) { return active && !seated && !riding.active(); }
@@ -838,8 +852,11 @@ final class RegionActor implements RegionOwner.Body {
 
     /** Owner only: whether this main-hand click asks for the seat. */
     boolean seatAsked(boolean sneaking) { return seats.asked(sneaking); }
-    /** On the thread that owns both the NPC and the player. Null once admitted, an empty string for a silent refusal, otherwise a message. */
-    String requestSeat(Player player) { return seats.request(player); }
+    /**
+     * On the thread that owns both the NPC and the player. Null once admitted, an empty string for a silent refusal, otherwise
+     * a message. A plugin's request ({@code clicked} false) skips the seat's permission, empty-hand and toggle checks.
+     */
+    String requestSeat(Player player, boolean clicked) { return seats.request(player, clicked); }
     /** Owner only: the player this one sits on, or null on the NPC itself. */
     Player seatBelow(Player player) { return seats.below(player); }
     /** Owner only: the generation of this player's seat here, or null. */

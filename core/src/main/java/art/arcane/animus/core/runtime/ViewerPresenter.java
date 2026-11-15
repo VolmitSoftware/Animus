@@ -718,7 +718,7 @@ final class ViewerPresenter<P, I> {
         }
         // A seat takes only its own click, after every behavior, shop, GUI, quest and ride had theirs.
         if (ownClick && service.seats.asked(body.value, input.secondaryAction())) {
-            String refusal = service.seats.request(viewer.player, body.value);
+            String refusal = service.seats.request(viewer.player, body.value, true);
             if (refusal != null && !refusal.isEmpty()) host.tell(viewer.player, Palette.error("Cannot sit on " + body.value.spec.name() + ": " + refusal));
         }
     }

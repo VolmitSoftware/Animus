@@ -37,12 +37,6 @@ class ExtensionRuntimeBuiltinsTest {
     @TempDir Path root;
     private static final NpcHandle NPC = new NpcHandle(UUID.randomUUID());
     private static final Key COMMAND = new Key("animus", "command"), FLAG = new Key("animus", "set-flag"), SAY = new Key("animus", "say");
-    private static final DefinitionGateway DEFINITIONS = new DefinitionGateway() {
-        @Override public DefinitionService scoped(BooleanSupplier available) { return this; }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> find(NpcHandle npc) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-    };
     private static final BehaviorPlatform UNAVAILABLE = new BehaviorPlatform() {
         @Override public Optional<String> unavailable() { return Optional.of("general NPC runtime is disabled on Folia"); }
         @Override public AutoCloseable ownerTicks(Runnable tick) { throw new AssertionError("No owner ticks while unavailable"); }
@@ -81,7 +75,7 @@ class ExtensionRuntimeBuiltinsTest {
         BuiltinActionSettings defaults = BuiltinActionSettings.DEFAULT;
         BuiltinActionSettings settings = new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), commandBehaviors, List.of(), defaults.navigationWaits(), List.of());
         BuiltinCapabilities builtins = new BuiltinCapabilities(UNAVAILABLE, new MemoryBehaviorState(), choice -> {}, settings, line -> {});
-        runtime = new ExtensionRuntime(root.toRealPath().resolve("modules"), Platform.FOLIA, DEFINITIONS, new ModuleSettings(modulesEnabled, 8, 2000, 250), line -> {}, state -> {}, builtins);
+        runtime = new ExtensionRuntime(root.toRealPath().resolve("modules"), Platform.FOLIA, new ModuleSettings(modulesEnabled, 8, 2000, 250), line -> {}, state -> {}, builtins);
         for (art.arcane.animus.api.TrustedModule integration : integrations) runtime.integration(integration, OPEN);
         runtime.start();
         long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);

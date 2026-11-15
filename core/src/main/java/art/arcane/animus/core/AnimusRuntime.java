@@ -249,6 +249,12 @@ public final class AnimusRuntime implements AutoCloseable {
         return fileWork.executor(observer);
     }
 
+    /** Public API work on the shared file queue; results are delivered off every server thread. */
+    public synchronized <T> java.util.concurrent.CompletionStage<art.arcane.animus.api.Outcome<T>> fileWork(java.util.function.Supplier<art.arcane.animus.api.Outcome<T>> work) {
+        if (!isRunning()) throw new IllegalStateException("Animus is not running");
+        return fileWork.submit(work);
+    }
+
     public synchronized DefinitionGateway definitionGateway() {
         if (!isRunning()) throw new IllegalStateException("Animus is not running");
         return definitions;

@@ -85,10 +85,12 @@ final class ActorSeats<P, A> {
     private static final long ATTACH_TIMEOUT_NANOS = 5_000_000_000L;
     final class Seat {
         final P player; final RegionSeats.Lease<A> lease; final int level; final BodyTransport.ControlSubscription input; final RideEntry entry; final long started;
+        /** Taken by the player's own click, so it ends when the player loses the seat's permission; a plugin's seat does not. */
+        final boolean clicked;
         State state = State.ATTACHING;
         int away;
-        Seat(P player, RegionSeats.Lease<A> lease, int level, BodyTransport.ControlSubscription input, RideEntry entry, long started) {
-            this.player = player; this.lease = lease; this.level = level; this.input = input; this.entry = entry; this.started = started;
+        Seat(P player, RegionSeats.Lease<A> lease, int level, BodyTransport.ControlSubscription input, RideEntry entry, long started, boolean clicked) {
+            this.player = player; this.lease = lease; this.level = level; this.input = input; this.entry = entry; this.started = started; this.clicked = clicked;
         }
     }
     private final Host<P> host;
@@ -131,17 +133,19 @@ final class ActorSeats<P, A> {
 
     /**
      * On the thread that owns both the NPC and the player.
+     * @param clicked true for the player's own click; false for a plugin's request, which skips the seat's permission,
+     *                empty-hand and sitting-toggle checks
      * @return null once the player is being seated, an empty string for a refusal nobody is told of, otherwise why not
      */
-    String request(P player) {
+    String request(P player, boolean clicked) {
         String unavailable = host.unavailable();
         if (unavailable != null) return "seats are unavailable: " + unavailable;
         if (!host.owns(player)) return "you are in another region";
         SeatModule seat = host.offer();
         UUID id = host.id(player);
         // As with GSit: no permission, sitting turned off or an item in hand pass silently.
-        if (!host.permitted(player, seat.permission()) || !host.toggledOn(id)) return "";
-        if (seat.emptyHand() && !host.emptyHand(player)) return "";
+        if (clicked && (!host.permitted(player, seat.permission()) || !host.toggledOn(id))) return "";
+        if (clicked && seat.emptyHand() && !host.emptyHand(player)) return "";
         if (host.dead(player) || host.busy(player) || host.inVehicle(player)) return "you cannot sit right now";
         RegionSeats.Lease<A> already = ledger.of(id);
         // The client can aim at the NPC it sits on; that click is the seat's own and needs no answer.
@@ -174,7 +178,7 @@ final class ActorSeats<P, A> {
             input.close();
             return admission.rejection() == RegionSeats.Rejection.CAPACITY ? "the server limit of " + maximum + " seated players is reached" : "you are already sitting";
         }
-        stack.add(new Seat(player, admission.lease(), stack.size(), input, new RideEntry(host.entry(), id, ground), System.nanoTime()));
+        stack.add(new Seat(player, admission.lease(), stack.size(), input, new RideEntry(host.entry(), id, ground), System.nanoTime(), clicked));
         host.changed();
         return null;
     }
@@ -222,8 +226,8 @@ final class ActorSeats<P, A> {
         if (!ledger.current(seat.lease)) return "stack-ended";
         if (!host.available()) return "npc-retired";
         SeatModule offer = host.offer();
-        if (!offer.enabled()) return "seat-removed";
-        if (!host.permitted(player, offer.permission())) return "permission-revoked";
+        if (seat.clicked && !offer.enabled()) return "seat-removed";
+        if (seat.clicked && !host.permitted(player, offer.permission())) return "permission-revoked";
         if (host.inVehicle(player)) return "real-vehicle";
         if (host.busy(player)) return "player-state";
         WorldPosition at = host.position(player), ground = host.ground();

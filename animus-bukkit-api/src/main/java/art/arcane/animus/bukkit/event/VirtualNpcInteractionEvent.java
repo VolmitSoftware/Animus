@@ -13,6 +13,7 @@ import org.bukkit.event.HandlerList;
  * Listeners must separately verify ownership of any other entities or terrain they access.
  */
 public final class VirtualNpcInteractionEvent extends Event implements Cancellable {
+    /** A right click ({@code INTERACT}) or a left click ({@code ATTACK}). */
     public enum Action { INTERACT, ATTACK }
     private static final HandlerList HANDLERS = new HandlerList();
     private final Player viewer;

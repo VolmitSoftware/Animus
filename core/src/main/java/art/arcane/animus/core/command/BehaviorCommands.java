@@ -156,6 +156,18 @@ public final class BehaviorCommands implements AutoCloseable {
             else reply(sender,outcomeLines("Behavior run",outcome,outcome.value().map(id->"execution="+id+" | npc="+npc+" | behavior="+behavior).orElse("")));
         });
     }
+    /** A manual run for the public API: UNAVAILABLE while behaviors are off, loading or stopping. Any thread. */
+    public CompletionStage<Outcome<UUID>> start(String npc,String behavior,Optional<UUID> player,Map<String,Object> context){
+        BehaviorRuntime runtime=coordinator;State current=state;
+        if(closed.get()||runtime==null||current!=State.READY)return CompletableFuture.completedFuture(Outcome.rejected(Outcome.Status.UNAVAILABLE,"behaviors-unavailable","Behaviors are "+current.name().toLowerCase(Locale.ROOT)+"; "+nextStep(current)));
+        return runtime.run(npc,behavior,player,context);
+    }
+    /** Cancels a run for the public API; UNAVAILABLE once behaviors stopped. Any thread. */
+    public CompletionStage<Outcome<Boolean>> stop(UUID execution){
+        BehaviorRuntime runtime=coordinator;
+        if(closed.get()||runtime==null)return CompletableFuture.completedFuture(Outcome.rejected(Outcome.Status.UNAVAILABLE,"behaviors-unavailable","Behaviors are not running"));
+        return runtime.cancel(execution);
+    }
     public void trace(CommandActor sender,String npc,int page){
         BehaviorRuntime runtime=ready(sender,"trace",true);if(runtime==null)return;
         if(page<1||page>LISTED){reply(sender,List.of("Behaviors: Page must be 1.."+LISTED));return;}

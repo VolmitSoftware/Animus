@@ -13,19 +13,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static art.arcane.animus.core.behavior.runtime.BehaviorRuntimeTest.*;
 
 class HostCoordinatorTest {
-    private static final DefinitionGateway DEFINITIONS=new DefinitionGateway(){
-        public DefinitionService scoped(java.util.function.BooleanSupplier available){return this;}
-        public CompletionStage<Outcome<DefinitionSnapshot>> find(NpcHandle npc){throw new UnsupportedOperationException();}
-        public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit){throw new UnsupportedOperationException();}
-        public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit){throw new UnsupportedOperationException();}
-    };
     private static TrustedModule module(java.util.function.Consumer<ModuleContext> enable){return new TrustedModule(){
         public ModuleManifest manifest(){return new ModuleManifest("sample",new Version(1,0,0),new ApiRange(1,1),Set.of(Platform.FOLIA),List.of());}
         public void enable(ModuleContext context){enable.accept(context);}public void disable(){}
     };}
     @Test void realHostCancellationRetainsBothLayersUntilRawWorkAndDeliveryActuallyFinish()throws Exception {
         Sources sources=new Sources(ACTION);CompletableFuture<String> raw=new CompletableFuture<>();AtomicReference<Cancellation> token=new AtomicReference<>();AtomicReference<Thread> handlerThread=new AtomicReference<>();AtomicReference<Invocation> invocation=new AtomicReference<>();
-        try(ModuleHost host=new ModuleHost(Platform.FOLIA,DEFINITIONS,2,Duration.ofSeconds(3))){
+        try(ModuleHost host=new ModuleHost(Platform.FOLIA,2,Duration.ofSeconds(3))){
             assertEquals(Outcome.Status.OK,host.install(module(context->context.registrations().action(new Descriptor(new Key("sample","act"),Kind.ACTION,"Test","{}",Set.of(Platform.FOLIA),false),call->{token.set(call.cancellation());handlerThread.set(Thread.currentThread());invocation.set(call);return raw;}))).status());
             UUID player=UUID.randomUUID();var runtime=new BehaviorRuntime(BehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,new HostBehaviorInvoker(host),null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
             try{
@@ -40,7 +34,7 @@ class HostCoordinatorTest {
     }
     @Test void privilegedModuleActionIsUnavailableWithoutImplicitGrant()throws Exception {
         Sources sources=new Sources(ACTION);AtomicInteger entered=new AtomicInteger();
-        try(ModuleHost host=new ModuleHost(Platform.FOLIA,DEFINITIONS,2,Duration.ofSeconds(3))){
+        try(ModuleHost host=new ModuleHost(Platform.FOLIA,2,Duration.ofSeconds(3))){
             host.install(module(context->context.registrations().action(new Descriptor(new Key("sample","act"),Kind.ACTION,"Privileged","{}",Set.of(Platform.FOLIA),true),call->{entered.incrementAndGet();return CompletableFuture.completedFuture("{}");})));
             var runtime=new BehaviorRuntime(BehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,new HostBehaviorInvoker(host),null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
             try{UUID id=await(runtime.run("test","example:manual")).value().orElseThrow();eventually(()->runtime.inspect(id).orElseThrow().report().state()==BehaviorEngine.State.UNAVAILABLE);assertEquals(0,entered.get());}
@@ -50,7 +44,7 @@ class HostCoordinatorTest {
     @Test void queuedHostWorkerChecksChangedSourceBeforeCallbackWithoutWaitingForCoordinatorTick()throws Exception {
         for(boolean replaceProgram:new boolean[]{false,true}){
             Sources sources=new Sources(ACTION);CountDownLatch held=new CountDownLatch(2),release=new CountDownLatch(1),ownerHeld=new CountDownLatch(1),ownerRelease=new CountDownLatch(1);AtomicInteger entered=new AtomicInteger();AtomicBoolean holdOwner=new AtomicBoolean();
-            try(ModuleHost host=new ModuleHost(Platform.FOLIA,DEFINITIONS,4,Duration.ofSeconds(10))){
+            try(ModuleHost host=new ModuleHost(Platform.FOLIA,4,Duration.ofSeconds(10))){
                 host.install(module(context->{
                     context.registrations().action(new Descriptor(new Key("sample","block"),Kind.ACTION,"Worker blocker","{}",Set.of(Platform.FOLIA),false),call->{held.countDown();latch(release);return CompletableFuture.completedFuture("{}");});
                     context.registrations().action(new Descriptor(new Key("sample","act"),Kind.ACTION,"Guarded","{}",Set.of(Platform.FOLIA),false),call->{entered.incrementAndGet();return CompletableFuture.completedFuture("{}");});
@@ -72,7 +66,7 @@ class HostCoordinatorTest {
     }
     @Test void heldHandlerCancellationObservesAndLatchesSourceRevocationWithoutNextTick()throws Exception {
         Sources sources=new Sources(ACTION);CompletableFuture<String> raw=new CompletableFuture<>();AtomicReference<Cancellation> token=new AtomicReference<>();AtomicBoolean holdOwner=new AtomicBoolean();CountDownLatch ownerHeld=new CountDownLatch(1),ownerRelease=new CountDownLatch(1);
-        try(ModuleHost host=new ModuleHost(Platform.FOLIA,DEFINITIONS,2,Duration.ofMillis(500))){
+        try(ModuleHost host=new ModuleHost(Platform.FOLIA,2,Duration.ofMillis(500))){
             host.install(module(context->context.registrations().action(new Descriptor(new Key("sample","act"),Kind.ACTION,"Held","{}",Set.of(Platform.FOLIA),false),call->{token.set(call.cancellation());return raw;})));
             var runtime=new BehaviorRuntime(new BehaviorRuntime.Limits(8,8,50,20),BehaviorEngine.Limits.defaults(),()->{
                 if(Thread.currentThread().getName().equals("animus-behavior-owner")&&holdOwner.compareAndSet(true,false)){ownerHeld.countDown();latch(ownerRelease);}return sources.npcs.get();

@@ -82,7 +82,7 @@ class BehaviorCommandsTest {
         Harness(BehaviorSettings settings,Function<MutationLane.EngineTaskObserver,Executor> supplied)throws Exception{
             runtime=new AnimusRuntime(RuntimeEnvironment.bukkit("26.3",root));runtime.start();
             if(runtime.npcs().all().isEmpty())new Administration(runtime).create("test","minecraft:player","world",0,64,0,"default","Test");
-            AtomicReference<BehaviorCommands> ready=new AtomicReference<>();extensions=new ExtensionRuntime(root.resolve("modules"),art.arcane.animus.api.Platform.PAPER,runtime.definitionGateway(),new ModuleSettings(false,4,1000,250),reports::add,state->ready.get().modulesInitialized(state));
+            AtomicReference<BehaviorCommands> ready=new AtomicReference<>();extensions=new ExtensionRuntime(root.resolve("modules"),art.arcane.animus.api.Platform.PAPER,new ModuleSettings(false,4,1000,250),reports::add,state->ready.get().modulesInitialized(state));
             service=new BehaviorCommands(root,settings,runtime.npcs(),runtime.documents(),runtime.behaviorState(),extensions,supplied==null?runtime::fileExecutor:supplied,reports::add);ready.set(service);
         }
         void start()throws Exception{extensions.start();until(()->service.statusLines().getFirst().startsWith("Behaviors READY"));}

@@ -55,10 +55,11 @@ public final class PathExecution {
         if (cancelled || finished()) return Optional.empty();
         double budget = Math.min(1, maximumDistance + carry);
         Maneuver.Leg segment = segments.get(cursor); double distance = position.distance(segment.target());
-        boolean end = distance <= budget;
+        // A step short of the node only by rounding ends on it; otherwise the next tick moves a hair and the walk stutters.
+        boolean end = distance <= budget + 1e-9;
         Vec3 next = end ? segment.target() : position.add(segment.target().subtract(position).multiply(budget / distance));
         proposed = new Proposal(position, next, segment.medium(), segment.support(), end && segment.landing(), segment.landingMedium(),
-                segment.onGround() && (segment.support() || end), cursor, end, end ? budget - distance : 0);
+                segment.onGround() && (segment.support() || end), cursor, end, end ? Math.max(0, budget - distance) : 0);
         return Optional.of(proposed);
     }
     /** A failed validation does not advance the path. Stale proposals cannot be applied after another step. */

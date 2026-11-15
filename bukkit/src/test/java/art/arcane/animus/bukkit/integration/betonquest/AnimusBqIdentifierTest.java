@@ -66,6 +66,7 @@ class AnimusBqIdentifierTest {
                 @Override public Optional<NpcInfo> byUuid(UUID uuid) { return Optional.of(new NpcInfo(uuid, INNKEEPER.key(), "", INNKEEPER.name(), spawned)); }
                 @Override public List<NpcInfo> byName(String name) { return List.of(); }
                 @Override public List<NpcInfo> all() { return List.of(); }
+                @Override public art.arcane.animus.api.NpcService service(org.bukkit.plugin.Plugin plugin) { throw new UnsupportedOperationException(); }
             };
         }
         @Override public Optional<Location> location(UUID npc) { return Optional.empty(); }

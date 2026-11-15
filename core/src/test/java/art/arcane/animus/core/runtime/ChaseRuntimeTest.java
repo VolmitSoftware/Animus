@@ -93,10 +93,6 @@ class ChaseRuntimeTest {
         for (int round = 0; round < 6; round++) {
             goalX += 2;
             harness.service.chase(NPC, goal(goalX, 64, 2.5), 4);
-            // The planner threads get the wall time a server tick would give them, so a busy machine is not counted as standing.
-            for (long waited = System.nanoTime(); harness.service.navigationStatus(NPC).contains(": planning;") && System.nanoTime() - waited < 200_000_000L;) {
-                try { Thread.sleep(2); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
-            }
             for (int tick = 0; tick < 10; tick++) {
                 harness.tick(1);
                 double now = at(harness).x();

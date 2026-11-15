@@ -377,6 +377,11 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
             action.accept(viewer);
             reached++;
         }
+        // On Folia, players another region owns are found by the position their region last published and reached there.
+        for (UUID elsewhere : players.elsewhereNear(at, audience.radius(), MAXIMUM_AUDIENCE - reached)) {
+            if (hidden.hides(elsewhere, speaker.id(), speaker.state().npcId())) continue;
+            if (players.deliver(elsewhere, (Player viewer) -> { if (!sameWorldOnly || viewer.getWorld().getUID().toString().equals(at.world())) action.accept(viewer); })) reached++;
+        }
         return reached;
     }
 

@@ -12,13 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ModuleSchemaTest {
     private static final NpcHandle NPC = new NpcHandle(UUID.randomUUID());
-    private static final DefinitionGateway DEFINITIONS = new DefinitionGateway() {
-        public DefinitionService scoped(java.util.function.BooleanSupplier available) { return this; }
-        public CompletionStage<Outcome<DefinitionSnapshot>> find(NpcHandle npc) { throw new UnsupportedOperationException(); }
-        public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-        public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-    };
-    private static ModuleHost host() { return new ModuleHost(Platform.PAPER, DEFINITIONS, 16, Duration.ofSeconds(2)); }
+    private static ModuleHost host() { return new ModuleHost(Platform.PAPER, 16, Duration.ofSeconds(2)); }
     private static Descriptor descriptor(String name, Kind kind, String schema) {
         return new Descriptor(new Key("schema", name), kind, "Schema validation fixture", schema, Set.of(Platform.PAPER), false);
     }

@@ -36,7 +36,6 @@ public final class ModuleHost implements AutoCloseable {
     private record Registration(Entry owner,Descriptor descriptor,Action action,Condition condition,CapabilitySchema schema) {}
     private final ReentrantLock lifecycle=new ReentrantLock();
     private final Platform platform;
-    private final DefinitionGateway definitions;
     /** Hotloaded as one value, so an invocation sees one consistent set of limits. */
     private record Limits(int maximumInvocations,long deadlineNanos,long deliveryBudgetNanos) {}
     private static final int QUEUE_CAPACITY=256;
@@ -50,11 +49,11 @@ public final class ModuleHost implements AutoCloseable {
     private boolean closed,admissionClosed;
     private long slowDeliveries;
 
-    public ModuleHost(Platform platform,DefinitionGateway definitions,int maximumInvocations,Duration deadline) {
-        this(platform,definitions,maximumInvocations,deadline,Duration.ofMillis(250));
+    public ModuleHost(Platform platform,int maximumInvocations,Duration deadline) {
+        this(platform,maximumInvocations,deadline,Duration.ofMillis(250));
     }
-    public ModuleHost(Platform platform,DefinitionGateway definitions,int maximumInvocations,Duration deadline,Duration deliveryBudget) {
-        this.platform=Objects.requireNonNull(platform);this.definitions=Objects.requireNonNull(definitions);
+    public ModuleHost(Platform platform,int maximumInvocations,Duration deadline,Duration deliveryBudget) {
+        this.platform=Objects.requireNonNull(platform);
         limits=checked(maximumInvocations,deadline,deliveryBudget);
         // Admission bounds queued work by the current maximum; the queues hold the largest maximum a hotload may set.
         workers=new ThreadPoolExecutor(2,2,0,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(QUEUE_CAPACITY),job->{Thread t=new Thread(job,"Animus-module");t.setDaemon(true);return t;});
@@ -97,6 +96,9 @@ public final class ModuleHost implements AutoCloseable {
     private long droppedNotices;
     /** The engine-wide hook registry platform adapters already wrap. Connect before installing modules. */
     public void connectHooks(ModuleHooks registry){hooks=Objects.requireNonNull(registry);}
+    /** Where each module's {@link ModuleContext#npcs()} comes from; connect before modules enable. */
+    public void connectNpcs(art.arcane.animus.core.api.NpcScopes scopes){npcScopes=Objects.requireNonNull(scopes);}
+    private volatile art.arcane.animus.core.api.NpcScopes npcScopes=art.arcane.animus.core.api.NpcScopes.NONE;
     public ModuleHooks hooks(){return hooks;}
     /** Interaction notices dropped because a subscribing module had no free invocation slot. */
     public synchronized long droppedNotices(){return droppedNotices;}
@@ -392,6 +394,7 @@ public final class ModuleHost implements AutoCloseable {
     private void cleanup(Entry entry){
         if(entry.cleaned)return;entry.cleaned=true;int failures=0;
         try{entry.module.disable();}catch(Exception | LinkageError | AssertionError error){failures++;}
+        if(entry.npcsOpened())try{npcScopes.release(entry.npcOwner());}catch(RuntimeException | LinkageError error){failures++;}
         List<AutoCloseable> resources=entry.takeResources();
         for(int i=resources.size()-1;i>=0;i--)try{resources.get(i).close();}catch(Exception | LinkageError | AssertionError error){failures++;}
         if(failures>0)entry.reason+="; cleanup-failures="+failures;
@@ -428,7 +431,7 @@ public final class ModuleHost implements AutoCloseable {
         if(admissionClosed && calls.stream().allMatch(call->call.deliveryPhase!=0))deliveries.shutdown();
     }
     private final class Entry implements ModuleContext,Registrar,ImportConverters.Registrar,Integrations.Registrar {
-        final TrustedModule module;final ModuleManifest manifest;final BuiltinPolicy policy;final DefinitionService scopedDefinitions;final Map<Key,Registration> staged=new LinkedHashMap<>();final List<AutoCloseable> resources=new ArrayList<>();
+        final TrustedModule module;final ModuleManifest manifest;final BuiltinPolicy policy;final Map<Key,Registration> staged=new LinkedHashMap<>();final List<AutoCloseable> resources=new ArrayList<>();
         final List<InteractionNotice.Listener> stagedListeners=new ArrayList<>();final List<ModuleHooks.Converter> stagedConverters=new ArrayList<>();
         Integrations.Protection stagedProtection;Integrations.Economy stagedEconomy;
         volatile List<InteractionNotice.Listener> listeners=List.of();
@@ -442,7 +445,11 @@ public final class ModuleHost implements AutoCloseable {
             public long deadlineNanos(){return limits.deadlineNanos();}
             public void overran(String hook){ModuleHost.this.overran(Entry.this,hook);}
         };
-        Entry(TrustedModule module,ModuleManifest manifest,BuiltinPolicy policy){this.module=module;this.manifest=manifest;this.policy=policy;scopedDefinitions=definitions.scoped(()->available(this));}
+        private NpcService npcs;
+        Entry(TrustedModule module,ModuleManifest manifest,BuiltinPolicy policy){this.module=module;this.manifest=manifest;this.policy=policy;}
+        String npcOwner(){return "module:"+manifest.id();}
+        synchronized boolean npcsOpened(){return npcs!=null;}
+        public synchronized NpcService npcs(){if(npcs==null)npcs=npcScopes.open(npcOwner(),()->available(this));return npcs;}
         synchronized Map<Key,Registration> seal(){staging=false;listeners=List.copyOf(stagedListeners);return Map.copyOf(staged);}
         synchronized ModuleHooks.Staged stagedHooks(){return new ModuleHooks.Staged(Optional.ofNullable(stagedProtection),Optional.ofNullable(stagedEconomy),stagedConverters);}
         public void onInteraction(InteractionNotice.Listener listener){
@@ -471,7 +478,6 @@ public final class ModuleHost implements AutoCloseable {
             if(descriptor.platforms().contains(platform))stagedEconomy=economy;
         }
         synchronized List<AutoCloseable> takeResources(){List<AutoCloseable> copy=List.copyOf(resources);resources.clear();return copy;}
-        public DefinitionService definitions(){return scopedDefinitions;}
         public Registrar registrations(){return this;}
         public TriggerPublisher triggers(){return (key,npc,player)->publishTrigger(this,key,npc,player);}
         public ModuleScheduler scheduler(){return work->invoke(this,null,token->CompletableFuture.completedFuture(work.run(token)),Payload.JSON_OBJECT);}

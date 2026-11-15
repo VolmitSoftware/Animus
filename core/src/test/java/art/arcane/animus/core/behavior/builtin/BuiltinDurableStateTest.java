@@ -11,7 +11,6 @@ import art.arcane.animus.api.Capabilities.Key;
 import art.arcane.animus.core.behavior.BehaviorCompiler;
 import art.arcane.animus.core.behavior.state.BehaviorStateStore;
 import art.arcane.animus.core.config.BuiltinActionSettings;
-import art.arcane.animus.core.extension.DefinitionGateway;
 import art.arcane.animus.core.extension.ModuleHost;
 import art.arcane.animus.core.storage.DocumentStore;
 import java.nio.file.Files;
@@ -34,12 +33,6 @@ class BuiltinDurableStateTest {
     @TempDir Path root;
     private static final NpcHandle NPC = new NpcHandle(UUID.randomUUID()), OTHER_NPC = new NpcHandle(UUID.randomUUID());
     private static final UUID PLAYER = UUID.randomUUID(), OTHER_PLAYER = UUID.randomUUID();
-    private static final DefinitionGateway DEFINITIONS = new DefinitionGateway() {
-        @Override public DefinitionService scoped(BooleanSupplier available) { return this; }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> find(NpcHandle npc) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-    };
     private DocumentStore documents;
     private BehaviorStateStore state;
     private ModuleHost host;
@@ -47,7 +40,7 @@ class BuiltinDurableStateTest {
     private void open(BehaviorStateStore.Limits limits) throws Exception {
         documents = new DocumentStore(root);
         state = BehaviorStateStore.open(documents, limits);
-        host = new ModuleHost(Platform.FOLIA, DEFINITIONS, 16, Duration.ofSeconds(5));
+        host = new ModuleHost(Platform.FOLIA, 16, Duration.ofSeconds(5));
         RecordingPlatform platform = new RecordingPlatform();
         platform.unavailable = Optional.of("no world here");
         BuiltinCapabilities builtins = new BuiltinCapabilities(platform, state, choice -> {}, BuiltinActionSettings.DEFAULT, line -> {});

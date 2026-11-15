@@ -24,7 +24,7 @@ class ActorSeatsTest {
     private static final UUID BENCH = UUID.fromString("00000000-0000-0000-0000-0000000005e1");
     private record Person(UUID id, String name) {}
 
-    private static final class Host implements ActorSeats.Host<Person> {
+    private static class Host implements ActorSeats.Host<Person> {
         SeatModule offer = new SeatModule(true, SeatModule.Click.RIGHT, "animus.seat", 2, true);
         SeatSettings settings = new SeatSettings(false, 32, true);
         WorldPosition feet = new WorldPosition(WORLD, new Vec3(0.5, 64, 0.5));
@@ -85,8 +85,23 @@ class ActorSeatsTest {
     private final Person alice = new Person(UUID.randomUUID(), "Alice"), bob = new Person(UUID.randomUUID(), "Bob"), cara = new Person(UUID.randomUUID(), "Cara");
 
     private void seat(Person player) {
-        assertNull(seats.request(player));
+        assertNull(seats.request(player, true));
         seats.attached(seats.generation(player), true);
+    }
+
+    @Test void aPluginSeatSkipsThePermissionAndToggleAndOutlastsThePermissionCheck() {
+        Host denied = new Host() {
+            @Override public boolean permitted(Person player, String node) { return false; }
+            @Override public boolean emptyHand(Person player) { return false; }
+        };
+        denied.off.add(alice.id());
+        denied.offer = new SeatModule(false, SeatModule.Click.RIGHT, "animus.seat", 2, true);
+        ActorSeats<Person, String> bench = new ActorSeats<>(denied, new RegionSeats<>(), "bench", BENCH);
+        assertEquals("", bench.request(alice, true), "a click needs the permission, the toggle and an empty hand");
+        assertNull(bench.request(alice, false));
+        bench.attached(bench.generation(alice), true);
+        bench.tick();
+        assertEquals(List.of(alice), bench.players(), "a plugin's seat is not ended for the missing permission");
     }
 
     @Test void aSeatedPlayerStandsOnTheNpcsGroundAndGetsOffBySneaking() {
@@ -107,7 +122,7 @@ class ActorSeatsTest {
         seat(alice); seat(bob);
         assertEquals(alice, seats.below(bob));
         assertEquals(alice, seats.bottom());
-        assertEquals("its seats are full", seats.request(cara));
+        assertEquals("its seats are full", seats.request(cara, true));
         host.sneaking.add(alice.id());
         seats.tick();
         assertTrue(seats.empty());
@@ -117,7 +132,7 @@ class ActorSeatsTest {
     @Test void aStackNeedsCarriedPassengersOnThisServer() {
         host.stacking = false;
         seat(alice);
-        assertEquals("its seat is taken", seats.request(bob));
+        assertEquals("its seat is taken", seats.request(bob, true));
     }
 
     @Test void aPlayerAnotherRegionHoldsIsNeverReadAndTheSeatEndsInPlaceAfterAWhile() {
@@ -150,21 +165,21 @@ class ActorSeatsTest {
 
     @Test void refusalsMatchThePaperSeat() {
         host.off.add(alice.id());
-        assertEquals("", seats.request(alice), "sitting turned off passes silently, as with GSit");
+        assertEquals("", seats.request(alice, true), "sitting turned off passes silently, as with GSit");
         host.off.clear();
         host.riding.add(alice.id());
-        assertEquals("you are riding an NPC", seats.request(alice));
+        assertEquals("you are riding an NPC", seats.request(alice, true));
         host.riding.clear();
         host.occupied = "someone is riding this NPC";
-        assertEquals("someone is riding this NPC", seats.request(alice));
+        assertEquals("someone is riding this NPC", seats.request(alice, true));
         host.occupied = null;
         host.gsit = "sitting here is not allowed";
-        assertEquals("sitting here is not allowed", seats.request(alice));
+        assertEquals("sitting here is not allowed", seats.request(alice, true));
         host.gsit = null;
         host.settings = new SeatSettings(false, 1, true);
         seat(alice);
-        assertEquals("the server limit of 1 seated players is reached", seats.request(bob));
-        assertEquals("", seats.request(alice), "a click on the seat a player already has needs no answer");
+        assertEquals("the server limit of 1 seated players is reached", seats.request(bob, true));
+        assertEquals("", seats.request(alice, true), "a click on the seat a player already has needs no answer");
     }
 
     @Test void anEndRequestForAnEarlierSeatEndsNothing() {

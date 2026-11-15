@@ -46,9 +46,11 @@ final class SeatService<P, I> implements AutoCloseable {
     final class Seat {
         final P player; final UUID id; final PersistedNpcService<P, I>.Value npc; final int level;
         final BodyTransport.ControlSubscription input; final RideEntry entry; final long started;
+        /** Taken by the player's own click, so it ends when the player loses the seat's permission; a plugin's seat does not. */
+        final boolean clicked;
         State state = State.ATTACHING;
-        Seat(P player, UUID id, PersistedNpcService<P, I>.Value npc, int level, BodyTransport.ControlSubscription input, RideEntry entry, long started) {
-            this.player = player; this.id = id; this.npc = npc; this.level = level; this.input = input; this.entry = entry; this.started = started;
+        Seat(P player, UUID id, PersistedNpcService<P, I>.Value npc, int level, BodyTransport.ControlSubscription input, RideEntry entry, long started, boolean clicked) {
+            this.player = player; this.id = id; this.npc = npc; this.level = level; this.input = input; this.entry = entry; this.started = started; this.clicked = clicked;
         }
     }
     private enum Exit { RESTORE_POSITION, LEAVE_POSITION }
@@ -97,15 +99,19 @@ final class SeatService<P, I> implements AutoCloseable {
     /** Whether this main-hand click asks for the seat at all; other clicks never reach {@link #request}. */
     boolean asked(PersistedNpcService<P, I>.Value npc, boolean sneaking) { return offer(npc).sitsOn(sneaking); }
 
-    /** @return null once the player is being seated, an empty string for a refusal nobody is told of, otherwise why not */
-    String request(P player, PersistedNpcService<P, I>.Value npc) {
+    /**
+     * @param clicked true for the player's own click; false for a plugin's request, which skips the seat's permission,
+     *                empty-hand and sitting-toggle checks
+     * @return null once the player is being seated, an empty string for a refusal nobody is told of, otherwise why not
+     */
+    String request(P player, PersistedNpcService<P, I>.Value npc, boolean clicked) {
         if (closed) return "seats are unavailable";
         if (!service.riders.available()) return "seats are unavailable: " + service.riders.unavailable();
         SeatModule seat = offer(npc);
         UUID id = host.id(player), uuid = npc.spec.definition().uuid();
         // As with GSit: no permission, sitting turned off or an item in hand pass silently.
-        if (!host.permitted(player, seat.permission()) || !toggles.allows(id)) return "";
-        if (seat.emptyHand() && !host.emptyHand(player)) return "";
+        if (clicked && (!host.permitted(player, seat.permission()) || !toggles.allows(id))) return "";
+        if (clicked && seat.emptyHand() && !host.emptyHand(player)) return "";
         if (host.dead(player) || host.sleeping(player) || host.inVehicle(player) || host.spectator(player) || host.posed(player)) return "you cannot sit right now";
         Seat already = seats.get(id);
         // The client can aim at the NPC it sits on; that click is the seat's own and needs no answer.
@@ -134,7 +140,7 @@ final class SeatService<P, I> implements AutoCloseable {
         try { input = presentation.subscribe(player); }
         catch (RuntimeException failure) { return "your connection is not ready: " + failure.getMessage(); }
         P below = stack.isEmpty() ? null : stack.getLast().player;
-        Seat taken = new Seat(player, id, npc, stack.size(), input, new RideEntry(host.rideEntry(), id, ground), System.nanoTime());
+        Seat taken = new Seat(player, id, npc, stack.size(), input, new RideEntry(host.rideEntry(), id, ground), System.nanoTime(), clicked);
         seats.put(id, taken);
         stacks.computeIfAbsent(uuid, (UUID ignored) -> new ArrayList<>()).add(taken);
         presentation.attach(player, npc, below, () -> {
@@ -171,8 +177,8 @@ final class SeatService<P, I> implements AutoCloseable {
         if (!service.valueCurrent(seat.npc)) return "definition-changed";
         VirtualNpcState.Snapshot npc = seat.npc.state.snapshot();
         if (!npc.active()) return "npc-retired";
-        if (!offer(seat.npc).enabled()) return "seat-removed";
-        if (!host.permitted(player, offer(seat.npc).permission())) return "permission-revoked";
+        if (seat.clicked && !offer(seat.npc).enabled()) return "seat-removed";
+        if (seat.clicked && !host.permitted(player, offer(seat.npc).permission())) return "permission-revoked";
         if (host.inVehicle(player)) return "real-vehicle";
         if (host.sleeping(player) || host.spectator(player) || host.posed(player)) return "player-state";
         if (!host.position(player).world().equals(npc.position().world())) return "world-changed";

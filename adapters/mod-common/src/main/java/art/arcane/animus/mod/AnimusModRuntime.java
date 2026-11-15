@@ -111,6 +111,7 @@ public final class AnimusModRuntime {
         final DebugWatch watch = new DebugWatch();
         art.arcane.animus.core.hotload.HotloadService hotload;
         art.arcane.animus.core.skin.SkinService skins;
+        volatile art.arcane.animus.core.api.NpcApi<ServerPlayer, ItemStack> npcs;
         volatile boolean stopping;
     }
 
@@ -194,10 +195,10 @@ public final class AnimusModRuntime {
                     () -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); }, LOGGER::info, null, null);
             if (next.builds.status().startsWith("Builds unavailable") && next.runtime.buildSettings().enabled()) LOGGER.warn(next.builds.status());
             DialogueTriggers dialogue = new DialogueTriggers(() -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); });
-            next.builtins = new BuiltinCapabilities(new VanillaBehaviorPlatform(server, next.living, next.combat, next.builds, next.ticks, () -> owner.guis, next.screens::economy),
-                    next.runtime.behaviorState(), dialogue::publish, next.runtime.behaviorSettings().actions(), LOGGER::info);
+            VanillaBehaviorPlatform behaviorPlatform = new VanillaBehaviorPlatform(server, next.living, next.combat, next.builds, next.ticks, () -> owner.guis, next.screens::economy);
+            next.builtins = new BuiltinCapabilities(behaviorPlatform, next.runtime.behaviorState(), dialogue::publish, next.runtime.behaviorSettings().actions(), LOGGER::info);
             next.builtins.quests(questService);
-            next.extensions = new ExtensionRuntime(next.runtime.documents().resolve("modules"), modulePlatform(), next.runtime.definitionGateway(),
+            next.extensions = new ExtensionRuntime(next.runtime.documents().resolve("modules"), modulePlatform(),
                     next.runtime.moduleSettings(), LOGGER::info, (ExtensionRuntime.State initialized) -> {
                         BehaviorCommands current = owner.behaviors;
                         if (current != null) current.modulesInitialized(initialized);
@@ -205,7 +206,16 @@ public final class AnimusModRuntime {
             next.extensions.connectHooks(next.runtime.moduleHooks());
             next.extensions.follow(next.runtime);
             ExtensionRuntime modules = next.extensions;
-            next.living.observeInteractions(modules::interacted);
+            next.npcs = new art.arcane.animus.core.api.NpcApi<>(new art.arcane.animus.core.api.NpcApi.Parts<>(next.runtime, next.living, behaviorPlatform,
+                    new ModApiPlatform(server, next.living), () -> owner.behaviors, next.ticks::every, (art.arcane.animus.api.NpcHandle speaker, String plain) -> {}, LOGGER::info));
+            art.arcane.animus.core.api.NpcApi<ServerPlayer, ItemStack> service = next.npcs;
+            next.runtime.definitionGateway().activation(service::activation);
+            next.extensions.connectNpcs(service);
+            next.living.observeInteractions((UUID npc, UUID viewer, boolean attack, double distance, boolean preview) -> {
+                modules.interacted(npc, viewer, attack, distance, preview);
+                if (!preview) service.clicked(npc, viewer, attack);
+            });
+            next.living.observeSpawns(service::spawned);
             next.living.animationEvents(new art.arcane.animus.core.rig.AnimationEventRunner((art.arcane.animus.api.Capabilities.Key key, art.arcane.animus.api.NpcHandle npc, String arguments) ->
                     modules.action(key, npc, Optional.empty(), arguments), LOGGER::info));
             next.behaviors = new BehaviorCommands(data, next.runtime, next.extensions, (String message) -> {
@@ -296,6 +306,7 @@ public final class AnimusModRuntime {
     private static void close(Running active) {
         active.stopping = true;
         active.watch.clear();
+        if (active.npcs != null) active.npcs.close();
         if (active.hotload != null) active.hotload.close();
         if (active.skins != null) active.skins.close();
         EditorService editor = active.editor;
@@ -471,6 +482,7 @@ public final class AnimusModRuntime {
         if (active.quests != null) active.quests.quit(player);
         active.living.quit(player);
         if (active.serverBehaviors != null) active.serverBehaviors.quit(player);
+        if (active.npcs != null) active.npcs.playerLeft(player.getUUID());
     }
     void respawned(ServerPlayer old, ServerPlayer player) {
         Running active = running;

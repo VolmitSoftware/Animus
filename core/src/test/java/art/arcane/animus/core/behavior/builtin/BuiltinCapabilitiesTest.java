@@ -15,7 +15,6 @@ import art.arcane.animus.core.behavior.BehaviorEngine;
 import art.arcane.animus.core.behavior.BehaviorProgram;
 import art.arcane.animus.core.behavior.HostBehaviorInvoker;
 import art.arcane.animus.core.config.BuiltinActionSettings;
-import art.arcane.animus.core.extension.DefinitionGateway;
 import art.arcane.animus.core.extension.ModuleHost;
 import art.arcane.animus.core.schema.CapabilitySchema;
 import java.time.Duration;
@@ -37,12 +36,6 @@ import static org.junit.jupiter.api.Assertions.*;
 class BuiltinCapabilitiesTest {
     private static final NpcHandle NPC = new NpcHandle(UUID.randomUUID());
     private static final UUID PLAYER = UUID.randomUUID();
-    private static final DefinitionGateway DEFINITIONS = new DefinitionGateway() {
-        @Override public DefinitionService scoped(BooleanSupplier available) { return this; }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> find(NpcHandle npc) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-    };
     private static final Set<String> ACTIONS = Set.of("say", "choices", "command", "navigate", "stop-navigation", "play-recording", "resume-patrol", "look", "pose", "animate", "set-appearance",
             "set-equipment", "set-attribute", "play-sound", "spawn-particle", "combat-control", "build", "set-flag", "set-quest-state", "advance-quest-state", "open-shop", "open-gui",
             "play-animation", "stop-animation", "message", "title", "actionbar", "teleport", "give-item", "take-item", "give-book", "charge",
@@ -57,7 +50,7 @@ class BuiltinCapabilitiesTest {
     private BuiltinCapabilities builtins;
 
     private void start(Platform runningOn, long deadlineMillis, BuiltinActionSettings settings) {
-        host = new ModuleHost(runningOn, DEFINITIONS, 64, Duration.ofMillis(deadlineMillis));
+        host = new ModuleHost(runningOn, 64, Duration.ofMillis(deadlineMillis));
         builtins = new BuiltinCapabilities(platform, new MemoryBehaviorState(), dialogue::add, settings, line -> { synchronized (log) { log.add(line); } },
                 (int bound) -> { synchronized (randomBounds) { randomBounds.add(bound); } return bound - 1; });
         Outcome<ModuleHost.ModuleStatus> installed = host.installBuiltin(builtins, builtins);
@@ -604,7 +597,7 @@ class BuiltinCapabilitiesTest {
     }
 
     @Test void failingChoiceListenerIsLoggedAndStillAcceptsTheClick() throws Exception {
-        host = new ModuleHost(Platform.PAPER, DEFINITIONS, 64, Duration.ofSeconds(5));
+        host = new ModuleHost(Platform.PAPER, 64, Duration.ofSeconds(5));
         builtins = new BuiltinCapabilities(platform, new MemoryBehaviorState(), choice -> { throw new IllegalStateException("listener"); }, BuiltinActionSettings.DEFAULT, line -> { synchronized (log) { log.add(line); } });
         assertEquals(Outcome.Status.OK, host.installBuiltin(builtins, builtins).status());
         action("choices", "{\"id\":\"greeting\",\"prompt\":\"Well?\",\"options\":[{\"id\":\"yes\",\"text\":\"Yes\"}]}");
@@ -613,7 +606,7 @@ class BuiltinCapabilitiesTest {
     }
 
     @Test void closingBeforeEnableNeverStartsOwnerTicks() {
-        host = new ModuleHost(Platform.PAPER, DEFINITIONS, 64, Duration.ofSeconds(5));
+        host = new ModuleHost(Platform.PAPER, 64, Duration.ofSeconds(5));
         builtins = new BuiltinCapabilities(platform, new MemoryBehaviorState(), dialogue::add, BuiltinActionSettings.DEFAULT, line -> {});
         builtins.close();
         assertEquals(Outcome.Status.OK, host.installBuiltin(builtins, builtins).status());

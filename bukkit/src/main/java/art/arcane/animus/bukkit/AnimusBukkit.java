@@ -28,7 +28,6 @@ import art.arcane.animus.api.Capabilities;
 import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.api.Platform;
 import art.arcane.animus.core.rig.AnimationEventRunner;
-import art.arcane.animus.bukkit.event.VirtualNpcDialogueChoiceEvent;
 import art.arcane.animus.bukkit.integration.libsdisguises.LibsDisguisesIntegration;
 import art.arcane.animus.bukkit.folia.FoliaRegions;
 import art.arcane.animus.bukkit.folia.FoliaStationaryProofService;
@@ -59,7 +58,6 @@ import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
 import art.arcane.animus.core.building.BuildCommands;
 import art.arcane.animus.core.building.BuildProtection;
 import art.arcane.animus.core.building.BuildService;
-import art.arcane.animus.core.behavior.builtin.DialogueChoice;
 import art.arcane.animus.core.behavior.builtin.DialogueTriggers;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerSink;
@@ -82,6 +80,7 @@ import art.arcane.animus.core.RuntimeCatalogs;
 import art.arcane.animus.core.config.PluginSettings;
 import art.arcane.animus.core.hotload.HotloadService;
 import art.arcane.animus.core.config.NpcRuntimeSettings;
+import art.arcane.animus.core.api.NpcApi;
 import art.arcane.animus.core.extension.ExtensionRuntime;
 import art.arcane.animus.core.extension.MutationLane;
 import art.arcane.animus.core.runtime.NpcRuntime;
@@ -155,6 +154,7 @@ final class AnimusBukkit {
     private AnimusBStats bStats;
     private HotloadService hotload;
     private art.arcane.animus.core.skin.SkinService skins;
+    private volatile NpcApi<Player, ItemStack> npcApi;
     private BukkitServerBehaviors serverBehaviors;
     private AutoCloseable mythic;
     private final JavaPlugin host;
@@ -176,8 +176,9 @@ final class AnimusBukkit {
             runtime = new AnimusRuntime(environment, failure -> host.getLogger().log(Level.SEVERE, "Animus file cleanup failed", failure));
             LibsDisguisesIntegration.install(host.getServer().getPluginManager(), host.getLogger());
             runtime.start();
-            art.arcane.animus.bukkit.api.AnimusNpcs lookup = new art.arcane.animus.bukkit.runtime.BukkitNpcLookup(runtime.npcs()::snapshot);
+            art.arcane.animus.bukkit.runtime.BukkitNpcLookup lookup = new art.arcane.animus.bukkit.runtime.BukkitNpcLookup(runtime.npcs()::snapshot);
             host.getServer().getServicesManager().register(art.arcane.animus.bukkit.api.AnimusNpcs.class, lookup, host, ServicePriority.Normal);
+            host.getServer().getPluginManager().registerEvents(lookup, host);
             CachedPlaceholders placeholders = BukkitPlaceholders.install(host);
             placeholders.refreshTicks(runtime.placeholderSettings().refreshTicks());
             runtime.onSettings((art.arcane.animus.core.config.PluginSettings next) -> placeholders.refreshTicks(next.placeholders().refreshTicks()));
@@ -260,14 +261,16 @@ final class AnimusBukkit {
             BukkitOwners scheduling = new BukkitOwners(host, regions);
             commandGrants = new CommandGrants(host, scheduling::later);
             host.getServer().getPluginManager().registerEvents(commandGrants, host);
-            builtins = new BuiltinCapabilities(new BukkitBehaviorPlatform(host, living, combat, builds, this::buildsRefusal,
+            BukkitBehaviorPlatform behaviorPlatform = new BukkitBehaviorPlatform(host, living, combat, builds, this::buildsRefusal,
                     (Runnable tick) -> ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, tick)), () -> guis, scheduling, mainThread, runtime.placeholders(),
-                    () -> ShopService.economy(runtime.shopSettings(), vault), commandGrants),
-                    runtime.behaviorState(), this::publishChoice,
+                    () -> ShopService.economy(runtime.shopSettings(), vault), commandGrants);
+            builtins = new BuiltinCapabilities(behaviorPlatform,
+                    runtime.behaviorState(), new DialogueChoices((UUID player) -> Optional.ofNullable(host.getServer().getPlayer(player)),
+                            host.getServer().getPluginManager()::callEvent, dialogueTriggers),
                     runtime.behaviorSettings().actions(), message -> host.getLogger().info(message));
             builtins.quests(questService);
             extensions = new ExtensionRuntime(runtime.documents().resolve("modules"),
-                    modulePlatform, runtime.definitionGateway(), runtime.moduleSettings(), message -> host.getLogger().info(message), initialized -> {
+                    modulePlatform, runtime.moduleSettings(), message -> host.getLogger().info(message), initialized -> {
                         BehaviorCommands current = behaviors;
                         if (current != null) current.modulesInitialized(initialized);
                     }, builtins);
@@ -276,7 +279,12 @@ final class AnimusBukkit {
             mythic = MythicSupport.start(new MythicSupport.Parts(host, runtime, extensions, living::state, MythicSupport.owners(host, regions), ownerTicks,
                     LookHooks.DEFAULT, (String message) -> host.getLogger().info(message))).orElse(null);
             ExtensionRuntime modules = extensions;
-            living.observeInteractions(modules::interacted);
+            living.observeInteractions((UUID npc, UUID viewer, boolean attack, double distance, boolean preview) -> {
+                modules.interacted(npc, viewer, attack, distance, preview);
+                NpcApi<Player, ItemStack> service = npcApi;
+                if (service != null && !preview) service.clicked(npc, viewer, attack);
+            });
+            living.observeSpawns((UUID npc) -> { NpcApi<Player, ItemStack> service = npcApi; if (service != null) service.spawned(npc); });
             art.arcane.animus.bukkit.integration.quests.RuntimeQuestNpcHost questNpcs = new art.arcane.animus.bukkit.integration.quests.RuntimeQuestNpcHost(runtime, living, lookup, commands, host.getLogger()::warning);
             host.getServer().getPluginManager().registerEvents(questNpcs, host);
             questPlugins = art.arcane.animus.bukkit.integration.quests.QuestIntegrations.start(host, questNpcs);
@@ -320,12 +328,20 @@ final class AnimusBukkit {
             sensing.start();
             projectiles.strikes(sensing::struck);
             NpcRuntime<Player, ItemStack> speakers = living;
-            builtins.speech((NpcHandle speaker, String plain) -> {
+            java.util.function.BiConsumer<NpcHandle, String> heard = (NpcHandle speaker, String plain) -> {
                 TriggerDispatcher current = sensed.get();
                 if (current == null) return;
                 speakers.active(speaker.uuid()).ifPresent((NpcRuntime.ActiveNpc active) -> current.spoke(speaker.uuid(), active.id(), active.state().position(), plain,
                         (UUID listener) -> speakers.state(listener).map(VirtualNpcState.Snapshot::position)));
-            });
+            };
+            builtins.speech(heard::accept);
+            npcApi = new NpcApi<>(new NpcApi.Parts<>(runtime, living, behaviorPlatform,
+                    new art.arcane.animus.bukkit.runtime.BukkitApiPlatform(host.getServer(), mainThread, mainThread == null ? (RegionNpcRuntime) living : null, regions),
+                    () -> behaviors, ownerTicks, heard, (String message) -> host.getLogger().info(message)));
+            NpcApi<Player, ItemStack> service = npcApi;
+            runtime.definitionGateway().activation(service::activation);
+            extensions.connectNpcs(service);
+            lookup.connect(service, service::playerLeft);
             Function<UUID, Optional<VirtualNpcState.Snapshot>> states = owners::state;
             AnimusRuntime definitions = runtime;
             SnapshotFacts facts = new SnapshotFacts(SnapshotFacts.npcs(() -> definitions.npcs().snapshot(), states));
@@ -389,6 +405,9 @@ final class AnimusBukkit {
         stopping = true;
         // Stop bStats first so no chart callable reads a runtime that is shutting down.
         updateMetrics(false);
+        NpcApi<Player, ItemStack> service = npcApi;
+        npcApi = null;
+        if (service != null) service.close();
         if (hotload != null) { hotload.close(); hotload = null; }
         if (skins != null) { skins.close(); skins = null; }
         LibsDisguisesIntegration.uninstall();
@@ -615,13 +634,6 @@ final class AnimusBukkit {
     private String buildsRefusal() {
         BuildService<Player, ItemStack> service = builds;
         return service != null ? service.unavailable().orElse(null) : "not started";
-    }
-
-    private void publishChoice(DialogueChoice choice) {
-        dialogueTriggers.publish(choice);
-        Player player = host.getServer().getPlayer(choice.player());
-        if (player != null) host.getServer().getPluginManager().callEvent(new VirtualNpcDialogueChoiceEvent(
-                player, choice.npc().uuid(), choice.behavior(), choice.prompt(), choice.option()));
     }
 
     /** Paper and Folia take the banner through their component logger; Spigot gets it as plain text. */

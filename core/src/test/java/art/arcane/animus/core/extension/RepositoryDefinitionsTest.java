@@ -42,13 +42,30 @@ class RepositoryDefinitionsTest {
         assertEquals(Outcome.Status.CONFLICT,await(service.apply(rename(before,"Watchman"))).status());
         assertEquals(handEdit,Files.readString(root.resolve(PATH)));assertEquals("Guard",repository.find("guard").orElseThrow().name());
     }
-    @Test void fieldDiagnosticsAndActivationUnavailableAreDistinct()throws Exception{
+    @Test void fieldDiagnosticsAndActivationRefusalsAreDistinct()throws Exception{
         var before=snapshot();var badJson=JsonDocuments.object(before.json());badJson.getAsJsonObject("position").addProperty("y","bad");
         var invalid=await(service.validate(new DefinitionEdit(NPC,before.token(),JsonDocuments.write(badJson))));
         assertEquals(Outcome.Status.INVALID,invalid.status());assertEquals("$.position.y",invalid.diagnostics().getFirst().field());
         badJson=JsonDocuments.object(before.json());badJson.addProperty("spawned",true);
-        assertEquals(Outcome.Status.UNAVAILABLE,await(service.apply(new DefinitionEdit(NPC,before.token(),JsonDocuments.write(badJson)))).status());
+        service.activation(definition->CompletableFuture.completedFuture(List.of("$.position.world: world is not loaded")));
+        var refused=await(service.apply(new DefinitionEdit(NPC,before.token(),JsonDocuments.write(badJson))));
+        assertEquals(Outcome.Status.INVALID,refused.status());assertEquals("activation-refused",refused.diagnostics().getFirst().code());
+        assertEquals("$.position.world",refused.diagnostics().getFirst().field());
         assertEquals(1,repository.find("guard").orElseThrow().revision());
+        service.activation(definition->CompletableFuture.completedFuture(List.of()));
+        assertEquals(Outcome.Status.OK,await(service.apply(new DefinitionEdit(NPC,before.token(),JsonDocuments.write(badJson)))).status(),"an edit may spawn an NPC the runtime can show");
+        assertTrue(repository.find("guard").orElseThrow().spawned());
+    }
+    @Test void temporaryNpcsAreReadAndReplacedWithTheirOwnTokens()throws Exception{
+        var json=JsonDocuments.object(JSON);json.addProperty("id","visitor");json.addProperty("uuid","22345678-1234-1234-1234-123456789abc");json.addProperty("group","");
+        repository.addTemporary("plugin:Demo",json);
+        NpcHandle visitor=new NpcHandle(UUID.fromString("22345678-1234-1234-1234-123456789abc"));
+        var found=await(service.find(visitor)).value().orElseThrow();
+        assertEquals(1,found.token().revision());
+        var after=await(service.apply(rename(found,"Visitor")));
+        assertEquals(Outcome.Status.OK,after.status());assertEquals(2,after.value().orElseThrow().token().revision());
+        assertEquals("Visitor",repository.find("visitor").orElseThrow().name());
+        assertEquals(Outcome.Status.CONFLICT,await(service.apply(rename(found,"Stale"))).status());
     }
     @Test void replacementCannotChangeIdentityOrRevision()throws Exception{
         var before=snapshot();
@@ -81,16 +98,30 @@ class RepositoryDefinitionsTest {
     @Test void missingHandleIsAnExpectedOutcome()throws Exception{
         assertEquals(Outcome.Status.NOT_FOUND,await(service.find(new NpcHandle(UUID.randomUUID()))).status());
     }
+    /** The host with an NPC service that offers only definitions, gated as the real one is. */
+    private ModuleHost scoped(ModuleHost host){
+        host.connectNpcs(new art.arcane.animus.core.api.NpcScopes(){
+            public NpcService open(String owner,java.util.function.BooleanSupplier available){
+                DefinitionService definitions=service.scoped(available);
+                return (NpcService)java.lang.reflect.Proxy.newProxyInstance(NpcService.class.getClassLoader(),new Class<?>[]{NpcService.class},(proxy,method,arguments)->{
+                    if(method.getName().equals("definitions"))return definitions;
+                    throw new UnsupportedOperationException(method.getName());
+                });
+            }
+            public void release(String owner){}
+        });
+        return host;
+    }
     private static TrustedModule module(String id,java.util.function.Consumer<ModuleContext> enable){return new TrustedModule(){
         public ModuleManifest manifest(){return new ModuleManifest(id,new Version(1,0,0),new ApiRange(1,1),Set.of(Platform.PAPER),List.of());}
         public void enable(ModuleContext context){enable.accept(context);}public void disable(){}
     };}
     @Test void failedStartupAndHostShutdownRevokeRetainedDefinitionScopes()throws Exception{
         var before=snapshot();AtomicReference<DefinitionService> leaked=new AtomicReference<>();
-        try(var host=new ModuleHost(Platform.PAPER,service,8,Duration.ofSeconds(1))){
-            host.install(module("failed",c->{leaked.set(c.definitions());throw new AssertionError("failed");}));
+        try(var host=scoped(new ModuleHost(Platform.PAPER,8,Duration.ofSeconds(1)))){
+            host.install(module("failed",c->{leaked.set(c.npcs().definitions());throw new AssertionError("failed");}));
             assertEquals(Outcome.Status.UNAVAILABLE,await(leaked.get().apply(rename(before,"Bad"))).status());
-            host.install(module("active",c->leaked.set(c.definitions())));
+            host.install(module("active",c->leaked.set(c.npcs().definitions())));
             assertEquals(Outcome.Status.OK,await(leaked.get().find(NPC)).status());host.close();
             assertEquals(Outcome.Status.UNAVAILABLE,await(leaked.get().apply(rename(before,"Bad"))).status());
             assertEquals(Outcome.Status.OK,await(service.find(NPC)).status());assertEquals(1,repository.find("guard").orElseThrow().revision());
@@ -99,8 +130,8 @@ class RepositoryDefinitionsTest {
     @Test void queuedModuleMutationRechecksScopeAfterShutdownBeforeCommit()throws Exception{
         var before=snapshot();AtomicReference<DefinitionService> scoped=new AtomicReference<>();
         CountDownLatch running=new CountDownLatch(1),resume=new CountDownLatch(1);
-        try(var host=new ModuleHost(Platform.PAPER,service,8,Duration.ofSeconds(1))){
-            host.install(module("active",c->scoped.set(c.definitions())));
+        try(var host=scoped(new ModuleHost(Platform.PAPER,8,Duration.ofSeconds(1)))){
+            host.install(module("active",c->scoped.set(c.npcs().definitions())));
             var first=lane.submit(()->{running.countDown();release(resume);return Outcome.ok("unrelated-import");});release(running);
             var queued=scoped.get().apply(rename(before,"Bad"));host.revoke();resume.countDown();await(first);
             assertEquals(Outcome.Status.UNAVAILABLE,await(queued).status());assertEquals(1,repository.find("guard").orElseThrow().revision());
@@ -108,8 +139,8 @@ class RepositoryDefinitionsTest {
     }
     @Test void invocationSuspensionRevokesRetainedDefinitionAccess()throws Exception{
         var before=snapshot();AtomicReference<DefinitionService> scoped=new AtomicReference<>();CompletableFuture<String> raw=new CompletableFuture<>();
-        try(var host=new ModuleHost(Platform.PAPER,service,8,Duration.ofMillis(100))){
-            host.install(module("slow",c->{scoped.set(c.definitions());c.registrations().action(new Capabilities.Descriptor(new Capabilities.Key("slow","wait"),Capabilities.Kind.ACTION,"Wait","{}",Set.of(Platform.PAPER),false),i->raw);}));
+        try(var host=scoped(new ModuleHost(Platform.PAPER,8,Duration.ofMillis(100)))){
+            host.install(module("slow",c->{scoped.set(c.npcs().definitions());c.registrations().action(new Capabilities.Descriptor(new Capabilities.Key("slow","wait"),Capabilities.Kind.ACTION,"Wait","{}",Set.of(Platform.PAPER),false),i->raw);}));
             assertEquals(Outcome.Status.TIMED_OUT,await(host.action(new Capabilities.Key("slow","wait"),NPC,Optional.empty(),"{}",false,false)).status());
             assertEquals(Outcome.Status.UNAVAILABLE,await(scoped.get().apply(rename(before,"Bad"))).status());assertEquals(1,repository.find("guard").orElseThrow().revision());
         }finally{raw.complete("{}");}
@@ -117,8 +148,8 @@ class RepositoryDefinitionsTest {
     @Test void delayedAcknowledgmentAfterModuleRevocationKeepsDurableOutcomeAndRejectsLaterMutation()throws Exception{
         var before=snapshot();AtomicReference<DefinitionService> scoped=new AtomicReference<>();CountDownLatch unblock=new CountDownLatch(1);
         List<CountDownLatch> releases=new ArrayList<>();
-        try(var host=new ModuleHost(Platform.PAPER,service,8,Duration.ofSeconds(1))){
-            host.install(module("active",c->scoped.set(c.definitions())));
+        try(var host=scoped(new ModuleHost(Platform.PAPER,8,Duration.ofSeconds(1)))){
+            host.install(module("active",c->scoped.set(c.npcs().definitions())));
             for(int i=0;i<2;i++){
                 var started=new CountDownLatch(1);var publish=new CountDownLatch(1);var callback=new CountDownLatch(1);releases.add(publish);
                 var result=lane.submit(()->{started.countDown();release(publish);return Outcome.ok("other acknowledgment");});release(started);

@@ -317,7 +317,7 @@ class HotloadServiceTest {
         Files.writeString(behavior, source.replace("REV", "1"));
         new art.arcane.animus.core.admin.Administration(runtime).create("test", "minecraft:player", "world", 0, 64, 0, "default", "Test");
         java.util.concurrent.atomic.AtomicReference<BehaviorCommands> ready = new java.util.concurrent.atomic.AtomicReference<>();
-        ExtensionRuntime extensions = new ExtensionRuntime(root.resolve("modules"), art.arcane.animus.api.Platform.PAPER, runtime.definitionGateway(),
+        ExtensionRuntime extensions = new ExtensionRuntime(root.resolve("modules"), art.arcane.animus.api.Platform.PAPER,
                 new ModuleSettings(false, 4, 1000, 250), (String line) -> {}, (ExtensionRuntime.State state) -> ready.get().modulesInitialized(state));
         BehaviorCommands behaviors = new BehaviorCommands(root, runtime, extensions, (String line) -> {});
         ready.set(behaviors);

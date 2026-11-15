@@ -14,6 +14,7 @@ import java.util.*;
  * @param sequence engine start sequence number
  */
 public record InteractionNotice(NpcHandle npc,UUID viewer,Action action,double distance,boolean preview,long sequence) {
+    /** How the player used the NPC: a left click (attack) or a right click. */
     public enum Action { ATTACK, INTERACT }
     public InteractionNotice {Objects.requireNonNull(npc);Objects.requireNonNull(viewer);Objects.requireNonNull(action);if(!Double.isFinite(distance)||distance<0||sequence<0)throw new IllegalArgumentException("Invalid interaction notice");}
     /**

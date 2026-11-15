@@ -113,6 +113,20 @@ class SeatAndRealMountTest {
         harness.transport.interactions.accept(new BodyTransport.Interaction(bench, BodyTransport.Action.INTERACT, "MAIN_HAND", sneaking, System.nanoTime()));
     }
 
+    @Test void aPluginSeatsAPlayerOnAnNpcWithoutASeatButAClickDoesNot() throws Exception {
+        ViewerWatchRaceTest.Harness harness = harness("bench", npc(BENCH, "bench", "minecraft:player", 0.5, 2.5, "{}"));
+        harness.tick(6);
+        click(harness, false);
+        harness.tick(2);
+        assertEquals("Seated 0/32", harness.service.seatStatus(), "a click needs a seat and animus.seat");
+        java.util.concurrent.CompletableFuture<java.util.Optional<String>> seated = harness.service.seat(harness.player.id(), BENCH).toCompletableFuture();
+        harness.tick(2);
+        assertEquals(java.util.Optional.empty(), seated.get(1, java.util.concurrent.TimeUnit.SECONDS));
+        harness.tick(4);
+        assertTrue(harness.service.seatStatus().contains("Watcher on bench"), "the seat outlasts the checks a click needs: " + harness.service.seatStatus());
+        assertEquals(java.util.Optional.of("the NPC is not active"), harness.service.seat(harness.player.id(), UUID.randomUUID()).toCompletableFuture().get(1, java.util.concurrent.TimeUnit.SECONDS));
+    }
+
     @Test void aPlayerSitsOnAWalkingNpcMovesWithItAndGetsOffBySneaking() throws IOException {
         ViewerWatchRaceTest.Harness harness = harness("bench", npc(BENCH, "bench", "minecraft:player", 0.5, 2.5, "{\"animus:seat\": {}}"));
         harness.nodes.add("animus.seat");
@@ -126,7 +140,7 @@ class SeatAndRealMountTest {
         harness.tick(2);
         assertTrue(harness.service.seatStatus().contains("Watcher on bench: seated"), harness.service.seatStatus());
         PersistedNpcService<ViewerWatchRaceTest.Player, Object>.Value seat = harness.service.entries.get("bench").value;
-        assertEquals("", harness.service.seats.request(harness.player, seat), "clicking the NPC you sit on says nothing");
+        assertEquals("", harness.service.seats.request(harness.player, seat, true), "clicking the NPC you sit on says nothing");
         assertTrue(harness.transport.rosters.contains("Watcher " + BENCH + " bodies=0 rider=Watcher"), harness.transport.rosters.toString());
         assertEquals(new Vec3(0.5, 64, 2.5), harness.transport.placed.get(harness.player.id()), "the server holds the seated player on the ground under the NPC");
 
@@ -173,14 +187,14 @@ class SeatAndRealMountTest {
         harness.service.joined(second);
         harness.tick(8);
         PersistedNpcService<ViewerWatchRaceTest.Player, Object>.Value bench = harness.service.entries.get("bench").value;
-        assertNull(harness.service.seats.request(harness.player, bench));
+        assertNull(harness.service.seats.request(harness.player, bench, true));
         harness.tick(2);
-        assertNull(harness.service.seats.request(second, bench));
+        assertNull(harness.service.seats.request(second, bench, true));
         harness.tick(3);
         assertTrue(harness.service.seatStatus().contains("Second on bench, seat 2: seated"), harness.service.seatStatus());
         assertEquals("Second 1 own=[] ids=[2]", harness.transport.carried.getFirst(), "the second player's own client is told first that it sits on the first player");
         assertTrue(harness.transport.carried.contains("Watcher 1 own=[] ids=[2]"), "and every other viewer sees it there: " + harness.transport.carried);
-        assertEquals("its seats are full", harness.service.seats.request(new ViewerWatchRaceTest.Player(UUID.randomUUID(), "Third"), bench));
+        assertEquals("its seats are full", harness.service.seats.request(new ViewerWatchRaceTest.Player(UUID.randomUUID(), "Third"), bench, true));
 
         harness.transport.controls.get(harness.player.id()).offer(new ControlInput(false, false, false, false, false, true, false), System.nanoTime());
         harness.tick(2);
@@ -195,7 +209,7 @@ class SeatAndRealMountTest {
         harness.entities.put(HORSE, horse(HORSE, 777, 4.5, 6.5, 0));
         harness.tick(6);
         PersistedNpcService<ViewerWatchRaceTest.Player, Object>.Value rider = harness.service.entries.get("rider").value;
-        assertNull(harness.service.seats.request(harness.player, rider));
+        assertNull(harness.service.seats.request(harness.player, rider, true));
         harness.tick(2);
         assertEquals(new Vec3(4.5, 64, 6.5), harness.transport.placed.get(harness.player.id()), "the server holds the player on the ground, not up on the horse");
         assertEquals(java.util.Set.of(HORSE, harness.player.id()), harness.service.attached(RIDER), "its horse and the player on it move with the NPC");
@@ -210,6 +224,6 @@ class SeatAndRealMountTest {
         harness.nodes.add("animus.seat");
         harness.tick(6);
         PersistedNpcService<ViewerWatchRaceTest.Player, Object>.Value bench = harness.service.entries.get("bench").value;
-        assertEquals("its rider's own client steers a saddled body; give it the riding module instead", harness.service.seats.request(harness.player, bench));
+        assertEquals("its rider's own client steers a saddled body; give it the riding module instead", harness.service.seats.request(harness.player, bench, true));
     }
 }

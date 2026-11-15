@@ -53,6 +53,19 @@ class PathExecutionTest {
         }
         assertEquals((int) Math.ceil(6 / perTick), ticks);
     }
+    /** A step that falls short of a node only by rounding reaches it, so a walk never stands a tick on a node. */
+    @Test void aStepShortOfANodeOnlyByRoundingReachesTheNode() {
+        VoxelSnapshot snapshot = ground().build();
+        for (double perTick : new double[] {4.0 / 20, 3.0 / 20, 8.63 / 20})
+            for (int tenth = 1; tenth < 10; tenth++) {
+                PathExecution execution = walk(snapshot, new Vec3(tenth / 10.0, 1, 2.5), new Vec3(6.5, 1, 2.5));
+                while (!execution.finished()) {
+                    PathExecution.Proposal step = execution.next(perTick).orElseThrow();
+                    assertTrue(step.from().distance(step.to()) > 1e-6, "a step from " + step.from() + " at " + perTick + " a tick moves");
+                    execution.commit(step);
+                }
+            }
+    }
     /**
      * A shelf holds a body up only along its back, so between the floor and the shelf's back is a strip narrower than the
      * planner's quarter-block samples where no box lies under the body. The planned walk across it must still execute.

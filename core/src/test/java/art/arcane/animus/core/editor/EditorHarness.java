@@ -192,7 +192,7 @@ final class EditorHarness implements AutoCloseable {
         writes = art.arcane.animus.core.storage.WriteNotices.listen(catalog);
         catalog.prime();
         api = new EditorApi(new EditorApi.Parts(settings, art.arcane.animus.core.config.EditorRelaySettings.DEFAULT, host, EditorIdentity.loadOrCreate(store),
-                new EditorTokens(store, clock), new EditorAudit(store, clock), documents, catalog, new EditorChanges(documents, clock, Duration.ofHours(settings.idempotencyHours())),
+                new EditorTokens(store, clock), new EditorAudit(store, clock), documents, catalog, new EditorChanges(documents, clock, Duration.ofHours(settings.idempotencyHours()), art.arcane.animus.core.npc.NpcRepository.ModuleRules.NONE),
                 previews, events, notices, new EditorWarnings(warnings::add, clock), () -> npcs, () -> importHost, timers, clock, "26.1.2"));
     }
 

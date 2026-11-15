@@ -19,7 +19,7 @@ class DefinitionSpecTest {
         var definition = DefinitionQueueTest.definition("guard", "Town Guard Ω", 7);
         var spec = DefinitionSpec.parse(definition, TYPES, ignored -> WORLD, ITEMS);
         assertEquals("Town Guard Ω", spec.name()); assertEquals(WORLD, spec.position().world());
-        assertEquals(definition.serialize(), spec.serialized()); assertSame(definition, spec.definition());
+        assertEquals(definition.runtimeForm(), spec.serialized()); assertTrue(spec.serialized().contains("Town Guard Ω")); assertSame(definition, spec.definition());
     }
 
     @Test void activationReportsAllMissingPlatformCapabilitiesAndLeavesDefinitionUnchanged() throws Exception {

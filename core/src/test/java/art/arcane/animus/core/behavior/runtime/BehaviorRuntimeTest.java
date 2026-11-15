@@ -64,7 +64,7 @@ class BehaviorRuntimeTest {
         Sources sources=new Sources(ACTION);CountDownLatch release=new CountDownLatch(1);Fake fake=new Fake();
         var runtime=new BehaviorRuntime(BehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,fake,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(release));
         try{
-            var request=runtime.run("test","example:manual");NpcDefinition old=sources.npcs.get().get("test");sources.npcs.set(Map.of("test",npc("test",old.uuid(),2,false)));release.countDown();
+            var request=runtime.run("test","example:manual");NpcDefinition old=sources.npcs.get().get("test");sources.npcs.set(Map.of("test",npc("test",old.uuid(),2,true)));release.countDown();
             assertEquals(Outcome.Status.CONFLICT,await(request).status());assertTrue(fake.invocations.isEmpty());assertTrue(runtime.snapshot().executions().isEmpty());
         }finally{release.countDown();stop(runtime);}
     }
@@ -79,10 +79,32 @@ class BehaviorRuntimeTest {
             Sources sources=new Sources(WAIT);NpcDefinition original=npc("test",UUID.randomUUID(),1,true);sources.npcs.set(Map.of("test",original));var runtime=sources.runtime(new Fake());
             try{
                 UUID id=await(runtime.run("test","example:manual")).value().orElseThrow();
-                sources.npcs.set(mode==0?Map.of():Map.of("test",npc("test",original.uuid(),mode==1?2:1,mode!=2)));
+                sources.npcs.set(mode==0?Map.of():Map.of("test",mode==1?renamed(original):npc("test",original.uuid(),1,false)));
                 eventually(()->runtime.inspect(id).orElseThrow().report().state()==BehaviorEngine.State.CANCELLED);assertEquals("captured-source-changed",runtime.inspect(id).orElseThrow().report().reason());
             }finally{stop(runtime);}
         }
+    }
+    /** A plugin module saving its own data on the click that started a run, such as a click counter, leaves the run alone. */
+    @Test void pluginModuleDataChangesKeepRunningAndQueuedExecutions()throws Exception{
+        Sources sources=new Sources(WAIT);NpcDefinition original=npc("test",UUID.randomUUID(),1,true);sources.npcs.set(Map.of("test",original));var runtime=sources.runtime(new Fake());
+        try{
+            UUID id=await(runtime.run("test","example:manual")).value().orElseThrow();
+            long tick=runtime.status().engine().tick();sources.npcs.set(Map.of("test",counted(original,1)));eventually(()->runtime.status().engine().tick()>tick+1);
+            assertEquals(BehaviorEngine.State.RUNNING,runtime.inspect(id).orElseThrow().report().state());
+        }finally{stop(runtime);}
+        Sources queued=new Sources(ACTION);CountDownLatch release=new CountDownLatch(1);Fake fake=new Fake();
+        var held=new BehaviorRuntime(BehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),queued.npcs::get,queued.catalog::get,fake,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(release));
+        try{
+            var request=held.run("test","example:manual");queued.npcs.set(Map.of("test",counted(queued.npcs.get().get("test"),1)));release.countDown();
+            assertEquals(Outcome.Status.OK,await(request).status());
+        }finally{release.countDown();stop(held);}
+    }
+    static NpcDefinition renamed(NpcDefinition npc)throws Exception{
+        com.google.gson.JsonObject json=npc.json().deepCopy();json.addProperty("revision",npc.revision()+1);json.addProperty("name","Renamed");return NpcDefinition.parse(json.toString());
+    }
+    static NpcDefinition counted(NpcDefinition npc,int count)throws Exception{
+        com.google.gson.JsonObject json=npc.json().deepCopy();json.addProperty("revision",npc.revision()+1);
+        json.add("modules",com.google.gson.JsonParser.parseString("{\"demo:clicks\":{\"count\":"+count+"}}"));return NpcDefinition.parse(json.toString());
     }
     @Test void missingUnavailableAndReplacedBehaviorEachRevokeButSameAcceptedTokenSurvives()throws Exception{
         for(int mode=0;mode<3;mode++){

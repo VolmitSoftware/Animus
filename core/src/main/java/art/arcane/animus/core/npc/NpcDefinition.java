@@ -22,7 +22,10 @@ public final class NpcDefinition {
     public static final int MAX_GROUPS = 16;
     /** The field naming the NPC that receives this NPC's clicks. */
     public static final String CLICK_REDIRECT = "clickRedirect";
+    /** Module namespaces the engine reads. Plugin modules use any other namespace, and their data never changes the body. */
+    public static final Set<String> ENGINE_NAMESPACES = Set.of("animus", "minecraft", "mythic", "citizens", "shopkeepers", "denizen");
     private final JsonObject data;
+    private volatile String runtimeForm;
     private final boolean spawned, imported, dead;
     private final List<String> behaviors, tags, groups;
     private final ViewerFilter viewers;
@@ -267,5 +270,37 @@ public final class NpcDefinition {
     /** Trait groups whose values this NPC takes, in merge order; empty when none are listed. */
     public List<String> groups() { return groups; }
     public JsonObject json() { return data.deepCopy(); }
+    /** A copy of one module's data, when the definition holds an object for that key. */
+    public Optional<JsonObject> module(String key) {
+        JsonElement modules = data.get("modules");
+        if (modules == null || !modules.isJsonObject()) return Optional.empty();
+        JsonElement module = modules.getAsJsonObject().get(key);
+        return module != null && module.isJsonObject() ? Optional.of(module.getAsJsonObject().deepCopy()) : Optional.empty();
+    }
     public String serialize() { return JsonDocuments.write(data); }
+
+    /**
+     * What the running body depends on: the definition without its revision and without plugin module data. Two
+     * definitions with the same form show the same body, so an edit that changes only those keeps the live NPC.
+     */
+    public String runtimeForm() {
+        String form = runtimeForm;
+        if (form != null) return form;
+        JsonObject copy = data.deepCopy();
+        copy.remove("revision");
+        if (copy.has("modules") && copy.get("modules").isJsonObject()) {
+            JsonObject modules = copy.getAsJsonObject("modules");
+            for (String key : List.copyOf(modules.keySet())) if (!engineModule(key)) modules.remove(key);
+            if (modules.isEmpty()) copy.remove("modules");
+        }
+        form = JsonDocuments.write(copy);
+        runtimeForm = form;
+        return form;
+    }
+
+    /** A module key the engine reads: one in {@link #ENGINE_NAMESPACES}, or one without a namespace. */
+    public static boolean engineModule(String key) {
+        int colon = key.indexOf(':');
+        return colon < 0 || ENGINE_NAMESPACES.contains(key.substring(0, colon));
+    }
 }

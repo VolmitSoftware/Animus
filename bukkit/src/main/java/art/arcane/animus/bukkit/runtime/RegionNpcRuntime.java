@@ -163,6 +163,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     private final Set<RegionActor> wakeRequests = ConcurrentHashMap.newKeySet();
     private final Set<String> rechecks = ConcurrentHashMap.newKeySet();
     private final Map<UUID, RegionViewer> viewers = new ConcurrentHashMap<>();
+    /** Where each viewer stood at its last turn, for speech from another region. */
+    final PublishedPlayers published = new PublishedPlayers();
     private final Map<UUID, Player> online = new ConcurrentHashMap<>();
     private final Map<UUID, String> viewerFailures = new ConcurrentHashMap<>();
     private final Map<String, String> definitionErrors = new ConcurrentHashMap<>();
@@ -270,6 +272,21 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     }
     @Override public void interactions(InteractionListener<Player> listener) { interactions = listener; }
     @Override public void observeInteractions(InteractionObserver observer) { this.observer = observer; }
+    private volatile java.util.function.Consumer<UUID> spawns = (UUID npc) -> {};
+    @Override public void observeSpawns(java.util.function.Consumer<UUID> observer) { spawns = Objects.requireNonNull(observer); }
+    /** On the player's region, which must also own the NPC, as a click on a seat is. */
+    @Override public java.util.concurrent.CompletionStage<Optional<String>> seat(UUID player, UUID npc) {
+        java.util.concurrent.CompletableFuture<Optional<String>> result = new java.util.concurrent.CompletableFuture<>();
+        if (!available()) { result.complete(Optional.of("seats are unavailable")); return result; }
+        boolean accepted = players.deliver(player, (Player online) -> {
+            try {
+                RegionViewer viewer = viewers.get(online.getUniqueId());
+                result.complete(viewer == null || viewer.player != online ? Optional.of("the player is not seeing NPCs yet") : Optional.ofNullable(viewer.seat(npc)));
+            } catch (RuntimeException failure) { result.complete(Optional.of(String.valueOf(failure.getMessage()))); }
+        });
+        if (!accepted) result.complete(Optional.of("the player is not online"));
+        return result;
+    }
     @Override public boolean pressed(Player player, TriggerEvent.Action key) {
         RegionViewer viewer = viewers.get(player.getUniqueId());
         return viewer != null && viewer.player == player && viewer.pressed(key);
@@ -600,6 +617,17 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
      * On the NPC's region: moves it at once onto clear, supported ground that region holds, as the menu's Bring here and
      * Stand still do. The destination may name its world as an NPC file does; false leaves the NPC where it is.
      */
+    /**
+     * On the NPC's region: a plugin's teleport within the NPC's world. A destination another region holds is checked there
+     * and the NPC is handed over like any chunk crossing; the stage hears whether it moved.
+     */
+    public java.util.concurrent.CompletionStage<Boolean> teleport(String id, WorldPosition destination, float yaw, float pitch) {
+        java.util.concurrent.CompletableFuture<Boolean> moved = new java.util.concurrent.CompletableFuture<>();
+        RegionActor actor = available() ? actors.get(id) : null;
+        String world = worldKey(destination.world());
+        if (actor == null || world == null || !actor.owner.owned() || !actor.teleport(new WorldPosition(world, destination.point()), yaw, pitch, moved::complete)) moved.complete(false);
+        return moved;
+    }
     public boolean relocate(String id, WorldPosition destination) {
         RegionActor actor = available() ? actors.get(id) : null;
         String world = worldKey(destination.world());
@@ -674,6 +702,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         TriggerDispatcher dispatcher = triggers;
         if (dispatcher != null) dispatcher.activated(npc);
         NpcEvents.spawned(plugin.getServer(), npc, id, at);
+        spawns.accept(npc);
     }
     void waypoint(UUID npc, int waypoint) { TriggerDispatcher dispatcher = triggers; if (dispatcher != null) dispatcher.publish(new TriggerEvent.Waypoint(npc, waypoint)); }
     /** On the NPC's region owner. */
@@ -811,6 +840,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     /** Network and pure state only, so a scheduler retirement callback may call it. */
     void disconnect(RegionViewer viewer) {
         if (!viewers.remove(viewer.id, viewer)) return;
+        published.left(viewer.id);
         viewerSlots.decrementAndGet();
         viewer.close();
         NativePacketAdapter adapter = packets;
@@ -853,6 +883,15 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
                 owned.index.rebuild(mine); owned.tick = tick;
             }
             return owned.index.near(at, radius, limit);
+        }
+        @Override public List<UUID> elsewhereNear(WorldPosition at, double radius, int limit) {
+            List<UUID> elsewhere = new ArrayList<>();
+            for (UUID id : published.near(at, radius, limit + 64)) {
+                Player candidate = online.get(id);
+                if (candidate != null && !regions.owns(candidate)) elsewhere.add(id);
+                if (elsewhere.size() >= limit) break;
+            }
+            return elsewhere;
         }
         @Override public boolean deliver(UUID player, Consumer<Player> action) {
             Player target = online.get(player);

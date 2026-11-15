@@ -52,19 +52,19 @@ public final class ExtensionRuntime implements AutoCloseable {
     private int cleanupDelaySeconds = 1;
     private boolean reportedRetention;
 
-    public ExtensionRuntime(Path directory, Platform platform, DefinitionGateway definitions,
+    public ExtensionRuntime(Path directory, Platform platform,
                             ModuleSettings settings, Consumer<String> report) {
-        this(directory, platform, definitions, settings, report, state -> {}, null);
+        this(directory, platform, settings, report, state -> {}, null);
     }
 
     /** Observer is an engine-owned quick enqueue hook, never a module callback or a place to do file work. */
-    public ExtensionRuntime(Path directory, Platform platform, DefinitionGateway definitions,
+    public ExtensionRuntime(Path directory, Platform platform,
                             ModuleSettings settings, Consumer<String> report, Consumer<State> initializationObserver) {
-        this(directory, platform, definitions, settings, report, initializationObserver, null);
+        this(directory, platform, settings, report, initializationObserver, null);
     }
 
     /** Built-in capabilities bind at startup on every platform and stay bound when Java modules are disabled. */
-    public ExtensionRuntime(Path directory, Platform platform, DefinitionGateway definitions, ModuleSettings settings,
+    public ExtensionRuntime(Path directory, Platform platform, ModuleSettings settings,
                             Consumer<String> report, Consumer<State> initializationObserver, BuiltinCapabilities builtins) {
         this.builtins = builtins;
         this.directory = Objects.requireNonNull(directory);
@@ -72,7 +72,7 @@ public final class ExtensionRuntime implements AutoCloseable {
         this.settings = Objects.requireNonNull(settings);
         this.report = Objects.requireNonNull(report);
         this.initializationObserver = Objects.requireNonNull(initializationObserver);
-        host = new ModuleHost(platform, definitions, settings.maximumInvocations(),
+        host = new ModuleHost(platform, settings.maximumInvocations(),
                 Duration.ofMillis(settings.invocationTimeoutMillis()), Duration.ofMillis(settings.deliveryBudgetMillis()));
         host.connectReports(report);
         HostBehaviorInvoker hostInvoker = new HostBehaviorInvoker(host, this::privilegedGranted, this::rawTextGranted);
@@ -295,6 +295,8 @@ public final class ExtensionRuntime implements AutoCloseable {
     public void connectTriggers(art.arcane.animus.core.behavior.trigger.TriggerSink sink) { host.connectTriggers(sink); }
     /** Connect the engine-wide registry platform adapters wrap, before start. */
     public void connectHooks(ModuleHooks hooks) { host.connectHooks(hooks); }
+    /** Where each Java module's {@code npcs()} comes from; connect before {@link #start}. */
+    public void connectNpcs(art.arcane.animus.core.api.NpcScopes scopes) { host.connectNpcs(scopes); }
     public long droppedInteractionNotices() { return host.droppedNotices(); }
     /** Resumes a suspended module now; see {@link ModuleHost#resume(String)}. */
     public Outcome<ModuleHost.ModuleStatus> resume(String id) { return host.resume(id); }

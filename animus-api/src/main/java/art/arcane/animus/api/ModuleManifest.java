@@ -12,6 +12,13 @@ import java.util.*;
  * @param dependencies ids of modules this one needs
  */
 public record ModuleManifest(String id,Version version,ApiRange api,Set<Platform> platforms,List<Dependency> dependencies) {
+    /**
+     * Another module this one needs, within a version range.
+     *
+     * @param id the other module's id
+     * @param minimumInclusive lowest accepted version
+     * @param maximumExclusive first version no longer accepted
+     */
     public record Dependency(String id,Version minimumInclusive,Version maximumExclusive) {
         public Dependency {ApiText.id(id);Objects.requireNonNull(minimumInclusive);Objects.requireNonNull(maximumExclusive);if(minimumInclusive.compareTo(maximumExclusive)>=0)throw new IllegalArgumentException("Empty dependency version range");}
         public boolean accepts(Version version){return version.compareTo(minimumInclusive)>=0 && version.compareTo(maximumExclusive)<0;}

@@ -9,9 +9,19 @@ import java.util.*;
 /**
  * One atomic registry snapshot. A live reload publishes every valid file; an invalid file keeps only its own last valid
  * version. Stored files stay the drafts that edits patch; {@link #snapshot()} holds effective definitions, each merged
- * over the trait groups it lists ({@link GroupMerge}).
+ * over the trait groups it lists ({@link GroupMerge}). Temporary definitions from the API are published beside them and
+ * never written; a saved NPC that takes a temporary one's id or UUID ends it.
  */
 public final class NpcRepository {
+    /** A definition that lives only in memory: as given, merged over its trait groups, and the plugin or module that made it. */
+    public record Temporary(NpcDefinition definition, NpcDefinition effective, String owner) {
+        public Temporary { Objects.requireNonNull(definition); Objects.requireNonNull(effective); Objects.requireNonNull(owner); }
+    }
+    /** Checks a definition's module data before it is saved; {@code previous} is the stored version, absent for a new NPC. */
+    @FunctionalInterface public interface ModuleRules {
+        ModuleRules NONE = (Optional<JsonObject> previous, JsonObject next) -> List.of();
+        List<String> problems(Optional<JsonObject> previous, JsonObject next);
+    }
     public record Draft(String path, String expectedHash, long expectedRevision, JsonObject document) {
         public Draft { document = document.deepCopy(); }
         @Override public JsonObject document() { return document.deepCopy(); }
@@ -39,7 +49,9 @@ public final class NpcRepository {
     private static final System.Logger LOG = System.getLogger("Animus");
     private final DocumentStore store;
     private final DefinitionCheckpoints checkpoints;
-    private volatile Map<String, NpcDefinition> active = Map.of(), stored = Map.of();
+    private volatile Map<String, NpcDefinition> active = Map.of(), stored = Map.of(), published = Map.of();
+    private volatile Map<String, Temporary> temporaries = Map.of();
+    private volatile ModuleRules moduleRules = ModuleRules.NONE;
     private volatile Map<String, Map<String, String>> provenance = Map.of();
     private volatile Map<String, String> problems = Map.of(), groupProblems = Map.of();
     private volatile GroupCatalog groups = GroupCatalog.EMPTY;
@@ -49,10 +61,21 @@ public final class NpcRepository {
     private Map<String, String> refused = Map.of();
     private boolean loaded;
     public NpcRepository(DocumentStore store) { this.store = store; checkpoints = new DefinitionCheckpoints(store); }
-    public Collection<NpcDefinition> all() { return active.values(); }
-    /** Immutable published registry of effective definitions; identity changes only when a valid edit/reload is published. */
-    public Map<String, NpcDefinition> snapshot() { return active; }
-    public Optional<NpcDefinition> find(String id) { return Optional.ofNullable(active.get(id)); }
+    public Collection<NpcDefinition> all() { return published.values(); }
+    /**
+     * Immutable published registry of effective definitions, temporary ones included; identity changes only when a valid
+     * edit, reload or temporary change is published.
+     */
+    public Map<String, NpcDefinition> snapshot() { return published; }
+    public Optional<NpcDefinition> find(String id) { return Optional.ofNullable(published.get(id)); }
+    /** The temporary NPC with this id, when one is published. */
+    public Optional<Temporary> temporary(String id) { return Optional.ofNullable(temporaries.get(id)); }
+    /** Every temporary NPC by id. */
+    public Map<String, Temporary> temporaries() { return temporaries; }
+    /** The check {@link #apply}, {@link #applyAll} and the temporary methods run on module data that changed. */
+    public void moduleRules(ModuleRules rules) { moduleRules = Objects.requireNonNull(rules); }
+    /** Why the module data of {@code next} may not be saved over {@code previous}; empty when it may. */
+    public List<String> moduleProblems(Optional<JsonObject> previous, JsonObject next) { return moduleRules.problems(previous, next); }
     /** The definitions as their files store them, without group values. Writers that patch a definition start from these. */
     public Collection<NpcDefinition> stored() { return stored.values(); }
     /** The trait groups of the last reload. */
@@ -195,6 +218,8 @@ public final class NpcRepository {
                 if (!problem.getValue().equals(groupProblems.get(problem.getKey())))
                     LOG.log(System.Logger.Level.WARNING, problem.getKey() + ": group-problem=" + problem.getValue() + "; kept the last valid effective definition");
             stored = Collections.unmodifiableMap(candidates); active = Collections.unmodifiableMap(effective); provenance = Collections.unmodifiableMap(sources);
+            temporaries = resolvedTemporaries(catalog);
+            republish();
             Map<String, String> nextRefused = new HashMap<>();
             for (Read read : reads.values()) {
                 String published = nextHashes.get(read.path());
@@ -280,6 +305,8 @@ public final class NpcRepository {
 
     public synchronized Draft draft(String id) throws IOException {
         NpcDefinition definition = stored.get(id);
+        Temporary temporary = temporaries.get(id);
+        if (definition == null && temporary != null) throw new IOException(id + " is a temporary NPC from " + temporary.owner() + "; it has no file");
         if (definition == null) throw new IOException("No NPC named " + id + "; /animus list shows ids");
         return new Draft(definition.path(), hashes.get(definition.path()), definition.revision(), definition.json());
     }
@@ -299,6 +326,10 @@ public final class NpcRepository {
         NpcDefinition previous = stored.get(updated.id());
         if ((previous == null && draft.expectedRevision() != 0) || (previous != null && (previous.revision() != draft.expectedRevision() || !previous.uuid().equals(updated.uuid()))))
             throw DocumentStore.conflict(draft.path());
+        refuseModules(Optional.ofNullable(previous).map(NpcDefinition::json), updated.json());
+        Temporary claimed = temporaries.get(updated.id());
+        if (claimed == null) claimed = temporaries.values().stream().filter((Temporary temporary) -> temporary.definition().uuid().equals(updated.uuid())).findFirst().orElse(null);
+        if (claimed != null) throw new IOException("Identity collision: the temporary NPC " + claimed.definition().id() + " from " + claimed.owner() + " has this id or UUID");
         if (previous == null && stored.size() >= 100_000) throw new IOException("NPC definition limit exceeded: 100000");
         String serialized = updated.serialize(), sourceHash = JsonDocuments.hash(serialized);
         List<DocumentStore.Change> changes = new ArrayList<>();
@@ -345,6 +376,7 @@ public final class NpcRepository {
                 json.addProperty("revision", draft.expectedRevision() + 1);
                 NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(json));
                 if (!definition.path().equals(draft.path()) || !definition.uuid().equals(previous.uuid())) throw new IOException("Rename/move requires an explicit transaction");
+                refuseModules(Optional.of(previous.json()), definition.json());
                 Resolution resolution = resolve(definition, groups, true);
                 if (resolution.error() != null) throw new IOException(resolution.error());
                 updated.add(definition);
@@ -390,5 +422,113 @@ public final class NpcRepository {
         if (refused.containsKey(path)) { Map<String, String> nextRefused = new HashMap<>(refused); nextRefused.remove(path); refused = Map.copyOf(nextRefused); }
         Map<String, String> nextProblems = new TreeMap<>(problems); nextProblems.remove(path); problems = Collections.unmodifiableMap(nextProblems);
         Map<String, String> nextGroupProblems = new TreeMap<>(groupProblems); nextGroupProblems.remove(path); groupProblems = Collections.unmodifiableMap(nextGroupProblems);
+        republish();
+    }
+
+    /**
+     * Publishes a temporary NPC, revision 1, that no saved or temporary NPC shares an id or UUID with. It is checked as a
+     * saved definition is, merged over its trait groups, and never written.
+     */
+    public synchronized NpcDefinition addTemporary(String owner, JsonObject document) throws IOException {
+        Objects.requireNonNull(owner);
+        JsonObject json = document.deepCopy();
+        json.addProperty("revision", 1);
+        NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(json));
+        if (published.containsKey(definition.id()) || stored.containsKey(definition.id())) throw new IOException("An NPC named " + definition.id() + " already exists");
+        if (published.values().stream().anyMatch((NpcDefinition existing) -> existing.uuid().equals(definition.uuid()))
+                || stored.values().stream().anyMatch((NpcDefinition existing) -> existing.uuid().equals(definition.uuid())))
+            throw new IOException("Another NPC has the UUID " + definition.uuid());
+        refuseModules(Optional.empty(), definition.json());
+        putTemporary(new Temporary(definition, effectiveTemporary(definition, groups), owner));
+        return definition;
+    }
+
+    /**
+     * Replaces a temporary NPC's definition. {@code document} keeps its id and UUID and names the revision it was based
+     * on, which must be the current one; the published revision is one higher.
+     */
+    public synchronized NpcDefinition replaceTemporary(String id, JsonObject document) throws IOException {
+        Temporary current = temporaries.get(id);
+        if (current == null) throw new IOException("No temporary NPC named " + id);
+        JsonObject json = document.deepCopy();
+        long based = json.has("revision") && json.get("revision").isJsonPrimitive() && json.getAsJsonPrimitive("revision").isNumber() ? json.get("revision").getAsLong() : -1;
+        if (based != current.definition().revision()) throw new IOException("Conflict: temporary NPC " + id + " changed since it was read");
+        if (based == Long.MAX_VALUE) throw new IOException("Revision exhausted");
+        json.addProperty("revision", based + 1);
+        NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(json));
+        if (!definition.id().equals(id) || !definition.uuid().equals(current.definition().uuid())) throw new IOException("A temporary NPC keeps its id and UUID");
+        refuseModules(Optional.of(current.definition().json()), definition.json());
+        putTemporary(new Temporary(definition, effectiveTemporary(definition, groups), current.owner()));
+        return definition;
+    }
+
+    /** Forgets one temporary NPC; false when none has the id. */
+    public synchronized boolean removeTemporary(String id) {
+        if (!temporaries.containsKey(id)) return false;
+        Map<String, Temporary> next = new TreeMap<>(temporaries);
+        next.remove(id);
+        temporaries = Collections.unmodifiableMap(next);
+        republish();
+        return true;
+    }
+
+    /** Forgets every temporary NPC {@code owner} made; returns their ids in order. */
+    public synchronized List<String> removeTemporaries(String owner) {
+        List<String> ids = temporaries.values().stream().filter((Temporary temporary) -> temporary.owner().equals(owner)).map((Temporary temporary) -> temporary.definition().id()).sorted().toList();
+        if (ids.isEmpty()) return ids;
+        Map<String, Temporary> next = new TreeMap<>(temporaries);
+        ids.forEach(next::remove);
+        temporaries = Collections.unmodifiableMap(next);
+        republish();
+        return ids;
+    }
+
+    private void putTemporary(Temporary temporary) {
+        Map<String, Temporary> next = new TreeMap<>(temporaries);
+        next.put(temporary.definition().id(), temporary);
+        temporaries = Collections.unmodifiableMap(next);
+        republish();
+    }
+
+    private NpcDefinition effectiveTemporary(NpcDefinition definition, GroupCatalog catalog) throws IOException {
+        Resolution resolution = resolve(definition, catalog, false);
+        if (resolution.error() != null) throw new IOException(resolution.error());
+        return resolution.effective();
+    }
+
+    /** Temporary NPCs merged over the reloaded trait groups; one whose groups no longer merge keeps its last effective definition. */
+    private Map<String, Temporary> resolvedTemporaries(GroupCatalog catalog) {
+        if (temporaries.isEmpty()) return temporaries;
+        Map<String, Temporary> next = new TreeMap<>();
+        for (Temporary temporary : temporaries.values()) {
+            Resolution resolution = resolve(temporary.definition(), catalog, false);
+            next.put(temporary.definition().id(), resolution.error() == null ? new Temporary(temporary.definition(), resolution.effective(), temporary.owner()) : temporary);
+        }
+        return Collections.unmodifiableMap(next);
+    }
+
+    private void refuseModules(Optional<JsonObject> previous, JsonObject next) throws IOException {
+        List<String> problems = moduleRules.problems(previous, next);
+        if (!problems.isEmpty()) throw new IOException(String.join("; ", problems));
+    }
+
+    /** The saved definitions and the temporary ones together. A saved NPC that took a temporary one's id or UUID ends it. */
+    private void republish() {
+        if (temporaries.isEmpty()) { published = active; return; }
+        Set<UUID> saved = new HashSet<>();
+        for (NpcDefinition definition : active.values()) saved.add(definition.uuid());
+        Map<String, NpcDefinition> next = new TreeMap<>(active);
+        Map<String, Temporary> kept = new TreeMap<>();
+        for (Temporary temporary : temporaries.values()) {
+            String id = temporary.definition().id();
+            if (active.containsKey(id) || saved.contains(temporary.definition().uuid())) {
+                LOG.log(System.Logger.Level.INFO, "Temporary NPC " + id + " from " + temporary.owner() + " ended: a saved NPC took its id or UUID");
+                continue;
+            }
+            kept.put(id, temporary);
+            next.put(id, temporary.effective());
+        }
+        if (kept.size() != temporaries.size()) temporaries = Collections.unmodifiableMap(kept);
+        published = Collections.unmodifiableMap(next);
     }
 }

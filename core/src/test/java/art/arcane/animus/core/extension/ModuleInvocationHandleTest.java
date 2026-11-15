@@ -12,12 +12,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ModuleInvocationHandleTest {
     private static final NpcHandle NPC=new NpcHandle(UUID.randomUUID());
-    private static final DefinitionGateway DEFINITIONS=new DefinitionGateway(){
-        public DefinitionService scoped(java.util.function.BooleanSupplier available){return this;}
-        public CompletionStage<Outcome<DefinitionSnapshot>> find(NpcHandle npc){throw new UnsupportedOperationException();}
-        public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit){throw new UnsupportedOperationException();}
-        public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit){throw new UnsupportedOperationException();}
-    };
     private static <T> T await(CompletionStage<T> stage)throws Exception{return stage.toCompletableFuture().get(3,TimeUnit.SECONDS);}
     private static void latch(CountDownLatch latch){try{assertTrue(latch.await(3,TimeUnit.SECONDS));}catch(InterruptedException failure){throw new AssertionError(failure);}}
     private static void eventually(java.util.function.BooleanSupplier check)throws Exception{long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);while(!check.getAsBoolean()&&System.nanoTime()<until)Thread.sleep(2);assertTrue(check.getAsBoolean());}
@@ -26,7 +20,7 @@ class ModuleInvocationHandleTest {
         public ModuleManifest manifest(){return new ModuleManifest("sample",new Version(1,0,0),new ApiRange(1,1),Set.of(Platform.PAPER),List.of());}
         public void enable(ModuleContext context){enable.accept(context);}public void disable(){}
     };}
-    private static ModuleHost host(int limit,long deadlineMillis){return new ModuleHost(Platform.PAPER,DEFINITIONS,limit,Duration.ofMillis(deadlineMillis));}
+    private static ModuleHost host(int limit,long deadlineMillis){return new ModuleHost(Platform.PAPER,limit,Duration.ofMillis(deadlineMillis));}
     private static ModuleHost.InvocationHandle<String> action(ModuleHost host,String name){return host.actionHandle(new Key("sample",name),NPC,Optional.empty(),"{}",true,false);}
     @Test void cancellingActionIsIdempotentCooperativeAndDoesNotSuspendModule()throws Exception{
         CompletableFuture<String> raw=new CompletableFuture<>();AtomicReference<Cancellation> token=new AtomicReference<>();

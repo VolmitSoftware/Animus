@@ -14,7 +14,6 @@ import art.arcane.animus.core.behavior.BehaviorProgram;
 import art.arcane.animus.core.behavior.HostBehaviorInvoker;
 import art.arcane.animus.core.config.BuiltinActionSettings;
 import art.arcane.animus.core.extension.CapabilityRefusal;
-import art.arcane.animus.core.extension.DefinitionGateway;
 import art.arcane.animus.core.extension.ModuleHost;
 import java.time.Duration;
 import java.util.List;
@@ -31,18 +30,12 @@ import static org.junit.jupiter.api.Assertions.*;
 class NavigationWaitTest {
     private static final NpcHandle NPC = new NpcHandle(UUID.randomUUID());
     private static final String WALK = "{\"x\":1,\"y\":64,\"z\":3,\"wait\":true}";
-    private static final DefinitionGateway DEFINITIONS = new DefinitionGateway() {
-        @Override public DefinitionService scoped(BooleanSupplier available) { return this; }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> find(NpcHandle npc) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-    };
     private final RecordingPlatform platform = new RecordingPlatform();
     private ModuleHost host;
     private BuiltinCapabilities builtins;
 
     private void start(long deadlineMillis, int waits) {
-        host = new ModuleHost(Platform.PAPER, DEFINITIONS, 16, Duration.ofMillis(deadlineMillis));
+        host = new ModuleHost(Platform.PAPER, 16, Duration.ofMillis(deadlineMillis));
         BuiltinActionSettings d = BuiltinActionSettings.DEFAULT;
         builtins = new BuiltinCapabilities(platform, new MemoryBehaviorState(), choice -> {},
                 new BuiltinActionSettings(d.actionsPerTick(), d.actionsPerNpcPerTick(), d.queuedActions(), d.pendingChoices(), d.choiceLifetimeSeconds(), d.commandBehaviors(), d.commandNamespaces(), waits, d.rawTextBehaviors()), line -> {});

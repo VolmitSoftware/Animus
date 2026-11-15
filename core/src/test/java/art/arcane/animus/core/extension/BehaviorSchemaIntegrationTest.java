@@ -11,12 +11,6 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BehaviorSchemaIntegrationTest {
-    private static final DefinitionGateway DEFINITIONS = new DefinitionGateway() {
-        public DefinitionService scoped(java.util.function.BooleanSupplier available) { return this; }
-        public CompletionStage<Outcome<DefinitionSnapshot>> find(NpcHandle npc) { throw new UnsupportedOperationException(); }
-        public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-        public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-    };
     private static TrustedModule module(AtomicInteger calls, AtomicReference<String> received) { return new TrustedModule() {
         public ModuleManifest manifest() { return new ModuleManifest("sample", new Version(1, 0, 0), new ApiRange(1, 1), Set.of(Platform.PAPER), List.of()); }
         public void enable(ModuleContext context) {
@@ -45,7 +39,7 @@ class BehaviorSchemaIntegrationTest {
     }
     @Test void boundTypedValuesAreValidatedAfterResolutionAndReachTheHandlerExactly() throws Exception {
         AtomicInteger calls = new AtomicInteger(); AtomicReference<String> received = new AtomicReference<>();
-        try (var host = new ModuleHost(Platform.PAPER, DEFINITIONS, 4, Duration.ofSeconds(2));
+        try (var host = new ModuleHost(Platform.PAPER, 4, Duration.ofSeconds(2));
              var engine = new BehaviorEngine(BehaviorEngine.Limits.defaults(), new HostBehaviorInvoker(host),ignored->{},art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE)) {
             host.install(module(calls, received));
             var report = run(engine, program("integer", "9223372036854775807"));
@@ -56,7 +50,7 @@ class BehaviorSchemaIntegrationTest {
     }
     @Test void schemaMismatchEndsExecutionWithoutEnteringTheModuleOrRetainingAHandler() throws Exception {
         AtomicInteger calls = new AtomicInteger(); AtomicReference<String> received = new AtomicReference<>();
-        try (var host = new ModuleHost(Platform.PAPER, DEFINITIONS, 4, Duration.ofSeconds(2));
+        try (var host = new ModuleHost(Platform.PAPER, 4, Duration.ofSeconds(2));
              var engine = new BehaviorEngine(BehaviorEngine.Limits.defaults(), new HostBehaviorInvoker(host),ignored->{},art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE)) {
             host.install(module(calls, received));
             var report = run(engine, program("string", "\"123\""));

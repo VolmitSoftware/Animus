@@ -81,6 +81,33 @@ class BukkitBehaviorPlatformTest {
         assertNotNull(previews.staged(ALEX));
     }
 
+    @Test void aRadiusReachesPlayersAnotherRegionOwnsThroughTheirOwnThread() throws Exception {
+        UUID casey = UUID.fromString("00000000-0000-0000-0000-00000000000c"), dana = UUID.fromString("00000000-0000-0000-0000-00000000000d");
+        Map<UUID, Player> elsewhere = new LinkedHashMap<>(Map.of(casey, player(casey), dana, player(dana)));
+        List<String> handed = new ArrayList<>();
+        NpcRuntime.PlayerAccess<Player> regions = new NpcRuntime.PlayerAccess<>() {
+            @Override public boolean online(UUID player) { return online.containsKey(player) || elsewhere.containsKey(player); }
+            @Override public Optional<Player> owned(UUID player) { return Optional.ofNullable(online.get(player)); }
+            @Override public List<Player> ownedNear(WorldPosition at, double radius, int limit) { return List.of(online.get(ALEX)); }
+            @Override public List<UUID> elsewhereNear(WorldPosition at, double radius, int limit) { return List.of(casey, dana); }
+            @Override public boolean deliver(UUID player, Consumer<Player> action) {
+                Player target = online.containsKey(player) ? online.get(player) : elsewhere.get(player);
+                if (target == null) return false;
+                handed.add("handed " + player);
+                action.accept(target);
+                return true;
+            }
+            @Override public boolean console(Runnable action) { action.run(); return true; }
+        };
+        NpcDefinition candidate = NpcDefinition.parse("{\"schemaVersion\":2,\"revision\":2,\"uuid\":\"" + GUARD + "\",\"id\":\"guard\",\"group\":\"town\",\"name\":\"Preview\","
+                + "\"type\":\"minecraft:player\",\"spawned\":true,\"position\":{\"world\":\"" + WORLD + "\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}}");
+        previews.present("prev_d", dana, List.of(candidate), (String state) -> {});
+        int heard = BukkitBehaviorPlatform.deliver(regions, previews, guard, new BehaviorPlatform.Audience(Optional.empty(), 16), AT, false, (Player viewer) -> reached.add(viewer.getUniqueId()));
+        assertEquals(2, heard, "the local player and the one another region owns; the hidden one is left out");
+        assertEquals(List.of(ALEX, casey), reached);
+        assertEquals(List.of("handed " + casey), handed, "a player in another region is reached on their own thread");
+    }
+
     @Test void speechSoundsAndParticlesSkipTheViewerWhosePreviewHidesTheNpc() throws Exception {
         assertEquals(2, say(Optional.empty()));
         assertEquals(List.of(ALEX, BLAKE), reached);

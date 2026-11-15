@@ -181,7 +181,7 @@ public final class Administration {
 
     /** Refuses an id another NPC already has, in any folder, with the toolkit's wording. */
     private void taken(String id) throws IOException {
-        if (runtime.npcs().stored().stream().anyMatch((NpcDefinition existing) -> existing.id().equals(id)))
+        if (runtime.npcs().stored().stream().anyMatch((NpcDefinition existing) -> existing.id().equals(id)) || runtime.npcs().temporary(id).isPresent())
             throw new IOException("An NPC named " + id + " already exists; /animus inspect " + id + " shows it, or pick another id");
     }
 

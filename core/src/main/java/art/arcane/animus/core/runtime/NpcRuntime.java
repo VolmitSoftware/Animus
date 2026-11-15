@@ -36,6 +36,11 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
         Optional<P> owned(UUID player);
         /** Online players the calling thread may read, within the radius, at most {@code limit}. */
         List<P> ownedNear(WorldPosition at, double radius, int limit);
+        /**
+         * Players another thread owns whose last published position is within the radius, at most {@code limit}; reach them
+         * with {@link #deliver}. Empty where one thread owns every player. Any thread.
+         */
+        default List<UUID> elsewhereNear(WorldPosition at, double radius, int limit) { return List.of(); }
         /** Runs on the player's owner, now or later. False when the player is offline or refused the work. */
         boolean deliver(UUID player, Consumer<P> action);
         /** Runs on the console's owner. False when refused. */
@@ -86,6 +91,15 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
      * @return whether the player may sit on NPCs now
      */
     default boolean seatToggle(UUID player, Optional<Boolean> on) { throw new IllegalStateException("Seats are unavailable on this server"); }
+    /**
+     * Any thread: seats the online player on the active NPC as a plugin asks, without the seat's permission, empty-hand and
+     * sitting-toggle checks. Completes with empty once the player is being seated, otherwise with why not.
+     */
+    default java.util.concurrent.CompletionStage<Optional<String>> seat(UUID player, UUID npc) {
+        return CompletableFuture.completedFuture(Optional.of("Seats are unavailable on this server"));
+    }
+    /** Connect during startup: told the UUID of each NPC that became active, on that NPC's owner. A later call replaces it. */
+    default void observeSpawns(Consumer<UUID> observer) {}
     Optional<String> selection(UUID viewer);
     void select(UUID viewer, String id);
     /**

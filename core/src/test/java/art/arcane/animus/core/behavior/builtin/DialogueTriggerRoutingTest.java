@@ -18,7 +18,6 @@ import art.arcane.animus.core.behavior.trigger.TriggerSettings;
 import art.arcane.animus.core.behavior.trigger.TriggerSink;
 import art.arcane.animus.core.config.BuiltinActionSettings;
 import art.arcane.animus.core.config.ModuleSettings;
-import art.arcane.animus.core.extension.DefinitionGateway;
 import art.arcane.animus.core.extension.ExtensionRuntime;
 import art.arcane.animus.core.npc.NpcDefinition;
 import java.nio.file.Files;
@@ -44,12 +43,6 @@ class DialogueTriggerRoutingTest {
     @TempDir Path temporary;
     private static final UUID NPC = UUID.randomUUID(), PLAYER = UUID.randomUUID(), STRANGER = UUID.randomUUID();
     private static final String THANKS = "say:true:0.0:Thanks";
-    private static final DefinitionGateway DEFINITIONS = new DefinitionGateway() {
-        @Override public DefinitionService scoped(BooleanSupplier available) { return this; }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> find(NpcHandle npc) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-    };
     private final RecordingPlatform platform = new RecordingPlatform();
     private final List<TriggerEvent> published = new CopyOnWriteArrayList<>();
     private BuiltinCapabilities builtins;
@@ -79,7 +72,7 @@ class DialogueTriggerRoutingTest {
             @Override public Outcome<Boolean> publish(TriggerEvent event) { published.add(event); return holder[0].publish(event); }
         };
         builtins = new BuiltinCapabilities(platform, new MemoryBehaviorState(), new DialogueTriggers(() -> spying), BuiltinActionSettings.DEFAULT, line -> {});
-        extensions = new ExtensionRuntime(root.resolve("modules"), Platform.PAPER, DEFINITIONS, new ModuleSettings(true, 16, 5000, 250), line -> {}, state -> {}, builtins);
+        extensions = new ExtensionRuntime(root.resolve("modules"), Platform.PAPER, new ModuleSettings(true, 16, 5000, 250), line -> {}, state -> {}, builtins);
         extensions.start();
         eventually(() -> extensions.status().state() == ExtensionRuntime.State.READY);
         BehaviorCatalog catalog = new BehaviorCatalog(root, BehaviorCatalog.Limits.defaults(), extensions.catalogResolver(), BehaviorCheckpoints.disabled());

@@ -87,7 +87,7 @@ public final class EditorService implements AutoCloseable {
         EditorAudit audit = new EditorAudit(runtime.documents(), clock);
         int pruned = audit.prune(settings.auditDays());
         EditorDocuments documents = new EditorDocuments(runtime.documents(), () -> runtime.recordingSettings().maximumFileBytes());
-        EditorChanges changes = new EditorChanges(documents, clock, Duration.ofHours(settings.idempotencyHours()));
+        EditorChanges changes = new EditorChanges(documents, clock, Duration.ofHours(settings.idempotencyHours()), runtime.npcs()::moduleProblems);
         EditorEvents events = new EditorEvents();
         EditorCatalog catalog = new EditorCatalog(documents, events);
         writes = art.arcane.animus.core.storage.WriteNotices.listen(catalog);

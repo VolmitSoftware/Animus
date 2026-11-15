@@ -21,12 +21,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Interaction subscriptions, integration hooks and converter registration through the module host. */
 class ModuleIntegrationTest {
-    private static final DefinitionGateway DEFINITIONS = new DefinitionGateway() {
-        public DefinitionService scoped(java.util.function.BooleanSupplier available) { return this; }
-        public CompletionStage<Outcome<DefinitionSnapshot>> find(NpcHandle npc) { return CompletableFuture.completedFuture(Outcome.rejected(Outcome.Status.NOT_FOUND, "missing", "Missing")); }
-        public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit) { return CompletableFuture.completedFuture(Outcome.rejected(Outcome.Status.UNAVAILABLE, "offline", "Offline")); }
-        public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { return CompletableFuture.completedFuture(Outcome.rejected(Outcome.Status.UNAVAILABLE, "offline", "Offline")); }
-    };
     private static final NpcHandle NPC = new NpcHandle(UUID.fromString("00000000-0000-0000-0000-0000000000aa"));
     private static final UUID PLAYER = UUID.fromString("00000000-0000-0000-0000-0000000000bb");
     private static final Integrations.Descriptor HOOK = new Integrations.Descriptor("Example hook", Set.of(Platform.PAPER));
@@ -39,7 +33,7 @@ class ModuleIntegrationTest {
             public void disable() {}
         };
     }
-    private static ModuleHost host(int slots, Duration deadline) { return new ModuleHost(Platform.PAPER, DEFINITIONS, slots, deadline); }
+    private static ModuleHost host(int slots, Duration deadline) { return new ModuleHost(Platform.PAPER, slots, deadline); }
     private static void eventually(java.util.function.BooleanSupplier check) throws Exception {
         long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
         while (!check.getAsBoolean() && System.nanoTime() < until) Thread.sleep(2);
@@ -79,11 +73,15 @@ class ModuleIntegrationTest {
             host.install(module("slow", (ModuleContext c) -> c.onInteraction((InteractionNotice n, Capabilities.Cancellation t) -> { calls.incrementAndGet(); release.await(3, TimeUnit.SECONDS); })));
             host.interacted(NPC, PLAYER, InteractionNotice.Action.INTERACT, 1, false);
             eventually(() -> host.modules().getFirst().state() == ModuleHost.State.SUSPENDED);
+            assertEquals("invocation-deadline-exceeded", host.modules().getFirst().reason());
             release.countDown();
             eventually(() -> host.outstandingInvocations() == 0);
+            // The deadline runs from admission, so a busy machine can pass it before the listener starts.
+            int delivered = calls.get();
+            assertTrue(delivered <= 1, "delivered " + delivered);
             host.interacted(NPC, PLAYER, InteractionNotice.Action.INTERACT, 1, false);
-            Thread.sleep(50);
-            assertEquals(1, calls.get());
+            assertEquals(0, host.outstandingInvocations(), "a suspended module is not handed the notice");
+            assertEquals(delivered, calls.get());
         }
     }
 

@@ -134,7 +134,9 @@ public final class BehaviorRuntime implements AutoCloseable {
         if(nextEngine!=null){engineLimits=nextEngine;if(engine!=null)engine.limits(nextEngine);}
     }
     public CompletionStage<Outcome<UUID>> run(String npcId,String behaviorId){return run(npcId,behaviorId,Optional.empty());}
-    public CompletionStage<Outcome<UUID>> run(String npcId,String behaviorId,Optional<UUID> player) {
+    public CompletionStage<Outcome<UUID>> run(String npcId,String behaviorId,Optional<UUID> player){return run(npcId,behaviorId,player,Map.of());}
+    /** A manual run whose expressions read {@code context} as {@code context.<name>}, as a trigger's event data reads. */
+    public CompletionStage<Outcome<UUID>> run(String npcId,String behaviorId,Optional<UUID> player,Map<String,Object> context) {
         if(Thread.currentThread()==owner)return rejected(Outcome.Status.BUSY,"owner-reentrant","Queue run requests from outside the behavior owner");
         synchronized(control){if(closing)return unavailable();if(admitted.size()>=limits.maximumOperations())return busy();}
         if(npcId==null||npcId.length()>64||!npcId.matches("[a-z0-9][a-z0-9_-]{0,63}")||player==null)
@@ -151,7 +153,7 @@ public final class BehaviorRuntime implements AutoCloseable {
         } catch(RuntimeException | AssertionError | LinkageError invalid) {
             return rejected(Outcome.Status.FAILED,"source-observation","Immutable source observation failed: "+invalid.getClass().getSimpleName());
         }
-        return submit(new RunOperation(capture));
+        return submit(new RunOperation(capture,Map.copyOf(context)));
     }
     public CompletionStage<Outcome<Boolean>> cancel(UUID execution) {
         if(execution==null)return rejected(Outcome.Status.INVALID,"execution-identity","Expected execution UUID");
@@ -272,7 +274,9 @@ public final class BehaviorRuntime implements AutoCloseable {
     private void fail(Throwable fault){synchronized(control){if(failure.isEmpty())failure=fault.getClass().getSimpleName();closing=true;}}
     private boolean current(Capture capture) {
         if(capture.server().isPresent())return !closing&&capture.server().get().current().getAsBoolean();
-        if(closing||Objects.requireNonNull(definitions.get()).get(capture.npcId())!=capture.definition())return false;
+        NpcDefinition now=closing?null:Objects.requireNonNull(definitions.get()).get(capture.npcId());
+        // A revision that changes only plugin module data, such as a click counter, is the same NPC to a run.
+        if(now==null||now!=capture.definition()&&!now.runtimeForm().equals(capture.definition().runtimeForm()))return false;
         BehaviorCatalog.Resolution resolution=Objects.requireNonNull(catalog.get()).byId().get(capture.behaviorId());
         return resolution!=null&&resolution.available()&&resolution.accepted().orElse(null)==capture.accepted();
     }
@@ -323,11 +327,11 @@ public final class BehaviorRuntime implements AutoCloseable {
         }
     }
     private final class RunOperation extends Operation<UUID> {
-        final Capture capture;RunOperation(Capture capture){this.capture=capture;}
+        final Capture capture;final Map<String,Object> context;RunOperation(Capture capture,Map<String,Object> context){this.capture=capture;this.context=context;}
         Outcome<UUID> execute(){
             if(!current(capture))return Outcome.rejected(Outcome.Status.CONFLICT,"captured-source-changed","NPC or accepted behavior changed after request admission");
             if(manualByNpc.containsKey(capture.npcUuid()))return Outcome.rejected(Outcome.Status.BUSY,"npc-execution-active","Only one manual execution per NPC may be active");
-            Outcome<UUID> result=engine.start(capture.accepted().program(),new BehaviorEngine.Context(new NpcHandle(capture.npcUuid()),capture.player(),false,()->current(capture)));
+            Outcome<UUID> result=engine.start(capture.accepted().program(),new BehaviorEngine.Context(new NpcHandle(capture.npcUuid()),capture.player(),false,()->current(capture),context));
             result.value().ifPresent(id->{Lease lease=new Lease(id,capture);active.put(id,lease);manualByNpc.put(capture.npcUuid(),lease);viewsChanged=true;});return result;
         }
     }

@@ -132,6 +132,7 @@ final class RegionViewer {
         }
         if (glowing != null && ticks >= glowEnds && unglow()) glowing = null;
         WorldPosition at = position(player.getLocation());
+        host.published.at(id, at);
         TriggerDispatcher dispatcher = host.triggers;
         if (dispatcher != null) {
             if (proximity == null) proximity = new ProximityTracker(dispatcher::proximityLimits, host.index, dispatcher::hides);
@@ -583,7 +584,7 @@ final class RegionViewer {
         }
         // A seat takes only its own click, after every behavior, shop, GUI, quest and ride had theirs.
         if (ownClick && actor.seatAsked(input.secondaryAction())) {
-            String refusal = actor.requestSeat(player);
+            String refusal = actor.requestSeat(player, true);
             if (refusal == null) attachSeat(body, actor);
             else if (!refusal.isEmpty()) player.sendMessage(RichText.colorize(Palette.error("Cannot sit on " + actor.spec.name() + ": " + refusal)));
         }
@@ -687,6 +688,16 @@ final class RegionViewer {
     boolean presents(UUID npc) {
         Presented body = visible.get(npc);
         return body != null && body.spawnFinished && !body.retired;
+    }
+    /** Player owner only: a plugin seats this player on an NPC this viewer shows; null once seated, otherwise why not. */
+    String seat(UUID npc) {
+        Presented body = visible.get(npc);
+        if (body == null || !body.spawnFinished || body.retired) return "the NPC is not shown to the player";
+        RegionActor actor = body.actor;
+        if (!actor.owner.owned()) return "the NPC is in another region than the player";
+        String refusal = actor.requestSeat(player, false);
+        if (refusal == null) { attachSeat(body, actor); return null; }
+        return refusal.isEmpty() ? "the player already sits there" : refusal;
     }
     /**
      * The rider's own attach goes out at once and authoritatively; the ride starts on the NPC's owner when the client has it.

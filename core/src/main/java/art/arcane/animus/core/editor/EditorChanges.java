@@ -45,12 +45,15 @@ public final class EditorChanges {
     private final EditorDocuments documents;
     private final DocumentStore store;
     private final Clock clock;
+    private final art.arcane.animus.core.npc.NpcRepository.ModuleRules modules;
     private volatile Duration retention;
     private final Set<String> pending = ConcurrentHashMap.newKeySet();
     private Map<String, String> changeIds;
 
-    public EditorChanges(EditorDocuments documents, Clock clock, Duration retention) {
+    /** @param modules the plugin module checks a saved NPC's changed module data must pass, as every other save does */
+    public EditorChanges(EditorDocuments documents, Clock clock, Duration retention, art.arcane.animus.core.npc.NpcRepository.ModuleRules modules) {
         this.documents = Objects.requireNonNull(documents);
+        this.modules = Objects.requireNonNull(modules);
         this.store = documents.store();
         this.clock = Objects.requireNonNull(clock);
         this.retention = Objects.requireNonNull(retention);
@@ -109,6 +112,8 @@ public final class EditorChanges {
             if (change.kind() == DocumentKind.NPC && base.exists()) identity(base.content(), source, diagnostics);
             if (change.kind() == DocumentKind.NPC && !current.exists() && !EditorDocuments.hasErrors(diagnostics)) collisions(location, origin, source, diagnostics);
             if (change.kind() == DocumentKind.NPC && !EditorDocuments.hasErrors(diagnostics)) groupReferences(set, source, diagnostics);
+            if (change.kind() == DocumentKind.NPC && !EditorDocuments.hasErrors(diagnostics))
+                EditorDocuments.problems(diagnostics, modules.problems(base.exists() ? java.util.Optional.of(EditorDocuments.source(base.content())) : java.util.Optional.empty(), source));
             if (EditorDocuments.hasErrors(diagnostics)) invalid.add(documentDiagnostics(change.kind(), change.id(), diagnostics));
             String content = change.kind() == DocumentKind.RECORDING && !EditorDocuments.hasErrors(diagnostics) ? recording(source) : JsonDocuments.write(source);
             String hash = "sha256:" + JsonDocuments.hash(content);

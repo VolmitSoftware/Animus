@@ -283,7 +283,7 @@ public final class EditorDocuments {
         return diagnostic(severity, field, problem.message(), problem.code());
     }
 
-    private static void problems(JsonArray diagnostics, List<String> problems) {
+    static void problems(JsonArray diagnostics, List<String> problems) {
         for (String problem : problems) {
             Matcher matcher = PROBLEM.matcher(problem.strip());
             if (matcher.matches()) diagnostics.add(diagnostic("error", matcher.group(1), matcher.group(2), null));

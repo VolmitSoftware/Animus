@@ -27,8 +27,8 @@ class ApiContractTest {
         assertThrows(IllegalArgumentException.class,()->new Capabilities.Invocation(handle,Optional.empty(),"é".repeat(32769),false,()->false,Optional.empty()));
         assertThrows(IllegalArgumentException.class,()->new RevisionToken(0,"0".repeat(64)));
     }
-    @Test void minorVersionTwoKeepsMajorOneModulesRunning(){
-        assertEquals(new Version(1,2,0),AnimusApi.API_VERSION);
+    @Test void versionThreeIsTheContractVersionAndKeepsMajorOneModulesLoading(){
+        assertEquals(new Version(1,3,0),AnimusApi.API_VERSION);
         assertEquals("animus-api-"+AnimusApi.API_VERSION+"-SNAPSHOT.jar",java.nio.file.Path.of(System.getProperty("apiJar")).getFileName().toString(),"Published artifact version follows the contract version");
         assertTrue(new ApiRange(1,1).accepts(AnimusApi.API_VERSION));
     }
@@ -61,7 +61,8 @@ class ApiContractTest {
                 InteractionNotice.Listener.class,Set.of("interacted"),
                 ImportConverters.Converter.class,Set.of("detect","convert"),
                 Integrations.Protection.class,Set.of("decide"),
-                Integrations.Economy.class,Set.of("has","withdraw","deposit","format"));
+                Integrations.Economy.class,Set.of("has","withdraw","deposit","format"),
+                NpcModules.Module.class,Set.of());
         pinned.forEach((Class<?> type,Set<String> methods)->{
             Set<String> abstractMethods=new TreeSet<>();
             for(java.lang.reflect.Method method:type.getDeclaredMethods())

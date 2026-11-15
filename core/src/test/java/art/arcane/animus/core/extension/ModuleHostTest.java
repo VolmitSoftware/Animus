@@ -22,7 +22,7 @@ class ModuleHostTest {
     }
     @Test void observerRegistrationFailureCannotReleaseUnobservedWorkOrAdmitUnlimitedHandlers()throws Exception {
         ThrowingObserverStage<String> raw=new ThrowingObserverStage<>(false);
-        try(ModuleHost host=new ModuleHost(Platform.PAPER,DEFINITIONS,1,Duration.ofSeconds(1))){
+        try(ModuleHost host=new ModuleHost(Platform.PAPER,1,Duration.ofSeconds(1))){
             host.install(module("broken",c->c.registrations().action(descriptor("broken","run",Kind.ACTION),i->raw)));
             host.install(module("other",c->c.registrations().action(descriptor("other","run",Kind.ACTION),i->CompletableFuture.completedFuture("{}"))));
             assertEquals(Outcome.Status.FAILED,await(action(host,"broken","run")).status());
@@ -127,17 +127,11 @@ class ModuleHostTest {
         }finally{finishEnable.countDown();raw.complete("{}");if(installing!=null)await(installing);host.close();}
     }
     private static final NpcHandle NPC=new NpcHandle(UUID.randomUUID());
-    private static final DefinitionGateway DEFINITIONS=new DefinitionGateway(){
-        public DefinitionService scoped(java.util.function.BooleanSupplier available){return this;}
-        public CompletionStage<Outcome<DefinitionSnapshot>> find(NpcHandle npc){return CompletableFuture.completedFuture(Outcome.rejected(Outcome.Status.NOT_FOUND,"missing","Missing"));}
-        public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit){return CompletableFuture.completedFuture(Outcome.rejected(Outcome.Status.UNAVAILABLE,"offline","Offline"));}
-        public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit){return CompletableFuture.completedFuture(Outcome.rejected(Outcome.Status.UNAVAILABLE,"offline","Offline"));}
-    };
     private static ModuleManifest manifest(String id,String...dependencies){return new ModuleManifest(id,new Version(1,0,0),new ApiRange(1,1),Set.of(Platform.PAPER),Arrays.stream(dependencies).map(dep->new ModuleManifest.Dependency(dep,new Version(1,0,0),new Version(2,0,0))).toList());}
     private static TrustedModule module(ModuleManifest manifest,Consumer<ModuleContext> enable,Runnable disable){return new TrustedModule(){public ModuleManifest manifest(){return manifest;}public void enable(ModuleContext c){enable.accept(c);}public void disable(){disable.run();}};}
     private static TrustedModule module(String id,Consumer<ModuleContext> enable){return module(manifest(id),enable,()->{});}
     private static Descriptor descriptor(String namespace,String name,Kind kind){return new Descriptor(new Key(namespace,name),kind,"Example","{\"type\":\"object\"}",Set.of(Platform.PAPER),false);}
-    private static ModuleHost host(){return new ModuleHost(Platform.PAPER,DEFINITIONS,8,Duration.ofSeconds(2));}
+    private static ModuleHost host(){return new ModuleHost(Platform.PAPER,8,Duration.ofSeconds(2));}
     private static CompletionStage<Outcome<String>> action(ModuleHost host,String module,String name){return host.action(new Key(module,name),NPC,Optional.empty(),"{}",false,false);}
     private static void eventually(java.util.function.BooleanSupplier predicate)throws Exception{
         long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);while(!predicate.getAsBoolean()&&System.nanoTime()<until)Thread.sleep(2);assertTrue(predicate.getAsBoolean());
@@ -261,7 +255,7 @@ class ModuleHostTest {
     }
     @Test void timeoutSuspendsDependentsAndRetainsSlotUntilUnderlyingStageFinishes()throws Exception{
         CompletableFuture<String> raw=new CompletableFuture<>();AtomicReference<Cancellation> token=new AtomicReference<>();
-        try(var host=new ModuleHost(Platform.PAPER,DEFINITIONS,1,Duration.ofMillis(150))){
+        try(var host=new ModuleHost(Platform.PAPER,1,Duration.ofMillis(150))){
             host.install(module("base",c->c.registrations().action(descriptor("base","hang",Kind.ACTION),i->{token.set(i.cancellation());return raw;})));
             host.install(module(manifest("middle","base"),c->{},()->{}));
             host.install(module(manifest("leaf","middle"),c->c.registrations().action(descriptor("leaf","run",Kind.ACTION),i->CompletableFuture.completedFuture("{}")),()->{}));
@@ -284,7 +278,7 @@ class ModuleHostTest {
         raw.complete("{}");eventually(()->host.outstandingInvocations()==0);
     }
     @Test void completedCallsCannotLaterSuspendModule()throws Exception{
-        try(var host=new ModuleHost(Platform.PAPER,DEFINITIONS,8,Duration.ofMillis(100))){
+        try(var host=new ModuleHost(Platform.PAPER,8,Duration.ofMillis(100))){
             host.install(module("fast",c->c.registrations().action(descriptor("fast","run",Kind.ACTION),i->CompletableFuture.completedFuture("{}"))));
             for(int i=0;i<100;i++)assertEquals(Outcome.Status.OK,await(action(host,"fast","run")).status());
             Thread.sleep(150);assertEquals(ModuleHost.State.ACTIVE,host.modules().getFirst().state());assertEquals(0,host.outstandingInvocations());
@@ -299,7 +293,7 @@ class ModuleHostTest {
     @Test void blockedActionAndConditionListenersRetainBudgetWithoutBlockingHandlersOrDeadlines()throws Exception{
         CompletableFuture<String> actionRaw=new CompletableFuture<>(),lateRaw=new CompletableFuture<>();CompletableFuture<Boolean> conditionRaw=new CompletableFuture<>();
         CountDownLatch actionEntered=new CountDownLatch(1),conditionEntered=new CountDownLatch(1),lateEntered=new CountDownLatch(1),actionListener=new CountDownLatch(1),conditionListener=new CountDownLatch(1),unblock=new CountDownLatch(1);
-        ModuleHost host=new ModuleHost(Platform.PAPER,DEFINITIONS,3,Duration.ofMillis(200),Duration.ofMillis(20));
+        ModuleHost host=new ModuleHost(Platform.PAPER,3,Duration.ofMillis(200),Duration.ofMillis(20));
         try{
             host.install(module("delivery",c->{
                 c.registrations().action(descriptor("delivery","action",Kind.ACTION),i->{actionEntered.countDown();return actionRaw;});
@@ -324,7 +318,7 @@ class ModuleHostTest {
     }
     @Test void blockingTimeoutListenerCannotBlockAnotherModulesDeadlineAndLateHandlersKeepSlots()throws Exception{
         CompletableFuture<String> firstRaw=new CompletableFuture<>(),secondRaw=new CompletableFuture<>();CountDownLatch listener=new CountDownLatch(1),unblock=new CountDownLatch(1);
-        ModuleHost host=new ModuleHost(Platform.PAPER,DEFINITIONS,2,Duration.ofMillis(100),Duration.ofMillis(20));
+        ModuleHost host=new ModuleHost(Platform.PAPER,2,Duration.ofMillis(100),Duration.ofMillis(20));
         try{
             host.install(module("first",c->c.registrations().action(descriptor("first","wait",Kind.ACTION),i->firstRaw)));
             host.install(module("second",c->c.registrations().action(descriptor("second","wait",Kind.ACTION),i->secondRaw)));
@@ -351,7 +345,7 @@ class ModuleHostTest {
     }
     @Test void publicFutureCopyCannotForgeHostOutcomeOrReleaseInvocationBudget()throws Exception{
         CompletableFuture<String> raw=new CompletableFuture<>();CountDownLatch entered=new CountDownLatch(1);
-        try(var host=new ModuleHost(Platform.PAPER,DEFINITIONS,1,Duration.ofSeconds(1))){
+        try(var host=new ModuleHost(Platform.PAPER,1,Duration.ofSeconds(1))){
             host.install(module("copy",c->c.registrations().action(descriptor("copy","wait",Kind.ACTION),i->{entered.countDown();return raw;})));
             var call=action(host,"copy","wait");release(entered);assertTrue(call.toCompletableFuture().complete(Outcome.ok("forged")));
             assertEquals(1,host.outstandingInvocations());assertEquals(Outcome.Status.BUSY,await(action(host,"copy","wait")).status());
@@ -361,7 +355,7 @@ class ModuleHostTest {
     @Test void concurrentCloseAndHandlerCompletionNeverStrandAcceptedAcknowledgment()throws Exception{
         for(int i=0;i<40;i++){
             CompletableFuture<String> raw=new CompletableFuture<>();CountDownLatch entered=new CountDownLatch(1),race=new CountDownLatch(1);
-            var host=new ModuleHost(Platform.PAPER,DEFINITIONS,1,Duration.ofMillis(50));
+            var host=new ModuleHost(Platform.PAPER,1,Duration.ofMillis(50));
             try{
                 host.install(module("race",c->c.registrations().action(descriptor("race","run",Kind.ACTION),invocation->{entered.countDown();return raw;})));
                 var result=action(host,"race","run");release(entered);

@@ -1,0 +1,14 @@
+name: NpcDemo
+version: 1.0.0
+main: example.animus.npcdemo.NpcDemo
+api-version: '1.21'
+folia-supported: true
+depend: [Animus]
+commands:
+  npcdemo:
+    description: Drives NPCs through the Animus API
+    usage: /npcdemo <walk|bench|sit|tp|shout|remove|count>
+    permission: npcdemo.use
+permissions:
+  npcdemo.use:
+    default: op

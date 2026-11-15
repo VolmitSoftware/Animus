@@ -14,7 +14,9 @@ tasks.named('jar', Jar).configure { manifest { attributes('Automatic-Module-Name
 repositories {
     maven { url = uri('https://hub.spigotmc.org/nexus/content/repositories/snapshots/') }
 }
+// Plugins depend on animus-api too; the Animus plugin jar ships both.
 dependencies {
+    compileOnly(project(':animus-api'))
     compileOnly('org.spigotmc:spigot-api:26.1.2-R0.1-SNAPSHOT')
 }
 publishing {
@@ -24,7 +26,7 @@ publishing {
             from(components.java)
             pom {
                 name = 'Animus Bukkit API'
-                description = 'NPC lookup service and NPC events for Bukkit plugins that work with Animus.'
+                description = 'NPC service, lookups and NPC events for Bukkit plugins that work with Animus.'
                 url = 'https://github.com/VolmitSoftware/Animus'
                 licenses {
                     license {

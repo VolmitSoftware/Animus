@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -27,8 +28,9 @@ import java.util.function.LongSupplier;
 public final class AnimusLog {
     public static final Duration WINDOW = Duration.ofMinutes(5);
     private static final int MAXIMUM_TRACED = 256;
-    private static final AnimusLog SHARED = new AnimusLog(System::nanoTime, WINDOW);
+    private static final AnimusLog SHARED = new AnimusLog(System::nanoTime, WINDOW, AnimusLog::timerThread);
     private final LongSupplier nanos;
+    private final ThreadFactory timer;
     private final Duration span;
     private final long window;
     private final Map<String, Set<String>> pending = new LinkedHashMap<>();
@@ -39,8 +41,10 @@ public final class AnimusLog {
     private ScheduledExecutorService windowEnd;
     private long windowStart;
 
-    public AnimusLog(LongSupplier nanos, Duration window) {
+    /** {@code timer} makes the thread that prints a summary when its window ends. */
+    public AnimusLog(LongSupplier nanos, Duration window, ThreadFactory timer) {
         this.nanos = Objects.requireNonNull(nanos);
+        this.timer = Objects.requireNonNull(timer);
         span = Objects.requireNonNull(window);
         this.window = window.toNanos();
         windowStart = nanos.getAsLong();
@@ -81,11 +85,7 @@ public final class AnimusLog {
     /** Starts the timer that prints a summary when its window ends; the runtime calls it as it starts. A second start does nothing. */
     public synchronized void start() {
         if (windowEnd != null) return;
-        windowEnd = Executors.newSingleThreadScheduledExecutor((Runnable task) -> {
-            Thread thread = new Thread(task, "Animus-Log");
-            thread.setDaemon(true);
-            return thread;
-        });
+        windowEnd = Executors.newSingleThreadScheduledExecutor(timer);
         windowEnd.scheduleWithFixedDelay(this::poll, 15, 15, TimeUnit.SECONDS);
     }
 
@@ -94,6 +94,12 @@ public final class AnimusLog {
         if (windowEnd == null) return;
         windowEnd.shutdownNow();
         windowEnd = null;
+    }
+
+    private static Thread timerThread(Runnable task) {
+        Thread thread = new Thread(task, "Animus-Log");
+        thread.setDaemon(true);
+        return thread;
     }
 
     /** Prints the summary once its window has ended, even when no routine line comes after it. */

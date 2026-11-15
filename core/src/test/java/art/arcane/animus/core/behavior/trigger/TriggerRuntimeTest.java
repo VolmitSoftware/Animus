@@ -33,8 +33,9 @@ class TriggerRuntimeTest {
         BehaviorCatalog.Accepted accepted=new BehaviorCatalog.Accepted(revision,String.format("%064x",revision),100,program,Set.of());
         catalog.set(new BehaviorCatalog.Snapshot(revision,Map.of(),Map.of(BEHAVIOR,new BehaviorCatalog.Resolution(BEHAVIOR,true,Optional.of(accepted),List.of())),List.of()));
     }
+    /** Each version renames the NPC, so a new version is a change a run sees; a revision alone is not. */
     private void definition(long version,boolean spawned)throws Exception{
-        definitions.set(Map.of("test",NpcDefinition.parse("{\"schemaVersion\":2,\"revision\":"+version+",\"uuid\":\""+npc+"\",\"id\":\"test\",\"group\":\"test\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":"+spawned+",\"behaviors\":[\""+BEHAVIOR+"\"],\"position\":{\"world\":\"world\",\"x\":0,\"y\":61,\"z\":0,\"yaw\":0,\"pitch\":0}}")));
+        definitions.set(Map.of("test",NpcDefinition.parse("{\"schemaVersion\":2,\"revision\":"+version+",\"uuid\":\""+npc+"\",\"id\":\"test\",\"group\":\"test\",\"name\":\"Test "+version+"\",\"type\":\"minecraft:player\",\"spawned\":"+spawned+",\"behaviors\":[\""+BEHAVIOR+"\"],\"position\":{\"world\":\"world\",\"x\":0,\"y\":61,\"z\":0,\"yaw\":0,\"pitch\":0}}")));
     }
     private void start(int perTrigger){
         TriggerSettings settings=new TriggerSettings(true,16,32,8,64,4,4,1000,32,4,perTrigger,0,0,4096,1024,1,32,5,16,32,64,0,5,16,32,16,64,256);

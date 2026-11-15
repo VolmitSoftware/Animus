@@ -177,6 +177,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     volatile NpcRig.Events animationEvents;
     volatile InteractionListener<P> interactions;
     volatile InteractionObserver observer;
+    private volatile Consumer<UUID> spawns = (UUID npc) -> {};
     private volatile String unavailable;
     final RuntimeFailures failures;
     volatile boolean closed;
@@ -302,6 +303,22 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     /** Connect during startup, before the first runtime tick can activate an NPC. */
     @Override public void interactions(InteractionListener<P> listener) { interactions = listener; }
     @Override public void observeInteractions(InteractionObserver observer) { this.observer = observer; }
+    @Override public void observeSpawns(Consumer<UUID> observer) { spawns = Objects.requireNonNull(observer); }
+    @Override public java.util.concurrent.CompletionStage<Optional<String>> seat(UUID player, UUID npc) {
+        CompletableFuture<Optional<String>> result = new CompletableFuture<>();
+        boolean accepted = onMain(() -> {
+            try {
+                Entry entry = byUuid.get(npc);
+                Optional<P> online = players.owned(player);
+                if (!available() || entry == null || entry.value == null) { result.complete(Optional.of("the NPC is not active")); return; }
+                if (online.isEmpty()) { result.complete(Optional.of("the player is not online")); return; }
+                String refusal = seats.request(online.get(), entry.value, false);
+                result.complete(refusal == null ? Optional.empty() : Optional.of(refusal.isEmpty() ? "the player already sits there" : refusal));
+            } catch (RuntimeException failure) { result.complete(Optional.of(concise(failure))); }
+        }, (String reason) -> result.complete(Optional.of(reason)));
+        if (!accepted) result.complete(Optional.of("the server refused the work"));
+        return result;
+    }
     /** Who hears of falls that hurt, as the combat module applies them. */
     public void onLanding(BiConsumer<UUID, Double> listener) { landings = Objects.requireNonNull(listener); }
     @Override public void bindTriggers(TriggerDispatcher dispatcher) { owner(); dispatcher.hide(hidden()); triggers = new TriggerBridge(dispatcher, index); }
@@ -602,6 +619,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         views.represent(value);
         if (triggers != null) triggers.activated(npc);
         host.npcSpawned(npc, entry.id, value.state.snapshot().position());
+        spawns.accept(npc);
         return true;
     }
     /** Shows who dealt the health change applied next, for its damage and death triggers. Owner thread. */
@@ -967,6 +985,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (!sameNpc) {
             if (triggers != null) triggers.activated(spec.definition().uuid());
             host.npcSpawned(spec.definition().uuid(), spec.definition().id(), state.snapshot().position());
+            spawns.accept(spec.definition().uuid());
         }
         if (!routes.startInline(entry.value)) reads.requestRoute(entry.value);
     }

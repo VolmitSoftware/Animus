@@ -13,7 +13,6 @@ import art.arcane.animus.core.behavior.catalog.BehaviorPath;
 import art.arcane.animus.core.behavior.runtime.BehaviorRuntime;
 import art.arcane.animus.core.config.BuiltinActionSettings;
 import art.arcane.animus.core.config.ModuleSettings;
-import art.arcane.animus.core.extension.DefinitionGateway;
 import art.arcane.animus.core.extension.ExtensionRuntime;
 import art.arcane.animus.core.npc.NpcDefinition;
 import java.nio.file.Files;
@@ -38,12 +37,6 @@ import static org.junit.jupiter.api.Assertions.*;
 class BuiltinManualRunTest {
     @TempDir Path temporary;
     private static final UUID NPC = UUID.randomUUID(), PLAYER = UUID.randomUUID();
-    private static final DefinitionGateway DEFINITIONS = new DefinitionGateway() {
-        @Override public DefinitionService scoped(BooleanSupplier available) { return this; }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> find(NpcHandle npc) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-    };
     private final RecordingPlatform platform = new RecordingPlatform();
     private final List<String> log = new CopyOnWriteArrayList<>();
     private Path root;
@@ -61,7 +54,7 @@ class BuiltinManualRunTest {
         BuiltinActionSettings defaults = BuiltinActionSettings.DEFAULT;
         BuiltinCapabilities builtins = new BuiltinCapabilities(platform, new MemoryBehaviorState(), choice -> {},
                 new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), List.of("town:allowed"), List.of(), defaults.navigationWaits(), List.of()), log::add);
-        extensions = new ExtensionRuntime(root.resolve("modules"), Platform.PAPER, DEFINITIONS, new ModuleSettings(true, 16, 5000, 250), line -> {}, state -> {}, builtins);
+        extensions = new ExtensionRuntime(root.resolve("modules"), Platform.PAPER, new ModuleSettings(true, 16, 5000, 250), line -> {}, state -> {}, builtins);
         extensions.start();
         long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
         while (extensions.status().state() != ExtensionRuntime.State.READY && System.nanoTime() < until) Thread.sleep(2);

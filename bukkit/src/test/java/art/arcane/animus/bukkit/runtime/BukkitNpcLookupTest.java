@@ -45,4 +45,38 @@ class BukkitNpcLookupTest {
         snapshot.set(Map.copyOf(definitions));
         assertEquals(List.of("baker", "guard"), lookup.all().stream().map(NpcInfo::key).toList());
     }
+
+    /** A plugin whose name and enabled flag the test sets. */
+    private static org.bukkit.plugin.Plugin plugin(String name, java.util.concurrent.atomic.AtomicBoolean enabled) {
+        return (org.bukkit.plugin.Plugin) java.lang.reflect.Proxy.newProxyInstance(org.bukkit.plugin.Plugin.class.getClassLoader(), new Class<?>[]{org.bukkit.plugin.Plugin.class},
+                (Object proxy, java.lang.reflect.Method method, Object[] arguments) -> switch (method.getName()) {
+                    case "getName" -> name;
+                    case "isEnabled" -> enabled.get();
+                    case "hashCode" -> name.hashCode();
+                    case "equals" -> proxy == arguments[0];
+                    default -> throw new UnsupportedOperationException(method.getName());
+                });
+    }
+
+    @Test
+    void aPluginGetsAServiceWhileEnabledAndLosesWhatItMadeWhenItDisables() {
+        BukkitNpcLookup lookup = new BukkitNpcLookup(Map::of);
+        java.util.concurrent.atomic.AtomicBoolean enabled = new java.util.concurrent.atomic.AtomicBoolean(true);
+        org.bukkit.plugin.Plugin shops = plugin("Shops", enabled);
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> lookup.service(shops), "no service before Animus finished starting");
+        List<String> opened = new java.util.ArrayList<>(), released = new java.util.ArrayList<>(), left = new java.util.ArrayList<>();
+        AtomicReference<java.util.function.BooleanSupplier> gate = new AtomicReference<>();
+        lookup.connect(new art.arcane.animus.core.api.NpcScopes() {
+            @Override public art.arcane.animus.api.NpcService open(String owner, java.util.function.BooleanSupplier available) { opened.add(owner); gate.set(available); return null; }
+            @Override public void release(String owner) { released.add(owner); }
+        }, (UUID player) -> left.add(player.toString()));
+        lookup.service(shops);
+        assertEquals(List.of("plugin:Shops"), opened);
+        assertTrue(gate.get().getAsBoolean());
+        enabled.set(false);
+        org.junit.jupiter.api.Assertions.assertFalse(gate.get().getAsBoolean(), "the service follows the plugin's enabled state");
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> lookup.service(shops));
+        lookup.disabled(new org.bukkit.event.server.PluginDisableEvent(shops));
+        assertEquals(List.of("plugin:Shops"), released);
+    }
 }

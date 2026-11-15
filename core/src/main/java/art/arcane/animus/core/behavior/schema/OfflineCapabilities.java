@@ -9,7 +9,6 @@ import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.config.BuiltinActionSettings;
-import art.arcane.animus.core.extension.DefinitionGateway;
 import art.arcane.animus.core.extension.ModuleHost;
 import java.lang.reflect.Proxy;
 import java.time.Duration;
@@ -29,7 +28,7 @@ public final class OfflineCapabilities implements AutoCloseable {
     public OfflineCapabilities() {
         builtins = new BuiltinCapabilities(unavailable(BehaviorPlatform.class), BehaviorState.UNAVAILABLE, choice -> { },
                 BuiltinActionSettings.DEFAULT, line -> { });
-        host = new ModuleHost(Platform.PAPER, unavailable(DefinitionGateway.class), 4, Duration.ofSeconds(1));
+        host = new ModuleHost(Platform.PAPER, 4, Duration.ofSeconds(1));
         Outcome<ModuleHost.ModuleStatus> installed = host.installBuiltin(builtins, builtins);
         if (installed.status() != Outcome.Status.OK) {
             close();

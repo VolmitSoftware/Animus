@@ -11,6 +11,7 @@ import java.util.*;
  * @param diagnostics diagnostics explaining the result
  */
 public record Outcome<T>(Status status,Optional<T> value,List<Diagnostic> diagnostics) {
+    /** How a call ended; every status but OK carries diagnostics. */
     public enum Status { OK, INVALID, NOT_FOUND, CONFLICT, UNAVAILABLE, BUSY, CANCELLED, FAILED, TIMED_OUT }
     public Outcome {Objects.requireNonNull(status);value=Objects.requireNonNull(value);diagnostics=List.copyOf(diagnostics);if(status!=Status.OK && value.isPresent())throw new IllegalArgumentException("Rejected outcome cannot carry a value");}
     public static <T> Outcome<T> ok(T value){return new Outcome<>(Status.OK,Optional.of(value),List.of());}

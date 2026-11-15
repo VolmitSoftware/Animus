@@ -13,6 +13,7 @@ import org.bukkit.event.HandlerList;
  * the NPC, on the NPC's thread. Fired once per mob, while a player is near the NPC.
  */
 public final class VirtualNpcLeashEvent extends Event {
+    /** A player tying a led mob to the NPC, or a led mob passing near it. */
     public enum Kind { TIE, PASS }
     private static final HandlerList HANDLERS = new HandlerList();
     private final UUID npcId;

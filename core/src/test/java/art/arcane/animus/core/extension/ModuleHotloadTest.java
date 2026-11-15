@@ -44,12 +44,6 @@ class ModuleHotloadTest {
     @TempDir Path directory;
     private static final NpcHandle NPC = new NpcHandle(UUID.randomUUID());
     private static final Key HOLD = new Key("sample", "hold");
-    private static final DefinitionGateway DEFINITIONS = new DefinitionGateway() {
-        @Override public DefinitionService scoped(BooleanSupplier available) { return this; }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> find(NpcHandle npc) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-    };
 
     private final List<CompletableFuture<String>> held = new CopyOnWriteArrayList<>();
 
@@ -81,7 +75,7 @@ class ModuleHotloadTest {
 
     @Test
     void limits_raiseAndLowerUnderLoad_applyToNextInvocation() throws Exception {
-        try (ModuleHost host = new ModuleHost(Platform.PAPER, DEFINITIONS, 2, Duration.ofSeconds(2))) {
+        try (ModuleHost host = new ModuleHost(Platform.PAPER, 2, Duration.ofSeconds(2))) {
             host.install(holding());
             List<CompletableFuture<Outcome<String>>> running = new CopyOnWriteArrayList<>(List.of(call(host), call(host)));
             eventually(() -> held.size() == 2);
@@ -104,7 +98,7 @@ class ModuleHotloadTest {
 
     @Test
     void timeout_shortened_appliesToNextInvocation() throws Exception {
-        try (ModuleHost host = new ModuleHost(Platform.PAPER, DEFINITIONS, 4, Duration.ofSeconds(30))) {
+        try (ModuleHost host = new ModuleHost(Platform.PAPER, 4, Duration.ofSeconds(30))) {
             host.install(holding());
             host.limits(4, Duration.ofMillis(50), Duration.ofMillis(250));
             assertEquals(Outcome.Status.TIMED_OUT, await(call(host)).status());
@@ -114,7 +108,7 @@ class ModuleHotloadTest {
 
     @Test
     void suspend_refusesNewWork_letsAdmittedFinish_resumeRestores() throws Exception {
-        try (ModuleHost host = new ModuleHost(Platform.PAPER, DEFINITIONS, 4, Duration.ofSeconds(2))) {
+        try (ModuleHost host = new ModuleHost(Platform.PAPER, 4, Duration.ofSeconds(2))) {
             host.install(holding());
             CompletableFuture<Outcome<String>> admitted = call(host);
             eventually(() -> held.size() == 1);
@@ -145,7 +139,7 @@ class ModuleHotloadTest {
         List<CatalogChange> reloads = new CopyOnWriteArrayList<>();
         runtime.catalogs((CatalogChange change, java.util.function.Consumer<String> problems) -> reloads.add(change));
         List<String> report = new CopyOnWriteArrayList<>();
-        ExtensionRuntime modules = new ExtensionRuntime(directory.toRealPath().resolve("modules"), Platform.PAPER, DEFINITIONS, runtime.moduleSettings(), report::add);
+        ExtensionRuntime modules = new ExtensionRuntime(directory.toRealPath().resolve("modules"), Platform.PAPER, runtime.moduleSettings(), report::add);
         try {
             modules.follow(runtime);
             modules.start();

@@ -45,7 +45,7 @@ public final class StartupModules implements AutoCloseable {
                     public ModuleManifest manifest(){return verified;}
                     public void enable(ModuleContext context)throws Exception{
                         ModuleContext observed=new ModuleContext(){
-                            public DefinitionService definitions(){return context.definitions();}
+                            public NpcService npcs(){return context.npcs();}
                             public Capabilities.Registrar registrations(){return context.registrations();}
                             public Capabilities.TriggerPublisher triggers(){return context.triggers();}
                             public ModuleScheduler scheduler(){return context.scheduler();}

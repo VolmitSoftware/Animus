@@ -64,7 +64,7 @@ class MythicModuleTest {
                 @Override public void trigger(Capabilities.Descriptor descriptor) { fail("no triggers"); }
             };
         }
-        @Override public art.arcane.animus.api.DefinitionService definitions() { throw new UnsupportedOperationException(); }
+        @Override public art.arcane.animus.api.NpcService npcs() { throw new UnsupportedOperationException(); }
         @Override public Capabilities.TriggerPublisher triggers() { throw new UnsupportedOperationException(); }
         @Override public art.arcane.animus.api.ModuleScheduler scheduler() { throw new UnsupportedOperationException(); }
         @Override public void onClose(AutoCloseable resource) {}

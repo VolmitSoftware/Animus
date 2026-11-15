@@ -61,7 +61,7 @@ public record DefinitionSpec<I>(NpcDefinition definition, String type, String na
         Map<EquipmentSlot, I> equipment = appearance.equipment().isEmpty() ? Map.of() : equipment(appearance, items, new ArrayList<>());
         return new DefinitionSpec<>(definition, json.get("type").getAsString(), definition.name(),
                 new WorldPosition(world, new Vec3(p.get("x").getAsDouble(), p.get("y").getAsDouble(), p.get("z").getAsDouble())),
-                p.get("yaw").getAsFloat(), p.get("pitch").getAsFloat(), json.has("skin") ? json.get("skin").getAsString() : null, definition.serialize(),
+                p.get("yaw").getAsFloat(), p.get("pitch").getAsFloat(), json.has("skin") ? json.get("skin").getAsString() : null, definition.runtimeForm(),
                 appearance, equipment, definition.viewers(), definition.bossBar());
     }
     /**

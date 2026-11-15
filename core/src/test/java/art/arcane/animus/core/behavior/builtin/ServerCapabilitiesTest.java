@@ -10,7 +10,6 @@ import art.arcane.animus.api.Outcome;
 import art.arcane.animus.api.Platform;
 import art.arcane.animus.core.behavior.ServerNpc;
 import art.arcane.animus.core.config.BuiltinActionSettings;
-import art.arcane.animus.core.extension.DefinitionGateway;
 import art.arcane.animus.core.extension.ModuleHost;
 import java.time.Duration;
 import java.util.List;
@@ -30,19 +29,13 @@ import static org.junit.jupiter.api.Assertions.*;
 class ServerCapabilitiesTest {
     private static final NpcHandle NPC = new NpcHandle(UUID.randomUUID());
     private static final UUID PLAYER = UUID.randomUUID(), OTHER = UUID.randomUUID();
-    private static final DefinitionGateway DEFINITIONS = new DefinitionGateway() {
-        @Override public DefinitionService scoped(BooleanSupplier available) { return this; }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> find(NpcHandle npc) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
-    };
     private final RecordingPlatform platform = new RecordingPlatform();
     private final MemoryBehaviorState state = new MemoryBehaviorState();
     private ModuleHost host;
     private BuiltinCapabilities builtins;
 
     @BeforeEach void start() {
-        host = new ModuleHost(Platform.PAPER, DEFINITIONS, 64, Duration.ofMillis(5000));
+        host = new ModuleHost(Platform.PAPER, 64, Duration.ofMillis(5000));
         BuiltinActionSettings defaults = BuiltinActionSettings.DEFAULT;
         BuiltinActionSettings settings = new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(),
                 defaults.choiceLifetimeSeconds(), List.of(), List.of("denizen"), defaults.navigationWaits(), List.of());
@@ -172,7 +165,7 @@ class ServerCapabilitiesTest {
 
     @Test void expiryNeedsAStateServiceThatStoresIt() throws Exception {
         host.close();
-        host = new ModuleHost(Platform.PAPER, DEFINITIONS, 64, Duration.ofMillis(5000));
+        host = new ModuleHost(Platform.PAPER, 64, Duration.ofMillis(5000));
         art.arcane.animus.core.behavior.BehaviorState plain = new art.arcane.animus.core.behavior.BehaviorState() {
             @Override public art.arcane.animus.core.behavior.BehaviorProgram.Value read(Subject subject, String variable, art.arcane.animus.core.behavior.BehaviorProgram.ScopedVariable declaration, art.arcane.animus.core.behavior.BehaviorProgram.Value initial) { return initial; }
             @Override public void write(Subject subject, Map<String, art.arcane.animus.core.behavior.BehaviorProgram.Value> writes, Map<String, art.arcane.animus.core.behavior.BehaviorProgram.ScopedVariable> declarations) {}
