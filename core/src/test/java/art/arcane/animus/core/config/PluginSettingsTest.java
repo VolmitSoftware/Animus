@@ -60,7 +60,7 @@ class PluginSettingsTest {
             PluginSettings.load(store);
             String toml = Files.readString(root.resolve("config.toml"));
             assertTrue(toml.startsWith("# Animus plugin settings. NPC and behavior documents use JSON. Every key: https://docs.volmitsoftware.com/animus/03-configuration\n"), toml);
-            for (String table : java.util.List.of("npcs", "files", "modules", "behaviors", "combat", "builds", "shops", "editor", "rigs", "navigation", "hotload", "recordings"))
+            for (String table : java.util.List.of("npcs", "files", "modules", "behaviors", "combat", "builds", "shops", "editor", "rigs", "navigation", "hotload", "recordings", "seats"))
                 assertTrue(toml.matches("(?s).*\n# [^\n]+: https://docs\\.volmitsoftware\\.com/animus/03-configuration#" + table + "\n\\[" + table + "]\n.*"), table + " in " + toml);
             assertEquals(PluginSettings.load(store), PluginSettings.parse(toml, root.resolve("config.toml")));
         }
@@ -170,6 +170,16 @@ class PluginSettingsTest {
             java.util.List<String> warnings = new java.util.ArrayList<>();
             PluginSettings.load(store, warnings::add);
             assertEquals(java.util.List.of(), warnings, "the written file has no unknown key");
+        }
+    }
+    @Test void seatsAreOffByDefaultAndBounded() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            assertEquals(new SeatSettings(false, 32, true), PluginSettings.load(store).seats());
+            Files.writeString(root.resolve("config.toml"), "[seats]\ndefaultEnabled = true\nmaximum = 8\nfollowGSit = false\n");
+            assertEquals(new SeatSettings(true, 8, false), PluginSettings.load(store).seats());
+            Files.writeString(root.resolve("config.toml"), "[seats]\nmaximum = 0\n");
+            IOException error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("seats: maximum must be within 1..256"), error.getMessage());
         }
     }
     @Test void navigationBudgetsAreReadFromTomlAndBounded() throws Exception {

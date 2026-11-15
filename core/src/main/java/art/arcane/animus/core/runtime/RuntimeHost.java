@@ -24,6 +24,14 @@ public interface RuntimeHost<P, I> extends TerrainReader {
     /** Interaction kinds a platform may veto before the runtime accepts them. */
     enum Interaction { ATTACK, INTERACT }
 
+    /**
+     * A loaded, living server entity an NPC can ride, as the owner thread reads it now: its feet, facing, where it seats
+     * its next passenger and the native IDs of the passengers the server gives it.
+     */
+    record RealEntity(UUID uuid, int entityId, String type, WorldPosition position, float yaw, art.arcane.animus.core.mount.SeatGeometry seat, List<Integer> passengers) {
+        public RealEntity { passengers = List.copyOf(passengers); }
+    }
+
     boolean ownerThread();
     /** Runs the work on the owner thread later. False when it cannot be accepted. */
     boolean execute(Runnable work);
@@ -76,6 +84,23 @@ public interface RuntimeHost<P, I> extends TerrainReader {
     DoorPassage.Doors doors();
     /** The region entry rule a ride asks for each new block, since a ride moves its rider with no movement event. */
     default RideEntry.Rule rideEntry() { return RideEntry.OPEN; }
+    /** Why NPCs cannot ride real entities here, or null when they can. */
+    default String realVehiclesUnavailable() { return "NPCs ride real entities only on Paper and Spigot"; }
+    /** The loaded, living entity with this UUID. Players are never vehicles. */
+    default Optional<RealEntity> entity(UUID uuid) { return Optional.empty(); }
+    /** The nearest loaded, living entity of this type within {@code range} blocks of a point that {@code free} accepts. */
+    default Optional<RealEntity> nearestEntity(WorldPosition near, String type, double range, java.util.function.Predicate<UUID> free) { return Optional.empty(); }
+    /** The native IDs of the passengers the server gives an entity, a player included. */
+    default List<Integer> realPassengers(UUID entity) { return List.of(); }
+    /** Nothing is in the player's main hand. */
+    default boolean emptyHand(P player) { return true; }
+    /**
+     * Another plugin's sitting rules for a seat on the NPC at {@code npc}, with {@code stacked} players already seated
+     * there: null allows it, an empty reason refuses without a message. GSit's player-sit settings on Bukkit.
+     */
+    default String seatRefusal(P player, WorldPosition npc, double npcHeight, int stacked) { return null; }
+    /** Another plugin holds the player in a pose a seat must not overlap, such as GSit's crawl. */
+    default boolean posed(P player) { return false; }
     /** The block is loaded, inside the world's height and solid. */
     boolean solid(String world, int x, int y, int z);
     /** A registered server entity uses this UUID, for diagnostics. */

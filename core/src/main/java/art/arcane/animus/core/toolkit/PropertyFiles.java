@@ -134,7 +134,8 @@ final class PropertyFiles {
         for (Map.Entry<String, String> owned : PropertyScreen.bodyFields().entrySet())
             if (!owned.getValue().equals(type)) document.remove(owned.getKey());
         JsonElement pose = document.get("pose");
-        if (!type.equals(ToolkitFiles.PLAYER) && pose != null && !pose.getAsString().equals("standing")) document.remove("pose");
+        if (pose != null && pose.isJsonPrimitive() && art.arcane.animus.core.npc.NpcPose.fromKey(pose.getAsString())
+                .filter((art.arcane.animus.core.npc.NpcPose shown) -> !shown.availableFor(type)).isPresent()) document.remove("pose");
     }
 
     /** The chat line's start for a change, in words: {@code Set team color to red}, {@code Reset scale}. Ticks read as seconds. */

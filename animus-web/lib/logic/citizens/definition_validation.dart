@@ -1,9 +1,10 @@
 /// Port of core's `NpcDefinition.validate` with `NpcAppearance`, `NpcDisguise`, `HologramStyle`, `BodyTraits`, `NpcAttributes`, `NpcItem`, `ArmorStandLook`,
 /// `NpcInventory` and `MovementSettings`.
 ///
-/// The module validators (`WaypointSettings`, `CombatSettings`, `MountDeclaration`, `RideSettings`, `ShopBinding`,
-/// `GuiBinding`, `HireTerms`) are not ported: the modules this converter writes are built to pass them, and the server
-/// validates every definition again when an import is applied, so a module the browser accepted wrongly is still refused.
+/// The module validators (`WaypointSettings`, `CombatSettings`, `RideSettings`, `ShopBinding`, `GuiBinding`, `HireTerms`)
+/// are not ported here: the modules this converter writes are built to pass them, and the server validates every
+/// definition again when an import is applied, so a module the browser accepted wrongly is still refused.
+/// [definitionRuleErrors] ports `MountDeclaration` and `SeatModule` for editor documents.
 library;
 
 import 'dart:convert';
@@ -14,15 +15,16 @@ import '../inspect/inspect_schemas.dart';
 import '../npc/group_merge.dart' show groupMergeNpc;
 import '../npc/combat_settings.dart';
 import '../npc/group_model.dart';
+import '../npc/mount_seat.dart';
+import '../npc/npc_appearance.dart' show npcPoses, poseAvailable;
 import '../npc/route_model.dart' show movementStyles;
 import '../npc/npc_attributes.dart';
-import '../npc/npc_paths.dart' show npcSchemaVersion;
+import '../npc/npc_paths.dart' show npcLocalIdOf, npcSchemaVersion;
 import 'citizens_traits.dart' show teamColors;
 import 'java_json.dart';
 import 'java_lang.dart';
 import 'presentation.dart';
 
-const List<String> _poses = <String>['standing', 'sneaking', 'sleeping', 'swimming', 'sitting'];
 const List<String> _parts = <String>['head', 'body', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'];
 const Set<String> _lookFlags = <String>{'small', 'arms', 'basePlate', 'invisible', 'marker'};
 const Set<String> _itemFields = <String>{'id', 'count', 'components', 'imported'};
@@ -107,9 +109,6 @@ List<String> activationErrors(JObject definition) => definitionActivationErrors(
 List<String> definitionActivationErrors(JsonMap definition) {
   final List<String> errors = <String>[];
   if (definition.containsKey('skin') && definition['type'] != 'minecraft:player') errors.add(r'$.skin: textures require a player body');
-  if (definition['pose'] == 'sitting' && _declaresMount(definition)) {
-    errors.add(r'$.pose: a sitting NPC cannot also ride another NPC; remove the pose or the mount');
-  }
   final Object? model = asMap(definition['modules'])['animus:modelengine'];
   if (definition.containsKey('rig') && model is Map && model['enabled'] != false) {
     errors.add(r'$.modules.animus:modelengine: an NPC shows either a rig or a Model Engine model; remove one');
@@ -146,8 +145,9 @@ List<Diagnostic> effectiveActivationDiagnostics(JsonMap npc, Map<String, JsonMap
 
 /// Server rules the generated NPC schema cannot say, on an editor document's plain JSON: control characters in the name
 /// and hologram lines (`NpcAppearance.displayText`), an attribute set twice (`NpcAttributes`), inventory slots past its
-/// size (`NpcInventory`), the pitch range (`DefinitionSpec.validate`), riding itself (`MountRelations`) and look-close
-/// ranges (`LookClose`). [id] is the NPC's document id (`town/guard`), null for a group's values.
+/// size (`NpcInventory`), the pitch range (`DefinitionSpec.validate`), riding itself (`MountRelations`), look-close
+/// ranges (`LookClose`), and the mount and seat modules (`MountDeclaration`, `SeatModule`), which the schema says only in
+/// part. [id] is the NPC's document id (`town/guard`), null for a group's values.
 List<String> definitionRuleErrors(JsonMap definition, {String? id}) {
   final List<String> errors = <String>[];
   final Object? name = definition['name'];
@@ -174,8 +174,16 @@ List<String> definitionRuleErrors(JsonMap definition, {String? id}) {
     }
   }
   final JsonMap modules = asMap(definition['modules']);
-  final Object? vehicle = asMap(modules['animus:mount'])['vehicle'];
-  if (id != null && vehicle == id) errors.add(r'$.modules.animus:mount.vehicle: an NPC cannot ride itself');
+  if (modules.containsKey(mountModuleKey)) {
+    final String? problem = _mountProblem(modules[mountModuleKey]);
+    if (problem != null) errors.add(problem);
+  }
+  if (modules.containsKey(seatModuleKey)) {
+    final String? problem = _seatProblem(modules[seatModuleKey], riding: ridingOn(modules));
+    if (problem != null) errors.add(problem);
+  }
+  final Object? vehicle = asMap(modules[mountModuleKey])['vehicle'];
+  if (id != null && vehicle == npcLocalIdOf(id)) errors.add(r'$.modules.animus:mount.vehicle: an NPC cannot ride itself');
   final JsonMap randomLook = asMap(asMap(modules['animus:look-close'])['randomLook']);
   for (final String key in const <String>['yaw', 'pitch']) {
     final List<Object?> range = asList(randomLook[key]);
@@ -184,6 +192,17 @@ List<String> definitionRuleErrors(JsonMap definition, {String? id}) {
     }
   }
   return errors;
+}
+
+/// [schema]'s diagnostics with the server's own [rules]: where both name one field, written `$.modules["animus:seat"]`
+/// by the schema and `$.modules.animus:seat` by the server, the server's wording stays.
+List<Diagnostic> withRuleDiagnostics(List<Diagnostic> schema, List<Diagnostic> rules) {
+  final Set<String> ruled = <String>{for (final Diagnostic rule in rules) rule.path};
+  return <Diagnostic>[
+    for (final Diagnostic diagnostic in schema)
+      if (!ruled.contains(diagnostic.path.replaceAllMapped(RegExp(r'\["([^"]*)"\]'), (Match key) => '.${key[1]}'))) diagnostic,
+    ...rules,
+  ];
 }
 
 /// The diagnostics of [definitionRuleErrors] for an NPC document at [id].
@@ -221,16 +240,63 @@ List<String> groupDocumentErrors(JsonMap group, String id, int bytes) {
 List<Diagnostic> groupRuleDiagnostics(Object? group, String id, String source) =>
     group is Map<String, Object?> ? definitionDiagnostics(groupDocumentErrors(group, id, utf8.encode(source).length), code: 'group') : const <Diagnostic>[];
 
-/// `MountDeclaration.parse(...).isPresent()` for well-formed documents.
-bool _declaresMount(JsonMap definition) {
-  final JsonMap modules = asMap(definition['modules']);
-  if (modules.containsKey('animus:mount')) return asMap(modules['animus:mount'])['enabled'] != false;
-  for (final Object? reference in asList(asMap(definition['migration'])['references'])) {
-    final JsonMap entry = asMap(reference);
-    if (entry['kind'] != 'mount') continue;
-    return entry['status'] != 'none';
+const String _mount = r'$.modules.animus:mount';
+const Set<String> _mountFields = <String>{'enabled', 'vehicle', 'entity', 'range'};
+const String _seat = r'$.modules.animus:seat';
+const Set<String> _seatFields = <String>{'enabled', 'click', 'permission', 'stack', 'emptyHand'};
+
+/// The first refusal `MountDeclaration.parse` throws for a native module.
+String? _mountProblem(Object? value) {
+  if (value is! Map<String, Object?>) return '$_mount: expected object';
+  for (final String key in value.keys) {
+    if (!_mountFields.contains(key)) return '$_mount.$key: unknown field';
   }
-  return false;
+  if (value.containsKey('enabled') && value['enabled'] is! bool) return '$_mount.enabled: expected boolean';
+  if (value.containsKey('vehicle') && value.containsKey('entity')) return '$_mount.entity: name a vehicle NPC or a real entity, not both';
+  if (value.containsKey('entity')) {
+    final Object? entity = value['entity'];
+    final bool uuid = entity is String && isEntityUuid(entity);
+    if (entity is! String || (!uuid && !RegExp(r'^[a-z0-9_.-]+:[a-z0-9_./-]+$').hasMatch(entity))) {
+      return '$_mount.entity: expected an entity UUID or an entity type such as minecraft:horse';
+    }
+    if (entity == 'minecraft:player') return '$_mount.entity: NPCs do not ride players';
+    if (value.containsKey('range')) {
+      if (uuid) return '$_mount.range: only an entity type is searched within a range';
+      final Object? range = value['range'];
+      if (range is! num || !range.isFinite || range < 1 || range > 32) return '$_mount.range: expected 1-32 blocks';
+    }
+  } else if (value.containsKey('range')) {
+    return '$_mount.range: only an entity type is searched within a range';
+  }
+  if (value['enabled'] == false || value.containsKey('entity')) return null;
+  final Object? vehicle = value['vehicle'];
+  if (vehicle is! String || !RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$').hasMatch(vehicle)) return '$_mount.vehicle: expected an NPC id';
+  return null;
+}
+
+/// The first refusal `SeatModule.parse` throws; [riding] when `animus:riding` is on.
+String? _seatProblem(Object? value, {required bool riding}) {
+  if (value is! Map<String, Object?>) return '$_seat: expected object';
+  for (final String key in value.keys) {
+    if (!_seatFields.contains(key)) return '$_seat.$key: unknown field';
+  }
+  for (final String key in const <String>['enabled', 'emptyHand']) {
+    if (value.containsKey(key) && value[key] is! bool) return '$_seat.$key: expected boolean';
+  }
+  final Object? click = value.containsKey('click') ? value['click'] : 'right';
+  if (click != 'right' && click != 'sneak-right') return '$_seat.click: expected right or sneak-right';
+  final Object? permission = value.containsKey('permission') ? value['permission'] : 'animus.seat';
+  if (permission is! String) return '$_seat.permission: expected string';
+  final Object? stack = value.containsKey('stack') ? value['stack'] : 4;
+  if (stack is! num || stack != stack.roundToDouble()) return '$_seat.stack: expected 1-8';
+  if (value['enabled'] != false && click == 'right' && riding) {
+    return '$_seat.click: a right-click mounts this NPC through riding; use sneak-right for the seat';
+  }
+  if (permission.length > 128 || !RegExp(r'^[a-z0-9_-]+(?:\.[a-z0-9_-]+)*$').hasMatch(permission)) {
+    return '$_seat.permission: expected a lowercase permission node';
+  }
+  if (stack < 1 || stack > 8) return '$_seat.stack: expected 1-8';
+  return null;
 }
 
 String _string(JObject data, String key, List<String> errors) {
@@ -314,11 +380,11 @@ void _appearance(JObject definition, List<String> errors) {
   }
   if (definition.has('pose')) {
     final JElement value = definition.get('pose')!;
-    final String? pose = value is JString && _poses.contains(value.value) ? value.value : null;
+    final String? pose = value is JString && npcPoses.contains(value.value) ? value.value : null;
     if (pose == null) {
-      errors.add(r'$.pose: expected standing, sneaking, sleeping, swimming or sitting');
-    } else if (pose != 'standing' && type != 'minecraft:player') {
-      errors.add('\$.pose: $pose is available only for minecraft:player bodies');
+      errors.add('\$.pose: expected ${npcPoses.sublist(0, npcPoses.length - 1).join(', ')} or ${npcPoses.last}');
+    } else if (!poseAvailable(pose, type)) {
+      errors.add('\$.pose: $pose is available only for ${pose == 'sitting' ? 'living bodies other than the ender dragon' : 'minecraft:player bodies'}');
     }
   }
   if (definition.has('armorStand')) {

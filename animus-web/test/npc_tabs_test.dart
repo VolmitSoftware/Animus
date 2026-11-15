@@ -95,12 +95,16 @@ void main() {
       expect(advancedInUse(NpcTab.look, frame, group: false), <String>['Item components'], reason: 'a body setting\'s item counts too');
     });
 
-    test('should count walking and riding on Movement', () {
+    test('should count walking, riding and the seat on Movement, not on Modules', () {
       final Map<String, Object?> doc = _npc(<String, Object?>{
         'movement': <String, Object?>{'speed': 1.2},
-        'modules': <String, Object?>{'animus:mount': <String, Object?>{'vehicle': 'horse'}},
+        'modules': <String, Object?>{
+          'animus:mount': <String, Object?>{'entity': 'minecraft:horse'},
+          'animus:seat': <String, Object?>{'click': 'sneak-right'},
+        },
       });
-      expect(advancedInUse(NpcTab.movement, doc, group: false), <String>['Walking', 'Riding']);
+      expect(advancedInUse(NpcTab.movement, doc, group: false), <String>['Walking', 'Riding', 'Seat']);
+      expect(advancedInUse(NpcTab.modules, doc, group: false), isEmpty);
     });
 
     test('should name a route that is turned off', () {

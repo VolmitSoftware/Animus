@@ -1,8 +1,6 @@
 {
   "citizensId": 6,
-  "presentationWarnings": [
-    "/traits/sittrait: a mounted NPC rides instead of sitting; kept for review"
-  ],
+  "presentationWarnings": [],
   "runtimeWarnings": [],
   "fieldPathFormat": "json-pointer",
   "fields": {
@@ -14,17 +12,13 @@
     "/traits/location/y": "CONVERTED",
     "/traits/location/z": "CONVERTED",
     "/traits/mounttrait/mountedon": "REQUIRES_REVIEW",
-    "/traits/sittrait/sittingAt/world": "UNSUPPORTED_PRESERVED",
-    "/traits/sittrait/sittingAt/x": "UNSUPPORTED_PRESERVED",
-    "/traits/sittrait/sittingAt/y": "UNSUPPORTED_PRESERVED",
-    "/traits/sittrait/sittingAt/z": "UNSUPPORTED_PRESERVED"
+    "/traits/sittrait/sittingAt/world": "CONVERTED",
+    "/traits/sittrait/sittingAt/x": "CONVERTED",
+    "/traits/sittrait/sittingAt/y": "CONVERTED",
+    "/traits/sittrait/sittingAt/z": "CONVERTED"
   },
   "reasons": {
-    "/traits/mounttrait/mountedon": "the NPC this one rides is missing in the save; set animus:mount by hand",
-    "/traits/sittrait/sittingAt/world": "trait sittrait has no Animus equivalent; kept in citizens:review",
-    "/traits/sittrait/sittingAt/x": "trait sittrait has no Animus equivalent; kept in citizens:review",
-    "/traits/sittrait/sittingAt/y": "trait sittrait has no Animus equivalent; kept in citizens:review",
-    "/traits/sittrait/sittingAt/z": "trait sittrait has no Animus equivalent; kept in citizens:review"
+    "/traits/mounttrait/mountedon": "the NPC this one rides is missing in the save; set animus:mount by hand"
   },
   "worldRemaps": [
     {

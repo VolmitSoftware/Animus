@@ -50,6 +50,8 @@ public final class AnimusCommandTree extends CommandGroup {
     NpcCommands npc;
     WorldCommands.Navigation navigation;
     WorldCommands.Ride ride;
+    WorldCommands.Mount mount;
+    WorldCommands.Seat seat;
     ScheduleCommands schedule;
     WorldCommands.Combat combat;
     ContentCommands.Modules modules;
@@ -77,6 +79,8 @@ public final class AnimusCommandTree extends CommandGroup {
         npc = new NpcCommands(services);
         navigation = new WorldCommands.Navigation(services);
         ride = new WorldCommands.Ride(services);
+        mount = new WorldCommands.Mount(services);
+        seat = new WorldCommands.Seat(services);
         schedule = new ScheduleCommands(services);
         combat = new WorldCommands.Combat(services);
         modules = new ContentCommands.Modules(services);

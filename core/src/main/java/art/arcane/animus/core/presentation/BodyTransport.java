@@ -70,6 +70,17 @@ public interface BodyTransport<P, I> extends AutoCloseable {
     CompletionStage<Void> move(P viewer, Body body, BodyPose pose);
     /** Viewer-local passenger list; the client replaces the whole roster. {@code realRider} may be null. */
     CompletionStage<Void> passengers(P viewer, Body vehicle, List<? extends Body> passengers, P realRider, boolean authoritative);
+    /** Whether {@link #carry} can put passengers on real server entities here. */
+    default boolean carryAvailable() { return false; }
+    /**
+     * Viewer-local passengers on a real server entity, after the {@code own} passengers the server gives it now: virtual
+     * bodies the viewer sees, then real entities by native ID. The transport keeps them on every passenger list the server
+     * sends this viewer for that entity later, also when the viewer starts tracking it again. Empty lists release it. A
+     * body that leaves the entity sits on its own seat again when it has one.
+     */
+    default CompletionStage<Void> carry(P viewer, int entity, List<Integer> own, List<? extends Body> bodies, List<Integer> riders) {
+        return java.util.concurrent.CompletableFuture.failedFuture(new UnsupportedOperationException("Real entities cannot carry NPCs on this server"));
+    }
     CompletionStage<Void> dragonPhase(P viewer, Body dragon, int phase);
     /** The hurt flash, the body type's own hurt sound and a stagger, as a vanilla hit shows them. */
     default CompletionStage<Void> hurt(P viewer, Body body) { return java.util.concurrent.CompletableFuture.completedFuture(null); }

@@ -27,6 +27,7 @@
     "yaw": 0,
     "pitch": 0
   },
+  "pose": "sitting",
   "modules": {
     "citizens:review": {
       "type": "PLAYER",

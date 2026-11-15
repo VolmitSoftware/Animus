@@ -31,6 +31,9 @@ import java.util.stream.Stream;
  * complete. Called on the actor's owner; a source that cannot answer offers nothing.
  */
 final class CommandCompletions {
+    /** Real entities an NPC commonly rides, offered after the NPC ids; any entity type may be typed. */
+    static final List<String> VEHICLES = List.of("minecraft:horse", "minecraft:donkey", "minecraft:mule", "minecraft:camel", "minecraft:pig", "minecraft:strider",
+            "minecraft:llama", "minecraft:oak_boat", "minecraft:minecart", "minecraft:happy_ghast");
     /** The bodies the packet preview tools can show. */
     static final List<String> PROOF_BODIES = List.of("minecraft:player", "minecraft:armor_stand", "minecraft:horse", "minecraft:turtle", "minecraft:frog",
             "minecraft:llama", "minecraft:armadillo", "minecraft:ender_dragon");
@@ -44,6 +47,8 @@ final class CommandCompletions {
         CommandServices services = tree.services;
         return switch (parameter) {
             case "npc" -> npcs(actor);
+            // Blocks for mount set (1-32) and speak (1-64).
+            case "range" -> List.of("4", "8", "16", "32");
             case "ids" -> npcs(actor);
             case "id" -> List.of(freeId());
             case "build" -> Stream.concat(services.builds().buildIds().stream(), npcs(actor).stream()).distinct().toList();
@@ -86,7 +91,6 @@ final class CommandCompletions {
             case "uuid" -> Stream.concat(actor.player().stream(), actor.nearby().stream()).map(UUID::toString).distinct().toList();
             // Only /animus speak types text before its target, and it speaks to players, never NPCs.
             case "target" -> given.containsKey("text") ? speakers(actor) : targets(actor, false);
-            case "range" -> List.of("8", "16", "32");
             case "bubble" -> List.of("40", "60", "100");
             case "charge" -> targets(actor, true);
             case "mob" -> nearby(actor);
@@ -140,6 +144,8 @@ final class CommandCompletions {
             case "stay" -> List.of("60", "60-120", "300");
             case "wander" -> List.of("0", "4", "8");
             case "pose" -> List.of("standing", "sneaking", "sleeping", "sitting");
+            case "turn" -> List.of("on", "off");
+            case "ride" -> { List<String> vehicles = new java.util.ArrayList<>(npcs(actor)); vehicles.addAll(VEHICLES); yield vehicles; }
             case "location" -> ScheduleCommands.references(tree.runtime().npcs().find(given.getOrDefault("npc", "")).map(NpcDefinition::json).orElse(new JsonObject()));
             default -> List.of();
         };

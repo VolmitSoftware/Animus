@@ -107,11 +107,71 @@ final class WorldCommands {
             catch (RuntimeException refused) { actor.tell(Palette.error("Ride: " + refused.getMessage())); }
         }
 
-        @Director(description = "Dismount a player from their NPC")
-        void stop(@Param(name = "player", description = "The riding player's name") String player) {
+        @Director(description = "Dismount a player from the NPC they ride or sit on")
+        void stop(@Param(name = "player", description = "The riding or seated player's name") String player) {
             CommandActor actor = actor();
-            try { actor.tell(living().stopRider(player) ? Palette.success("Dismounted " + player) : Palette.error(player + " is not riding")); }
+            try { actor.tell(living().stopRider(player) ? Palette.success("Dismounted " + player) : Palette.error(player + " is not riding or sitting on an NPC")); }
             catch (RuntimeException refused) { actor.tell(Palette.error("Ride: " + refused.getMessage())); }
+        }
+    }
+
+    @Director(name = "mount", description = "Seat an NPC on another NPC or on a real mob, boat or minecart")
+    @AnimusPermission(PermissionNodes.NPC_MOVE)
+    static final class Mount extends CommandGroup {
+        Mount(CommandServices services) { super(services); }
+
+        @Director(description = "Make an NPC ride another NPC, a real entity by UUID, or the nearest entity of a type such as minecraft:horse")
+        @Positional("range")
+        void set(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
+                 @Param(name = "ride", description = "Another NPC's id, an entity UUID, or an entity type such as minecraft:horse") String vehicle,
+                 @Param(name = "range", defaultValue = "", description = "With an entity type: how far from the NPC to look, 1-32 blocks; 8 by default") String range) {
+            CommandActor actor = actor();
+            npc(actor, npc).ifPresent((String id) -> files(actor, () -> {
+                String line = MountSetting.set(runtime().npcs(), id, vehicle, range);
+                living().refresh();
+                return List.of(Palette.success(line));
+            }));
+        }
+
+        @Director(description = "Take an NPC off what it rides")
+        void off(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
+            CommandActor actor = actor();
+            npc(actor, npc).ifPresent((String id) -> files(actor, () -> {
+                String line = MountSetting.off(runtime().npcs(), id);
+                living().refresh();
+                return List.of(Palette.success(line));
+            }));
+        }
+    }
+
+    @Director(name = "seat", description = "Sit on NPCs: turn it on or off for yourself, or see who sits where")
+    @AnimusPermission(PermissionNodes.NPC_MOVE)
+    static final class Seat extends CommandGroup {
+        Seat(CommandServices services) { super(services); }
+
+        @Director(description = "Turn sitting on NPCs on or off for yourself, as /gsit playertoggle does for players", origin = art.arcane.volmlib.util.director.DirectorOrigin.PLAYER)
+        @AnimusPermission(PermissionNodes.SEAT)
+        @Positional("turn")
+        void toggle(@Param(name = "turn", defaultValue = "", description = "on or off; flips it when left out") String state) {
+            CommandActor actor = actor();
+            Optional<UUID> player = actor.player();
+            if (player.isEmpty()) { actor.tell(Palette.error("Only a player sits on NPCs")); return; }
+            Optional<Boolean> wanted = switch (state.toLowerCase(Locale.ROOT)) {
+                case "" -> Optional.empty();
+                case "on" -> Optional.of(Boolean.TRUE);
+                case "off" -> Optional.of(Boolean.FALSE);
+                default -> null;
+            };
+            if (wanted == null) { actor.tell(Palette.error("Seat: expected on or off, not " + state)); return; }
+            try { actor.tell(Palette.success(living().seatToggle(player.get(), wanted) ? "Sitting on NPCs is on" : "Sitting on NPCs is off")); }
+            catch (RuntimeException refused) { actor.tell(Palette.error("Seat: " + refused.getMessage())); }
+        }
+
+        @Director(description = "Show who sits on which NPC")
+        void status() {
+            CommandActor actor = actor();
+            try { actor.tell(living().seatStatus()); }
+            catch (RuntimeException refused) { actor.tell(Palette.error("Seat: " + refused.getMessage())); }
         }
     }
 

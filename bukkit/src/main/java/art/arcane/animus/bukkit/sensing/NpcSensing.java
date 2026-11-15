@@ -192,10 +192,11 @@ public final class NpcSensing implements Listener, AutoCloseable {
         }
         EntitySensor sensor = sensors.computeIfAbsent(npc, EntitySensor::new);
         EntitySensor.Limits limits = new EntitySensor.Limits(budgets.entityTrackedPerNpc(), budgets.entityIntervalTicks());
+        Set<UUID> attached = living.attached(npc);
         EntitySensor.Result result;
         synchronized (sensor) {
-            result = plugins ? sensor.senseForPlugins(body, watches, seen, look.complete(), neighbours, this::holds, limits)
-                    : sensor.sense(body, watches, seen, look.complete(), neighbours, this::holds, limits);
+            result = plugins ? sensor.senseForPlugins(body, watches, seen, attached, look.complete(), neighbours, this::holds, limits)
+                    : sensor.sense(body, watches, seen, attached, look.complete(), neighbours, this::holds, limits);
         }
         TriggerDispatcher dispatcher = triggers.get();
         if (dispatcher != null) for (TriggerEvent.Entity event : result.events()) dispatcher.publish(event);
@@ -330,8 +331,10 @@ public final class NpcSensing implements Listener, AutoCloseable {
         Player player = event.getViewer();
         Location at = player.getLocation();
         BoundingBox box = BoundingBox.of(at, LEAD_REACH, LEAD_REACH, LEAD_REACH);
+        Set<UUID> attached = living.attached(npc);
         EntitySightings.Look leashed = EntitySightings.nearby(player.getWorld(), box, new Vec3(at.getX(), at.getY(), at.getZ()), 16, owned, standIns,
-                (Entity entity) -> entity instanceof LivingEntity mob && !(entity instanceof Player) && mob.isLeashed() && player.equals(mob.getLeashHolder()));
+                (Entity entity) -> entity instanceof LivingEntity mob && !(entity instanceof Player) && mob.isLeashed() && player.equals(mob.getLeashHolder())
+                        && !attached.contains(entity.getUniqueId()));
         if (leashed.entities().isEmpty()) return;
         Optional<NpcRuntime.ActiveNpc> active = living.active(npc);
         EntitySensor.Party holder = EntitySightings.party(player, true);

@@ -115,6 +115,17 @@ class BodyLookTest {
         assertEquals("STANDING", BodyLook.nativePose(NpcPose.SITTING));
     }
 
+    @Test void gsitPosesUseTheVanillaPosesGSitSends() {
+        assertEquals("SWIMMING", BodyLook.nativePose(NpcPose.CRAWLING));
+        assertEquals("SWIMMING", BodyLook.nativePose(NpcPose.BELLYFLOP));
+        assertEquals("SPIN_ATTACK", BodyLook.nativePose(NpcPose.SPINNING));
+        assertEquals(0, BodyLook.sharedFlags(NpcPose.CRAWLING, false), "a crawling player has no swimming flag");
+        assertEquals(0, BodyLook.sharedFlags(NpcPose.BELLYFLOP, false));
+        assertEquals(BodyLook.SPIN_ATTACK, BodyLook.of(ID, "minecraft:player", "Spinner", appearance(List.of(), true, NpcPose.SPINNING)).livingFlags());
+        assertEquals(0, BodyLook.of(ID, "minecraft:player", "Crawler", appearance(List.of(), true, NpcPose.CRAWLING)).livingFlags());
+        assertEquals("SPIN_ATTACK", BodyLook.of(ID, "minecraft:player", "Spinner", appearance(List.of(), true, NpcPose.SPINNING)).lookPose("minecraft:player"));
+    }
+
     @Test void aSittingCamelStaysSeatedWhenItsLookIsSentAgain() {
         BodyTraits sitting = new BodyTraits(false, Optional.empty(), false, false, false, false, NpcAttributes.NONE, new BodyVariant("camel", Map.of(), java.util.Set.of("sitting")));
         NpcAppearance camel = new NpcAppearance(Map.of(), List.of(), true, NpcPose.STANDING, Optional.empty(), HologramStyle.DEFAULT, sitting);

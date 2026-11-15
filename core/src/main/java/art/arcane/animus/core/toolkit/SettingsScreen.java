@@ -44,8 +44,10 @@ final class SettingsScreen<P, S> extends ToolScreen<P, S> {
     }
 
     @Override String title() { return title; }
-    /** Riding settings are an NPC edit, as Mounts is; combat settings need the combat node. */
-    @Override String node() { return settings.module().equals(CombatFiles.RIDING) ? PermissionNodes.NPC_EDIT : PermissionNodes.COMBAT; }
+    /** Riding and seat settings are an NPC edit, as Mounts is; combat settings need the combat node. */
+    @Override String node() {
+        return settings.module().equals(CombatFiles.RIDING) || settings.module().equals(art.arcane.animus.core.control.SeatModule.MODULE) ? PermissionNodes.NPC_EDIT : PermissionNodes.COMBAT;
+    }
     @Override int rows() { return 6; }
 
     @Override void draw() {

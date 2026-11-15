@@ -84,21 +84,22 @@ public final class EntitySensor {
     }
 
     /**
-     * One look around. {@code complete} is false when the platform cut the look short at its candidate budget, so an
-     * entity it did not report may still be near and is not taken to have left. {@code holds} tests a permission node for
-     * a player.
+     * One look around. {@code attached} are the entities that move with the NPC, its own mount and the players riding or
+     * seated on it: they still come near, but never touch, bump or are led past it. {@code complete} is false when the
+     * platform cut the look short at its candidate budget, so an entity it did not report may still be near and is not
+     * taken to have left. {@code holds} tests a permission node for a player.
      */
-    public Result sense(VirtualNpcState.Snapshot body, List<Watch> watches, List<Seen> seen, boolean complete, List<Neighbour> neighbours,
+    public Result sense(VirtualNpcState.Snapshot body, List<Watch> watches, List<Seen> seen, Set<UUID> attached, boolean complete, List<Neighbour> neighbours,
                         BiPredicate<UUID, String> holds, Limits limits) {
-        return look(body, watches, seen, complete, neighbours, holds, limits, false);
+        return look(body, watches, seen, attached, complete, neighbours, holds, limits, false);
     }
     /** {@link #sense}, also reporting the facts other plugins listen for. */
-    public Result senseForPlugins(VirtualNpcState.Snapshot body, List<Watch> watches, List<Seen> seen, boolean complete, List<Neighbour> neighbours,
+    public Result senseForPlugins(VirtualNpcState.Snapshot body, List<Watch> watches, List<Seen> seen, Set<UUID> attached, boolean complete, List<Neighbour> neighbours,
                                   BiPredicate<UUID, String> holds, Limits limits) {
-        return look(body, watches, seen, complete, neighbours, holds, limits, true);
+        return look(body, watches, seen, attached, complete, neighbours, holds, limits, true);
     }
 
-    private Result look(VirtualNpcState.Snapshot body, List<Watch> watches, List<Seen> seen, boolean complete, List<Neighbour> neighbours,
+    private Result look(VirtualNpcState.Snapshot body, List<Watch> watches, List<Seen> seen, Set<UUID> attached, boolean complete, List<Neighbour> neighbours,
                         BiPredicate<UUID, String> holds, Limits limits, boolean plugins) {
         List<TriggerEvent.Entity> events = new ArrayList<>();
         List<Fact> facts = new ArrayList<>();
@@ -112,7 +113,7 @@ public final class EntitySensor {
         if (!touches) touching.clear();
         if (!bumps) bumping.clear();
         for (Seen entity : touches || bumps ? present.values() : List.<Seen>of()) {
-            if (entity.role() == Role.ITEM) continue;
+            if (entity.role() == Role.ITEM || attached.contains(entity.self().id())) continue;
             if (touches(hitbox, entity, limits.intervalTicks(), 0)) touchedNow.add(entity.self().id());
             else if (touching.contains(entity.self().id()) && touches(hitbox, entity, 0, CONTACT_RELEASE)) heldNow.add(entity.self().id());
             if (entity.role() == Role.VEHICLE && speed(entity) >= BUMP_SPEED && touchedNow.contains(entity.self().id())) bumpedNow.add(entity.self().id());
@@ -149,7 +150,7 @@ public final class EntitySensor {
                             if (watch.spec().thrown() && !thrown || !watch.spec().passes("item", item.item().orElse(""))) return;
                             matched(watch, item.thrower().map(Party::subject), party(item.thrower()), item.position(), holds, itemContext(item, thrown), events);
                         });
-                case LEASH_PASS -> leashed(watch.key(), watch.spec().radius(), at, present, complete, limits,
+                case LEASH_PASS -> leashed(watch.key(), watch.spec().radius(), at, present, attached, complete, limits,
                         (Seen mob) -> matched(watch, Optional.of(mob.self()), party(mob.holder()), mob.position(), holds, leashContext(mob.holder().orElseThrow()), events));
                 case NPC_PROXIMITY -> neighbours(watch, at, neighbours, complete, limits, events);
                 default -> {}
@@ -158,7 +159,7 @@ public final class EntitySensor {
         if (plugins) {
             items(PLUGIN_ITEMS, PLUGIN_RADIUS, at, hitbox, present, complete, limits,
                     (Seen item, boolean thrown) -> facts.add(new Fact(Fact.Kind.ITEM, item.self().id(), itemContext(item, thrown))));
-            leashed(PLUGIN_LEASH, PLUGIN_RADIUS, at, present, complete, limits,
+            leashed(PLUGIN_LEASH, PLUGIN_RADIUS, at, present, attached, complete, limits,
                     (Seen mob) -> facts.add(new Fact(Fact.Kind.LEASH, mob.self().id(), leashContext(mob.holder().orElseThrow()))));
         }
         Set<String> keys = new HashSet<>();
@@ -223,14 +224,14 @@ public final class EntitySensor {
     }
 
     /** A mob on a lead within the radius, once until it is led away again. */
-    private void leashed(String key, double radius, Vec3 at, Map<UUID, Seen> present, boolean complete, Limits limits, LeashSink sink) {
+    private void leashed(String key, double radius, Vec3 at, Map<UUID, Seen> present, Set<UUID> attached, boolean complete, Limits limits, LeashSink sink) {
         Map<UUID, Party> entries = inside.computeIfAbsent(key, (String ignored) -> new HashMap<>());
         entries.keySet().removeIf((UUID id) -> {
             Seen mob = present.get(id);
             return mob == null ? complete : mob.holder().isEmpty() || mob.position().distance(at) > radius + LEAVE_MARGIN;
         });
         for (Seen mob : present.values()) {
-            if (mob.holder().isEmpty() || mob.role() == Role.ITEM || entries.containsKey(mob.self().id()) || mob.position().distance(at) > radius) continue;
+            if (mob.holder().isEmpty() || mob.role() == Role.ITEM || attached.contains(mob.self().id()) || entries.containsKey(mob.self().id()) || mob.position().distance(at) > radius) continue;
             if (!room(limits)) continue;
             entries.put(mob.self().id(), new Party(mob.self(), false));
             sink.led(mob);

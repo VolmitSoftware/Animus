@@ -1,12 +1,10 @@
 package art.arcane.animus.core.runtime;
 
-import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.npc.BossBarSettings;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcAppearance;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcItem;
-import art.arcane.animus.core.npc.NpcPose;
 import art.arcane.animus.core.npc.ViewerFilter;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.virtual.Vec3;
@@ -50,8 +48,6 @@ public record DefinitionSpec<I>(NpcDefinition definition, String type, String na
         JsonObject json = definition.json();
         List<String> errors = new ArrayList<>();
         if (json.has("skin") && !json.get("type").getAsString().equals(BodyRules.PLAYER)) errors.add("$.skin: textures require a player body");
-        if (NpcAppearance.of(definition).pose() == NpcPose.SITTING && MountDeclaration.parse(json).isPresent())
-            errors.add("$.pose: a sitting NPC cannot also ride another NPC; remove the pose or the mount");
         try { art.arcane.animus.core.integration.ModelEngineModule.parse(json); }
         catch (IllegalArgumentException malformed) { errors.add(malformed.getMessage()); }
         return List.copyOf(errors);

@@ -9,11 +9,15 @@ import java.util.UUID;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.entity.AnimalTamer;
+import org.bukkit.entity.Arrow;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Mob;
+import org.bukkit.entity.Player;
 import org.bukkit.entity.Wolf;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -21,12 +25,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class NpcDecoysTest {
     private static final UUID NPC = UUID.fromString("00000000-0000-0000-0000-00000000d0c1");
     private static final UUID OWNER = UUID.fromString("00000000-0000-0000-0000-00000000d0c2");
-    private Set<UUID> fought = Set.of();
+    private Set<UUID> fought = Set.of(), attached = Set.of();
     private final NpcDecoys decoys = new NpcDecoys(proxy(Plugin.class, (String name, Object[] args) -> "getName".equals(name) ? "Animus" : null), new NpcDecoys.Host() {
         @Override public Optional<VirtualNpcState.Snapshot> targetable(UUID npc) { return Optional.empty(); }
         @Override public String body(UUID npc) { return "minecraft:player"; }
         @Override public boolean allows(Mob mob, VirtualNpcState.Snapshot npc) { return true; }
         @Override public boolean fought(UUID npc, UUID player) { return fought.contains(player); }
+        @Override public Set<UUID> attached(UUID npc) { return attached; }
     });
 
     @Test void monstersThatHuntPlayersFightAnyBody() {
@@ -68,10 +73,36 @@ class NpcDecoysTest {
         assertFalse(NpcDecoys.firstStrike(trident, struck), "the bounce back into the same decoy");
     }
 
+    @Test void aMobNeverFightsTheNpcRidingIt() {
+        Mob ravager = mob(Mob.class, EntityType.RAVAGER, 0, null);
+        assertTrue(decoys.fights(ravager, NPC, "minecraft:pillager"));
+        attached = Set.of(ravager.getUniqueId());
+        assertFalse(decoys.fights(ravager, NPC, "minecraft:pillager"), "a ravager carrying the NPC never turns on its rider");
+    }
+
+    @Test void aMobsArrowMeantForTheDecoyThatStrikesAPlayerSeatedOnTheNpcStruckTheNpc() {
+        Mob skeleton = proxy(Mob.class, (String name, Object[] args) -> "getTarget".equals(name) ? proxy(org.bukkit.entity.LivingEntity.class, (String n, Object[] a) -> null) : null);
+        UUID seatedId = UUID.randomUUID(), strangerId = UUID.randomUUID();
+        Player seated = proxy(Player.class, (String name, Object[] args) -> "getUniqueId".equals(name) ? seatedId : null);
+        Player stranger = proxy(Player.class, (String name, Object[] args) -> "getUniqueId".equals(name) ? strangerId : null);
+        java.util.function.Function<Entity, Optional<UUID>> decoyNpc = (Entity entity) -> Optional.of(NPC).filter((UUID npc) -> entity != null);
+        java.util.function.Function<UUID, Set<UUID>> riders = (UUID npc) -> Set.of(seatedId);
+        Arrow fromSkeleton = proxy(Arrow.class, (String name, Object[] args) -> "getShooter".equals(name) ? skeleton : null);
+        assertEquals(Optional.of(NPC), NpcDecoys.meantFor(fromSkeleton, seated, decoyNpc, riders), "the player's body stands in the decoy");
+        assertEquals(Optional.empty(), NpcDecoys.meantFor(fromSkeleton, stranger, decoyNpc, riders), "a player beside the NPC is hit as usual");
+        Arrow fromPlayer = proxy(Arrow.class, (String name, Object[] args) -> "getShooter".equals(name) ? stranger : null);
+        assertEquals(Optional.empty(), NpcDecoys.meantFor(fromPlayer, seated, decoyNpc, riders), "a player's arrow hits the seated player, measured at the ground");
+        Mob idle = proxy(Mob.class, (String name, Object[] args) -> null);
+        Arrow aimless = proxy(Arrow.class, (String name, Object[] args) -> "getShooter".equals(name) ? idle : null);
+        assertEquals(Optional.empty(), NpcDecoys.meantFor(aimless, seated, decoyNpc, riders), "a mob that targets no decoy");
+    }
+
     private static <T extends Mob> T mob(Class<T> type, EntityType kind, int light, AnimalTamer owner) {
         Block block = proxy(Block.class, (String name, Object[] args) -> "getLightLevel".equals(name) ? (byte) light : null);
+        UUID id = UUID.randomUUID();
         return proxy(type, (String name, Object[] args) -> switch (name) {
             case "getType" -> kind;
+            case "getUniqueId" -> id;
             case "getLocation" -> new Location(null, 0, 64, 0) { @Override public Block getBlock() { return block; } };
             case "isTamed" -> owner != null;
             case "getOwner" -> owner;

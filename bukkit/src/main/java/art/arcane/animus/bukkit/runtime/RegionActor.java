@@ -109,7 +109,7 @@ final class RegionActor implements RegionOwner.Body {
                        String navigation, long arrivals, boolean ride, boolean mount, long revision, NpcRig.Snapshot<ItemStack> rig, int dragonPhase,
                        List<UUID> passengers, Player rider, CombatView combat, BodyLook look, long lookRevision, long swings, long gestures, int gesture, long attackSwings,
                        NpcAttributes attributes, long attributeRevision, long hurts, long deaths, String bubble, long bubbleRevision,
-                       art.arcane.animus.core.presentation.MirrorSettings mirror) {}
+                       art.arcane.animus.core.presentation.MirrorSettings mirror, art.arcane.animus.core.presentation.RestingPlacement.Seat seat) {}
     /** What other combat engines and status read of this NPC's combat; null when it has none. */
     record CombatView(CombatSettings settings, CombatLoadout loadout, UUID guarded, String status, int helpers) {}
     /** A passenger whose vehicle another region owns steps onto its seat at most this often. */
@@ -197,6 +197,8 @@ final class RegionActor implements RegionOwner.Body {
     private RecordingDoors recordingDoors;
     /** The pose and motion a playback shows, published with {@link #lookRevision}; swings count up for viewers to send. */
     private NpcPose lookPose = NpcPose.STANDING;
+    /** The seat a sitting body is shown on, and the feet it was read for. */
+    private WorldPosition seatFeet; private art.arcane.animus.core.presentation.RestingPlacement.Seat seatAt;
     private int lookMotion;
     private long lookRevision;
     private BodyLook look;
@@ -897,8 +899,7 @@ final class RegionActor implements RegionOwner.Body {
     }
     /** A resting pose until the NPC moves; a seat comes or goes with sitting, so viewers then receive a fresh body. */
     void rest(NpcPose pose) {
-        if (!pose.availableFor(spec.type())) throw new IllegalArgumentException("Only player bodies rest " + pose.key());
-        if (pose == NpcPose.SITTING && mount) throw new IllegalArgumentException("A sitting NPC cannot also ride another NPC");
+        if (!pose.availableFor(spec.type())) throw new IllegalArgumentException("Only " + pose.bodies() + " rest " + pose.key());
         boolean wasSeated = lookPose == NpcPose.SITTING;
         changeLook(pose, 0);
         if (wasSeated != (pose == NpcPose.SITTING)) appearance++;
@@ -1156,7 +1157,7 @@ final class RegionActor implements RegionOwner.Body {
             if (current.styled != null) styleLook(current.styled.moved(step, spec.appearance().pose(), (Vec3 at, double standing) -> {
                 // Charged to the region's motion cells; with none left the body keeps the look it had.
                 int room = RouteRules.motionCells(hullWidth(), standing, 0), cells = host.budget.take(RegionBudget.Kind.MOTION_CELLS, room);
-                if (cells < room) { host.budget.refund(RegionBudget.Kind.MOTION_CELLS, cells); return lookPose == NpcPose.SWIMMING; }
+                if (cells < room) { host.budget.refund(RegionBudget.Kind.MOTION_CELLS, cells); return lookPose == NpcPose.CRAWLING; }
                 MotionValidator.Result clear = LiveMovementProbe.check(world, owned, at, at, hullWidth(), standing, MotionValidator.Medium.AMPHIBIOUS_AIR, false, room);
                 host.budget.refund(RegionBudget.Kind.MOTION_CELLS, cells - clear.sampledCells());
                 return clear.status() == MotionValidator.Status.BLOCKED;
@@ -1588,10 +1589,13 @@ final class RegionActor implements RegionOwner.Body {
     }
     private void resetLook() { changeLook(spec.appearance().pose(), 0); }
     private void styleLook(StyledLeg.Look shown) { changeLook(shown.pose(), shown.motion()); }
+    private static boolean placed(NpcPose shown) { return shown == NpcPose.SITTING || shown == NpcPose.SLEEPING || shown == NpcPose.BELLYFLOP || shown == NpcPose.SPINNING; }
     /** The playback's pose and motion; a bow drawn in a fight stays drawn across them. */
     private void changeLook(NpcPose nextPose, int motion) {
         int shown = motion | (drawing ? BodyLook.USING_ITEM : 0) | (burning ? BodyLook.ON_FIRE : 0);
         if (lookPose == nextPose && lookMotion == shown) return;
+        // A seat, a bellyflop and a spin draw the body somewhere else, so viewers are sent its pose again.
+        if (placed(lookPose) || placed(nextPose)) pose++;
         lookPose = nextPose; lookMotion = shown; lookRevision++;
         look = BodyLook.of(uuid, spec.type(), displayName, spec.appearance()).moving(nextPose, shown);
     }
@@ -1787,7 +1791,21 @@ final class RegionActor implements RegionOwner.Body {
         (rig == null ? equipment : rig.bodyEquipment(equipment)).forEach((slot, item) -> items.put(slot, item.clone()));
         publication = new Publication(presented, snapshot, spec, spec.type(), displayName, displaySkin, appearance, yaw, headYaw, pitch, onGround, pose, lookClose, lookingAtViewers,
                 Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot(), dragonPhase, passengers(), rider(), combatView(), look, lookRevision, swings, gestures, gesture, attackSwings,
-                attributes, attributeRevision, hurts, deaths, bubble, bubbleRevision, mirror);
+                attributes, attributeRevision, hurts, deaths, bubble, bubbleRevision, mirror, seat(snapshot));
+    }
+    /** The seat a sitting body is shown on, read from this region's terrain under its feet again only once it has moved. */
+    private art.arcane.animus.core.presentation.RestingPlacement.Seat seat(VirtualNpcState.Snapshot snapshot) {
+        if (lookPose != NpcPose.SITTING) return null;
+        WorldPosition at = snapshot.position();
+        if (seatAt != null && at.equals(seatFeet)) return seatAt;
+        World world = host.world(at.world());
+        if (world == null) return null;
+        int chunkX = Math.floorDiv((int) Math.floor(at.point().x()), 16), chunkZ = Math.floorDiv((int) Math.floor(at.point().z()), 16);
+        ChunkOwnership owned = (int x, int z) -> host.regions.owns(world, x, z, x, z);
+        if (!owned.owns(chunkX, chunkZ)) return null;
+        seatFeet = at;
+        seatAt = art.arcane.animus.core.presentation.RestingPlacement.seat(at.point(), LiveMovementProbe.owned(world, owned));
+        return seatAt;
     }
     private Player rider() { return riding.rider(); }
     private NpcRig.Snapshot<ItemStack> rigSnapshot() {

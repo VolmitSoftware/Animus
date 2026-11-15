@@ -49,7 +49,8 @@
             "say hi",
             "1",
             "say ok"
-          ]
+          ],
+          "pose": "sitting"
         },
         {
           "time": 23995,

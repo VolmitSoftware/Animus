@@ -346,6 +346,9 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         if (!available()) return List.of("NPC runtime " + (closed ? "closed" : unavailable));
         List<String> errors = new ArrayList<>(DefinitionSpec.validate(Objects.requireNonNull(definition), geometries.keySet(), this::worldKey, DefinitionItems::stack));
         errors.addAll(mountBlockers(definition));
+        try {
+            if (MountDeclaration.entity(definition.json()).isPresent()) errors.add("$.modules." + MountDeclaration.MODULE + ".entity: NPCs ride real entities only on Paper and Spigot, not on Folia");
+        } catch (IllegalArgumentException malformed) { errors.add(malformed.getMessage()); }
         return List.copyOf(errors);
     }
     /** Structural mount problems stop an edit; a missing or dormant vehicle does not. Any thread: reads published definitions. */

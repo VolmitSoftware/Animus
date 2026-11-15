@@ -13,8 +13,29 @@ const List<String> npcTraits = <String>['glowing', 'teamColor', 'baby', 'usingIt
 /// The player a click on the NPC is passed on to.
 const String clickRedirectField = 'clickRedirect';
 
-/// Every body pose; only standing applies to bodies other than players.
-const List<String> npcPoses = <String>['standing', 'sneaking', 'sleeping', 'swimming', 'sitting'];
+/// Every body pose (`NpcPose`), in its order. Players take every one, other
+/// living bodies stand or sit, and the rest only stand.
+const List<String> npcPoses = <String>['standing', 'sneaking', 'sleeping', 'swimming', 'sitting', 'crawling', 'bellyflop', 'spinning'];
+
+/// `BodyRules.LIVING`: every living body type of the supported versions.
+const Set<String> livingBodies = <String>{
+  'minecraft:allay', 'minecraft:armadillo', 'minecraft:armor_stand', 'minecraft:axolotl', 'minecraft:bat', 'minecraft:bee', //
+  'minecraft:blaze', 'minecraft:bogged', 'minecraft:breeze', 'minecraft:camel', 'minecraft:camel_husk', 'minecraft:cat', //
+  'minecraft:cave_spider', 'minecraft:chicken', 'minecraft:cod', 'minecraft:copper_golem', 'minecraft:cow', 'minecraft:creaking', //
+  'minecraft:creeper', 'minecraft:dolphin', 'minecraft:donkey', 'minecraft:drowned', 'minecraft:elder_guardian', 'minecraft:ender_dragon', //
+  'minecraft:enderman', 'minecraft:endermite', 'minecraft:evoker', 'minecraft:fox', 'minecraft:frog', 'minecraft:ghast', 'minecraft:giant', //
+  'minecraft:glow_squid', 'minecraft:goat', 'minecraft:guardian', 'minecraft:happy_ghast', 'minecraft:hoglin', 'minecraft:horse', //
+  'minecraft:husk', 'minecraft:illusioner', 'minecraft:iron_golem', 'minecraft:llama', 'minecraft:magma_cube', 'minecraft:mannequin', //
+  'minecraft:mooshroom', 'minecraft:mule', 'minecraft:nautilus', 'minecraft:ocelot', 'minecraft:panda', 'minecraft:parched', //
+  'minecraft:parrot', 'minecraft:phantom', 'minecraft:pig', 'minecraft:piglin', 'minecraft:piglin_brute', 'minecraft:pillager', //
+  'minecraft:player', 'minecraft:polar_bear', 'minecraft:pufferfish', 'minecraft:rabbit', 'minecraft:ravager', 'minecraft:salmon', //
+  'minecraft:sheep', 'minecraft:shulker', 'minecraft:silverfish', 'minecraft:skeleton', 'minecraft:skeleton_horse', 'minecraft:slime', //
+  'minecraft:sniffer', 'minecraft:snow_golem', 'minecraft:spider', 'minecraft:squid', 'minecraft:stray', 'minecraft:strider', 'minecraft:sulfur_cube', //
+  'minecraft:tadpole', 'minecraft:trader_llama', 'minecraft:tropical_fish', 'minecraft:turtle', 'minecraft:vex', 'minecraft:villager', //
+  'minecraft:vindicator', 'minecraft:wandering_trader', 'minecraft:warden', 'minecraft:witch', 'minecraft:wither', //
+  'minecraft:wither_skeleton', 'minecraft:wolf', 'minecraft:zoglin', 'minecraft:zombie', 'minecraft:zombie_horse', //
+  'minecraft:zombie_nautilus', 'minecraft:zombie_villager', 'minecraft:zombified_piglin',
+};
 
 /// Armor stand parts that take `[x, y, z]` degrees.
 const List<String> armorStandParts = <String>['head', 'body', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'];
@@ -31,8 +52,18 @@ final RegExp _owner = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-
 /// and another namespace follows in brackets ("Dragon (mymod)").
 String bodyLabel(String type) => idName(type);
 
+/// Whether a body of [type] shows [pose] (`NpcPose.availableFor`).
+bool poseAvailable(String pose, String type) => switch (pose) {
+      'standing' => true,
+      'sitting' => livingBodies.contains(type) && type != 'minecraft:ender_dragon',
+      _ => type == 'minecraft:player',
+    };
+
 /// The poses a body of [type] may take.
-List<String> posesFor(String type) => type == 'minecraft:player' ? npcPoses : const <String>['standing'];
+List<String> posesFor(String type) => <String>[
+      for (final String pose in npcPoses)
+        if (poseAvailable(pose, type)) pose,
+    ];
 
 /// The body traits a body of [type] shows, in the inspector's order: the
 /// baby flag only where the type has a baby form, the tab list and a raised
@@ -65,8 +96,8 @@ final class MisplacedField {
 /// NPC changes type. The server refuses each of them on this body.
 List<MisplacedField> misplacedBodyFields(JsonMap doc, String type) => <MisplacedField>[
       if (doc.containsKey('skin') && type != 'minecraft:player') const MisplacedField('skin', 'Skins show only on player bodies.'),
-      if (doc['pose'] != null && doc['pose'] != 'standing' && type != 'minecraft:player')
-        MisplacedField('pose', 'The ${asString(doc['pose']) ?? 'pose'} pose shows only on player bodies.'),
+      if (asString(doc['pose']) case final String pose when npcPoses.contains(pose) && !poseAvailable(pose, type))
+        MisplacedField('pose', 'The $pose pose shows only on ${pose == 'sitting' ? 'living bodies other than the ender dragon' : 'player bodies'}.'),
       if (doc.containsKey('armorStand') && type != 'minecraft:armor_stand') const MisplacedField('armorStand', 'Only for armor stand bodies.'),
       for (final MapEntry<String, String> settings in bodySettingsTypes.entries)
         if (doc.containsKey(settings.key) && settings.value != type) MisplacedField(settings.key, 'Only for ${bodyLabel(settings.value).toLowerCase()} bodies.'),

@@ -30,6 +30,7 @@
       "count": 1
     }
   },
+  "pose": "sitting",
   "baby": true,
   "gravity": false,
   "horse": {

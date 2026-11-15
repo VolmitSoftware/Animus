@@ -8,7 +8,7 @@
   "type": "minecraft:player",
   "spawned": true,
   "migration": {
-    "importId": "f453cbdb8da09179f1dfa93899d2dbfb922ebb776452a8e25a4682643af4d9ca",
+    "importId": "5698989f65a807f4d0a9baad129ffb0958b6a32b9e3dcc43cdb2d4262b0b0dba",
     "citizensId": 3,
     "references": []
   },
@@ -31,6 +31,7 @@
       "count": 1
     }
   },
+  "pose": "sitting",
   "behaviors": [
     "citizens:commands-3"
   ],
@@ -146,6 +147,14 @@
         "x": 6.5,
         "y": 64.0,
         "z": 9.5
+      },
+      "sittrait": {
+        "sittingAt": {
+          "world": "harbor",
+          "x": 6.5,
+          "y": 64.0,
+          "z": 9.5
+        }
       },
       "equipment": {
         "hand": {

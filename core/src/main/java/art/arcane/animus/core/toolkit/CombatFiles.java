@@ -148,6 +148,19 @@ final class CombatFiles {
         return rider + " rides " + vehicle + "; tx " + npcs.applyAll(drafts);
     }
 
+    /** Puts {@code rider} on the nearest real entity of {@code type} within the default range, or on the entity with that UUID. */
+    String mountEntity(String rider, String entity) throws IOException {
+        List<NpcRepository.Draft> drafts = drafts(List.of(rider), (JsonObject document) -> {
+            JsonObject module = new JsonObject();
+            module.addProperty("entity", entity);
+            if (module.equals(module(document, MOUNT))) return false;
+            store(document, MOUNT, module);
+            return true;
+        });
+        if (drafts.isEmpty()) return rider + " already rides " + entity;
+        return rider + " rides the nearest " + entity + "; tx " + npcs.applyAll(drafts);
+    }
+
     /** Removes the rider's mount module. */
     String dismount(String rider) throws IOException {
         List<NpcRepository.Draft> drafts = drafts(List.of(rider), (JsonObject document) -> {
@@ -245,6 +258,8 @@ final class CombatFiles {
                 CombatSettings.parse(document);
                 RideSettings.parse(document);
                 MountDeclaration.parse(document);
+                MountDeclaration.entity(document);
+                art.arcane.animus.core.control.SeatModule.parse(document);
             } catch (IllegalArgumentException invalid) { throw new IOException(id + ": " + invalid.getMessage()); }
             drafts.add(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
         }

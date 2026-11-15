@@ -17,7 +17,10 @@ enum NpcPose {
   sneaking,
   sleeping,
   swimming,
-  sitting;
+  sitting,
+  crawling,
+  bellyflop,
+  spinning;
 
   static NpcPose? parse(Object? value) {
     for (final NpcPose pose in values) {
@@ -280,7 +283,7 @@ final class NpcLook {
     return NpcLook(
       type: type,
       name: json['name'] is String ? json['name']! as String : '',
-      pose: parsedPose == NpcPose.standing || type == player ? parsedPose : NpcPose.standing,
+      pose: poseAvailable(parsedPose.name, type) ? parsedPose : NpcPose.standing,
       equipment: equipment,
       hologram: lines,
       separateRows: separateRowsOf(hologram),

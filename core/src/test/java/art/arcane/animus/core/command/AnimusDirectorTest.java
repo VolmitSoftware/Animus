@@ -463,13 +463,13 @@ class AnimusDirectorTest {
                 else words.add(parameter.getName() + "=" + (parameter.getDefaultValue().isEmpty() ? sample(parameter.getType()) : parameter.getDefaultValue()));
             }
             Actor everything = new Actor(command.getDescriptor().getOrigin() != art.arcane.volmlib.util.director.DirectorOrigin.CONSOLE,
-                    AnimusDirector.ADMIN, "animus.status", "animus.debug", "animus.debug.mode", "animus.build.donate", PermissionNodes.QUESTS_USE);
+                    AnimusDirector.ADMIN, "animus.status", "animus.debug", "animus.debug.mode", "animus.build.donate", PermissionNodes.QUESTS_USE, PermissionNodes.SEAT);
             real.execute(everything, words.toArray(String[]::new));
             String text = everything.text();
             assertFalse(text.contains("Unexpected \"") || text.contains("Unknown parameter") || text.contains("Missing argument")
                     || text.contains("Cannot convert") || text.contains("Cannot parse default") || text.contains("Usage:") && !text.contains("Failed to execute"),
                     command.path() + " " + words + " -> " + text);
-            Actor stray = new Actor(true, AnimusDirector.ADMIN, "animus.status", "animus.debug", "animus.debug.mode", "animus.build.donate", PermissionNodes.QUESTS_USE);
+            Actor stray = new Actor(true, AnimusDirector.ADMIN, "animus.status", "animus.debug", "animus.debug.mode", "animus.build.donate", PermissionNodes.QUESTS_USE, PermissionNodes.SEAT);
             words.add("stray-word");
             real.execute(stray, words.toArray(String[]::new));
             if (!command.getDescriptor().isHidden()) assertTrue(stray.text().contains("Unexpected \"stray-word\"") && stray.text().contains("Usage: " + command.path()), command.path() + " -> " + stray.text());

@@ -3,6 +3,7 @@
 library;
 
 import '../../mc/npc/npc_look.dart' show NpcSlot, mcDrawnSlots;
+import '../npc/npc_appearance.dart' show poseAvailable;
 import 'citizens_converter.dart' show unusedSkin;
 import 'field_notes.dart';
 import 'java_json.dart';
@@ -461,11 +462,12 @@ class _Mapping {
     }
     final String? setting = _text(animation.get('Setting'));
     final String? pose = setting == 'SLEEP' ? 'sleeping' : setting == 'SIT' ? 'sitting' : null;
-    if (pose != null && type == 'minecraft:player') {
+    if (pose != null && poseAvailable(pose, type)) {
       location.addString('pose', pose);
       converted.add('$path/Setting');
     } else if (pose != null) {
-      note('$path/Setting', unsupportedPreserved, 'only player bodies lie down or sit');
+      note('$path/Setting', unsupportedPreserved,
+          'the $pose pose shows only on ${pose == 'sitting' ? 'living bodies other than the ender dragon' : 'minecraft:player bodies'}');
     } else if (setting == null || setting == 'NONE') {
       converted.add('$path/Setting');
     } else {

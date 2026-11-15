@@ -30,7 +30,7 @@
     "yaw": 0,
     "pitch": 0
   },
-  "pose": "sneaking",
+  "pose": "sitting",
   "modules": {
     "animus:skin": {
       "refresh": true

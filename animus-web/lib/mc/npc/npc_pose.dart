@@ -34,7 +34,7 @@ const double mcPlayerVehicleAttachment = 0.6;
 /// swing, then 18 degrees up, before the crouch adds its own.
 McBodyPose mcPlayerPose(NpcPose pose, {double yawDeg = 0, bool rightHeld = false, bool leftHeld = false}) {
   final McBodyPose base = _playerPose(pose, yawDeg);
-  if (pose == NpcPose.swimming || (!rightHeld && !leftHeld)) return base;
+  if (_lying(pose) || (!rightHeld && !leftHeld)) return base;
   double armX(bool held) {
     double x = pose == NpcPose.sitting ? -math.pi / 5 : 0;
     if (held) x = x * 0.5 - math.pi / 10;
@@ -82,28 +82,26 @@ McBodyPose _playerPose(NpcPose pose, double yawDeg) {
         frame: McMat4.translation(0, -2 / 16, 0),
         heightBlocks: 1.5,
       );
-    case NpcPose.swimming:
+    case NpcPose.swimming || NpcPose.crawling:
       // Out of water: `xRot = -90` and `translate(0, -1, 0.3)`; the swim
       // stroke at its first frame: arms raised overhead, head tipped -45.
-      return McBodyPose(
-        rig: McRigPose(
-          partRotationsDeg: <String, McVec3>{
-            'head': const McVec3(-45, 0, 0),
-            'right_arm': mcRadians(0, math.pi, math.pi),
-            'left_arm': mcRadians(0, math.pi, math.pi),
-            'right_leg': mcRadians(0.3, 0, 0),
-            'left_leg': mcRadians(-0.3, 0, 0),
-          },
-        ),
-        frame: _fromVanilla(McMat4.rotationX(-90).multiply(McMat4.translation(0, -1, 0.3))),
-        heightBlocks: 0.6,
-      );
+      // A crawl is the same `SWIMMING` pose on land.
+      return McBodyPose(rig: _swimStroke, frame: _swimFrame, heightBlocks: 0.6);
+    case NpcPose.bellyflop:
+      // The crawl, lowered by GSit's bellyflop drop (`RestingPlacement.BELLYFLOP_DROP`).
+      return McBodyPose(rig: _swimStroke, frame: McMat4.translation(0, -0.19, 0).multiply(_swimFrame), heightBlocks: 0.6);
+    case NpcPose.spinning:
+      // `SPIN_ATTACK` at a pitch of -90: `setupRotations` turns `-90 - xRot`,
+      // which leaves the body upright; the hitbox is 0.6 high.
+      return McBodyPose(rig: McRigPose.rest, frame: McMat4.identity(), heightBlocks: 0.6);
     case NpcPose.sleeping:
       // No bed: `Ry(bodyRot) * Rz(90) * Ry(270)` instead of `Ry(180 - bodyRot)`,
-      // so the frame undoes the yaw turn the scene applies.
+      // so the frame undoes the yaw turn the scene applies. The server lifts
+      // the body by GSit's lay height (`RestingPlacement.LAY_LIFT`).
       return McBodyPose(
         rig: McRigPose.rest,
-        frame: McMat4.rotationY(2 * yawDeg)
+        frame: McMat4.translation(0, 0.1125, 0)
+            .multiply(McMat4.rotationY(2 * yawDeg))
             .multiply(McMat4.rotationZ(90))
             .multiply(McMat4.rotationY(270))
             .multiply(McMat4.rotationY(-180)),
@@ -125,6 +123,21 @@ McBodyPose _playerPose(NpcPose pose, double yawDeg) {
       );
   }
 }
+
+/// Whether [pose] lies face down in the swim stroke, which held items do not change.
+bool _lying(NpcPose pose) => pose == NpcPose.swimming || pose == NpcPose.crawling || pose == NpcPose.bellyflop;
+
+final McRigPose _swimStroke = McRigPose(
+  partRotationsDeg: <String, McVec3>{
+    'head': const McVec3(-45, 0, 0),
+    'right_arm': mcRadians(0, math.pi, math.pi),
+    'left_arm': mcRadians(0, math.pi, math.pi),
+    'right_leg': mcRadians(0.3, 0, 0),
+    'left_leg': mcRadians(-0.3, 0, 0),
+  },
+);
+
+final McMat4 _swimFrame = _fromVanilla(McMat4.rotationX(-90).multiply(McMat4.translation(0, -1, 0.3)));
 
 /// A turn the client applies after `Ry(180 - bodyRot)`, moved into the body
 /// frame the rig mesher uses: `Ry(180) * m * Ry(-180)`.

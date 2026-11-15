@@ -270,6 +270,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
             Long at = RuntimeCombatService.this.fought.getOrDefault(npc, Map.of()).get(player);
             return at != null && ticks - at <= FOUGHT_TICKS;
         }
+        @Override public Set<UUID> attached(UUID npc) { return living.attached(npc); }
     }
     private void foughtBetween(UUID npc, UUID player) { fought.computeIfAbsent(npc, (UUID key) -> new HashMap<>()).put(player, ticks); }
 
@@ -395,10 +396,15 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
      */
     @EventHandler(priority = EventPriority.LOWEST)
     public void decoyHit(ProjectileHitEvent event) {
-        if (!decoys.decoy(event.getHitEntity())) return;
+        Optional<UUID> npc;
+        if (decoys.decoy(event.getHitEntity())) npc = decoys.npc(event.getHitEntity());
+        else {
+            // A player seated on or riding the NPC stands inside its decoy; a mob's shot at the decoy is the NPC's.
+            npc = NpcDecoys.meantFor(event.getEntity(), event.getHitEntity(), decoys::npc, living::attached);
+            if (npc.isEmpty()) return;
+        }
         event.setCancelled(true);
         Projectile projectile = event.getEntity();
-        Optional<UUID> npc = decoys.npc(event.getHitEntity());
         if (npc.isEmpty() || !module.running() || world.helper(projectile) || !module.engine().shootable(npc.get())) return;
         if (!NpcDecoys.firstStrike(projectile, struckKey)) return;
         Optional<RealShot.Kind> kind = BukkitShots.kind(projectile);

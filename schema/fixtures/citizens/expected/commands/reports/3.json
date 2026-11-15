@@ -14,6 +14,10 @@
     "/traits/location/x": "CONVERTED",
     "/traits/location/y": "CONVERTED",
     "/traits/location/z": "CONVERTED",
+    "/traits/sittrait/sittingAt/world": "CONVERTED",
+    "/traits/sittrait/sittingAt/x": "CONVERTED",
+    "/traits/sittrait/sittingAt/y": "CONVERTED",
+    "/traits/sittrait/sittingAt/z": "CONVERTED",
     "/traits/skintrait/skinName": "CONVERTED",
     "/traits/skintrait/updateSkins": "CONVERTED",
     "/traits/skintrait/signature": "CONVERTED",
@@ -46,6 +50,11 @@
   "worldRemaps": [
     {
       "source": "/traits/location",
+      "from": "old_harbor",
+      "to": "harbor"
+    },
+    {
+      "source": "/traits/sittrait/sittingAt",
       "from": "old_harbor",
       "to": "harbor"
     }

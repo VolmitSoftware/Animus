@@ -211,8 +211,8 @@ class AdministrationTest {
     }
     @Test void aRefusedTypeChangeSaysHowToDropWhatTheNewBodyCannotShow() {
         com.google.gson.JsonObject retype = com.google.gson.JsonParser.parseString("{\"type\":\"minecraft:horse\"}").getAsJsonObject();
-        assertEquals("Cannot save steed: $.pose: sitting is available only for minecraft:player bodies. Set a field to null in the same edit to remove it, such as {\"type\":\"minecraft:horse\",\"pose\":null}",
-                Administration.refusal("steed", retype, "$.pose: sitting is available only for minecraft:player bodies"));
+        assertEquals("Cannot save steed: $.pose: sleeping is available only for minecraft:player bodies. Set a field to null in the same edit to remove it, such as {\"type\":\"minecraft:horse\",\"pose\":null}",
+                Administration.refusal("steed", retype, "$.pose: sleeping is available only for minecraft:player bodies"));
         com.google.gson.JsonObject rename = com.google.gson.JsonParser.parseString("{\"name\":\"\"}").getAsJsonObject();
         assertEquals("Cannot save steed: $.name: expected text", Administration.refusal("steed", rename, "$.name: expected text"));
     }

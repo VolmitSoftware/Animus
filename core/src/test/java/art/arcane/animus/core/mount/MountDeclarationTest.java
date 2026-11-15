@@ -69,12 +69,31 @@ class MountDeclarationTest {
         assertEquals(Optional.empty(), MountDeclaration.parse(json(imported + ",\"modules\":{\"animus:mount\":{\"enabled\":false}}")));
     }
 
+    @Test void aRealEntityMountNamesAUuidOrTheNearestOfAType() throws IOException {
+        UUID horse = UUID.fromString("3f1c7a52-0000-4000-8000-00000000abcd");
+        MountDeclaration.EntityMount byUuid = MountDeclaration.entity(json(",\"modules\":{\"animus:mount\":{\"entity\":\"" + horse + "\"}}")).orElseThrow();
+        assertEquals(horse, byUuid.uuid());
+        assertNull(byUuid.type());
+        assertEquals("$.modules.animus:mount.entity", byUuid.field());
+        MountDeclaration.EntityMount nearest = MountDeclaration.entity(json(",\"modules\":{\"animus:mount\":{\"entity\":\"minecraft:horse\",\"range\":12}}")).orElseThrow();
+        assertNull(nearest.uuid());
+        assertEquals("minecraft:horse", nearest.type());
+        assertEquals(12, nearest.range());
+        assertEquals(MountDeclaration.DEFAULT_RANGE, MountDeclaration.entity(json(",\"modules\":{\"animus:mount\":{\"entity\":\"minecraft:boat\"}}")).orElseThrow().range());
+        assertEquals(Optional.empty(), MountDeclaration.parse(json(",\"modules\":{\"animus:mount\":{\"entity\":\"minecraft:horse\"}}")), "no NPC relation");
+        assertEquals(Optional.empty(), MountDeclaration.entity(json(",\"modules\":{\"animus:mount\":{\"entity\":\"minecraft:horse\",\"enabled\":false}}")));
+        assertEquals(Optional.empty(), MountDeclaration.entity(json(",\"modules\":{\"animus:mount\":{\"vehicle\":\"horse-1\"}}")));
+    }
+
     @Test void definitionsRejectMalformedNativeModulesWithTheExactField() throws IOException {
-        for (String bad : List.of("{}", "{\"vehicle\":7}", "{\"vehicle\":\"Not An Id\"}", "{\"vehicle\":\"a\",\"seat\":2}", "{\"enabled\":\"true\",\"vehicle\":\"a\"}", "3")) {
+        for (String bad : List.of("{}", "{\"vehicle\":7}", "{\"vehicle\":\"Not An Id\"}", "{\"vehicle\":\"a\",\"seat\":2}", "{\"enabled\":\"true\",\"vehicle\":\"a\"}", "3",
+                "{\"vehicle\":\"a\",\"entity\":\"minecraft:horse\"}", "{\"entity\":\"Horse\"}", "{\"entity\":\"minecraft:player\"}", "{\"entity\":\"minecraft:horse\",\"range\":40}",
+                "{\"entity\":\"3f1c7a52-0000-4000-8000-00000000abcd\",\"range\":4}", "{\"vehicle\":\"a\",\"range\":4}")) {
             JsonObject document = json(",\"modules\":{\"animus:mount\":" + bad + "}");
             List<String> errors = NpcDefinition.validate(document);
             assertTrue(errors.stream().anyMatch(error -> error.startsWith("$.modules.animus:mount")), bad + " -> " + errors);
         }
         assertEquals(List.of(), NpcDefinition.validate(json(",\"modules\":{\"animus:mount\":{\"vehicle\":\"horse-1\"}}")));
+        assertEquals(List.of(), NpcDefinition.validate(json(",\"modules\":{\"animus:mount\":{\"entity\":\"minecraft:horse\",\"range\":4}}")));
     }
 }

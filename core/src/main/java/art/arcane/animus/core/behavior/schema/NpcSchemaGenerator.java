@@ -91,7 +91,7 @@ public final class NpcSchemaGenerator {
         properties.add("owner", described(pattern(UUID), "The owning player's UUID, canonical and lowercase. Modules may use it for their own permission rules."));
         properties.add("skin", described(pattern("^[a-f0-9]{64}$"), "minecraft:player bodies only: SHA-256 of a skin document under skins/."));
         properties.add("equipment", equipment());
-        properties.add("pose", described(choices(Arrays.stream(NpcPose.values()).map(NpcPose::key).toList()), "The body pose. Only standing applies to bodies other than minecraft:player."));
+        properties.add("pose", described(choices(Arrays.stream(NpcPose.values()).map(NpcPose::key).toList()), "The body pose. minecraft:player bodies take every pose, other living bodies stand or sit, and the rest stand."));
         properties.add("hologram", hologram());
         JsonObject nameplate = described(closed(), "Whether the name shows above the body.");
         nameplate.add("properties", property("visible", described(type("boolean"), "True by default.")).getAsJsonObject("properties"));
@@ -145,6 +145,7 @@ public final class NpcSchemaGenerator {
         known.add(HireTerms.MODULE, hire());
         known.add(MountDeclaration.MODULE, mount());
         known.add(RideSettings.MODULE, riding());
+        known.add(art.arcane.animus.core.control.SeatModule.MODULE, seat());
         known.add(LookClose.MODULE, lookClose());
         known.add(ScheduleSettings.MODULE, schedule());
         known.add(ModelEngineModule.MODULE, modelEngine());
@@ -163,7 +164,11 @@ public final class NpcSchemaGenerator {
         definitions.add("nestedRules", CombatSchema.rules(CombatSchema.Level.NESTED));
         root.add("$defs", definitions);
         JsonArray rules = new JsonArray();
-        rules.add(onlyForType(BodyRules.PLAYER, property("pose", choices(List.of(NpcPose.STANDING.key())))));
+        rules.add(onlyForType(BodyRules.PLAYER, property("pose", choices(List.of(NpcPose.STANDING.key(), NpcPose.SITTING.key())))));
+        JsonObject unseated = new JsonObject();
+        unseated.add("if", requiredValue("type", choices(BodyRules.TYPES.stream().filter((String body) -> !NpcPose.SITTING.availableFor(body)).sorted().toList())));
+        unseated.add("then", property("pose", choices(List.of(NpcPose.STANDING.key()))));
+        rules.add(unseated);
         JsonObject noArmorStand = new JsonObject();
         noArmorStand.add("not", required("armorStand"));
         rules.add(onlyForType("minecraft:armor_stand", noArmorStand));
@@ -889,21 +894,56 @@ public final class NpcSchemaGenerator {
     }
 
     private static JsonObject mount() {
-        JsonObject mount = described(closed(), "Rides another NPC.");
+        JsonObject mount = described(closed(), "Rides another NPC, or a real entity such as a horse, boat or minecart.");
         JsonObject properties = new JsonObject();
         properties.add("enabled", type("boolean"));
         properties.add("vehicle", described(pattern(IDENTIFIER), "The vehicle NPC's id."));
+        JsonObject entity = described(pattern("^([0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}|[a-z0-9_.-]+:[a-z0-9_./-]+)$"),
+                "A real entity's UUID, or an entity type such as minecraft:horse for the nearest one within range. Never minecraft:player.");
+        entity.add("not", constant("minecraft:player"));
+        properties.add("entity", entity);
+        properties.add("range", described(range("number", 1, MountDeclaration.MAXIMUM_RANGE), "With an entity type: how far from the NPC's own position to look, " + (int) MountDeclaration.DEFAULT_RANGE + " blocks by default."));
         mount.add("properties", properties);
         JsonObject disabled = new JsonObject();
         disabled.add("properties", property("enabled", constant(false)).getAsJsonObject("properties"));
         disabled.add("required", strings("enabled"));
+        JsonObject named = new JsonObject();
+        JsonArray either = new JsonArray();
+        either.add(required("vehicle"));
+        either.add(required("entity"));
+        named.add("anyOf", either);
         JsonObject rule = new JsonObject();
         rule.add("if", disabled);
-        rule.add("else", required("vehicle"));
+        rule.add("else", named);
         JsonArray rules = new JsonArray();
         rules.add(rule);
+        JsonObject notBoth = new JsonObject();
+        notBoth.add("not", requiredAll("vehicle", "entity"));
+        rules.add(notBoth);
+        JsonObject typed = new JsonObject();
+        typed.add("if", required("range"));
+        JsonObject byType = required("entity");
+        byType.add("properties", property("entity", pattern("^[a-z0-9_.-]+:[a-z0-9_./-]+$")).getAsJsonObject("properties"));
+        typed.add("then", byType);
+        rules.add(typed);
         mount.add("allOf", rules);
         return mount;
+    }
+
+    private static JsonObject seat() {
+        JsonObject seat = described(closed(), "Lets players sit on top of this NPC with a click, as GSit seats players; sneaking gets off.");
+        JsonObject properties = new JsonObject();
+        properties.add("enabled", described(type("boolean"), "True when the object is present; false turns the seat off whatever [seats] defaultEnabled says."));
+        properties.add("click", described(choices(java.util.Arrays.stream(art.arcane.animus.core.control.SeatModule.Click.values()).map(art.arcane.animus.core.control.SeatModule.Click::key).toList()),
+                "The click that sits down, right by default. A click the NPC's behaviors, shop, GUI, quest or ride take never seats anyone."));
+        JsonObject permission = described(pattern("^[a-z0-9_-]+(\\.[a-z0-9_-]+)*$"), "The node a player needs, " + art.arcane.animus.core.control.SeatModule.DEFAULT_PERMISSION + " by default.");
+        permission.addProperty("maxLength", 128);
+        properties.add("permission", permission);
+        properties.add("stack", described(range("integer", 1, art.arcane.animus.core.control.SeatModule.MAXIMUM_STACK),
+                "How many players may sit stacked, each on the one below, " + art.arcane.animus.core.control.SeatModule.DEFAULT_STACK + " by default."));
+        properties.add("emptyHand", described(type("boolean"), "Only a player with an empty main hand sits; true by default."));
+        seat.add("properties", properties);
+        return seat;
     }
 
     private static JsonObject riding() {
@@ -1107,6 +1147,8 @@ public final class NpcSchemaGenerator {
     static JsonObject type(String type) { JsonObject schema = new JsonObject(); schema.addProperty("type", type); return schema; }
     static JsonObject pattern(String pattern) { JsonObject schema = type("string"); schema.addProperty("pattern", pattern); return schema; }
     static JsonObject text(int maximum) { JsonObject schema = pattern(NONBLANK); schema.addProperty("maxLength", maximum); return schema; }
+    /** Matches a document whose {@code key} is present and meets {@code schema}. */
+    static JsonObject requiredValue(String key, JsonObject schema) { JsonObject match = property(key, schema); match.add("required", strings(key)); return match; }
     static JsonObject required(String key) { JsonObject schema = new JsonObject(); schema.add("required", strings(key)); return schema; }
     static JsonObject requiredAll(String... keys) { JsonObject schema = new JsonObject(); schema.add("required", strings(keys)); return schema; }
     static JsonObject constant(Object value) {

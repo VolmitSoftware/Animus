@@ -100,6 +100,7 @@ final class VanillaRuntimeHost implements RuntimeHost<ServerPlayer, ItemStack> {
     @Override public boolean spectator(ServerPlayer player) { return player.isSpectator(); }
     @Override public boolean sneaking(ServerPlayer player) { return player.isShiftKeyDown(); }
     @Override public boolean inVehicle(ServerPlayer player) { return player.isPassenger(); }
+    @Override public boolean emptyHand(ServerPlayer player) { return player.getMainHandItem().isEmpty(); }
     @Override public int entityId(ServerPlayer player) { return player.getId(); }
     @Override public WorldPosition position(ServerPlayer player) {
         net.minecraft.world.phys.Vec3 at = player.position();

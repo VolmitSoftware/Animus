@@ -112,7 +112,7 @@ final class NativePresentation {
         boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
         byte flags = look.sharedFlags(invisible);
         if (flags != 0) values.add(dataValue.invoke(null, sharedFlags, flags));
-        if (look.usingItem() && VariantWire.living(typeKey)) values.add(dataValue.invoke(null, livingFlags, BodyLook.livingFlags(true)));
+        if (look.livingFlags() != 0 && VariantWire.living(typeKey)) values.add(dataValue.invoke(null, livingFlags, look.livingFlags()));
         Optional<BodyRules.BabyFlag> baby = look.traits().baby() ? BodyRules.babyFlag(typeKey) : Optional.empty();
         if (baby.isPresent() && babies.containsKey(baby.get())) values.add(dataValue.invoke(null, babies.get(baby.get()), Boolean.TRUE));
         if ((look.pose() != NpcPose.STANDING && look.pose() != NpcPose.SITTING) || (look.motion() & BodyLook.GLIDING) != 0)
@@ -155,7 +155,7 @@ final class NativePresentation {
         boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
         List<Object> values = new ArrayList<>(List.of(dataValue.invoke(null, sharedFlags, look.sharedFlags(invisible)),
                 dataValue.invoke(null, pose, Enum.valueOf((Class) poses, look.lookPose(typeKey)))));
-        if (VariantWire.living(typeKey)) values.add(dataValue.invoke(null, livingFlags, BodyLook.livingFlags(look.usingItem())));
+        if (VariantWire.living(typeKey)) values.add(dataValue.invoke(null, livingFlags, look.livingFlags()));
         return values;
     }
 

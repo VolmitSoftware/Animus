@@ -29,6 +29,8 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
     public static final int ON_FIRE = 0x01;
     /** A {@link #motion} bit outside the shared flags: the body holds its main-hand item in use, as a drawn bow. */
     public static final int USING_ITEM = 0x100;
+    /** The living-entity flag of a trident's riptide spin, which a spinning body shows. */
+    public static final int SPIN_ATTACK = 0x04;
     public static final byte BILLBOARD_CENTER = 3;
     public static final int LINE_WIDTH = 4096;
     /** Vanilla's text display background; a blank row, such as a silent speech bubble, draws none at all. */
@@ -75,6 +77,9 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
 
     /** Whether the body holds its main-hand item in use: the definition's {@code usingItem}, or a bow drawn in a fight. */
     public boolean usingItem() { return traits.usingItem() || (motion & USING_ITEM) != 0; }
+
+    /** The living-entity flags this look sends: the raised item and the riptide spin a spinning body shows. */
+    public byte livingFlags() { return (byte) (livingFlags(usingItem()) | (pose == NpcPose.SPINNING ? SPIN_ATTACK : 0)); }
 
     /** The vanilla {@code Pose} constant this look shows; gliding shows {@code FALL_FLYING}. */
     public String nativePose() { return (motion & GLIDING) != 0 ? "FALL_FLYING" : nativePose(pose); }
@@ -171,6 +176,7 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
     public static byte sharedFlags(NpcPose pose, boolean invisible) { return sharedFlags(pose, invisible, false); }
 
     public static byte sharedFlags(NpcPose pose, boolean invisible, boolean glowing) {
+        // Crawling and bellyflop share the swimming pose; only swimming sets the swimming flag, as a crawling player does not.
         int flags = switch (pose) { case SNEAKING -> 0x02; case SWIMMING -> 0x10; default -> 0; };
         return (byte) (flags | (invisible ? 0x20 : 0) | (glowing ? 0x40 : 0));
     }
@@ -180,7 +186,10 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
 
     /** The vanilla {@code Pose} constant name for this pose. */
     public static String nativePose(NpcPose pose) {
-        return switch (pose) { case SNEAKING -> "CROUCHING"; case SLEEPING -> "SLEEPING"; case SWIMMING -> "SWIMMING"; default -> "STANDING"; };
+        return switch (pose) {
+            case SNEAKING -> "CROUCHING"; case SLEEPING -> "SLEEPING"; case SWIMMING, CRAWLING, BELLYFLOP -> "SWIMMING"; case SPINNING -> "SPIN_ATTACK";
+            case STANDING, SITTING -> "STANDING";
+        };
     }
 
     public static byte armorStandFlags(ArmorStandLook look) {

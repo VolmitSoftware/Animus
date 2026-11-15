@@ -46,7 +46,7 @@ void main() {
       final NpcLook look = NpcLook.fromDefinition(<String, Object?>{
         'type': 'minecraft:horse',
         'name': 'Horse',
-        'pose': 'sitting',
+        'pose': 'crawling',
         'equipment': <String, Object?>{
           'main_hand': <String, Object?>{'id': 'not an id'},
           'tail': <String, Object?>{'id': 'minecraft:stick'},
@@ -58,6 +58,23 @@ void main() {
       expect(look.equipment.keys, <NpcSlot>[NpcSlot.saddle]);
       expect(look.equipment[NpcSlot.saddle]!.components, isNull);
       expect(look.hologram, <String>['ok']);
+    });
+
+    test('living bodies keep sitting, objects stand, players take the GSit poses', () {
+      NpcPose pose(String type, String pose) => NpcLook.fromDefinition(<String, Object?>{'type': type, 'name': 'Body', 'pose': pose}).pose;
+      expect(pose('minecraft:horse', 'sitting'), NpcPose.sitting);
+      expect(pose('minecraft:ender_dragon', 'sitting'), NpcPose.standing);
+      expect(pose('minecraft:item_display', 'sitting'), NpcPose.standing);
+      expect(pose('minecraft:player', 'bellyflop'), NpcPose.bellyflop);
+      expect(pose('minecraft:mannequin', 'spinning'), NpcPose.standing);
+    });
+
+    test('a sitting mannequin sits on its seat as a sitting player does, its text with it', () {
+      NpcScene seated(String type) => npcScene(NpcLook.fromDefinition(<String, Object?>{'type': type, 'name': 'Model', 'pose': 'sitting'}));
+      final NpcScene scene = seated('minecraft:mannequin');
+      expect(McBounds.of(scene.scene.frame).min.y, closeTo(McBounds.of(seated('minecraft:player').scene.frame).min.y, 1e-9));
+      expect(McBounds.of(scene.scene.frame).min.y, lessThan(0));
+      expect(scene.texts.single.anchor.y, closeTo(-0.6 + 1.8 + 0.3, 1e-9));
     });
 
     test('names that are long or formatted ride the text display, not the nameplate', () {

@@ -10,11 +10,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** A schedule lays an NPC down where it arrives; only bodies that can show the pose take it. */
+/** A schedule lays an NPC down where it arrives; only bodies that can show the pose take it, and every living body sits. */
 class RestingPoseRuntimeTest {
     @TempDir Path directory;
 
-    @Test void playerBodiesRestAndOtherBodiesAreRefused() throws Exception {
+    @Test void playerBodiesTakeEveryPoseAndOtherLivingBodiesSit() throws Exception {
         Path npcs = directory.resolve("npcs/test");
         Files.createDirectories(npcs);
         AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", directory));
@@ -35,8 +35,12 @@ class RestingPoseRuntimeTest {
             harness.service.rest("sleeper", NpcPose.SITTING);
             harness.service.rest("sleeper", NpcPose.STANDING);
             IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> harness.service.rest("villager", NpcPose.SLEEPING));
-            assertEquals("Only player bodies rest sleeping", refused.getMessage());
+            assertEquals("Only minecraft:player bodies rest sleeping", refused.getMessage());
+            harness.service.rest("villager", NpcPose.SITTING);
             harness.service.rest("villager", NpcPose.STANDING);
+            harness.service.rest("sleeper", NpcPose.SPINNING);
+            harness.service.rest("sleeper", NpcPose.BELLYFLOP);
+            harness.service.rest("sleeper", NpcPose.CRAWLING);
         } finally { runtime.close(); }
     }
 }

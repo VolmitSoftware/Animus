@@ -9,6 +9,14 @@
       "y": 64.0,
       "z": 9.5
     },
+    "sittrait": {
+      "sittingAt": {
+        "world": "old_harbor",
+        "x": 6.5,
+        "y": 64.0,
+        "z": 9.5
+      }
+    },
     "skintrait": {
       "skinName": "%vault_top_1%",
       "updateSkins": true,

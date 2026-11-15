@@ -375,8 +375,9 @@ public final class DestinationsMapping {
         if (animation == null) { note(path, CitizensImporter.Status.REQUIRES_REVIEW, "not a mapping"); return; }
         String setting = text(animation.get("Setting"));
         String pose = "SLEEP".equals(setting) ? "sleeping" : "SIT".equals(setting) ? "sitting" : null;
-        if (pose != null && BodyRules.PLAYER.equals(type)) { location.addProperty("pose", pose); converted.add(path + "/Setting"); }
-        else if (pose != null) note(path + "/Setting", CitizensImporter.Status.UNSUPPORTED_PRESERVED, "only player bodies lie down or sit");
+        art.arcane.animus.core.npc.NpcPose shown = pose == null ? null : art.arcane.animus.core.npc.NpcPose.fromKey(pose).orElseThrow();
+        if (shown != null && shown.availableFor(type)) { location.addProperty("pose", pose); converted.add(path + "/Setting"); }
+        else if (shown != null) note(path + "/Setting", CitizensImporter.Status.UNSUPPORTED_PRESERVED, "the " + pose + " pose shows only on " + shown.bodies());
         else if (setting == null || setting.equals("NONE")) converted.add(path + "/Setting");
         else note(path + "/Setting", CitizensImporter.Status.UNSUPPORTED_PRESERVED, "the " + setting.toLowerCase(Locale.ROOT) + " animation has no Animus equivalent");
         note(path, CitizensImporter.Status.UNSUPPORTED_PRESERVED, "animation sounds and timing have no Animus equivalent");

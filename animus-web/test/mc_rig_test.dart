@@ -154,6 +154,27 @@ void main() {
       expect(pose.heightBlocks, 0.6);
     });
 
+    test('crawling lies as swimming does, a bellyflop lower, a spin upright', () {
+      final McBodyPose swimming = mcPlayerPose(NpcPose.swimming);
+      final McBodyPose crawling = mcPlayerPose(NpcPose.crawling);
+      expect(crawling.rig.partRotationsDeg, swimming.rig.partRotationsDeg);
+      expectVec(crawling.frame.transformPoint(McVec3.zero), swimming.frame.transformPoint(McVec3.zero));
+      expect(crawling.heightBlocks, 0.6);
+      final McBodyPose bellyflop = mcPlayerPose(NpcPose.bellyflop);
+      final McVec3 flat = bellyflop.frame.transformPoint(McVec3.zero), crawl = crawling.frame.transformPoint(McVec3.zero);
+      expectVec(flat, McVec3(crawl.x, crawl.y - 0.19, crawl.z));
+      final McBodyPose spinning = mcPlayerPose(NpcPose.spinning, rightHeld: true);
+      expectVec(spinning.frame.transformPoint(const McVec3(0, 1, 0)), const McVec3(0, 1, 0));
+      expect(spinning.rig.partRotationsDeg['right_arm']!.x, closeTo(-18, 1e-9));
+      expect(spinning.heightBlocks, 0.6);
+    });
+
+    test('sleeping lies at the lift the server gives it', () {
+      for (final double yaw in <double>[0, 90]) {
+        expectVec(mcPlayerPose(NpcPose.sleeping, yawDeg: yaw).frame.transformPoint(McVec3.zero), const McVec3(0, 0.1125, 0));
+      }
+    });
+
     test('sleeping lies flat whatever the yaw', () {
       for (final double yaw in <double>[0, 90, -135]) {
         final McBodyPose pose = mcPlayerPose(NpcPose.sleeping, yawDeg: yaw);

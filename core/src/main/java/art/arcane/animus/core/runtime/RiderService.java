@@ -78,8 +78,11 @@ final class RiderService<P, I> implements AutoCloseable {
     private final Map<UUID, Ride> rides = new HashMap<>();
     private boolean restoring, closed;
 
-    RiderService(RuntimeHost<P, I> host, Presentation<P> presentation, String unavailable) {
-        this.host = host; this.presentation = presentation; this.unavailable = unavailable;
+    /** Whether players sit on this NPC; a seat and a ride never share one. */
+    private final java.util.function.Predicate<UUID> seated;
+
+    RiderService(RuntimeHost<P, I> host, Presentation<P> presentation, String unavailable, java.util.function.Predicate<UUID> seated) {
+        this.host = host; this.presentation = presentation; this.unavailable = unavailable; this.seated = seated;
     }
 
     int count() { return ledger.size(); }
@@ -116,6 +119,7 @@ final class RiderService<P, I> implements AutoCloseable {
         if (!host.permitted(player, settings.permission())) return "you do not have permission";
         if (!vehicle.current() || !vehicle.snapshot().active()) return "this NPC is not available";
         if (vehicle.mounted()) return "this NPC is itself riding";
+        if (seated.test(vehicle.uuid())) return "someone is sitting on this NPC";
         if (host.dead(player) || host.sleeping(player) || host.inVehicle(player) || host.spectator(player)) return "you cannot mount right now";
         Vec3 feet = vehicle.snapshot().position().point();
         String world = host.position(player).world();

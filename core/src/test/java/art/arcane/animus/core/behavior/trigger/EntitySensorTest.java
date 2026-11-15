@@ -42,7 +42,7 @@ class EntitySensorTest {
     private static EntitySensor.Seen sheep(Vec3 at) { return living(SHEEP, "minecraft:sheep", at, Vec3.ZERO); }
     private static EntitySensor.Party player() { return new EntitySensor.Party(subject(PLAYER, "minecraft:player", "Alex"), true); }
     private static List<TriggerEvent.Entity> sense(EntitySensor sensor, List<EntitySensor.Watch> watches, List<EntitySensor.Seen> seen) {
-        return sensor.sense(BODY, watches, seen, true, List.of(), NOBODY, LIMITS).events();
+        return sensor.sense(BODY, watches, seen, Set.of(), true, List.of(), NOBODY, LIMITS).events();
     }
 
     @Test void proximityFiresOnceOnEnterAndOnLeaveWithTheEntityInContext() {
@@ -65,7 +65,7 @@ class EntitySensorTest {
         EntitySensor sensor = new EntitySensor(NPC);
         List<EntitySensor.Watch> watches = watches("[{\"id\":\"out\",\"event\":\"entity_proximity\",\"phase\":\"leave\",\"radius\":4}]");
         sense(sensor, watches, List.of(sheep(new Vec3(1, 64, 0))));
-        assertEquals(List.of(), sensor.sense(BODY, watches, List.of(), false, List.of(), NOBODY, LIMITS).events());
+        assertEquals(List.of(), sensor.sense(BODY, watches, List.of(), Set.of(), false, List.of(), NOBODY, LIMITS).events());
         assertEquals(1, sense(sensor, watches, List.of()).size());
     }
 
@@ -81,7 +81,7 @@ class EntitySensorTest {
                 Hitbox.atFeet(new Vec3(1, 64, 1), 0.9, 1.4), Vec3.ZERO, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 0, 100);
         EntitySensor.Seen alex = new EntitySensor.Seen(subject(PLAYER, "minecraft:player", "Alex"), EntitySensor.Role.LIVING, true, new Vec3(-1, 64, 0),
                 Hitbox.atFeet(new Vec3(-1, 64, 0), 0.6, 1.8), Vec3.ZERO, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 0, 100);
-        List<TriggerEvent.Entity> events = sensor.sense(BODY, watches, List.of(zombie, bob, alex), true, List.of(),
+        List<TriggerEvent.Entity> events = sensor.sense(BODY, watches, List.of(zombie, bob, alex), Set.of(), true, List.of(),
                 (UUID player, String node) -> player.equals(PLAYER) && node.equals("town.vip"), LIMITS).events();
         List<String> fired = events.stream().map((TriggerEvent.Entity event) -> event.binding() + "=" + event.context().get("entity_type")).sorted().toList();
         assertEquals(List.of("town:sense#mobs=minecraft:zombie", "town:sense#named=minecraft:cow", "town:sense#tagged=minecraft:cow", "town:sense#vip=minecraft:player"), fired);
@@ -142,7 +142,7 @@ class EntitySensorTest {
                 Hitbox.atFeet(new Vec3(2, 64, 0), 0.25, 0.25), Vec3.ZERO, Optional.empty(), Optional.empty(), Optional.empty(), Optional.of("minecraft:arrow"), 1, 1);
         EntitySensor sensor = new EntitySensor(NPC);
         assertEquals(List.of(), sense(sensor, watches, List.of(loose)));
-        assertEquals(List.of(), sensor.senseForPlugins(BODY, watches, List.of(loose), true, List.of(), NOBODY, LIMITS).facts());
+        assertEquals(List.of(), sensor.senseForPlugins(BODY, watches, List.of(loose), Set.of(), true, List.of(), NOBODY, LIMITS).facts());
         EntitySensor.Party mob = new EntitySensor.Party(subject(UUID.randomUUID(), "minecraft:fox", ""), false);
         EntitySensor.Seen spat = new EntitySensor.Seen(subject(UUID.randomUUID(), "minecraft:item", ""), EntitySensor.Role.ITEM, false, new Vec3(2, 64, 0),
                 Hitbox.atFeet(new Vec3(2, 64, 0), 0.25, 0.25), Vec3.ZERO, Optional.empty(), Optional.of(mob), Optional.empty(), Optional.of("minecraft:sweet_berries"), 1, 1);
@@ -168,6 +168,23 @@ class EntitySensorTest {
                 rider, Optional.empty(), Optional.empty(), Optional.empty(), 0, 100);
     }
 
+    @Test void theNpcsOwnMountAndThePlayersSeatedOnItNeverTouchBumpOrLeadPastIt() {
+        EntitySensor sensor = new EntitySensor(NPC);
+        List<EntitySensor.Watch> watches = watches("[{\"id\":\"touch\",\"event\":\"entity_collide\"},{\"id\":\"cart\",\"event\":\"vehicle_bump\"},"
+                + "{\"id\":\"led\",\"event\":\"leash_pass\",\"radius\":3},{\"id\":\"near\",\"event\":\"entity_proximity\",\"phase\":\"enter\",\"radius\":4}]");
+        UUID horse = UUID.randomUUID();
+        EntitySensor.Seen ridden = cart(new Vec3(0.5, 0, 0), Optional.empty());
+        EntitySensor.Seen seated = living(PLAYER, "minecraft:player", new Vec3(0, 64, 0), Vec3.ZERO);
+        EntitySensor.Seen led = new EntitySensor.Seen(subject(horse, "minecraft:horse", ""), EntitySensor.Role.LIVING, false, new Vec3(0, 64, 0),
+                Hitbox.atFeet(new Vec3(0, 64, 0), 1.4, 1.6), Vec3.ZERO, Optional.empty(), Optional.empty(), Optional.of(player()), Optional.empty(), 0, 100);
+        List<TriggerEvent.Entity> events = sensor.sense(BODY, watches, List.of(ridden, seated, led), Set.of(CART, PLAYER, horse), true, List.of(), NOBODY, LIMITS).events();
+        assertEquals(List.of("town:sense#near", "town:sense#near", "town:sense#near"), events.stream().map(TriggerEvent.Entity::binding).toList(),
+                "they still come near, and nothing else");
+        List<TriggerEvent.Entity> sheep = sensor.sense(BODY, watches, List.of(ridden, seated, led, sheep(new Vec3(0.2, 64, 0))), Set.of(CART, PLAYER, horse), true,
+                List.of(), NOBODY, LIMITS).events();
+        assertEquals(List.of("town:sense#near", "town:sense#touch"), sheep.stream().map(TriggerEvent.Entity::binding).sorted().toList(), "anything else still touches");
+    }
+
     @Test void aLeashedMobLedPastTheNpcFiresForTheHolder() {
         EntitySensor sensor = new EntitySensor(NPC);
         List<EntitySensor.Watch> watches = watches("[{\"id\":\"led\",\"event\":\"leash_pass\",\"radius\":3,\"entity\":\"sheep\"}]");
@@ -185,18 +202,18 @@ class EntitySensorTest {
         UUID guard = UUID.randomUUID(), baker = UUID.randomUUID();
         List<EntitySensor.Neighbour> near = List.of(new EntitySensor.Neighbour(NPC, "town:self", new Vec3(0, 64, 0)),
                 new EntitySensor.Neighbour(guard, "town:guard_2", new Vec3(3, 64, 0)), new EntitySensor.Neighbour(baker, "town:baker", new Vec3(1, 64, 0)));
-        List<TriggerEvent.Entity> events = sensor.sense(BODY, watches, List.of(), true, near, NOBODY, LIMITS).events();
+        List<TriggerEvent.Entity> events = sensor.sense(BODY, watches, List.of(), Set.of(), true, near, NOBODY, LIMITS).events();
         assertEquals(1, events.size());
         assertEquals("town:guard_2", events.getFirst().context().get("npc"));
         assertEquals(guard.toString(), events.getFirst().context().get("npc_uuid"));
-        assertEquals(List.of(), sensor.sense(BODY, watches, List.of(), true, near, NOBODY, LIMITS).events());
+        assertEquals(List.of(), sensor.sense(BODY, watches, List.of(), Set.of(), true, near, NOBODY, LIMITS).events());
     }
 
     @Test void factsForOtherPluginsComeOnlyWhenAsked() {
         EntitySensor sensor = new EntitySensor(NPC);
-        EntitySensor.Result quiet = sensor.sense(BODY, List.of(), List.of(sheep(new Vec3(0.4, 64, 0))), true, List.of(), NOBODY, LIMITS);
+        EntitySensor.Result quiet = sensor.sense(BODY, List.of(), List.of(sheep(new Vec3(0.4, 64, 0))), Set.of(), true, List.of(), NOBODY, LIMITS);
         assertEquals(List.of(), quiet.facts());
-        EntitySensor.Result told = new EntitySensor(NPC).senseForPlugins(BODY, List.of(), List.of(sheep(new Vec3(0.4, 64, 0))), true, List.of(), NOBODY, LIMITS);
+        EntitySensor.Result told = new EntitySensor(NPC).senseForPlugins(BODY, List.of(), List.of(sheep(new Vec3(0.4, 64, 0))), Set.of(), true, List.of(), NOBODY, LIMITS);
         assertEquals(List.of(EntitySensor.Fact.Kind.CONTACT), told.facts().stream().map(EntitySensor.Fact::kind).toList());
         assertEquals(SHEEP, told.facts().getFirst().entity());
     }
@@ -206,7 +223,7 @@ class EntitySensorTest {
         List<EntitySensor.Watch> watches = watches("[{\"id\":\"in\",\"event\":\"entity_proximity\",\"phase\":\"enter\",\"radius\":8}]");
         List<EntitySensor.Seen> crowd = new ArrayList<>();
         for (int index = 0; index < 5; index++) crowd.add(living(UUID.randomUUID(), "minecraft:chicken", new Vec3(index, 64, 2), Vec3.ZERO));
-        assertEquals(3, sensor.sense(BODY, watches, crowd, true, List.of(), NOBODY, new EntitySensor.Limits(3, 5)).events().size());
+        assertEquals(3, sensor.sense(BODY, watches, crowd, Set.of(), true, List.of(), NOBODY, new EntitySensor.Limits(3, 5)).events().size());
         assertEquals(2, sensor.overflow());
     }
 
@@ -237,7 +254,7 @@ class EntitySensorTest {
     @Test void touchesAreNotRememberedWhenNothingAsksForThem() {
         EntitySensor sensor = new EntitySensor(NPC);
         List<EntitySensor.Watch> watches = watches("[{\"id\":\"in\",\"event\":\"entity_proximity\",\"phase\":\"enter\",\"radius\":8}]");
-        assertEquals(1, sensor.sense(BODY, watches, List.of(sheep(new Vec3(0.5, 64, 0))), true, List.of(), NOBODY, new EntitySensor.Limits(1, 5)).events().size());
+        assertEquals(1, sensor.sense(BODY, watches, List.of(sheep(new Vec3(0.5, 64, 0))), Set.of(), true, List.of(), NOBODY, new EntitySensor.Limits(1, 5)).events().size());
         assertEquals(0, sensor.overflow());
     }
 

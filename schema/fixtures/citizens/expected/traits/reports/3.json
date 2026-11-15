@@ -1,8 +1,6 @@
 {
   "citizensId": 3,
-  "presentationWarnings": [
-    "/traits/sittrait: a mounted NPC rides instead of sitting; kept for review"
-  ],
+  "presentationWarnings": [],
   "runtimeWarnings": [],
   "fieldPathFormat": "json-pointer",
   "fields": {
@@ -14,11 +12,11 @@
     "/traits/location/y": "CONVERTED",
     "/traits/location/z": "CONVERTED",
     "/traits/mounttrait/mountedon": "CONVERTED",
-    "/traits/sittrait/sittingAt/world": "UNSUPPORTED_PRESERVED",
-    "/traits/sittrait/sittingAt/x": "UNSUPPORTED_PRESERVED",
-    "/traits/sittrait/sittingAt/y": "UNSUPPORTED_PRESERVED",
-    "/traits/sittrait/sittingAt/z": "UNSUPPORTED_PRESERVED",
-    "/traits/sneak/sneaking": "CONVERTED",
+    "/traits/sittrait/sittingAt/world": "CONVERTED",
+    "/traits/sittrait/sittingAt/x": "CONVERTED",
+    "/traits/sittrait/sittingAt/y": "CONVERTED",
+    "/traits/sittrait/sittingAt/z": "CONVERTED",
+    "/traits/sneak/sneaking": "UNSUPPORTED_PRESERVED",
     "/traits/sneaking/sneaking": "UNSUPPORTED_PRESERVED",
     "/traits/skintrait/skinName": "CONVERTED",
     "/traits/skintrait/signature": "CONVERTED",
@@ -26,10 +24,7 @@
     "/traits/skintrait/updateSkins": "CONVERTED"
   },
   "reasons": {
-    "/traits/sittrait/sittingAt/world": "trait sittrait has no Animus equivalent; kept in citizens:review",
-    "/traits/sittrait/sittingAt/x": "trait sittrait has no Animus equivalent; kept in citizens:review",
-    "/traits/sittrait/sittingAt/y": "trait sittrait has no Animus equivalent; kept in citizens:review",
-    "/traits/sittrait/sittingAt/z": "trait sittrait has no Animus equivalent; kept in citizens:review",
+    "/traits/sneak/sneaking": "the NPC sits, which is shown instead of sneaking",
     "/traits/sneaking/sneaking": "trait sneaking has no Animus equivalent; kept in citizens:review"
   },
   "worldRemaps": [

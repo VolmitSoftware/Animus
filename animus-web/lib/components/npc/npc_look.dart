@@ -100,7 +100,7 @@ class NpcLookTab extends StatelessWidget {
           onChanged: (Object? value) => form.write(const <JsonStep>['hologram'], value),
         ),
       ),
-      if (player) _Pose(form: form),
+      if (form.group || posesFor(type).length > 1) _Pose(form: form),
       if (type == 'minecraft:armor_stand') ...<Widget>[
         const NpcHeading('Armor stand', tip: 'Which parts show, and each part\'s angle in degrees: x tilts forward, y turns, z tilts sideways.', docs: Docs.npcFlags),
         ArmorStandEditor(
@@ -206,13 +206,13 @@ class _Pose extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const String poseId = 'animus-npc-pose';
-    final List<String> poses = posesFor('minecraft:player');
+    final List<String> poses = form.group ? npcPoses : posesFor(form.type);
     final String? pose = asString(form.doc['pose']);
     return Field(
       label: 'Pose',
       forId: poseId,
-      hint: form.group ? 'Player bodies only.' : null,
-      tip: 'How a player body stands, sits or lies. Other bodies always stand.',
+      hint: form.group ? 'Most poses need a player body.' : null,
+      tip: 'How the body stands, sits or lies. Players take every pose; other living bodies stand or sit.',
       docs: Docs.npcPoses,
       problems: diagnosticsAt(form.diagnostics, r'$.pose'),
       child: AnimusSelect.values(

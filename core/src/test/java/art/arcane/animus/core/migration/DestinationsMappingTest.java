@@ -158,7 +158,7 @@ class DestinationsMappingTest {
         assertTrue(DestinationsMapping.convert(null, "minecraft:player", "world", Map.of()).warnings().getFirst().contains("not a mapping"));
     }
 
-    @Test void skinsAndPosesOnOtherBodiesStayForReview() throws Exception {
+    @Test void skinsOnOtherBodiesStayForReviewWhileLivingBodiesSitAndOnlyPlayersLie() throws Exception {
         JsonObject trait = JsonDocuments.object("""
                 {"Destinations":{"0":{"Location":{"world":"world","x":1,"y":64,"z":1},"TimeOfDay":500,
                   "Skin":{"Name":"Baker","MetaData":"abc","Signature":"def","ApplyOnArrival":true},
@@ -167,9 +167,17 @@ class DestinationsMappingTest {
         DestinationsMapping.Result result = DestinationsMapping.convert(trait, "minecraft:villager", "world", Map.of());
         JsonObject location = result.module().orElseThrow().getAsJsonArray("locations").get(0).getAsJsonObject();
         assertFalse(location.has("skin"));
-        assertFalse(location.has("pose"));
+        assertEquals("sitting", location.get("pose").getAsString(), "a villager sits on its seat as a player does");
         assertTrue(result.skins().isEmpty());
         assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, result.notes().get("/traits/npcdestinations/Destinations/0/Skin").status());
+        JsonObject sleeper = JsonDocuments.object("""
+                {"Destinations":{"0":{"Location":{"world":"world","x":1,"y":64,"z":1},"TimeOfDay":500,
+                  "PluginSettings":{"Animations":{"Setting":"SLEEP"}}}}}
+                """);
+        DestinationsMapping.Result lying = DestinationsMapping.convert(sleeper, "minecraft:villager", "world", Map.of());
+        assertFalse(lying.module().orElseThrow().getAsJsonArray("locations").get(0).getAsJsonObject().has("pose"));
+        assertEquals("the sleeping pose shows only on minecraft:player bodies",
+                lying.notes().get("/traits/npcdestinations/Destinations/0/PluginSettings/Animations/Setting").reason());
     }
 
     @Test void itemsInSlotsTheBodyDoesNotShowStayForReview() throws Exception {

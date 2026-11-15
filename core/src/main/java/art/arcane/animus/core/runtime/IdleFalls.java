@@ -43,7 +43,7 @@ final class IdleFalls<P, I> {
      */
     boolean beforeLeg(RouteNavigator<P, I>.Route route) {
         PersistedNpcService<P, I>.Value value = route.value;
-        if (route.mode != MovementProfile.Mode.WALK || !value.falls || service.mountRuntime.vehicleOf(value.spec.definition().id()) != null
+        if (route.mode != MovementProfile.Mode.WALK || !value.falls || service.mountRuntime.rides(value)
                 || service.riders.riderOf(value.spec.definition().uuid()) != null) return false;
         int wanted = IdleFall.cells(PersistedNpcService.moveWidth(value), PersistedNpcService.moveHeight(value));
         if (!service.budget.cells(wanted, service.navigationSettings)) return false;
@@ -75,7 +75,7 @@ final class IdleFalls<P, I> {
     }
     private boolean falls(PersistedNpcService<P, I>.Value value) {
         return service.valueCurrent(value) && value.state.snapshot().active() && value.route == null && value.routeTask == null
-                && value.falls && service.mountRuntime.vehicleOf(value.spec.definition().id()) == null
+                && value.falls && !service.mountRuntime.rides(value)
                 && service.riders.riderOf(value.spec.definition().uuid()) == null;
     }
     /** One fall step from {@code at}: the body moves when it falls or lands, and a landing that hurts is reported. */

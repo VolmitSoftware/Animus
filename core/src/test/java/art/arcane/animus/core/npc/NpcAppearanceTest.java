@@ -117,9 +117,13 @@ class NpcAppearanceTest {
         for (String pose : List.of("standing", "sneaking", "sleeping", "swimming", "sitting"))
             assertEquals(List.of(), errors("minecraft:player", "\"pose\":\"" + pose + "\""), pose);
         assertEquals(List.of("$.pose: sneaking is available only for minecraft:player bodies"), errors("minecraft:horse", "\"pose\":\"sneaking\""));
-        assertEquals(List.of("$.pose: sitting is available only for minecraft:player bodies"), errors("minecraft:armor_stand", "\"pose\":\"sitting\""));
+        assertEquals(List.of(), errors("minecraft:armor_stand", "\"pose\":\"sitting\""));
+        assertEquals(List.of(), errors("minecraft:villager", "\"pose\":\"sitting\""));
+        assertEquals(List.of("$.pose: sitting is available only for living bodies other than the ender dragon"), errors("minecraft:item_display", "\"pose\":\"sitting\""));
+        assertEquals(List.of("$.pose: spinning is available only for minecraft:player bodies"), errors("minecraft:villager", "\"pose\":\"spinning\""));
+        for (String pose : List.of("crawling", "bellyflop", "spinning")) assertEquals(List.of(), errors("minecraft:player", "\"pose\":\"" + pose + "\""));
         assertEquals(List.of(), errors("minecraft:horse", "\"pose\":\"standing\""));
-        assertEquals(List.of("$.pose: expected standing, sneaking, sleeping, swimming or sitting"), errors("minecraft:player", "\"pose\":\"crawling\""));
+        assertEquals(List.of("$.pose: expected standing, sneaking, sleeping, swimming, sitting, crawling, bellyflop or spinning"), errors("minecraft:player", "\"pose\":\"lying\""));
     }
 
     @Test void armorStandPoseAnglesAndPartsParse() throws IOException {

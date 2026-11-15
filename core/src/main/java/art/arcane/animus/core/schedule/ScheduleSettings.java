@@ -149,7 +149,7 @@ public record ScheduleSettings(OptionalDouble speed, List<Location> locations) {
         if (location.has("pose")) {
             String key = text(location.get("pose"), path + ".pose", "standing|sneaking|sleeping|sitting", "standing, sneaking, sleeping or sitting");
             NpcPose chosen = NpcPose.fromKey(key).orElseThrow();
-            if (!chosen.availableFor(type)) throw new IllegalArgumentException(path + ".pose: only player bodies show " + key);
+            if (!chosen.availableFor(type)) throw new IllegalArgumentException(path + ".pose: " + key + " shows only on " + chosen.bodies());
             pose = Optional.of(chosen);
         }
         Map<EquipmentSlot, NpcItem> equipment = new EnumMap<>(EquipmentSlot.class);

@@ -23,6 +23,9 @@ permissions:
   animus.ride:
     description: Ride NPCs whose definition opts in with the animus:riding module. A definition may name its own node instead.
     default: op
+  animus.seat:
+    description: Sit on NPCs that offer a seat, and turn sitting on NPCs on or off with /animus seat toggle. A definition may name its own node instead.
+    default: true
   animus.build.donate:
     description: Donate held items to an NPC build that takes donations.
     default: true

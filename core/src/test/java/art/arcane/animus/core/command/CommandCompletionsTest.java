@@ -144,6 +144,21 @@ class CommandCompletionsTest {
         assertEquals(List.of("12345678", second, first), CompletionFiles.transactions(data));
     }
 
+    /** Mount, seat, speak and the skin options live in one tree: each has its parameters, its node, help and a range list both share. */
+    @Test void mountSeatSpeakAndSkinOptionsCompleteTogether() {
+        AnimusCommandTree tree = new AnimusCommandTree(null);
+        DirectorRuntimeNode root = tree.director().engine().getRoot();
+        assertEquals(List.of("4", "8", "16", "32"), List.copyOf(tree.values("range", new Standing(), java.util.Map.of())), "mount set and speak offer one range list");
+        assertTrue(names(find(root, "speak")).containsAll(List.of("npc", "text", "target", "range", "bubble")), names(find(root, "speak")).toString());
+        assertTrue(names(find(root, "npc", "skin")).containsAll(List.of("url", "file", "slim", "follow", "from-name")), names(find(root, "npc", "skin")).toString());
+        assertTrue(names(find(root, "mount", "set")).contains("range"), names(find(root, "mount", "set")).toString());
+        assertEquals(PermissionNodes.NPC_SPEAK, AnimusDirector.permission(find(root, "speak")));
+        assertEquals(PermissionNodes.NPC_SKIN, AnimusDirector.permission(find(root, "npc", "skin")));
+        assertEquals(PermissionNodes.SEAT, AnimusDirector.permission(find(root, "seat", "toggle")));
+        for (String command : List.of("speak", "mount", "seat"))
+            assertTrue(tree.director().complete(new Standing(), new String[]{"help", command.substring(0, 3)}).contains(command), "help completes " + command);
+    }
+
     private static List<String> names(DirectorRuntimeNode node) {
         return node.getDescriptor().getParameters().stream().map(DirectorParameterDescriptor::getName).toList();
     }

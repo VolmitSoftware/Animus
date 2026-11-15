@@ -13916,9 +13916,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "sneaking",
         "sleeping",
         "swimming",
-        "sitting"
+        "sitting",
+        "crawling",
+        "bellyflop",
+        "spinning"
       ],
-      "description": "The body pose. Only standing applies to bodies other than minecraft:player."
+      "description": "The body pose. minecraft:player bodies take every pose, other living bodies stand or sit, and the rest stand."
     },
     "hologram": {
       "type": "object",
@@ -23417,7 +23420,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "animus:mount": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Rides another NPC.",
+          "description": "Rides another NPC, or a real entity such as a horse, boat or minecart.",
           "properties": {
             "enabled": {
               "type": "boolean"
@@ -23426,6 +23429,20 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
               "description": "The vehicle NPC's id."
+            },
+            "entity": {
+              "type": "string",
+              "pattern": "^([0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}|[a-z0-9_.-]+:[a-z0-9_./-]+)$",
+              "description": "A real entity's UUID, or an entity type such as minecraft:horse for the nearest one within range. Never minecraft:player.",
+              "not": {
+                "const": "minecraft:player"
+              }
+            },
+            "range": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 32.0,
+              "description": "With an entity type: how far from the NPC's own position to look, 8 blocks by default."
             }
           },
           "allOf": [
@@ -23441,9 +23458,44 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 ]
               },
               "else": {
-                "required": [
-                  "vehicle"
+                "anyOf": [
+                  {
+                    "required": [
+                      "vehicle"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "entity"
+                    ]
+                  }
                 ]
+              }
+            },
+            {
+              "not": {
+                "required": [
+                  "vehicle",
+                  "entity"
+                ]
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "range"
+                ]
+              },
+              "then": {
+                "required": [
+                  "entity"
+                ],
+                "properties": {
+                  "entity": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+                  }
+                }
               }
             }
           ]
@@ -23507,6 +23559,40 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               }
             }
           ]
+        },
+        "animus:seat": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Lets players sit on top of this NPC with a click, as GSit seats players; sneaking gets off.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "True when the object is present; false turns the seat off whatever [seats] defaultEnabled says."
+            },
+            "click": {
+              "enum": [
+                "right",
+                "sneak-right"
+              ],
+              "description": "The click that sits down, right by default. A click the NPC's behaviors, shop, GUI, quest or ride take never seats anyone."
+            },
+            "permission": {
+              "type": "string",
+              "pattern": "^[a-z0-9_-]+(\\.[a-z0-9_-]+)*$",
+              "description": "The node a player needs, animus.seat by default.",
+              "maxLength": 128
+            },
+            "stack": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8,
+              "description": "How many players may sit stacked, each on the one below, 4 by default."
+            },
+            "emptyHand": {
+              "type": "boolean",
+              "description": "Only a player with an empty main hand sits; true by default."
+            }
+          }
         },
         "animus:look-close": {
           "type": "object",
@@ -24691,6 +24777,39 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         }
       },
       "else": {
+        "properties": {
+          "pose": {
+            "enum": [
+              "standing",
+              "sitting"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "enum": [
+              "minecraft:block_display",
+              "minecraft:end_crystal",
+              "minecraft:ender_dragon",
+              "minecraft:falling_block",
+              "minecraft:glow_item_frame",
+              "minecraft:item",
+              "minecraft:item_display",
+              "minecraft:item_frame",
+              "minecraft:painting",
+              "minecraft:text_display"
+            ]
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
         "properties": {
           "pose": {
             "enum": [

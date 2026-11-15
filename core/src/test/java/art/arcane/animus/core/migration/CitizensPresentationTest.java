@@ -89,8 +89,16 @@ class CitizensPresentationTest {
         assertEquals("sneaking", map("player", "{\"sneaking\":{\"sneaking\":true}}").fields().get("pose").getAsString());
         assertEquals("sitting", map("player", "{\"sittrait\":{\"sittingAt\":{\"world\":\"w\",\"x\":1,\"y\":2,\"z\":3}}}").fields().get("pose").getAsString());
         CitizensPresentation.Result mounted = map("player", "{\"sittrait\":{\"sittingAt\":{\"x\":1}},\"mounttrait\":{\"mountedon\":\"00000000-0000-0000-0000-000000000002\"}}");
-        assertFalse(mounted.fields().has("pose"));
-        assertEquals(List.of("/traits/sittrait: a mounted NPC rides instead of sitting; kept for review"), mounted.warnings());
+        assertEquals("sitting", mounted.fields().get("pose").getAsString(), "a mounted NPC keeps its sitting pose for when it has no vehicle");
+        assertEquals(List.of(), mounted.warnings());
+        CitizensPresentation.Result villager = map("villager", "{\"sittrait\":{\"sittingAt\":{\"world\":\"w\",\"x\":1,\"y\":2,\"z\":3}}}");
+        assertEquals("sitting", villager.fields().get("pose").getAsString(), "a villager sits on a seat as Citizens sits it on an armor stand");
+        assertEquals(List.of(), villager.warnings());
+        CitizensPresentation.Result frame = map("item_frame", "{\"sittrait\":{\"sittingAt\":{\"x\":1}}}");
+        assertFalse(frame.fields().has("pose"));
+        assertEquals(List.of("/traits/sittrait: sitting shows only on living bodies; kept for review"), frame.warnings());
+        assertEquals("spinning", map("player", "{\"entitypose\":{\"pose\":\"SPIN_ATTACK\"}}").fields().get("pose").getAsString());
+        assertFalse(map("wolf", "{\"entitypose\":{\"pose\":\"SITTING\"}}").fields().has("pose"), "a mob's own sitting comes from its body settings");
         CitizensPresentation.Result horse = map("horse", "{\"sneak\":{\"sneaking\":true}}");
         assertFalse(horse.fields().has("pose"));
         assertEquals(List.of(), horse.warnings());

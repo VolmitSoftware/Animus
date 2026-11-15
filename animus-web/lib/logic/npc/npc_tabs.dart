@@ -11,11 +11,11 @@ import 'health_settings.dart' show healthModule;
 import 'npc_appearance.dart' show bodySettingsTypes, clickRedirectField, npcTraits;
 import 'npc_attributes.dart' show attributesField;
 import 'module_rows.dart' show importedModule;
+import 'mount_seat.dart' show mountModuleKey, seatModuleKey;
 import 'npc_integrations.dart';
 import 'route_model.dart' show navigationModule;
 
 const String shopModuleKey = 'animus:shop';
-const String mountModuleKey = 'animus:mount';
 
 /// Root keys some tab edits; the rest show under Other fields on Modules.
 final Set<String> npcLaidOut = <String>{
@@ -55,7 +55,7 @@ final Set<String> npcLaidOut = <String>{
 };
 
 /// Modules with a tab of their own (Movement, Talk and trade, Combat).
-const Set<String> tabModules = <String>{navigationModule, combatModule, healthModule, shopModuleKey, mountModuleKey};
+const Set<String> tabModules = <String>{navigationModule, combatModule, healthModule, shopModuleKey, mountModuleKey, seatModuleKey};
 
 enum NpcTab {
   basics('Basics', advanced: false),
@@ -136,6 +136,7 @@ List<String> advancedInUse(NpcTab tab, JsonMap doc, {required bool group, Set<St
         if (asMap(modules[navigationModule])['enabled'] == false) 'Movement off',
         ..._each(doc['movement'], 'Walking'),
         if (modules.containsKey(mountModuleKey)) 'Riding',
+        if (modules.containsKey(seatModuleKey)) 'Seat',
       ],
     NpcTab.talk => <String>[if (!group && _set(doc['inventory'])) 'Inventory'],
     NpcTab.combat => <String>[for (final List<JsonStep> _ in combatHiddenSettings(modules)) 'Combat'],

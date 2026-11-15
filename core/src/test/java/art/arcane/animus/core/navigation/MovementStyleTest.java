@@ -168,7 +168,7 @@ class MovementStyleTest {
         StyledLeg sprint = leg(PLAYER, "{}", MovementStyle.SPRINT);
         assertEquals(new StyledLeg.Look(NpcPose.STANDING, BodyLook.SPRINTING), sprint.moved(step(MotionValidator.Medium.GROUND, true), NpcPose.STANDING, OPEN));
         assertEquals(new StyledLeg.Look(NpcPose.STANDING, 0), sprint.resting(NpcPose.STANDING), "nobody sprints standing still");
-        assertEquals(new StyledLeg.Look(NpcPose.SWIMMING, 0), leg(PLAYER, "{}", MovementStyle.CRAWL).moved(step(MotionValidator.Medium.GROUND, true), NpcPose.STANDING, OPEN));
+        assertEquals(new StyledLeg.Look(NpcPose.CRAWLING, 0), leg(PLAYER, "{}", MovementStyle.CRAWL).moved(step(MotionValidator.Medium.GROUND, true), NpcPose.STANDING, OPEN));
         assertEquals(new StyledLeg.Look(NpcPose.STANDING, BodyLook.GLIDING), leg(PLAYER, "{}", MovementStyle.GLIDE).moved(step(MotionValidator.Medium.AIR, false), NpcPose.STANDING, OPEN));
         assertEquals(new StyledLeg.Look(NpcPose.STANDING, 0), leg(PLAYER, "{}", MovementStyle.FLY).moved(step(MotionValidator.Medium.AIR, false), NpcPose.STANDING, OPEN),
                 "fly keeps the normal pose");
@@ -180,8 +180,8 @@ class MovementStyleTest {
         StyledLeg walk = leg(PLAYER, "{\"auto\":{\"crawl\":true}}", null);
         assertEquals(new StyledLeg.Look(NpcPose.SWIMMING, BodyLook.SPRINTING), walk.moved(step(MotionValidator.Medium.WATER, false), NpcPose.STANDING, OPEN));
         assertEquals(new StyledLeg.Look(NpcPose.STANDING, 0), walk.moved(step(MotionValidator.Medium.GROUND, true), NpcPose.STANDING, OPEN));
-        assertEquals(new StyledLeg.Look(NpcPose.SWIMMING, 0), walk.moved(step(MotionValidator.Medium.GROUND, true), NpcPose.STANDING, LOW));
-        assertEquals(new StyledLeg.Look(NpcPose.SWIMMING, 0), walk.resting(NpcPose.STANDING), "a body resting in a low gap stays prone");
+        assertEquals(new StyledLeg.Look(NpcPose.CRAWLING, 0), walk.moved(step(MotionValidator.Medium.GROUND, true), NpcPose.STANDING, LOW));
+        assertEquals(new StyledLeg.Look(NpcPose.CRAWLING, 0), walk.resting(NpcPose.STANDING), "a body resting in a low gap stays prone");
         assertEquals(new StyledLeg.Look(NpcPose.STANDING, 0), leg(PLAYER, "{\"auto\":{\"swim\":false}}", null)
                 .moved(step(MotionValidator.Medium.WATER, false), NpcPose.STANDING, OPEN));
         assertEquals(new StyledLeg.Look(NpcPose.STANDING, 0), leg(PLAYER, "{}", null).moved(step(MotionValidator.Medium.GROUND, true), NpcPose.STANDING, LOW),

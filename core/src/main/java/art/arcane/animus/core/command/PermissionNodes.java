@@ -16,6 +16,8 @@ public final class PermissionNodes {
             SHOPS = "animus.shops", GUI = "animus.gui", BUILD = "animus.build", RECORD = "animus.record", RIGS = "animus.rigs", QUESTS = "animus.quests";
     /** The quest journal and offer buttons, for players; not under {@link #ADMIN}, and granted by default. */
     public static final String QUESTS_USE = "animus.quests.use";
+    /** Sitting on NPCs and {@code /animus seat toggle}, for players; not under {@link #ADMIN}, and granted by default. */
+    public static final String SEAT = "animus.seat";
     /** Pairing the web editor with {@code apply:commands} and accepting imported commands; not under {@link #ADMIN}. */
     public static final String EDITOR_COMMANDS = "animus.editor.commands";
     /** Every node {@link #ADMIN} grants, in the order plugin.yml lists them. */

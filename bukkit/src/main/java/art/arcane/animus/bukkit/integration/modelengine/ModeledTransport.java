@@ -286,6 +286,10 @@ public final class ModeledTransport<P, I> implements BodyTransport<P, I> {
         return inner.passengers(viewer, vehicle, passengers, realRider, authoritative);
     }
     @Override public CompletionStage<Void> dragonPhase(P viewer, BodyTransport.Body dragon, int phase) { return inner.dragonPhase(viewer, dragon, phase); }
+    @Override public boolean carryAvailable() { return inner.carryAvailable(); }
+    @Override public CompletionStage<Void> carry(P viewer, int entity, List<Integer> own, List<? extends BodyTransport.Body> passengers, List<Integer> riders) {
+        return inner.carry(viewer, entity, own, passengers, riders);
+    }
     @Override public CompletionStage<Void> relabel(P viewer, BodyTransport.Body body, List<String> rows) { return inner.relabel(viewer, body, rows); }
     @Override public CompletionStage<Void> attributes(P viewer, BodyTransport.Body body, NpcAttributes attributes) { return inner.attributes(viewer, body, attributes); }
     @Override public ControlSubscription subscribeControl(P viewer) { return inner.subscribeControl(viewer); }

@@ -247,14 +247,16 @@ AnimusDocument validateSource(DocumentLocation location, String path, String sou
       Diagnostic(DiagnosticSeverity.error, r'$', 'Not valid JSON. ${jsonSyntaxProblem(source)?.text ?? invalid.message}.', code: 'json'),
     ]);
   }
-  final List<Diagnostic> diagnostics = <Diagnostic>[
+  List<Diagnostic> diagnostics = <Diagnostic>[
     ...mergeGuiDiagnostics(schemas.validate(location.kind, json), validateGui(location.kind, json)),
     ..._identity(location, json),
     if (location.kind == DocumentKind.rig) ...validateRigStructure(json),
-    if (location.kind == DocumentKind.group) ...<Diagnostic>[...groupValueDiagnostics(json, schemas), ...groupRuleDiagnostics(json, location.id, source)],
+    if (location.kind == DocumentKind.group) ...groupValueDiagnostics(json, schemas),
   ];
+  if (location.kind == DocumentKind.group) diagnostics = withRuleDiagnostics(diagnostics, groupRuleDiagnostics(json, location.id, source));
   if (location.kind == DocumentKind.npc) {
-    diagnostics.addAll(<Diagnostic>[...npcCombatDiagnostics(json, diagnostics), ...npcActivationDiagnostics(json), ...npcRuleDiagnostics(json, location.id)]);
+    diagnostics.addAll(<Diagnostic>[...npcCombatDiagnostics(json, diagnostics), ...npcActivationDiagnostics(json)]);
+    diagnostics = withRuleDiagnostics(diagnostics, npcRuleDiagnostics(json, location.id));
   }
   return AnimusDocument(kind: location.kind, id: location.id, path: path, source: source, json: json, diagnostics: diagnostics);
 }

@@ -24,7 +24,7 @@ final class RuntimeReport<P, I> {
                 + " | skin-reads=" + service.reads.skinReads() + " | accepted=" + service.views.accepted + " | rejected=" + service.views.rejected
                 + " | routes=" + service.routes.order.size() + " | routes-sleeping=" + service.routes.order.sleeping() + " | routes-waiting=" + service.routes.order.waiting()
                 + " | presentation=" + service.pressure.describe(service.tickNumber) + " | navigation-pressure=" + service.routes.pressure.describe() + " | path-jobs=" + service.navigation.outstandingJobs() + " | route-reads=" + service.reads.routeReads() + " | recordings=" + service.recordings.playing()
-                + " | mounted=" + service.mountRuntime.mountedCount() + " | mount-problems=" + service.mountRuntime.problemCount() + " | riders=" + service.riders.count()
+                + " | mounted=" + service.mountRuntime.mountedCount() + " | mount-problems=" + service.mountRuntime.problemCount() + " | riders=" + service.riders.count() + " | seated=" + service.seats.count()
                 + " | chunks=" + service.host.chunkDelivery() + (service.failures.last() == null ? "" : " | last-error=" + service.failures.last());
     }
     /** Counts for the metrics roll; the load since the last roll starts again. */

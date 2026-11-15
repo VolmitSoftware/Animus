@@ -78,7 +78,7 @@ class PermissionNodesTest {
         Set<String> used = new TreeSet<>();
         for (DirectorRuntimeNode command : commands) used.add(AnimusDirector.permission(command));
         Set<String> known = new TreeSet<>(PermissionNodes.CHILDREN);
-        known.addAll(List.of(PermissionNodes.ADMIN, "", "animus.status", "animus.debug", "animus.debug.mode", "animus.build.donate", PermissionNodes.QUESTS_USE));
+        known.addAll(List.of(PermissionNodes.ADMIN, "", "animus.status", "animus.debug", "animus.debug.mode", "animus.build.donate", PermissionNodes.QUESTS_USE, PermissionNodes.SEAT));
         assertTrue(known.containsAll(used), "unknown nodes: " + used);
         Set<String> unused = new TreeSet<>(PermissionNodes.CHILDREN);
         unused.removeAll(used);

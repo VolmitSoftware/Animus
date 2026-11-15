@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "converterVersion": 22,
   "fieldPathFormat": "json-pointer",
-  "importId": "f453cbdb8da09179f1dfa93899d2dbfb922ebb776452a8e25a4682643af4d9ca",
-  "sourceSha256": "3a7440878a8dd027a7e2115b100f60f88d4d556441d54920afe4ea644284cd07",
+  "importId": "5698989f65a807f4d0a9baad129ffb0958b6a32b9e3dcc43cdb2d4262b0b0dba",
+  "sourceSha256": "64da1c1d2b7145613449df7c7d486d8cb88ddd523baf6fcbddf96a1c75924517",
   "worldMap": {
     "old_harbor": "harbor"
   },
@@ -35,6 +35,7 @@
     "location": 4,
     "commandtrait": 4,
     "skintrait": 2,
+    "sittrait": 1,
     "equipment": 1,
     "sentinel": 1
   },
@@ -69,7 +70,7 @@
     "citizens-3: /traits/commandtrait: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones",
     "citizens-3: /traits/commandtrait: commands stay denied until citizens:commands-3 is on the [behaviors.actions] commandBehaviors list in config.toml"
   ],
-  "remappedLocations": 4,
+  "remappedLocations": 5,
   "resolvedReferences": 0,
   "unresolvedReferences": 0,
   "sourceFields": {},
@@ -81,13 +82,13 @@
   },
   "documents": {
     "behaviors/citizens/commands-0.json": "0006e7c3e75ce3364487bb91d3f70d565356c0a18d9703ef0800b4a6afa4fc32",
-    "npcs/harbor/citizens-0.json": "b09d1e13c74f20c25c07a14201170db34764e9b152daa0c5c8f50a9fd74c65b5",
+    "npcs/harbor/citizens-0.json": "3e6feb2276c8ff36a4c8526f259746c17175513dd46e8a52b0762d7a17b32005",
     "behaviors/citizens/commands-1.json": "1e511b645287fff671d5036f0d058596999538468735f1567c685177567df267",
-    "npcs/harbor/citizens-1.json": "7db1cc6203c8be2af3019c405d461e77cb0b0945edf1964d392d375c5270fb2c",
+    "npcs/harbor/citizens-1.json": "7721b4fd14074f46d3e0093b82b1aa8184951a8e9b015c3f72d4c87eef58592e",
     "behaviors/citizens/commands-2.json": "fda3eabd7bad88d8c617b091d982f54b7c6c91a540d2f50b9ac7cbb3f0e80f47",
-    "npcs/harbor/citizens-2.json": "5c67917fa8da501291a12c76cbd3de07e447660889cece87c4506d202410440b",
+    "npcs/harbor/citizens-2.json": "101d0df528c50f3b440a3f336aded834631153aefd8b20f01cc19c9d0460bda5",
     "behaviors/citizens/commands-3.json": "bc3d32da811070466ba5b62b73c2b80ac31cf3394c84cbf9393a11d34d581d71",
     "skins/05f18834916c6590edc8fc596c532623084f39c4d47e331ce3a0a41a4f161d7a.json": "05f18834916c6590edc8fc596c532623084f39c4d47e331ce3a0a41a4f161d7a",
-    "npcs/harbor/citizens-3.json": "9acc1bcc46bbb5ee4d5521279da769b50bdadde8191b9ae048f15a09c77c1929"
+    "npcs/harbor/citizens-3.json": "401da839c3d5bfc6b69185b5fa5a5b42633fd095fbb0920d7de0c09a2d9d52ea"
   }
 }

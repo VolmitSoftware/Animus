@@ -208,6 +208,17 @@ class BehaviorSchemaAgreementTest {
         JsonObject mount = JsonDocuments.object(base);
         mount.add("modules", JsonDocuments.object("{\"animus:mount\":{\"enabled\":true}}"));
         invalid.put("mount without vehicle", mount);
+        for (String bad : List.of("{\"vehicle\":\"a\",\"entity\":\"minecraft:horse\"}", "{\"entity\":\"minecraft:player\"}", "{\"entity\":\"Horse\"}",
+                "{\"entity\":\"minecraft:horse\",\"range\":40}", "{\"entity\":\"3f1c7a52-0000-4000-8000-00000000abcd\",\"range\":4}", "{\"vehicle\":\"a\",\"range\":4}")) {
+            JsonObject entity = JsonDocuments.object(base);
+            entity.add("modules", JsonDocuments.object("{\"animus:mount\":" + bad + "}"));
+            invalid.put("mount " + bad, entity);
+        }
+        for (String bad : List.of("{\"click\":\"left\"}", "{\"stack\":9}", "{\"permission\":\"Bad Node\"}", "{\"chair\":1}")) {
+            JsonObject seat = JsonDocuments.object(base);
+            seat.add("modules", JsonDocuments.object("{\"animus:seat\":" + bad + "}"));
+            invalid.put("seat " + bad, seat);
+        }
         JsonObject ride = JsonDocuments.object(base);
         ride.add("modules", JsonDocuments.object("{\"animus:riding\":{\"enabled\":true,\"speed\":99}}"));
         invalid.put("riding speed", ride);
@@ -229,7 +240,8 @@ class BehaviorSchemaAgreementTest {
         }
         Map<String, String> fields = new LinkedHashMap<>();
         fields.put("pose", "{\"pose\":\"flying\"}");
-        fields.put("pose for a non-player body", "{\"type\":\"minecraft:villager\",\"pose\":\"sitting\"}");
+        fields.put("pose for a non-player body", "{\"type\":\"minecraft:villager\",\"pose\":\"sleeping\"}");
+        fields.put("sitting for a body that cannot sit", "{\"type\":\"minecraft:item_display\",\"pose\":\"sitting\"}");
         fields.put("armor stand on a player", "{\"armorStand\":{\"small\":true}}");
         fields.put("armor stand angle", "{\"type\":\"minecraft:armor_stand\",\"armorStand\":{\"head\":[0,400,0]}}");
         fields.put("armor stand unknown part", "{\"type\":\"minecraft:armor_stand\",\"armorStand\":{\"tail\":[0,0,0]}}");
@@ -301,7 +313,9 @@ class BehaviorSchemaAgreementTest {
                                      "respawn": {"afterDeath": "delete", "points": [{"world": "world", "x": 0, "y": 64, "z": 0}]}},
                    "animus:shop": {"shop": "town:baker", "openOn": "both"},
                    "animus:gui": {"open": {"kind": "gloss", "id": "lobby/main"}, "hologram": {"id": "town:sign", "offset": [0, 2.5, 0]}},
-                   "animus:hire": {"price": 50, "items": [{"id": "minecraft:emerald", "count": 2}], "durationMinutes": 120, "permission": "animus.hire.guard"}
+                   "animus:hire": {"price": 50, "items": [{"id": "minecraft:emerald", "count": 2}], "durationMinutes": 120, "permission": "animus.hire.guard"},
+                   "animus:mount": {"entity": "minecraft:horse", "range": 12},
+                   "animus:seat": {"enabled": true, "click": "sneak-right", "permission": "town.bench", "stack": 2, "emptyHand": false}
                  }}
                 """);
         for (Map.Entry<String, JsonElement> entry : extra.entrySet()) full.add(entry.getKey(), entry.getValue());

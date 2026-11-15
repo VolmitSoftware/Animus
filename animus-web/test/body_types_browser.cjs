@@ -1,11 +1,12 @@
 // Changing an NPC's body on its Basics tab, at desktop width in the dark
 // theme and phone width in the light one. The body is picked by name. The
-// hero (a skinned, fully equipped player, seated first) becomes a horse: the
-// skin question removes the skin, the seated pose a horse cannot show is
+// hero (a skinned, fully equipped player, asleep first) becomes a horse: the
+// skin question removes the skin, the sleeping pose a horse cannot show is
 // named with a way to remove it, the skin field gives way to a note,
 // player-only slots warn on Look, the horse's own settings are typed
-// dropdowns that reach the Code view and the stage, and the pose row is
-// gone. Every other body then shows only its own settings and traits. Last,
+// dropdowns that reach the Code view and the stage, and the pose row offers
+// standing and sitting, which the horse keeps. Every other body then shows
+// only its own settings and traits, and the dragon cannot sit. Last,
 // a server NPC turned into a horse is applied to tool/fake_server.dart
 // through the save bar. No console errors, no sideways scroll.
 //
@@ -93,24 +94,31 @@ async function offline(browser, viewport, label, dark) {
   await page.goto(`${site}/#${workspace}/npc/players%2Fhero?view=visual`);
   await page.locator('h1').getByText('Hero', {exact: true}).waitFor();
 
-  // The seated player becomes a horse.
-  await choose((await npcTab(page, 'Look')).locator('button#animus-npc-pose'), 'sitting');
-  assert.equal((await draft(page)).pose, 'sitting', `${label}: seated first`);
+  // The sleeping player becomes a horse.
+  await choose((await npcTab(page, 'Look')).locator('button#animus-npc-pose'), 'sleeping');
+  assert.equal((await draft(page)).pose, 'sleeping', `${label}: asleep first`);
   await setType(page, 'minecraft:horse', {removeSkin: true});
   const basics = await npcTab(page, 'Basics');
   const left = page.getByRole('group', {name: 'Fields this body cannot show'});
-  await left.getByText('The sitting pose shows only on player bodies.').waitFor();
+  await left.getByText('The sleeping pose shows only on player bodies.').waitFor();
   assert.equal(await left.getByText('Skins show only', {exact: false}).count(), 0, `${label}: the question took the skin`);
   await basics.getByText('Only player bodies wear skins.').waitFor();
   assert.equal(await basics.locator('[data-skin="field"]').count(), 0, `${label}: no skin field on a horse`);
   let look = await npcTab(page, 'Look');
-  assert.equal(await look.locator('button#animus-npc-pose').count(), 0, `${label}: no pose row on a horse`);
   assert.equal(await look.locator('[data-slot-grid="animus-equipment"] .is-warning, [data-slot-grid="animus-equipment"] .is-error').count(), 6, `${label}: the six player slots warn`);
   await npcTab(page, 'Basics');
   await left.getByRole('button', {name: 'Remove pose'}).click();
   await left.waitFor({state: 'detached'});
   const converted = await draft(page);
   assert.deepEqual([converted.type, converted.skin, converted.pose], ['minecraft:horse', undefined, undefined], `${label}: skin and pose are gone`);
+
+  // A horse stands or sits.
+  look = await npcTab(page, 'Look');
+  const pose = look.locator('button#animus-npc-pose');
+  assert.deepEqual((await optionValues(pose)).filter(Boolean), ['sitting'], `${label}: a horse stands or sits`);
+  await choose(pose, 'sitting');
+  assert.equal((await draft(page)).pose, 'sitting', `${label}: the horse sits`);
+  assert.equal(await left.count(), 0, `${label}: sitting is no field a horse cannot show`);
 
   // The horse's own settings are typed dropdowns on Look.
   look = await npcTab(page, 'Look');
@@ -134,6 +142,9 @@ async function offline(browser, viewport, label, dark) {
     ['minecraft:ender_dragon', 'Ender dragon', false], ['minecraft:turtle', null, true], ['minecraft:armor_stand', null, false]]) {
     await setType(page, type);
     await left.getByText('Only for horse bodies.').waitFor();
+    const seated = left.getByText('The sitting pose shows only on living bodies other than the ender dragon.');
+    // The list follows the Body select a moment later, so both wait for it.
+    await seated.waitFor({state: type === 'minecraft:ender_dragon' ? 'visible' : 'detached'});
     const section = await npcTab(page, 'Look');
     if (settings) await section.getByRole('group', {name: `${settings} settings`}).waitFor();
     assert.equal(await section.locator('[data-settings]').count(), settings ? 1 : 0, `${label} ${type}: only its own settings`);

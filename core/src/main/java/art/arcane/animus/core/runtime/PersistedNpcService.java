@@ -160,6 +160,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private final RuntimeReport<P, I> report;
     MountRuntime<P, I> mountRuntime;
     RiderService<P, I> riders;
+    SeatService<P, I> seats;
+    /** Players who turned sitting on NPCs off; kept across restarts and hotloads that rebind the transport. */
+    final art.arcane.animus.core.control.SeatToggles seatToggles;
     volatile BodyTransport<P, I> packets;
     OwnerNavigation navigation;
     private AutoCloseable ticker;
@@ -202,6 +205,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         homes = new HomeTurns<>(this);
         rigs = new RigTurns<>(this);
         report = new RuntimeReport<>(this);
+        art.arcane.animus.core.control.SeatToggles toggles;
+        try { toggles = new art.arcane.animus.core.control.SeatToggles(runtime.documents().resolve("state/seats/toggles.json"), io, host::warn); }
+        catch (java.io.IOException | RuntimeException failure) { throw new IllegalStateException("Cannot open the seat toggles: " + failure.getMessage(), failure); }
+        seatToggles = toggles;
         owner();
         for (P online : host.onlinePlayers()) players.joined(host.id(online));
         settingsSubscription = runtime.onSettings(pendingSettings::set);
@@ -223,8 +230,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                 geometries.put(type, new Geometry(Math.max(BodyRules.MINIMUM_SIZE, body.width()), Math.max(BodyRules.MINIMUM_SIZE, body.height()), body.entityIds().length, body.seat()));
             }
             runtime.bodyTypes(packets.entityTypes());
-            mountRuntime = new MountRuntime<>(this, packets.riderUnavailable());
+            mountRuntime = new MountRuntime<>(this, packets.riderUnavailable(), seatToggles);
             riders = mountRuntime.riders();
+            seats = mountRuntime.seats();
             views.readmit();
             unavailable = null;
             refresh.set(true);
@@ -325,7 +333,17 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     @Override public boolean stopRider(String playerName) {
         if (!available()) throw new IllegalStateException(down());
         owner();
-        return riders.stop(playerName, "stopped by administrator");
+        return riders.stop(playerName, "stopped by administrator") || seats.stop(playerName, "stopped by administrator");
+    }
+    @Override public String seatStatus() {
+        if (!available()) return "Seats unavailable: " + down();
+        owner();
+        return mountRuntime.seatStatus();
+    }
+    @Override public boolean seatToggle(UUID player, Optional<Boolean> on) {
+        boolean now = seatToggles.set(player, on.orElse(null));
+        if (!now) onMain(() -> host.player(player).ifPresent((P online) -> seats.playerLeaving(online, "sitting-turned-off")), (String ignored) -> {});
+        return now;
     }
     @Override public Optional<String> selection(UUID viewer) {
         if (!available()) return Optional.empty();
@@ -458,7 +476,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         String world = world(destination.world());
         if (binding.isEmpty() || !binding.get().state().snapshot().active() || world == null || !host.worldLoaded(world)) return false;
         UUID uuid = binding.get().state().snapshot().npcId();
-        if (mountRuntime.vehicleOf(id) != null || riders.riderOf(uuid) != null || mountRuntime.carries(id)) return false;
+        Value located = value(id);
+        if (located == null || mountRuntime.rides(located) || riders.riderOf(uuid) != null || mountRuntime.carries(id)) return false;
         int chunkX = Math.floorDiv((int) Math.floor(destination.point().x()), 16), chunkZ = Math.floorDiv((int) Math.floor(destination.point().z()), 16);
         if (!host.chunkLoaded(world, chunkX, chunkZ)) return false;
         Hitbox box = binding.get().state().snapshot().bounds();
@@ -482,9 +501,18 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
         if (value == null || !value.state.snapshot().active() || !value.authority.accepts(runtime.npcs().snapshot().get(id)))
             throw new IllegalStateException("The NPC is not active; it becomes active once its chunk loads or a player comes near, then retry");
-        if (mountRuntime.vehicleOf(id) != null) throw new IllegalStateException("NPC is riding " + mountRuntime.vehicleOf(id) + "; it moves with its vehicle");
+        if (mountRuntime.rides(value)) throw new IllegalStateException("NPC is riding " + mountRuntime.ridden(value) + "; it moves with its vehicle");
         if (riders.riderOf(value.spec.definition().uuid()) != null) throw new IllegalStateException("A player is riding this NPC");
         return value;
+    }
+    /** Where a sitting NPC's seat is shown, read from the terrain under its feet again only once it has moved. */
+    art.arcane.animus.core.presentation.RestingPlacement.Seat seat(Value value) {
+        WorldPosition at = value.state.snapshot().position();
+        if (value.seatAt == null || !at.equals(value.seatFeet)) {
+            value.seatFeet = at;
+            value.seatAt = art.arcane.animus.core.presentation.RestingPlacement.seat(at.point(), host.collision(at.world()));
+        }
+        return value.seatAt;
     }
     static double bodyHeight(PersistedNpcService<?, ?>.Value value) { Hitbox box = value.state.snapshot().bounds(); return box.max().y() - box.min().y(); }
     /** Terrain checks use a central hull. A dragon's outstretched wings and tail are presentation, so they may overhang terrain. */
@@ -538,6 +566,20 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         owner();
         Optional<VirtualNpcState.Snapshot> body = index.find(npc);
         return body.isPresent() && !players.ownedNear(body.get().position(), settings.viewDistance(), 1).isEmpty();
+    }
+    /** Owner only. */
+    @Override public java.util.Set<UUID> attached(UUID npc) {
+        if (!available()) return java.util.Set.of();
+        owner();
+        Entry entry = byUuid.get(npc); Value value = entry == null ? null : entry.value;
+        if (value == null) return java.util.Set.of();
+        java.util.Set<UUID> attached = new java.util.HashSet<>();
+        RuntimeHost.RealEntity vehicle = mountRuntime.realVehicle(value);
+        if (vehicle != null) attached.add(vehicle.uuid());
+        for (P seated : seats.stack(npc)) attached.add(host.id(seated));
+        P rider = riders.riderOf(npc);
+        if (rider != null) attached.add(host.id(rider));
+        return java.util.Set.copyOf(attached);
     }
     /** Brings a dead NPC back at the given point. Fires its spawn trigger again. */
     public boolean revive(UUID npc, WorldPosition at) {
@@ -642,9 +684,12 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     void changeLook(Value value, NpcPose pose, int motion) {
         int shown = motion | (value.drawing ? BodyLook.USING_ITEM : 0) | (value.burning ? BodyLook.ON_FIRE : 0);
         if (value.lookPose == pose && value.lookMotion == shown) return;
+        // A seat, a bellyflop and a spin draw the body somewhere else, so viewers are sent its pose again.
+        if (placed(value.lookPose) || placed(pose)) value.poseRevision++;
         value.lookPose = pose; value.lookMotion = shown; value.lookRevision++;
         value.look = BodyLook.of(value.spec.definition().uuid(), value.spec.type(), value.displayName, value.spec.appearance()).moving(pose, shown);
     }
+    private static boolean placed(NpcPose pose) { return pose == NpcPose.SITTING || pose == NpcPose.SLEEPING || pose == NpcPose.BELLYFLOP || pose == NpcPose.SPINNING; }
     public Optional<CombatBinding> combat(String id) {
         if (!available()) return Optional.empty();
         owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
@@ -709,8 +754,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     /** Runtime-only, like appearance. A seat comes or goes with sitting, so viewers then receive a fresh body. */
     @Override public void rest(String id, NpcPose pose) {
         Value value = navigable(id);
-        if (!pose.availableFor(value.spec.type())) throw new IllegalArgumentException("Only player bodies rest " + pose.key());
-        if (pose == NpcPose.SITTING && value.mountReference != null) throw new IllegalArgumentException("A sitting NPC cannot also ride another NPC");
+        if (!pose.availableFor(value.spec.type())) throw new IllegalArgumentException("Only " + pose.bodies() + " rest " + pose.key());
         boolean seated = value.lookPose == NpcPose.SITTING;
         changeLook(value, pose, 0);
         if (seated != (pose == NpcPose.SITTING)) views.represent(value);
@@ -820,6 +864,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             homes.tick();
             if (!available()) return; // Arrival listeners may disable the plugin or retire the entire runtime.
             mountRuntime.syncPassengers();
+            // After every move of this tick, so seated players stand where their NPC ended up.
+            seats.tick();
             mountRuntime.tickDragons();
             views.admitPlayers();
             mark = metrics.lap(Subsystem.PRESENTATION, mark);
@@ -929,6 +975,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private void removeValue(Entry entry) {
         Value old = entry.value;
         riders.vehicleGone(old.spec.definition().uuid(), "definition-changed");
+        seats.npcGone(old.spec.definition().uuid(), "definition-changed");
         entry.value = null;
         mountRuntime.removed(old);
         routes.stopRoute(old, "cancelled by definition replacement/despawn");
@@ -970,7 +1017,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         players.left(id);
         previews.left(id);
         if (!available()) return;
-        riders.playerLeaving(player, "offline");
+        riders.playerLeaving(player, "offline"); seats.playerLeaving(player, "offline");
         views.quit(player); selections.remove(id);
         if (triggers != null) triggers.forget(id);
         views.readmit();
@@ -982,13 +1029,14 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
      */
     public void teleported(P player) {
         if (!available()) return;
-        if (riders.restoring()) return;
-        riders.playerLeaving(player, "teleport");
+        // Rebuilding presentation after the dismount teleport would flicker every body.
+        if (riders.restoring() || seats.restoring()) return;
+        riders.playerLeaving(player, "teleport"); seats.playerLeaving(player, "teleport");
         views.teleported(player);
     }
-    public void changedWorld(P player) { if (available()) { riders.playerLeaving(player, "world-changed"); views.reset(player); } }
-    public void respawned(P player) { if (available()) { riders.playerLeaving(player, "respawn"); views.reset(player); } }
-    public void died(P player) { if (available()) riders.playerLeaving(player, "death"); }
+    public void changedWorld(P player) { if (available()) { riders.playerLeaving(player, "world-changed"); seats.playerLeaving(player, "world-changed"); views.reset(player); } }
+    public void respawned(P player) { if (available()) { riders.playerLeaving(player, "respawn"); seats.playerLeaving(player, "respawn"); views.reset(player); } }
+    public void died(P player) { if (available()) { riders.playerLeaving(player, "death"); seats.playerLeaving(player, "death"); } }
     public void worldLoaded() { if (available()) refresh(); }
     public void worldUnloaded(String world) {
         if (!available()) return;
@@ -1051,6 +1099,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         /** A body that just died stays shown, lying down, until this tick. */
         long dyingUntil;
         final MountReference mountReference; final RideSettings ride; final SeatGeometry seat;
+        /** The definition's own seat module, or null when {@code [seats] defaultEnabled} decides. */
+        final art.arcane.animus.core.control.SeatModule seatModule;
+        /** The seat a sitting body is shown on, and the feet it was read for. */
+        WorldPosition seatFeet; art.arcane.animus.core.presentation.RestingPlacement.Seat seatAt;
         boolean supportQueued; double fallSpeed;
         final LookClose lookClose; long nextLook, nextRandomLook;
         /** The navigation module's pause, and when this NPC's route stands still. */
@@ -1080,6 +1132,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             equipment.putAll(NpcPresentation.equipment(spec, host::copy)); equipmentRevision = equipment.isEmpty() ? 0 : 1;
             mountReference = MountDeclaration.parse(spec.definition().json()).orElse(null);
             ride = RideSettings.parse(spec.definition().json()).orElse(null);
+            seatModule = art.arcane.animus.core.control.SeatModule.parse(spec.definition().json()).orElse(null);
             lookClose = LookClose.parse(spec.definition().json()).orElse(null);
             pause = RoutePause.parse(spec.definition().json()).orElse(null);
             home = HomeSettings.parse(spec.definition().json()).orElse(null);

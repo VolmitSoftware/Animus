@@ -22,6 +22,7 @@ class ModPermissionsTest {
     @Test void onlyTheStatusAndBuildDonationNodesAreOpenToEveryone() {
         assertTrue(ModPermissions.everyone("animus.status"));
         assertTrue(ModPermissions.everyone("animus.build.donate"));
+        assertTrue(ModPermissions.everyone("animus.seat"));
         assertFalse(ModPermissions.everyone("animus.admin"));
         assertFalse(ModPermissions.everyone("animus.ride"));
     }

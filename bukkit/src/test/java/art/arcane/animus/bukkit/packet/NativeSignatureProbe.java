@@ -53,6 +53,13 @@ public final class NativeSignatureProbe {
         }
         method(packets + "ClientboundRotateHeadPacket", "<init>", "(" + friendly + ")V");
         method(packets + "ClientboundSetPassengersPacket", "<init>", "(" + friendly + ")V");
+        method(packets + "ClientboundSetPassengersPacket", "getVehicle", "()I");
+        method(packets + "ClientboundSetPassengersPacket", "getPassengers", "()[I");
+        method(packets + "ClientboundBundlePacket", "<init>", "(Ljava/lang/Iterable;)V");
+        method("net/minecraft/network/protocol/BundlePacket", "subPackets", "()Ljava/lang/Iterable;");
+        method(packets + "ClientboundAddEntityPacket", "getId", "()I");
+        method(entity + "Entity", "getPose", "()L" + entity + "Pose;");
+        method(entity + "Entity", "getDimensions", "(L" + entity + "Pose;)L" + entity + "EntityDimensions;");
         method("net/minecraft/network/FriendlyByteBuf", "<init>", "(Lio/netty/buffer/ByteBuf;)V");
         method("net/minecraft/network/FriendlyByteBuf", "writeVarInt", "(I)" + friendly);
         method("net/minecraft/network/FriendlyByteBuf", "writeVarIntArray", "([I)" + friendly);
@@ -97,7 +104,7 @@ public final class NativeSignatureProbe {
         method("net/minecraft/core/HolderGetter", "getOrThrow", "(Lnet/minecraft/resources/ResourceKey;)Lnet/minecraft/core/Holder$Reference;");
         field(entity + "Entity", "DATA_SHARED_FLAGS_ID", accessor);
         field(entity + "Entity", "DATA_POSE", accessor);
-        for (String pose : List.of("STANDING", "CROUCHING", "SLEEPING", "SWIMMING")) field(entity + "Pose", pose, "L" + entity + "Pose;");
+        for (String pose : List.of("STANDING", "CROUCHING", "SLEEPING", "SWIMMING", "SPIN_ATTACK")) field(entity + "Pose", pose, "L" + entity + "Pose;");
         for (String part : List.of("DATA_CLIENT_FLAGS", "DATA_HEAD_POSE", "DATA_BODY_POSE", "DATA_LEFT_ARM_POSE", "DATA_RIGHT_ARM_POSE", "DATA_LEFT_LEG_POSE", "DATA_RIGHT_LEG_POSE"))
             field(entity + "decoration/ArmorStand", part, accessor);
         method("net/minecraft/core/Rotations", "<init>", "(FFF)V");

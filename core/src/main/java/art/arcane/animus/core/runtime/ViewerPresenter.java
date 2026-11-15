@@ -8,6 +8,8 @@ import art.arcane.animus.core.presentation.BodyLook;
 import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.presentation.BodySkin;
+import art.arcane.animus.core.presentation.RestingPlacement;
+import art.arcane.animus.core.npc.NpcPose;
 import art.arcane.animus.core.presentation.BodyTransport;
 import art.arcane.animus.core.rig.DisplayTransform;
 import art.arcane.animus.core.rig.NpcRig;
@@ -316,8 +318,14 @@ final class ViewerPresenter<P, I> {
     private int nativeIds(PersistedNpcService<P, I>.Value value) {
         return NpcPresentation.nativeIds(service.packets, value.spec, value.displayName, value.ids);
     }
-    /** The body's pose for this viewer: a per-player look-close NPC looks at a viewer in its range who may be looked at. */
+    /**
+     * The body's pose for this viewer, drawn as its resting pose places it (see {@link RestingPlacement}): a per-player
+     * look-close NPC looks at a viewer in its range who may be looked at.
+     */
     private BodyPose pose(PersistedNpcService<P, I>.Value value, Viewer viewer) {
+        return RestingPlacement.shown(value.lookPose, facing(value, viewer), value.attributes.scale(), value.lookPose == NpcPose.SITTING ? service.seat(value) : null);
+    }
+    private BodyPose facing(PersistedNpcService<P, I>.Value value, Viewer viewer) {
         WorldPosition position = value.state.snapshot().position(); Vec3 p = position.point();
         LookClose look = value.lookClose;
         if (value.lookingAtViewers && look != null && look.perPlayer()) {
@@ -696,9 +704,16 @@ final class ViewerPresenter<P, I> {
         NpcRuntime.InteractionListener<P> listener = service.interactions;
         if (listener != null && listener.interacted(viewer.player, target, action == RuntimeHost.Interaction.ATTACK, input.secondaryAction())) return;
         // Only the wand selects, through the listener above; a plain click is play.
-        if (target.equals(body.body.uuid()) && body.value.ride != null && action == RuntimeHost.Interaction.INTERACT && !input.secondaryAction() && "MAIN_HAND".equals(input.hand())) {
+        boolean ownClick = target.equals(body.body.uuid()) && action == RuntimeHost.Interaction.INTERACT && "MAIN_HAND".equals(input.hand());
+        if (ownClick && body.value.ride != null && !input.secondaryAction()) {
             String refusal = service.riders.request(viewer.player, service.mountRuntime.vehicle(body.value));
             if (refusal != null) host.tell(viewer.player, Palette.error("Cannot ride " + body.value.spec.name() + ": " + refusal));
+            return;
+        }
+        // A seat takes only its own click, after every behavior, shop, GUI, quest and ride had theirs.
+        if (ownClick && service.seats.asked(body.value, input.secondaryAction())) {
+            String refusal = service.seats.request(viewer.player, body.value);
+            if (refusal != null && !refusal.isEmpty()) host.tell(viewer.player, Palette.error("Cannot sit on " + body.value.spec.name() + ": " + refusal));
         }
     }
     /** The NPC that receives clicks on {@code value}: its redirect target when that NPC is active and not hidden from the viewer, otherwise itself. */
@@ -785,6 +800,7 @@ final class ViewerPresenter<P, I> {
     private void lost(Viewer viewer) { disconnect(viewer.player); readmit(); }
     void disconnect(P player) {
         if (service.riders != null) service.riders.viewerLost(player);
+        if (service.seats != null) service.seats.viewerLost(player);
         Viewer old = viewers.remove(service.host.id(player));
         if (old != null) { old.guard.close(); viewerOrder.remove(old); showing.forget(old, old.visible.keySet()); old.visible.clear(); old.retiring.clear(); old.retirements.clear(); old.presentationOrder.clear(); old.cosmeticOrder.clear(); }
         if (service.packets != null) service.packets.forget(player);
@@ -827,6 +843,10 @@ final class ViewerPresenter<P, I> {
         int nativeIds, pendingSpawns, bones;
         boolean ready, rosterDirty; volatile boolean failed;
         long rosterRevision = -1;
+        /** Real server entities that carry NPC bodies or seated players for this viewer, with the IDs last sent after their own. */
+        final Map<Integer, List<Integer>> carried = new HashMap<>();
+        /** The UUID of each carrying entity, so a release can name the passengers the server gives it. */
+        final Map<Integer, UUID> carriers = new HashMap<>();
         Viewer(P player) {
             this.player = player; id = service.host.id(player); world = service.host.position(player).world();
             preview = new PreviewBodies<>(service.previews, id);

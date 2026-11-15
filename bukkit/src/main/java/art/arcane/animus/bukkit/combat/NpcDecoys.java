@@ -13,6 +13,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -24,6 +25,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mannequin;
 import org.bukkit.entity.Mob;
+import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Tameable;
 import org.bukkit.persistence.PersistentDataType;
@@ -51,6 +53,8 @@ public final class NpcDecoys implements AutoCloseable {
         boolean allows(Mob mob, VirtualNpcState.Snapshot npc);
         /** Whether this player and the NPC fought each other lately, which turns the player's wolves on the NPC. */
         boolean fought(UUID npc, UUID player);
+        /** The real entities that move with the NPC: the mob it rides and the players on it. */
+        Set<UUID> attached(UUID npc);
     }
 
     /** Monsters that hunt any player in reach, as their target goals do. */
@@ -80,6 +84,8 @@ public final class NpcDecoys implements AutoCloseable {
 
     private final Plugin plugin;
     private final Host host;
+    /** The persistent data key every decoy carries, under this plugin's namespace. */
+    public static final String MARK = "npc_decoy";
     private final NamespacedKey key;
     private final Map<UUID, Decoy> byNpc = new HashMap<>();
     private final Map<UUID, UUID> byEntity = new HashMap<>();
@@ -87,7 +93,7 @@ public final class NpcDecoys implements AutoCloseable {
     public NpcDecoys(Plugin plugin, Host host) {
         this.plugin = Objects.requireNonNull(plugin);
         this.host = Objects.requireNonNull(host);
-        key = new NamespacedKey(plugin, "npc_decoy");
+        key = new NamespacedKey(plugin, MARK);
     }
 
     public int size() { return byNpc.size(); }
@@ -100,6 +106,14 @@ public final class NpcDecoys implements AutoCloseable {
         if (data.has(struck, PersistentDataType.BYTE)) return false;
         data.set(struck, PersistentDataType.BYTE, (byte) 1);
         return true;
+    }
+    /**
+     * The NPC a mob's projectile was meant for when it strikes a player who moves with that NPC: the mob targets the NPC's
+     * decoy, and a seated or riding player's server body stands inside it, at the NPC's feet.
+     */
+    public static Optional<UUID> meantFor(Projectile projectile, Entity struck, Function<Entity, Optional<UUID>> decoyNpc, Function<UUID, Set<UUID>> attached) {
+        if (!(struck instanceof Player) || !(projectile.getShooter() instanceof Mob mob)) return Optional.empty();
+        return decoyNpc.apply(mob.getTarget()).filter((UUID npc) -> attached.apply(npc).contains(struck.getUniqueId()));
     }
     /** The NPC this entity stands in for, if it is a current decoy. */
     public Optional<UUID> npc(Entity entity) { return entity == null ? Optional.empty() : Optional.ofNullable(byEntity.get(entity.getUniqueId())); }
@@ -162,8 +176,12 @@ public final class NpcDecoys implements AutoCloseable {
         }
     }
 
-    /** Whether this mob would fight a player standing where an NPC of this body stands, as its own AI chooses. */
+    /**
+     * Whether this mob would fight a player standing where an NPC of this body stands, as its own AI chooses. A mob never
+     * fights the NPC riding it.
+     */
     boolean fights(Mob mob, UUID npc, String body) {
+        if (host.attached(npc).contains(mob.getUniqueId())) return false;
         String type = mob.getType().getKey().toString();
         if (type.equals("minecraft:spider") || type.equals("minecraft:cave_spider")) return mob.getLocation().getBlock().getLightLevel() < SPIDER_LIGHT;
         if (HUNTERS.contains(type)) return true;

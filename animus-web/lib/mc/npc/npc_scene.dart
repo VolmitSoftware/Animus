@@ -383,7 +383,7 @@ NpcScene _bodyScene(NpcLook look, NpcSkinChoice skin) {
     notes.add('$where is not drawn on ${bodyLabel(look.type).toLowerCase()} bodies.');
   }
 
-  final double feet = (look.isPlayer && look.pose == NpcPose.sitting ? -mcPlayerVehicleAttachment : 0) * scale;
+  final double feet = (avatar && look.pose == NpcPose.sitting ? -mcPlayerVehicleAttachment : 0) * scale;
   return _finish(look, nodes, notes, _drawnPoints(_framePoints(mcMeshRig(rig, pose: body.rig), root), nodes), feet: feet, top: feet + body.heightBlocks * scale);
 }
 

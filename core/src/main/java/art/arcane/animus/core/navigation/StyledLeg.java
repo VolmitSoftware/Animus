@@ -65,14 +65,14 @@ public final class StyledLeg {
     public Look resting(NpcPose declared) { return look(declared, false, false); }
 
     /** The look once the route ends: the definition's own pose, or crawling while the body lies in a gap too low to stand in. */
-    public Look finished(NpcPose declared) { return player && low ? new Look(NpcPose.SWIMMING, 0) : new Look(declared, 0); }
+    public Look finished(NpcPose declared) { return player && low ? new Look(NpcPose.CRAWLING, 0) : new Look(declared, 0); }
 
     Look look(NpcPose declared, boolean moving, boolean airborne) {
         if (!player) {
             int motion = style == MovementStyle.SNEAK ? BodyLook.SNEAKING : style == MovementStyle.SPRINT && moving ? BodyLook.SPRINTING : 0;
             return new Look(declared, motion);
         }
-        if (low || style == MovementStyle.CRAWL) return new Look(NpcPose.SWIMMING, 0);
+        if (low || style == MovementStyle.CRAWL) return new Look(NpcPose.CRAWLING, 0);
         if (inWater && moving && (style == MovementStyle.SWIM || autoSwim)) return new Look(NpcPose.SWIMMING, BodyLook.SPRINTING);
         return switch (style) {
             case SNEAK -> new Look(NpcPose.SNEAKING, 0);

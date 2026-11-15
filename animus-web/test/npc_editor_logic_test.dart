@@ -121,16 +121,21 @@ void main() {
   });
 
   group('appearance', () {
-    test('should offer only standing to bodies other than players', () {
+    test('should offer players every pose, other living bodies standing and sitting, the rest standing', () {
+      expect(npcPoses, <String>['standing', 'sneaking', 'sleeping', 'swimming', 'sitting', 'crawling', 'bellyflop', 'spinning']);
       expect(posesFor('minecraft:player'), npcPoses);
-      expect(posesFor('minecraft:villager'), <String>['standing']);
+      expect(posesFor('minecraft:villager'), <String>['standing', 'sitting']);
+      expect(posesFor('minecraft:mannequin'), <String>['standing', 'sitting']);
+      expect(posesFor('minecraft:ender_dragon'), <String>['standing']);
+      expect(posesFor('minecraft:item_display'), <String>['standing']);
+      expect(posesFor('mymod:drake'), <String>['standing']);
     });
 
     test('should name the fields a horse cannot show after a player becomes one', () {
       final JsonMap converted = <String, Object?>{
         ..._npc('steed', skin: 'a' * 64),
         'type': 'minecraft:horse',
-        'pose': 'sitting',
+        'pose': 'sleeping',
         'armorStand': <String, Object?>{'small': true},
         'llama': <String, Object?>{'chest': true},
         'horse': <String, Object?>{'color': 'black'},
@@ -142,7 +147,7 @@ void main() {
       expect(<String>[for (final MisplacedField field in misplacedBodyFields(converted, 'minecraft:horse')) field.field], <String>['skin', 'pose', 'armorStand', 'llama']);
       expect(<String>[for (final MisplacedField field in misplacedBodyFields(converted, 'minecraft:horse')) field.reason], <String>[
         'Skins show only on player bodies.',
-        'The sitting pose shows only on player bodies.',
+        'The sleeping pose shows only on player bodies.',
         'Only for armor stand bodies.',
         'Only for llama bodies.',
       ]);
@@ -150,6 +155,9 @@ void main() {
       expect(withoutMisplacedBodyFields(converted, 'minecraft:horse')['horse'], <String, Object?>{'color': 'black'});
       expect(misplacedBodyFields(_npc('hero', skin: 'a' * 64), 'minecraft:player'), isEmpty);
       expect(misplacedBodyFields(<String, Object?>{'pose': 'standing'}, 'minecraft:frog'), isEmpty);
+      expect(misplacedBodyFields(<String, Object?>{'pose': 'sitting'}, 'minecraft:horse'), isEmpty, reason: 'a horse sits');
+      expect(<String>[for (final MisplacedField field in misplacedBodyFields(<String, Object?>{'pose': 'sitting'}, 'minecraft:item_display')) field.reason],
+          <String>['The sitting pose shows only on living bodies other than the ender dragon.']);
     });
 
     test('should offer each body only the traits it shows', () {

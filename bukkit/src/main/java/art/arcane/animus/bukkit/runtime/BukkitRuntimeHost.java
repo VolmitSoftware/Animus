@@ -58,10 +58,14 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
     private RideEntry.Rule rideEntry = RideEntry.OPEN;
     private ChunkDelivery chunks;
     private PersistedNpcService<Player, ItemStack> service;
+    /** The packet adapter under any wrapper, for the seats of real entities. */
+    private NativePacketAdapter nativePackets;
+    private final art.arcane.animus.bukkit.integration.gsit.GSitSeats gsit;
 
     private BukkitRuntimeHost(JavaPlugin plugin, String minecraftVersion, NativePacketAdapter.Scheduler replies) {
         this.plugin = Objects.requireNonNull(plugin); this.minecraftVersion = Objects.requireNonNull(minecraftVersion);
         this.replies = Objects.requireNonNull(replies); terrain = new BukkitTerrain(plugin.getServer());
+        gsit = new art.arcane.animus.bukkit.integration.gsit.GSitSeats(plugin.getServer().getPluginManager(), plugin.getLogger()::warning);
     }
 
     /** Starts the main-thread runtime and forwards player lifecycle events to it while it is available. */
@@ -90,7 +94,8 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
     @Override public void warn(String message) { plugin.getLogger().warning(message); }
     @Override public BodyTransport<Player, ItemStack> openTransport() throws ReflectiveOperationException {
         chunks = ChunkDelivery.bind(plugin, minecraftVersion);
-        return ModelEngineIntegration.wrap(plugin, NativePacketAdapter.bind(plugin, minecraftVersion, replies), definitions);
+        nativePackets = NativePacketAdapter.bind(plugin, minecraftVersion, replies);
+        return ModelEngineIntegration.wrap(plugin, nativePackets, definitions);
     }
     @Override public String chunkDelivery() { return chunks == null ? "unbound" : chunks.implementation(); }
 
@@ -145,6 +150,54 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
         return loaded.getBlockAt(x, y, z).getType().isSolid();
     }
     @Override public boolean registeredEntity(UUID uuid) { return plugin.getServer().getEntity(uuid) != null; }
+
+    @Override public String realVehiclesUnavailable() { return nativePackets == null ? "the packet transport is not bound" : null; }
+    @Override public Optional<RealEntity> entity(UUID uuid) {
+        org.bukkit.entity.Entity entity = plugin.getServer().getEntity(uuid);
+        return vehicle(plugin, entity) ? Optional.of(real(entity)) : Optional.empty();
+    }
+    @Override public Optional<RealEntity> nearestEntity(WorldPosition near, String type, double range, java.util.function.Predicate<UUID> free) {
+        World world = terrain.world(near.world());
+        org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.fromString(type);
+        if (world == null || key == null) return Optional.empty();
+        Vec3 point = near.point();
+        if (!world.isChunkLoaded(Math.floorDiv((int) Math.floor(point.x()), 16), Math.floorDiv((int) Math.floor(point.z()), 16))) return Optional.empty();
+        Location center = new Location(world, point.x(), point.y(), point.z());
+        org.bukkit.entity.Entity nearest = null;
+        double best = range * range;
+        for (org.bukkit.entity.Entity candidate : world.getNearbyEntities(center, range, range, range,
+                (org.bukkit.entity.Entity seen) -> seen.getType().getKey().equals(key) && vehicle(plugin, seen) && free.test(seen.getUniqueId()))) {
+            double distance = candidate.getLocation().distanceSquared(center);
+            if (distance <= best) { best = distance; nearest = candidate; }
+        }
+        return nearest == null ? Optional.empty() : Optional.of(real(nearest));
+    }
+    /**
+     * A loaded entity that is not a player; boats, minecarts and armor stands count. GSit's own seats are left alone, so an
+     * NPC never takes the seat a player sits on, and so are combat's decoys, which stand on NPC bodies.
+     */
+    static boolean vehicle(org.bukkit.plugin.Plugin plugin, org.bukkit.entity.Entity entity) {
+        return entity != null && entity.isValid() && !entity.isDead() && !(entity instanceof Player)
+                && entity.getScoreboardTags().stream().noneMatch((String tag) -> tag.startsWith("GSit_"))
+                && !entity.getPersistentDataContainer().has(new org.bukkit.NamespacedKey(plugin, art.arcane.animus.bukkit.combat.NpcDecoys.MARK), org.bukkit.persistence.PersistentDataType.BYTE);
+    }
+    private RealEntity real(org.bukkit.entity.Entity entity) {
+        Location at = entity.getLocation();
+        List<Integer> passengers = entity.getPassengers().stream().map(org.bukkit.entity.Entity::getEntityId).toList();
+        return new RealEntity(entity.getUniqueId(), entity.getEntityId(), entity.getType().getKey().toString(), position(at), at.getYaw(),
+                nativePackets.seatOf(entity, passengers.size()), passengers);
+    }
+    @Override public List<Integer> realPassengers(UUID uuid) {
+        org.bukkit.entity.Entity entity = plugin.getServer().getEntity(uuid);
+        return entity == null ? List.of() : entity.getPassengers().stream().map(org.bukkit.entity.Entity::getEntityId).toList();
+    }
+    @Override public boolean emptyHand(Player player) { return player.getInventory().getItemInMainHand().getType().isAir(); }
+    @Override public String seatRefusal(Player player, WorldPosition npc, double npcHeight, int stacked) {
+        World world = terrain.world(npc.world());
+        if (world == null) return null;
+        return gsit.refusal(player, new Location(world, npc.point().x(), npc.point().y(), npc.point().z()), npcHeight, stacked);
+    }
+    @Override public boolean posed(Player player) { return gsit.posed(player); }
 
     @Override public ItemStack item(NpcItem item, String path, List<String> errors) { return DefinitionItems.stack(item, path, errors); }
     @Override public ItemStack copy(ItemStack item) { return item.clone(); }

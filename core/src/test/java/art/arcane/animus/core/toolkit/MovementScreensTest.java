@@ -147,8 +147,9 @@ class MovementScreensTest extends ToolkitHarness {
     @Test void mountsUseMenuWordsAndDismountAsksOnce() {
         toolkit.mode(alex.id, ToolkitMode.ADVANCED);
         toolkit.open(alex.id, MountScreen::new);
-        assertEquals(Map.of(4, "guard", 10, "Ride another NPC", 11, "Carry another NPC", 12, "Pick a rider", 14, "Riding", 15, "Ride status", 17, "Dismount",
-                45, "Back", 53, "Help"), buttons());
+        assertEquals(Map.ofEntries(Map.entry(4, "guard"), Map.entry(10, "Ride another NPC"), Map.entry(11, "Carry another NPC"), Map.entry(12, "Pick a rider"),
+                Map.entry(13, "Ride a mob"), Map.entry(14, "Riding"), Map.entry(15, "Ride status"), Map.entry(16, "Seat"), Map.entry(17, "Dismount"),
+                Map.entry(45, "Back"), Map.entry(53, "Help")), buttons());
         assertTrue(lore("Ride status").contains("Shows in chat"), lore("Ride status"));
         click("Ride another NPC", Click.LEFT);
         now += Toolkit.REPEAT_NANOS;
@@ -166,5 +167,19 @@ class MovementScreensTest extends ToolkitHarness {
         assertFalse(npcs.find("guard").orElseThrow().json().getAsJsonObject("modules").has("animus:mount"));
         click("Ride status", Click.LEFT);
         assertEquals(List.of("animus ride status"), alex.commands);
+    }
+
+    @Test void aMobMountAndASeatAreSetFromTheMountsScreen() {
+        toolkit.mode(alex.id, ToolkitMode.ADVANCED);
+        toolkit.open(alex.id, MountScreen::new);
+        click("Ride a mob", Click.LEFT);
+        click("Horse", Click.LEFT);
+        drain();
+        com.google.gson.JsonObject mount = npcs.find("guard").orElseThrow().json().getAsJsonObject("modules").getAsJsonObject("animus:mount");
+        assertEquals("{\"entity\":\"minecraft:horse\"}", mount.toString());
+        toolkit.open(alex.id, MountScreen::new);
+        assertTrue(lore("guard").contains("Rides nearest minecraft:horse within 8"), lore("guard"));
+        click("Seat", Click.LEFT);
+        assertTrue(buttons().containsValue("Click"), buttons().toString());
     }
 }

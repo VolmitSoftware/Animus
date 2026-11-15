@@ -76,7 +76,16 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     List<String> validateActivation(NpcDefinition definition);
     String inspect(String id);
     String rideStatus();
+    /** Ends the player's ride or seat; false when they neither ride nor sit on an NPC. */
     boolean stopRider(String playerName);
+    /** Who sits on which NPC, for {@code /animus seat status}. */
+    default String seatStatus() { return "Seats are unavailable on this server"; }
+    /**
+     * Turns sitting on NPCs on or off for one player, or flips it when {@code on} is empty, as GSit's
+     * {@code /gsit playertoggle} does for sitting on players; turning it off gets the player off any NPC. Any thread.
+     * @return whether the player may sit on NPCs now
+     */
+    default boolean seatToggle(UUID player, Optional<Boolean> on) { throw new IllegalStateException("Seats are unavailable on this server"); }
     Optional<String> selection(UUID viewer);
     void select(UUID viewer, String id);
     /**
@@ -101,6 +110,11 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
      * senses nothing. On the NPC's owner, or from any thread where the runtime says so.
      */
     default boolean watched(UUID npc) { return false; }
+    /**
+     * The real entities that move with the NPC: the vehicle it rides and the players riding or seated on it. Its sensed
+     * triggers and the mobs drawn to it leave them out. On the NPC's owner.
+     */
+    default java.util.Set<UUID> attached(UUID npc) { return java.util.Set.of(); }
     /** Also finds a combat NPC that has died while its definition stays spawned; without combat it is {@link #active}. */
     default Optional<ActiveNpc> combatant(UUID npc) { return active(npc); }
     /** Who may still speak, sound and show particles: an active NPC, or a combat NPC whose death routine is running. */

@@ -141,6 +141,23 @@ final class CombatFields {
         }), "Lets players ride the selected NPC. Clicks change a draft that Save writes to every selected NPC.", "05-movement-mounts-riding", "riding-an-npc");
     }
 
+    /** The seat module; its bounds are the ones {@link art.arcane.animus.core.control.SeatModule} checks. */
+    static Settings seat() {
+        List<Field> fields = List.of(
+                plain("enabled", "Enabled", Kind.BOOLEAN, "Players sit on top of this NPC with a click. Off overrides the server's default."),
+                new Field(List.of("click"), "Click", Kind.CHOICE, 0, 0, 0, List.of("right", "sneak-right"), "The click that sits down. A ridable NPC needs sneak-right.", List.of(), 1, ""),
+                plain("permission", "Permission", Kind.TEXT, "The node a player needs. " + art.arcane.animus.core.control.SeatModule.DEFAULT_PERMISSION + " by default."),
+                number("stack", "Stack", Kind.INTEGER, 1, art.arcane.animus.core.control.SeatModule.MAXIMUM_STACK, 1,
+                        "Players stacked on each other. " + art.arcane.animus.core.control.SeatModule.DEFAULT_STACK + " by default.", ""),
+                plain("emptyHand", "Empty hand", Kind.BOOLEAN, "Only a player with nothing in the main hand sits."));
+        return new Settings(art.arcane.animus.core.control.SeatModule.MODULE, "Seat", fields, (JsonObject document, List<String> path) -> Optional.of(switch (path.getFirst()) {
+            case "click" -> new JsonPrimitive(art.arcane.animus.core.control.SeatModule.Click.RIGHT.key());
+            case "permission" -> new JsonPrimitive(art.arcane.animus.core.control.SeatModule.DEFAULT_PERMISSION);
+            case "stack" -> new JsonPrimitive(art.arcane.animus.core.control.SeatModule.DEFAULT_STACK);
+            default -> new JsonPrimitive(true);
+        }), "Lets players sit on the selected NPC, as GSit seats players; sneaking gets off. Save writes to every selected NPC.", "05-movement-mounts-riding", "sitting-on-an-npc");
+    }
+
     private static Field plain(String key, String label, Kind kind, String description) { return new Field(List.of(key), label, kind, 0, 0, 0, List.of(), description, List.of(), 1, ""); }
 
     private static Field number(String key, String label, Kind kind, double minimum, double maximum, double step, String description, String unit) {

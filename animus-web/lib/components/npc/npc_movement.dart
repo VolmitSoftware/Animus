@@ -1,8 +1,8 @@
 /// The Movement tab: whether the NPC stands still, walks a route (points it
 /// walks between) or replays a recording, each offered beside the other
 /// with a line that tells them apart. The route editor is the one route
-/// documents open in, embedded as it is. Advanced adds how it walks, riding
-/// another NPC and turning movement off.
+/// documents open in, embedded as it is. Advanced adds how it walks, what it
+/// rides, players sitting on it and turning movement off.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -10,8 +10,8 @@ import 'package:jaspr/dom.dart' as dom;
 
 import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
-import '../../logic/npc/npc_catalog.dart';
-import '../../logic/npc/npc_tabs.dart';
+import '../../logic/npc/mount_seat.dart';
+import '../../logic/npc/npc_paths.dart' show npcLocalIdOf;
 import '../../logic/npc/route_copy.dart';
 import '../../logic/npc/route_model.dart';
 import '../../logic/recording/recording_facts.dart' show playbackLabels;
@@ -29,8 +29,10 @@ import '../../ui/toggle_choice.dart';
 import '../conversation/conversation_attach.dart' show ConversationCommit;
 import '../gui/gui_fields.dart';
 import '../inspect/inspect_fields.dart';
+import '../quest/quest_fields.dart' show QuestNpcs;
 import 'npc_form.dart';
 import 'npc_parts.dart';
+import 'npc_riding.dart';
 import 'route_editor.dart';
 import 'npc_layout.dart';
 import '../suggest/autocomplete_input.dart';
@@ -107,17 +109,29 @@ class NpcMovementTab extends StatelessWidget {
         AppSection(
           title: 'Riding',
           open: modules.containsKey(mountModuleKey),
-          tip: 'Another NPC this one rides.',
+          tip: 'What this NPC rides: another NPC, or a real horse, boat or minecart near it.',
           docs: Docs.mounts,
           children: <Widget>[
             MountEditor(
               value: modules[mountModuleKey],
-              vehicles: <String>[
-                for (final NpcEntry entry in npcEntries(form.workspaceDocuments))
-                  if (entry.key != form.document.id) entry.localId,
-              ],
+              npcs: QuestNpcs.of(form.workspaceDocuments),
+              self: form.group ? null : npcLocalIdOf(form.document.id),
               diagnostics: form.diagnostics,
               onChanged: (Object? value) => form.putModule(mountModuleKey, value),
+            ),
+          ],
+        ),
+        AppSection(
+          title: 'Seat',
+          open: modules.containsKey(seatModuleKey),
+          tip: 'Players click the NPC to sit on top of it and sneak to get off.',
+          docs: Docs.seats,
+          children: <Widget>[
+            SeatEditor(
+              value: modules[seatModuleKey],
+              riding: ridingOn(modules),
+              diagnostics: form.diagnostics,
+              onChanged: (Object? value) => form.putModule(seatModuleKey, value),
             ),
           ],
         ),
@@ -437,51 +451,6 @@ class _Pause extends StatelessWidget {
           tip: 'No new pause for this long after one starts.',
           problems: diagnosticsAt(diagnostics, childPath(at, 'lockoutTicks')),
           child: NumberInput(digits: 5, id: 'animus-npc-pause-lockout', value: asInt(pause['lockoutTicks']), label: 'Pause lockout ticks', placeholder: '0', onChanged: (num? value) => put('lockoutTicks', value?.toInt())),
-        ),
-    ]);
-  }
-}
-
-/// `animus:mount`: another NPC this one rides.
-class MountEditor extends StatelessWidget {
-  const MountEditor({required this.value, required this.vehicles, required this.onChanged, this.diagnostics = const <Diagnostic>[], super.key});
-
-  /// The module object, or null.
-  final Object? value;
-
-  /// Local ids of the other NPCs, which this one may ride.
-  final List<String> vehicles;
-  final void Function(Object? value) onChanged;
-  final List<Diagnostic> diagnostics;
-
-  @override
-  Widget build(BuildContext context) {
-    const String vehicleId = 'animus-npc-vehicle';
-    final JsonMap module = asMap(value);
-    final String? vehicle = asString(module['vehicle']);
-    final String path = childPath(r'$.modules', mountModuleKey);
-    return dom.div(classes: 'animus-npc-mount', <Widget>[
-      Field(
-        label: 'Rides',
-        forId: vehicleId,
-        problems: <Diagnostic>[
-          ...diagnosticsAt(diagnostics, path, nested: true),
-          if (vehicle != null && !vehicles.contains(vehicle)) Diagnostic(DiagnosticSeverity.warning, path, 'Not an NPC in this workspace; the server may have it.'),
-        ],
-        child: AnimusSelect.values(
-          id: vehicleId,
-          value: vehicle,
-          values: <String>[...vehicles, if (vehicle != null && !vehicles.contains(vehicle)) vehicle],
-          allowNone: true,
-          noneLabel: 'Nothing',
-          onChanged: (String? id) => onChanged(id == null ? null : <String, Object?>{...module, 'enabled': module['enabled'] ?? true, 'vehicle': id}),
-        ),
-      ),
-      if (value != null)
-        Field(
-          label: 'Riding now',
-          tip: 'Off keeps the setting but the NPC walks on its own.',
-          child: ArcaneToggleSwitch(value: module['enabled'] != false, ariaLabel: 'Riding now', onChanged: (bool on) => onChanged(<String, Object?>{...module, 'enabled': on}), size: ComponentSize.sm),
         ),
     ]);
   }

@@ -381,10 +381,9 @@ final class CitizensPresentation {
             notes.put(sneakPath, new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, "sneaking shows only on player bodies"));
             sneaking = false;
         }
-        if (sitting && !player) { warnings.add("/traits/sittrait: sitting shows only on player bodies; kept for review"); sitting = false; }
-        if (sitting && object(traits.get("mounttrait")) != null && object(traits.get("mounttrait")).has("mountedon")) {
-            warnings.add("/traits/sittrait: a mounted NPC rides instead of sitting; kept for review"); sitting = false;
-        }
+        // Citizens sits a body other than a player on a hidden armor stand, as Animus seats every living body; a mounted NPC
+        // keeps the pose too, and sits on its own seat whenever it has no vehicle.
+        if (sitting && !art.arcane.animus.core.npc.NpcPose.SITTING.availableFor(type)) { warnings.add("/traits/sittrait: sitting shows only on living bodies; kept for review"); sitting = false; }
         if (sneaking && sitting) notes.put(sneakPath, new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, "the NPC sits, which is shown instead of sneaking"));
         if (sitting) {
             fields.addProperty("pose", "sitting");
@@ -417,11 +416,13 @@ final class CitizensPresentation {
             case "sleeping" -> "sleeping";
             case "swimming" -> "swimming";
             case "sitting" -> "sitting";
+            case "spin_attack" -> "spinning";
             case "standing" -> "standing";
             default -> null;
         };
         if (shown == null) { notes.put(path, new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, "pose " + pose + " has no Animus equivalent")); return; }
         if (shown.equals("standing")) { converted.add(path); return; }
+        // A vanilla pose other than standing shows only on a player; a mob's own sitting comes from its body settings.
         if (!player) { notes.put(path, new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, "poses other than standing show only on player bodies")); return; }
         if (fields.has("pose")) { notes.put(path, new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, "another trait already sets the pose")); return; }
         fields.addProperty("pose", shown);

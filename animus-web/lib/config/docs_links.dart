@@ -41,7 +41,9 @@ abstract final class Docs {
   static const DocLink routes = DocLink('05-movement-mounts-riding', 'routes');
   static const DocLink lookClose = DocLink('05-movement-mounts-riding', 'looking-at-nearby-players');
   static const DocLink mounts = DocLink('05-movement-mounts-riding', 'mounted-npcs');
+  static const DocLink mountEntities = DocLink('05-movement-mounts-riding', 'riding-real-entities');
   static const DocLink riding = DocLink('05-movement-mounts-riding', 'riding-an-npc');
+  static const DocLink seats = DocLink('05-movement-mounts-riding', 'sitting-on-an-npc');
 
   static const DocLink rigs = DocLink('06-rigs-animations', 'rig-documents');
   static const DocLink animations = DocLink('06-rigs-animations', 'animation-documents');

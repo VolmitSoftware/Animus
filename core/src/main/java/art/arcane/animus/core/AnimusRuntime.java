@@ -327,6 +327,7 @@ public final class AnimusRuntime implements AutoCloseable {
     public synchronized art.arcane.animus.core.config.RecordingSettings recordingSettings() { return settings().recordings(); }
     public synchronized art.arcane.animus.core.config.PlaceholderSettings placeholderSettings() { return settings().placeholders(); }
     public synchronized art.arcane.animus.core.config.SkinSettings skinSettings() { return settings().skins(); }
+    public synchronized art.arcane.animus.core.config.SeatSettings seatSettings() { return settings().seats(); }
 
     /**
      * Replaces the running settings after a hotload of {@code config.toml}: the file lane takes its new limits here, then

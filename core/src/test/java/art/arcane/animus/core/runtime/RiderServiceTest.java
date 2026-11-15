@@ -83,7 +83,7 @@ class RiderServiceTest {
     }
 
     @Test void everyEndRepublishesTheBodyAfterTheDetachAndFreesItForTheNextRide() {
-        RiderService<Rider, Object> riders = new RiderService<>(host, presentation, null);
+        RiderService<Rider, Object> riders = new RiderService<>(host, presentation, null, (java.util.UUID npc) -> false);
         Horse horse = new Horse();
         assertNull(riders.request(rider, horse));
         assertTrue(riders.riding(rider));
@@ -110,7 +110,7 @@ class RiderServiceTest {
     @Test void aStepIntoABlockTheRiderMayNotEnterEndsTheRide() {
         List<WorldPosition> asked = new ArrayList<>();
         entry = (UUID player, WorldPosition to) -> { asked.add(to); return false; };
-        RiderService<Rider, Object> riders = new RiderService<>(host, presentation, null);
+        RiderService<Rider, Object> riders = new RiderService<>(host, presentation, null, (java.util.UUID npc) -> false);
         Horse horse = new Horse();
         assertNull(riders.request(rider, horse));
         Vec3 start = horse.snapshot().position().point();

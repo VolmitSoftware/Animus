@@ -51,7 +51,7 @@ final class LookTurns<P, I> {
     private boolean look(PersistedNpcService<P, I>.Value value) {
         if (!service.valueCurrent(value) || !value.state.snapshot().active()) return false;
         LookClose look = value.lookClose;
-        if (service.mountRuntime.vehicleOf(value.spec.definition().id()) != null || service.riders.riderOf(value.spec.definition().uuid()) != null) return false;
+        if (service.mountRuntime.rides(value) || service.riders.riderOf(value.spec.definition().uuid()) != null) return false;
         // A paused route stands still, so the NPC looks around as an idle one does.
         if (!look.whileNavigating() && !value.pauseClock.paused(service.tickNumber)
                 && (value.routeTask != null || (value.route != null && (value.route.plan != null || value.route.execution != null)))) return false;

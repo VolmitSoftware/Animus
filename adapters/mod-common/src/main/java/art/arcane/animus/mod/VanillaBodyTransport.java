@@ -336,10 +336,18 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         int realRiderId = realRider == null ? BodyRules.NO_REAL_RIDER : realRider.getId();
         int[] roster = BodyRules.withText(BodyRules.passengerRoster(passengerIds, realRiderId), vehicle.displayIds);
         if (!connected(session)) return unwatched(CONNECTION_CLOSED);
+        List<Integer> before = session.passengers.passengers(vehicle.entityId);
         try { session.passengers.replace(vehicle.entityId, passengerIds); }
         catch (IllegalArgumentException invalid) { return CompletableFuture.failedFuture(invalid); }
         session.rosters.put(vehicle.entityId, roster);
-        return send(session, vehicle, PacketKind.PASSENGERS, List.of(passengersPacket(vehicle.entityId, withBones(roster, session.bones.get(vehicle.entityId)))));
+        List<Packet<ClientGamePacketListener>> packets = new ArrayList<>(2);
+        packets.add(passengersPacket(vehicle.entityId, withBones(roster, session.bones.get(vehicle.entityId))));
+        // A sitting body that leaves its vehicle sits on its own seat again.
+        for (int id : before) {
+            Body left = passengerIds.contains(id) ? null : session.visible.get(id);
+            if (left != null && left.entityId == id && left.seatId >= 0) packets.add(passengersPacket(left.seatId, new int[]{id}));
+        }
+        return send(session, vehicle, PacketKind.PASSENGERS, packets);
     }
 
     @Override public CompletionStage<Void> dragonPhase(ServerPlayer viewer, BodyTransport.Body presented, int phase) {
@@ -417,7 +425,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         List<SynchedEntityData.DataValue<?>> values = new ArrayList<>(List.of(SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), look.sharedFlags(invisible)),
                 SynchedEntityData.DataValue.create(EntityDataAccess.animus$pose(), pose)));
         if (art.arcane.animus.core.presentation.VariantWire.living(body.typeKey))
-            values.add(SynchedEntityData.DataValue.create(LivingDataAccess.animus$livingFlags(), BodyLook.livingFlags(look.usingItem())));
+            values.add(SynchedEntityData.DataValue.create(LivingDataAccess.animus$livingFlags(), look.livingFlags()));
         return send(session, body, PacketKind.METADATA, List.of(new ClientboundSetEntityDataPacket(body.entityId, values)));
     }
 
@@ -749,7 +757,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
         byte flags = look.sharedFlags(invisible);
         if (flags != 0) values.add(SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), flags));
-        if (look.usingItem() && art.arcane.animus.core.presentation.VariantWire.living(typeKey)) values.add(SynchedEntityData.DataValue.create(LivingDataAccess.animus$livingFlags(), BodyLook.livingFlags(true)));
+        if (look.livingFlags() != 0 && art.arcane.animus.core.presentation.VariantWire.living(typeKey)) values.add(SynchedEntityData.DataValue.create(LivingDataAccess.animus$livingFlags(), look.livingFlags()));
         if (look.traits().baby()) BodyRules.babyFlag(typeKey).ifPresent((BodyRules.BabyFlag flag) -> values.add(SynchedEntityData.DataValue.create(switch (flag) {
             case AGEABLE -> AgeableDataAccess.animus$baby();
             case ZOMBIE -> ZombieDataAccess.animus$baby();

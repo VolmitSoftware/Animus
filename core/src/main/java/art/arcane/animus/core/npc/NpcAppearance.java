@@ -132,8 +132,8 @@ public record NpcAppearance(Map<EquipmentSlot, NpcItem> equipment, List<String> 
         if (definition.has("pose")) {
             JsonElement value = definition.get("pose");
             Optional<NpcPose> parsed = value.isJsonPrimitive() && value.getAsJsonPrimitive().isString() ? NpcPose.fromKey(value.getAsString()) : Optional.empty();
-            if (parsed.isEmpty()) errors.add("$.pose: expected standing, sneaking, sleeping, swimming or sitting");
-            else if (!parsed.get().availableFor(type)) errors.add("$.pose: " + parsed.get().key() + " is available only for minecraft:player bodies");
+            if (parsed.isEmpty()) errors.add("$.pose: expected " + NpcPose.keys());
+            else if (!parsed.get().availableFor(type)) errors.add("$.pose: " + parsed.get().key() + " is available only for " + parsed.get().bodies());
             else pose = parsed.get();
         }
         Optional<ArmorStandLook> armorStand = Optional.empty();

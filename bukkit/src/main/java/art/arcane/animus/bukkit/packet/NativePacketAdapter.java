@@ -325,17 +325,65 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         submit(session, result, authoritative, () -> {
             List<Integer> passengerIds = requested.stream().map(Body::entityId).toList();
             int[] roster = BodyRules.withText(BodyRules.passengerRoster(passengerIds, realRiderId), vehicle.displayIds);
-            Object packet;
+            List<Object> packets = new ArrayList<>(2);
             synchronized (session) {
                 for (Presentation presentation : presentations)
                     if (session.visible.get(presentation.body.entityId) != presentation) throw new CancellationException("Mount presentation retired");
+                List<Integer> before = session.passengers.passengers(vehicle.entityId);
                 session.passengers.replace(vehicle.entityId, passengerIds);
                 session.rosters.put(vehicle.entityId, roster);
-                packet = nativeApi.passengers(vehicle.entityId, withBones(roster, session.bones.get(vehicle.entityId)));
+                packets.add(nativeApi.passengers(vehicle.entityId, withBones(roster, session.bones.get(vehicle.entityId))));
+                reseat(session, before, passengerIds, packets);
             }
-            write(session, vehicle, PacketKind.PASSENGERS, List.of(packet)).whenComplete((nothing, failure) -> complete(result, failure));
+            write(session, vehicle, PacketKind.PASSENGERS, packets).whenComplete((nothing, failure) -> complete(result, failure));
         });
         return result;
+    }
+
+    @Override public boolean carryAvailable() { return nativeApi.carried != null; }
+    /** The server passenger lists this viewer receives for {@code entity} keep the extras; see {@link CarriedPackets}. */
+    @Override public CompletionStage<Void> carry(Player viewer, int entity, List<Integer> own, List<? extends BodyTransport.Body> passengers, List<Integer> riders) {
+        if (nativeApi.carried == null) return failed("Real entities cannot carry NPCs on this server build");
+        List<Body> requested = passengers.stream().map(this::checkBody).toList();
+        Session session = sessions.get(viewer.getUniqueId());
+        if (session == null || session.viewer != viewer || !current(session)) return unwatched("Viewer is not watched");
+        List<Presentation> presentations = new ArrayList<>();
+        synchronized (session) {
+            if (session.visible.containsKey(entity)) return failed("A virtual body is not a real entity");
+            for (Body passenger : requested) {
+                Presentation rider = session.visible.get(passenger.entityId);
+                if (rider == null || rider.body != passenger) return failed("Passenger is not visible to this viewer");
+                presentations.add(rider);
+            }
+        }
+        List<Integer> ownIds = List.copyOf(own), riderIds = List.copyOf(riders);
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        submit(session, result, true, () -> {
+            List<Integer> bodyIds = requested.stream().map(Body::entityId).toList();
+            int[] extras = new int[bodyIds.size() + riderIds.size()];
+            for (int i = 0; i < bodyIds.size(); i++) extras[i] = bodyIds.get(i);
+            for (int i = 0; i < riderIds.size(); i++) extras[bodyIds.size() + i] = riderIds.get(i);
+            List<Object> packets = new ArrayList<>(2);
+            synchronized (session) {
+                for (Presentation presentation : presentations)
+                    if (session.visible.get(presentation.body.entityId) != presentation) throw new CancellationException("Mount presentation retired");
+                List<Integer> before = session.passengers.passengers(entity);
+                session.passengers.replace(entity, bodyIds);
+                if (extras.length == 0) session.carried.remove(entity); else session.carried.put(entity, extras);
+                packets.add(nativeApi.passengers(entity, CarriedPackets.union(ownIds.stream().mapToInt(Integer::intValue).toArray(), extras)));
+                reseat(session, before, bodyIds, packets);
+            }
+            write(session, null, PacketKind.PASSENGERS, packets).whenComplete((nothing, failure) -> complete(result, failure));
+        });
+        return result;
+    }
+    /** Bodies that left a vehicle sit on their own seat again. Session lock held. */
+    private void reseat(Session session, List<Integer> before, List<Integer> after, List<Object> packets) throws ReflectiveOperationException {
+        for (int id : before) {
+            if (after.contains(id)) continue;
+            Presentation left = session.visible.get(id);
+            if (left != null && left.body.entityId == id && left.body.seatId >= 0) packets.add(nativeApi.passengers(left.body.seatId, new int[]{id}));
+        }
     }
 
     /** Sets the dragon's synced phase. Clients derive its wing motion and head pose from this. */
@@ -634,6 +682,15 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         catch (ReflectiveOperationException failure) { throw new IllegalStateException("Cannot position rider: " + failure.getClass().getSimpleName(), failure); }
     }
 
+    /**
+     * Where a real server entity carries its passenger at {@code index}, at its current size and pose, and where a body of
+     * its kind would attach as a passenger, in body-local coordinates. Owner thread of the entity.
+     */
+    public SeatGeometry seatOf(org.bukkit.entity.Entity entity, int index) {
+        try { return nativeApi.seatOf(entity, index); }
+        catch (ReflectiveOperationException failure) { throw new IllegalStateException("Cannot read the seat of " + entity.getType() + ": " + failure.getClass().getSimpleName(), failure); }
+    }
+
     /** Despawn is authoritative: it bypasses the cosmetic/normal outgoing operation admission limit. */
     @Override public CompletionStage<Void> despawn(Player viewer, BodyTransport.Body presented) {
         Body body = checkBody(presented);
@@ -759,7 +816,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             session.spawning.values().forEach(value -> bodies.add(value.body));
             for (Bones attached : session.bones.values()) if (attached.body != null) bodies.add(attached.body);
             retiredBones.putAll(session.bones);
-            session.visible.clear(); session.spawning.clear(); session.passengers.clear(); session.bones.clear(); session.rosters.clear();
+            session.visible.clear(); session.spawning.clear(); session.passengers.clear(); session.bones.clear(); session.rosters.clear(); session.carried.clear();
         }
         session.ready.completeExceptionally(new BodyTransport.ViewerUnwatched("Viewer session retired"));
         try {
@@ -774,9 +831,21 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         } catch (RejectedExecutionException ignored) { /* Closed channels have already discarded their client presentation. */ }
     }
 
-    private final class InputHandler extends ChannelInboundHandlerAdapter {
+    private final class InputHandler extends ChannelDuplexHandler {
         private final Session session;
         private InputHandler(Session session) { this.session = session; }
+        /** Passenger lists the server sends for an entity that carries NPCs or seated players for this viewer keep them. */
+        @Override public void write(ChannelHandlerContext context, Object message, ChannelPromise promise) throws Exception {
+            CarriedPackets carried = nativeApi.carried;
+            if (carried == null || session.carried.isEmpty() || !current(session)) { context.write(message, promise); return; }
+            Object rewritten;
+            try { rewritten = carried.rewrite(message, session.carried::get); }
+            catch (ReflectiveOperationException | RuntimeException failure) {
+                reportInputFailure(session, new IllegalStateException("Cannot keep carried passengers", failure));
+                rewritten = message;
+            }
+            context.write(rewritten, promise);
+        }
         @Override public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
             ControlSubscription control = session.control.get();
             if (control != null && current(session) && control.inbox.active()) {
@@ -839,6 +908,8 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         /** Bones riding each vehicle, and the last roster sent without them; every roster write appends the bones. */
         private final ConcurrentMap<Integer, Bones> bones = new ConcurrentHashMap<>();
         private final ConcurrentMap<Integer, int[]> rosters = new ConcurrentHashMap<>();
+        /** Real server entities that carry bodies or players for this viewer, and the IDs added after their own passengers. */
+        private final ConcurrentMap<Integer, int[]> carried = new ConcurrentHashMap<>();
         private final AtomicReference<ControlSubscription> control = new AtomicReference<>();
         private final Load traffic;
         private long lastInputNanos = Long.MIN_VALUE / 2; // Accessed exclusively by the channel event loop.
@@ -878,6 +949,8 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private final NativeBones bones;
         private final NativeAttributes attributes;
         private final art.arcane.animus.core.presentation.BodyVariantValues variants;
+        /** Keeps carried passengers on the server's own passenger packets; null when this server's packets cannot be read. */
+        private final CarriedPackets carried;
         private final Object textDisplayType, seatType;
         private final NativeEntityIds ids;
         private final Object entityRegistry, zeroVelocity, survival, playerSkinAccessor;
@@ -892,7 +965,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private final Method multimapCreate, multimapPut, dataValueCreate;
         private final Field playerInfoEntries;
         private final Class<? extends Enum> playerInfoAction;
-        private final Method craftPlayerHandle;
+        private final Method craftPlayerHandle, craftEntityHandle, entityDimensions, entityPose;
         private final Field playerConnection, networkConnection, channel;
         private final Class<?> attackPacket, interactPacket, controlPacket, clientTickEndPacket;
         private final Method attackId, interactId, interactHand, interactSecondary;
@@ -928,6 +1001,10 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             writeVarIntArray = friendly.getMethod("writeVarIntArray", int[].class);
             rotateHead = decodedPacketConstructor("net.minecraft.network.protocol.game.ClientboundRotateHeadPacket", friendly);
             setPassengers = decodedPacketConstructor("net.minecraft.network.protocol.game.ClientboundSetPassengersPacket", friendly);
+            CarriedPackets boundCarried = null;
+            try { boundCarried = new CarriedPackets(this::passengers); }
+            catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPCs on real entities unavailable: " + missing.getClass().getSimpleName()); }
+            carried = boundCarried;
             animate = decodedPacketConstructor("net.minecraft.network.protocol.game.ClientboundAnimatePacket", friendly);
             Constructor<?> boundEvent = null, boundDamageEvent = null;
             Object boundDamage = null, boundHealth = null;
@@ -990,6 +1067,9 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             String craftPackage = plugin.getServer().getClass().getPackageName();
             if (!craftPackage.startsWith("org.bukkit.craftbukkit")) throw new ClassNotFoundException("CraftBukkit implementation unavailable");
             craftPlayerHandle = type(craftPackage + ".entity.CraftPlayer").getMethod("getHandle");
+            craftEntityHandle = type(craftPackage + ".entity.CraftEntity").getMethod("getHandle");
+            entityPose = type("net.minecraft.world.entity.Entity").getMethod("getPose");
+            entityDimensions = type("net.minecraft.world.entity.Entity").getMethod("getDimensions", type("net.minecraft.world.entity.Pose"));
             EquipmentBindings boundEquipment = null;
             try { boundEquipment = new EquipmentBindings(craftPackage); }
             catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC equipment unavailable: " + missing.getClass().getSimpleName()); }
@@ -1066,6 +1146,12 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                 missingRider = "real riders are unavailable on this server build: " + unavailable.getClass().getSimpleName() + ": " + unavailable.getMessage();
             }
             riderUnavailable = missingRider;
+        }
+        private SeatGeometry seatOf(org.bukkit.entity.Entity entity, int index) throws ReflectiveOperationException {
+            Object handle = craftEntityHandle.invoke(entity);
+            Object points = dimensionAttachments.invoke(entityDimensions.invoke(handle, entityPose.invoke(handle)));
+            Object seat = attachmentPoint.invoke(points, passengerAttachment, index, 0f), attached = attachmentPoint.invoke(points, vehicleAttachment, 0, 0f);
+            return new SeatGeometry((double) vectorX.invoke(seat), (double) vectorY.invoke(seat), (double) vectorZ.invoke(seat), (double) vectorY.invoke(attached));
         }
         private SeatGeometry seat(Object type) throws ReflectiveOperationException {
             Object points = dimensionAttachments.invoke(typeDimensions.invoke(type));

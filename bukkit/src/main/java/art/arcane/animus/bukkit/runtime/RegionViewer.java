@@ -763,8 +763,12 @@ final class RegionViewer {
     private String shownName(RegionActor.Publication now) {
         return now.mirror() != null && now.mirror().name() ? player.getName() : now.name();
     }
-    /** The body's pose for this viewer: a per-player look-close NPC looks at a viewer in its range who may be looked at. */
+    /** The body's pose for this viewer, drawn as its resting pose places it; a per-player look-close NPC looks at a viewer in its range. */
     private BodyPose pose(RegionActor.Publication now) {
+        art.arcane.animus.core.npc.NpcPose shown = now.look() != null ? now.look().pose() : now.spec().appearance().pose();
+        return art.arcane.animus.core.presentation.RestingPlacement.shown(shown, facing(now), now.attributes().scale(), now.seat());
+    }
+    private BodyPose facing(RegionActor.Publication now) {
         WorldPosition position = now.snapshot().position(); Vec3 point = position.point();
         LookClose look = now.lookClose();
         if (now.lookingAtViewers() && look != null && look.perPlayer()) {

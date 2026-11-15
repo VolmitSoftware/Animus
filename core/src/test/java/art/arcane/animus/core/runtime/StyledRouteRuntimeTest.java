@@ -101,7 +101,7 @@ class StyledRouteRuntimeTest {
         harness.terrain = (int x, int y, int z) -> y < 64 || (x >= 6 && x <= 8 && (y >= 65 || z != 2)) ? Cell.SOLID : Cell.AIR;
         until(harness, 3000, (ViewerWatchRaceTest.Harness h) -> h.service.navigationStatus(NPC).contains(": arrived;"), "arrived through the gap");
         List<BodyLook> looks = harness.transport.looks;
-        assertTrue(looks.stream().anyMatch((BodyLook look) -> look.pose() == NpcPose.SWIMMING), looks.toString());
+        assertTrue(looks.stream().anyMatch((BodyLook look) -> look.pose() == NpcPose.CRAWLING && look.sharedFlags(false) == 0), looks.toString());
         assertEquals(NpcPose.STANDING, looks.getLast().pose(), "standing again in the open");
     }
 

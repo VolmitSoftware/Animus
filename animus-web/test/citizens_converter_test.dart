@@ -152,6 +152,43 @@ npc:
       expect((report['fields']! as Map<String, Object?>)['/metadata/protected'], 'CONVERTED');
     });
 
+    test('every living body keeps its Citizens seat, mounted or not, and a riptide pose spins', () {
+      String npc(String id, String type, String traits) => '''
+  '$id':
+    name: N$id
+    uuid: 0a1b2c3d-0000-4000-8000-00000000091$id
+    traits:
+      type: $type
+      location: {world: world, x: 0, y: 64, z: 0}
+      $traits
+''';
+      final CitizensPreview preview = convertCitizens(
+        'npc:\n'
+        '${npc('0', 'PLAYER', 'sittrait: {sittingAt: {world: world, x: 1, y: 2, z: 3}}')}'
+        '${npc('1', 'PLAYER', 'sittrait: {sittingAt: {x: 1}}\n      mounttrait: {mountedon: 0a1b2c3d-0000-4000-8000-000000000910}')}'
+        '${npc('2', 'VILLAGER', 'sittrait: {sittingAt: {world: world, x: 1, y: 2, z: 3}}')}'
+        '${npc('3', 'ITEM_FRAME', 'sittrait: {sittingAt: {x: 1}}')}'
+        '${npc('4', 'PLAYER', 'entitypose: {pose: SPIN_ATTACK}')}'
+        '${npc('5', 'WOLF', 'entitypose: {pose: SITTING}')}',
+        const <String, String>{},
+      );
+      Object? pose(String id) {
+        final String path = preview.files.keys.firstWhere((String file) => file.endsWith('/citizens-$id.json') && file.startsWith('npcs/'));
+        return (jsonDecode(preview.files[path]!) as Map<String, Object?>)['pose'];
+      }
+
+      List<Object?> warnings(String id) => (jsonDecode(preview.files['reports/$id.json']!) as Map<String, Object?>)['presentationWarnings']! as List<Object?>;
+      expect(pose('0'), 'sitting');
+      expect(pose('1'), 'sitting', reason: 'a mounted NPC keeps its sitting pose for when it has no vehicle');
+      expect(warnings('1'), isEmpty);
+      expect(pose('2'), 'sitting', reason: 'a villager sits on a seat as Citizens sits it on an armor stand');
+      expect(warnings('2'), isEmpty);
+      expect(pose('3'), isNull);
+      expect(warnings('3'), <Object?>['/traits/sittrait: sitting shows only on living bodies; kept for review']);
+      expect(pose('4'), 'spinning');
+      expect(pose('5'), isNull, reason: "a mob's own sitting comes from its body settings");
+    });
+
     test('world mappings must be nonblank', () {
       expect(() => convertCitizens('npc: {}\n', const <String, String>{'a': ' '}), throwsA(isA<CitizensImportException>()));
     });

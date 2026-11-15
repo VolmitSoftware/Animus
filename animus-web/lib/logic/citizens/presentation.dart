@@ -4,6 +4,7 @@ library;
 import '../../mc/npc/mc_text.dart';
 import '../../mc/npc/npc_look.dart' show NpcSlot, mcDrawnSlots;
 import '../gui/gui_text.dart';
+import '../npc/npc_appearance.dart' show poseAvailable;
 import 'citizens_items.dart';
 import 'field_notes.dart';
 import 'java_json.dart';
@@ -528,13 +529,10 @@ class _Presentation {
       notes[sneakPath] = const FieldNote(unsupportedPreserved, 'sneaking shows only on player bodies');
       sneaking = false;
     }
-    if (sitting && !player) {
-      warnings.add('/traits/sittrait: sitting shows only on player bodies; kept for review');
-      sitting = false;
-    }
-    final JObject? mount = _object(traits.get('mounttrait'));
-    if (sitting && mount != null && mount.has('mountedon')) {
-      warnings.add('/traits/sittrait: a mounted NPC rides instead of sitting; kept for review');
+    // Citizens sits a body other than a player on a hidden armor stand, as Animus seats every living body; a mounted NPC
+    // keeps the pose too, and sits on its own seat whenever it has no vehicle.
+    if (sitting && !poseAvailable('sitting', type)) {
+      warnings.add('/traits/sittrait: sitting shows only on living bodies; kept for review');
       sitting = false;
     }
     if (sneaking && sitting) notes[sneakPath!] = const FieldNote(unsupportedPreserved, 'the NPC sits, which is shown instead of sneaking');
@@ -576,6 +574,7 @@ class _Presentation {
       'sleeping' => 'sleeping',
       'swimming' => 'swimming',
       'sitting' => 'sitting',
+      'spin_attack' => 'spinning',
       'standing' => 'standing',
       _ => null,
     };
@@ -587,6 +586,7 @@ class _Presentation {
       converted.add(path);
       return;
     }
+    // A vanilla pose other than standing shows only on a player; a mob's own sitting comes from its body settings.
     if (!player) {
       notes[path] = const FieldNote(unsupportedPreserved, 'poses other than standing show only on player bodies');
       return;

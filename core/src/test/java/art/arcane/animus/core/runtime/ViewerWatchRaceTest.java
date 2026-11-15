@@ -148,6 +148,12 @@ class ViewerWatchRaceTest {
         /** What {@code interactionAllowed} answers; it runs where the platform's interaction event and its listeners run. */
         java.util.function.BiPredicate<UUID, RuntimeHost.Interaction> allowed = (UUID npc, RuntimeHost.Interaction action) -> true;
         PersistedNpcService<Player, Object> service;
+        /** Permission nodes every player holds, beyond {@code animus.admin} for {@link #admins}. */
+        final Set<String> nodes = new java.util.HashSet<>();
+        /** Real server entities by UUID, for NPCs that ride them. */
+        final Map<UUID, RuntimeHost.RealEntity> entities = new java.util.LinkedHashMap<>();
+        /** Teleports the host was asked for, as "name x y z". */
+        final List<String> teleports = new ArrayList<>();
         /** Whether the calling thread counts as the owner; while false, {@code execute} queues work in {@link #scheduled}. */
         volatile boolean ownerThread = true;
         final List<Runnable> scheduled = new ArrayList<>();
@@ -212,8 +218,26 @@ class ViewerWatchRaceTest {
         /** Looks sent with {@link #look}, in order. */
         final List<art.arcane.animus.core.presentation.BodyLook> looks = new ArrayList<>();
         private void requireWatch() { if (!watched) throw new BodyTransport.ViewerUnwatched("Viewer must be watched before sending body packets"); }
-        @Override public Set<String> entityTypes() { return Set.of("minecraft:player", "minecraft:villager"); }
-        @Override public String riderUnavailable() { return "test"; }
+        /** The body types this transport presents, read when the runtime binds it. */
+        volatile Set<String> types = Set.of("minecraft:player", "minecraft:villager");
+        @Override public Set<String> entityTypes() { return types; }
+        /** Why real riders are unavailable; null lets players ride and sit. */
+        volatile String riders = "test";
+        @Override public String riderUnavailable() { return riders; }
+        volatile boolean carrying = true;
+        /** Rosters on real entities, as "entity own=[...] ids=[...]", and rosters on bodies, as "vehicle-uuid bodies=[...] rider=id". */
+        final List<String> carried = new ArrayList<>(), rosters = new ArrayList<>();
+        /** Each player's control input, and where the runtime last placed each rider. */
+        final Map<UUID, art.arcane.animus.core.control.ControlInbox> controls = new java.util.HashMap<>();
+        final Map<UUID, Vec3> placed = new java.util.HashMap<>();
+        @Override public boolean carryAvailable() { return carrying; }
+        @Override public CompletionStage<Void> carry(Player viewer, int entity, List<Integer> own, List<? extends Body> bodies, List<Integer> riders) {
+            List<Integer> ids = new ArrayList<>();
+            for (Body body : bodies) ids.add(body.entityId());
+            ids.addAll(riders);
+            carried.add(viewer.name() + " " + entity + " own=" + own + " ids=" + ids);
+            return CompletableFuture.completedFuture(null);
+        }
         @Override public boolean presentationAvailable() { return presentation; }
         @Override public boolean equipmentAvailable() { return equipment; }
         @Override public Body createBody(UUID uuid, String typeKey, String profileName, BodySkin skin) { return new FakeBody(uuid, typeKey); }
@@ -245,15 +269,26 @@ class ViewerWatchRaceTest {
             CompletableFuture<Void> waiting = new CompletableFuture<>(); held.add(waiting);
             return waiting;
         }
-        @Override public CompletionStage<Void> passengers(Player viewer, Body vehicle, List<? extends Body> passengers, Player realRider, boolean authoritative) { return CompletableFuture.completedFuture(null); }
+        @Override public CompletionStage<Void> passengers(Player viewer, Body vehicle, List<? extends Body> passengers, Player realRider, boolean authoritative) {
+            rosters.add(viewer.name() + " " + vehicle.uuid() + " bodies=" + passengers.size() + " rider=" + (realRider == null ? "none" : realRider.name()));
+            return CompletableFuture.completedFuture(null);
+        }
         @Override public CompletionStage<Void> dragonPhase(Player viewer, Body dragon, int phase) { return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> equipment(Player viewer, Body body, Map<EquipmentSlot, Object> items) { equipped.incrementAndGet(); return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> swing(Player viewer, Body body) { swings.incrementAndGet(); return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> look(Player viewer, Body body, art.arcane.animus.core.presentation.BodyLook look) { looks.add(look); return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> despawn(Player viewer, Body body) { sent.add("despawn " + body.uuid()); return CompletableFuture.completedFuture(null); }
         @Override public void forget(Player viewer) { forgotten.incrementAndGet(); }
-        @Override public ControlSubscription subscribeControl(Player viewer) { throw new IllegalStateException("no control"); }
-        @Override public void placeRider(Player rider, double x, double y, double z) {}
+        @Override public ControlSubscription subscribeControl(Player viewer) {
+            if (riders != null) throw new IllegalStateException("no control");
+            art.arcane.animus.core.control.ControlInbox inbox = new art.arcane.animus.core.control.ControlInbox(System.nanoTime());
+            controls.put(viewer.id(), inbox);
+            return new ControlSubscription() {
+                @Override public art.arcane.animus.core.control.ControlInbox.Snapshot latest() { return inbox.snapshot(); }
+                @Override public void close() { inbox.close("subscription-closed"); }
+            };
+        }
+        @Override public void placeRider(Player rider, double x, double y, double z) { placed.put(rider.id(), new Vec3(x, y, z)); }
         @Override public void close() { closed.incrementAndGet(); }
     }
 
@@ -282,8 +317,10 @@ class ViewerWatchRaceTest {
         @Override public boolean spectator(Player player) { return false; }
         @Override public boolean sneaking(Player player) { return false; }
         @Override public boolean inVehicle(Player player) { return false; }
-        @Override public int entityId(Player player) { return 1; }
+        @Override public int entityId(Player player) { return harness.online.indexOf(player) + 1; }
         @Override public WorldPosition position(Player player) {
+            Vec3 placed = harness.transport.placed.get(player.id());
+            if (placed != null) return new WorldPosition("world", placed);
             Vec3 standing = harness.standing;
             return new WorldPosition("world", standing != null ? standing : new Vec3(harness.playersAway ? 5000.5 : 0.5, 64, 0.5));
         }
@@ -291,10 +328,21 @@ class ViewerWatchRaceTest {
         @Override public Vec3 direction(Player player) { return new Vec3(0, 0, 1); }
         @Override public float yaw(Player player) { return 0; }
         @Override public float pitch(Player player) { return 0; }
-        @Override public boolean permitted(Player player, String node) { return "animus.admin".equals(node) && harness.admins.contains(player.id()); }
+        @Override public boolean permitted(Player player, String node) { return "animus.admin".equals(node) && harness.admins.contains(player.id()) || harness.nodes.contains(node); }
         @Override public boolean granted(Player player, String node) { return false; }
         @Override public void tell(Player player, String message) { harness.told.add(player.name() + ": " + message); }
-        @Override public boolean teleport(Player player, WorldPosition destination, float yaw, float pitch) { return false; }
+        @Override public boolean teleport(Player player, WorldPosition destination, float yaw, float pitch) {
+            harness.teleports.add(player.name() + " " + destination.point().brief());
+            harness.transport.placed.remove(player.id());
+            return true;
+        }
+        @Override public String realVehiclesUnavailable() { return null; }
+        @Override public Optional<RealEntity> entity(UUID uuid) { return Optional.ofNullable(harness.entities.get(uuid)); }
+        @Override public Optional<RealEntity> nearestEntity(WorldPosition near, String type, double range, java.util.function.Predicate<UUID> free) {
+            return harness.entities.values().stream().filter((RealEntity entity) -> entity.type().equals(type) && free.test(entity.uuid())
+                    && entity.position().point().distance(near.point()) <= range).min(java.util.Comparator.comparingDouble((RealEntity entity) -> entity.position().point().distance(near.point())));
+        }
+        @Override public List<Integer> realPassengers(UUID entity) { RealEntity real = harness.entities.get(entity); return real == null ? List.of() : real.passengers(); }
         @Override public Optional<String> resolveWorld(String reference) { return harness.worlds.apply(reference); }
         @Override public boolean chunkSent(Player player, int chunkX, int chunkZ) { return harness.sent.test(chunkX, chunkZ); }
         @Override public boolean clearSight(Player player, Vec3 eye, Vec3 direction, double distance) { return true; }

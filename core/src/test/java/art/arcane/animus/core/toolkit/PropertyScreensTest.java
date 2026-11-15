@@ -331,11 +331,11 @@ class PropertyScreensTest extends ToolkitHarness {
         assertEquals("Modules of guard", title());
         List<String> names = new ArrayList<>();
         Set<String> icons = new HashSet<>();
-        for (int slot = 0; slot < 14; slot++) {
+        for (int slot = 0; slot < 15; slot++) {
             names.add(name(slot));
             assertTrue(icons.add(alex.frame.items().get(slot).item().id()), name(slot) + " shares an icon");
         }
-        assertEquals(List.of("Movement", "Combat", "Health", "Shop", "GUI", "Hire", "Mount", "Riding", "Look at players", "Schedule", "ModelEngine", "MythicMobs", "Home", "Mirror viewer"), names);
+        assertEquals(List.of("Movement", "Combat", "Health", "Shop", "GUI", "Hire", "Mount", "Riding", "Seat", "Look at players", "Schedule", "ModelEngine", "MythicMobs", "Home", "Mirror viewer"), names);
         assertEquals("minecraft:leather_boots", alex.frame.items().get(0).item().id());
         String look = lore("Look at players");
         assertTrue(look.contains("Now: off") && look.contains("Click: open its fields") && look.endsWith("animus:look-close"), look);

@@ -61,6 +61,6 @@ final class HomeTurns<P, I> {
     /** Walking, following a route or a recording, guarding, fighting, riding or carrying a rider: the NPC is not idle. */
     private boolean busy(PersistedNpcService<P, I>.Value value, String id) {
         return value.guards || service.tickNumber - value.foughtAt < HomeSettings.FIGHT_TICKS || value.route != null || value.routeTask != null || value.recording != null || (value.waypoints != null && !value.waypoints.complete())
-                || service.mountRuntime.vehicleOf(id) != null || service.riders.riderOf(value.spec.definition().uuid()) != null;
+                || service.mountRuntime.rides(value) || service.riders.riderOf(value.spec.definition().uuid()) != null;
     }
 }
