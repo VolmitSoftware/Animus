@@ -25,6 +25,8 @@ import art.arcane.animus.bukkit.folia.FoliaRegions;
 import art.arcane.animus.bukkit.navigation.BukkitDoors;
 import art.arcane.animus.bukkit.protection.RegionRideEntry;
 import art.arcane.animus.core.control.RideEntry;
+import art.arcane.animus.core.control.SeatToggles;
+import art.arcane.animus.bukkit.integration.gsit.GSitSeats;
 import art.arcane.animus.bukkit.navigation.BukkitNavigationBridge;
 import art.arcane.animus.bukkit.navigation.TerrainChanges;
 import art.arcane.animus.core.navigation.BlockPos;
@@ -107,7 +109,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     final AnimusRuntime runtime;
     final Executor io;
     /** The tables of config.toml a hotload may replace here. */
-    record Live(PersistedNpcService.Settings npcs, NavigationSettings navigation, RigSettings rigs, art.arcane.animus.core.config.RecordingSettings recordings) {}
+    record Live(PersistedNpcService.Settings npcs, NavigationSettings navigation, RigSettings rigs, art.arcane.animus.core.config.RecordingSettings recordings,
+                art.arcane.animus.core.config.SeatSettings seats) {}
     final FoliaRegions regions;
     /** Doors change on the region that owns their chunk; a door left behind in another region is closed by its owner. */
     final BukkitDoors doors;
@@ -131,6 +134,14 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     /** Passenger relations of every spawned definition, recomputed on the global region thread when definitions change. */
     volatile MountRelations.Resolution mounts = MountRelations.Resolution.EMPTY;
     final RegionRides<RegionActor> rides = new RegionRides<>();
+    /** Players sitting on NPCs, server-wide; each seat itself lives on its NPC's owner. */
+    final RegionSeats<RegionActor> seats = new RegionSeats<>();
+    /** Players who turned sitting on NPCs off with {@code /animus seat toggle}. */
+    final SeatToggles seatToggles;
+    /** GSit's player-sit rules, asked on the region that holds the player. */
+    final GSitSeats gsit;
+    /** The real entities NPCs ride, each by one NPC across every region: entity UUID to NPC UUID. */
+    final Map<UUID, UUID> realVehicles = new ConcurrentHashMap<>();
     /** The combat module, when the server configuration enables it. */
     volatile RegionCombat combat;
     /** Hears each projectile region combat stops in an NPC's body, on the projectile's region. */
@@ -180,11 +191,15 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
             @Override public void run(World world, int chunkX, int chunkZ, Runnable work) { regions.execute(new ChunkPosition(world.getUID().toString(), chunkX, chunkZ), work); }
         });
         rideEntry = RegionRideEntry.bind(plugin.getServer());
+        gsit = new GSitSeats(plugin.getServer().getPluginManager(), plugin.getLogger()::warning);
+        try { seatToggles = new SeatToggles(runtime.documents().resolve("state/seats/toggles.json"), io, plugin.getLogger()::warning); }
+        catch (java.io.IOException | RuntimeException failure) { throw new IllegalStateException("Cannot open the seat toggles: " + failure.getMessage(), failure); }
         previews = new ViewerPreviews(io, runtime.documents());
         Live initial = new Live(Objects.requireNonNull(settings),
                 runtime.isRunning() ? runtime.navigationSettings() : NavigationSettings.DEFAULT,
                 runtime.isRunning() ? runtime.rigSettings() : RigSettings.DEFAULT,
-                runtime.isRunning() ? runtime.recordingSettings() : art.arcane.animus.core.config.RecordingSettings.DEFAULT);
+                runtime.isRunning() ? runtime.recordingSettings() : art.arcane.animus.core.config.RecordingSettings.DEFAULT,
+                runtime.isRunning() ? runtime.seatSettings() : art.arcane.animus.core.config.SeatSettings.DEFAULT);
         CombatBudgets combatBudgets = runtime.isRunning() ? runtime.combatBudgets() : CombatBudgets.DEFAULT;
         live = new RegionPickup<>(regions, initial);
         budget = new RegionBudget(regions, limits(initial, combatBudgets));
@@ -228,10 +243,11 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     NavigationSettings navigationSettings() { return live.current().navigation(); }
     RigSettings rigs() { return live.current().rigs(); }
     art.arcane.animus.core.config.RecordingSettings recordings() { return live.current().recordings(); }
+    art.arcane.animus.core.config.SeatSettings seatSettings() { return live.current().seats(); }
 
     /** On the file lane after a hotload: publishes only; each region adopts the new settings at its next region tick. */
     private void published(PluginSettings next) {
-        Live adopted = new Live(PersistedNpcService.Settings.from(next.npcs()), next.navigation(), next.rigs(), next.recordings());
+        Live adopted = new Live(PersistedNpcService.Settings.from(next.npcs()), next.navigation(), next.rigs(), next.recordings(), next.seats());
         budget.limits(limits(adopted, next.combat()));
         budget.interval(adopted.npcs().degradedIntervalTicks());
         live.publish(adopted);
@@ -299,7 +315,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
                 + " | routes-sleeping=" + sleeping + " | recordings=" + playing + " | navigation-pressure=" + navigationPressureStatus
                 + " | viewers=" + viewers.size() + " | visible=" + visible + " | handoffs=" + transfers.size() + " | file-reads=" + reads.get()
                 + " | accepted=" + accepted.get() + " | rejected=" + rejected.get() + " | path-jobs=" + navigation.outstandingJobs()
-                + " | mounted=" + mounts.vehicleOf().size() + " | mount-problems=" + mounts.diagnostics().size() + " | riders=" + rides.size()
+                + " | mounted=" + (mounts.vehicleOf().size() + realVehicles.size()) + " | mount-problems=" + mounts.diagnostics().size() + " | riders=" + rides.size()
+                + " | seated=" + seats.size()
                 + (settings().enabled() ? "" : " | enabled=false applies after a restart on Folia")
                 + (failures.last() == null ? "" : " | last-error=" + failures.last());
     }
@@ -346,9 +363,6 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         if (!available()) return List.of("NPC runtime " + (closed ? "closed" : unavailable));
         List<String> errors = new ArrayList<>(DefinitionSpec.validate(Objects.requireNonNull(definition), geometries.keySet(), this::worldKey, DefinitionItems::stack));
         errors.addAll(mountBlockers(definition));
-        try {
-            if (MountDeclaration.entity(definition.json()).isPresent()) errors.add("$.modules." + MountDeclaration.MODULE + ".entity: NPCs ride real entities only on Paper and Spigot, not on Folia");
-        } catch (IllegalArgumentException malformed) { errors.add(malformed.getMessage()); }
         return List.copyOf(errors);
     }
     /** Structural mount problems stop an edit; a missing or dormant vehicle does not. Any thread: reads published definitions. */
@@ -395,7 +409,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         for (RegionRides.Lease<RegionActor> lease : rides.leases()) { String line = lease.actor().rideLine(); if (line != null) lines.add(line); }
         return "Riders " + rides.size() + "/" + art.arcane.animus.core.control.RideLedger.MAX_RIDERS + (lines.isEmpty() ? "" : " | " + String.join(" | ", lines));
     }
-    /** Any thread: the ride's end runs on the NPC's owner. */
+    /** Any thread: the ride's or seat's end runs on the NPC's owner. */
     @Override public boolean stopRider(String playerName) {
         if (!available()) throw new IllegalStateException("NPC runtime " + (closed ? "closed" : unavailable));
         for (RegionRides.Lease<RegionActor> lease : rides.leases()) {
@@ -403,7 +417,43 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
             if (rider != null && rider.getName().equalsIgnoreCase(playerName))
                 return endRide(lease, "stopped by administrator", ActorRide.Exit.RESTORE_POSITION);
         }
+        for (RegionSeats.Lease<RegionActor> lease : seats.leases()) {
+            Player seated = online.get(lease.player());
+            if (seated != null && seated.getName().equalsIgnoreCase(playerName))
+                return endSeat(lease, "stopped by administrator", ActorSeats.Exit.RESTORE_POSITION);
+        }
         return false;
+    }
+    /** Any thread: who sits where, from each NPC's publication. */
+    @Override public String seatStatus() {
+        if (!available()) return "Seats unavailable: NPC runtime " + (closed ? "closed" : unavailable);
+        List<String> lines = new ArrayList<>();
+        for (RegionSeats.Lease<RegionActor> lease : seats.leases()) {
+            List<RegionActor.Sitter> sitters = lease.actor().publication.sitters();
+            for (int level = 0; level < sitters.size(); level++) {
+                RegionActor.Sitter sitter = sitters.get(level);
+                if (!sitter.player().getUniqueId().equals(lease.player())) continue;
+                lines.add(sitter.player().getName() + " on " + lease.actor().id + (level == 0 ? "" : ", seat " + (level + 1)) + ": " + (sitter.attached() ? "seated" : "attaching"));
+            }
+        }
+        return "Seated " + seats.size() + "/" + seatSettings().maximum() + (lines.isEmpty() ? "" : " | " + String.join(" | ", lines));
+    }
+    /** Any thread: turning sitting off gets the player off any NPC, on that NPC's owner. */
+    @Override public boolean seatToggle(UUID player, Optional<Boolean> on) {
+        boolean now = seatToggles.set(player, on.orElse(null));
+        RegionSeats.Lease<RegionActor> lease = now ? null : seats.of(player);
+        if (lease != null) endSeat(lease, "sitting-turned-off", ActorSeats.Exit.LEAVE_POSITION);
+        return now;
+    }
+    /** Hands the end of a seat to the NPC's owner with the seat's generation; a dormant NPC's lease simply ends. */
+    private boolean endSeat(RegionSeats.Lease<RegionActor> lease, String reason, ActorSeats.Exit exit) {
+        RegionActor actor = lease.actor();
+        boolean queued = actor.owner.submit(new OwnerMailbox.Work() {
+            @Override public void run() { actor.endSeat(lease.generation(), reason, exit); }
+            @Override public void refuse(String why) { seats.release(lease); }
+        });
+        if (!queued) seats.release(lease);
+        return true;
     }
     /** Hands the end of a ride to the NPC's owner with the ride's epoch; a dormant NPC's lease simply ends. */
     private boolean endRide(RegionRides.Lease<RegionActor> lease, String reason, ActorRide.Exit exit) {
@@ -473,6 +523,13 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
      * the NPC's published view.
      */
     public boolean combatStops(org.bukkit.entity.Projectile projectile, UUID npc) { RegionCombat module = combat; return module != null && module.stops(projectile, npc); }
+    /** Owner of the NPC: the real entities that move with it; empty off its owner. */
+    @Override public java.util.Set<UUID> attached(UUID npc) {
+        RegionActor actor = available() ? byUuid.get(npc) : null;
+        return actor == null || !actor.owner.owned() ? java.util.Set.of() : actor.attached();
+    }
+    /** On the entity's owner: this entity stands in for an NPC body, as a decoy that mobs fight. */
+    public boolean combatStandIn(org.bukkit.entity.Entity entity) { RegionCombat module = combat; return module != null && module.decoy(entity); }
     public void combatStrikes(art.arcane.animus.bukkit.combat.ProjectileStrikes listener) { strikes = listener; }
     public String combatCommand(String id, art.arcane.animus.core.command.CombatControl.Operation operation, Optional<UUID> target) {
         return Objects.requireNonNull(combat, "Combat is not running").command(id, operation, target);
@@ -969,6 +1026,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     private void rideEnding(Player player, String reason) {
         RegionRides.Lease<RegionActor> lease = rides.ofRider(player.getUniqueId());
         if (lease != null) endRide(lease, reason, ActorRide.Exit.LEAVE_POSITION);
+        RegionSeats.Lease<RegionActor> seat = seats.of(player.getUniqueId());
+        if (seat != null) endSeat(seat, reason, ActorSeats.Exit.LEAVE_POSITION);
     }
     @EventHandler public void respawn(PlayerRespawnEvent event) { resetLater(event.getPlayer()); }
     @EventHandler public void chunkLoaded(ChunkLoadEvent event) {
@@ -996,6 +1055,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         HandlerList.unregisterAll(this);
         for (RegionActor actor : actors.values()) actor.owner.shutdown();
         rides.clear();
+        seats.clear();
+        realVehicles.clear();
         if (combat != null) combat.close();
         // Viewer state belongs to each player's region; shutdown only stops the tasks and closes the network sessions.
         for (RegionViewer viewer : viewers.values()) viewer.stop();

@@ -15,15 +15,17 @@ import org.bukkit.plugin.PluginManager;
  * so Animus asks GSit the questions its own player-sit handler asks before sitting one player on another: may this
  * player sit on NPCs, has either side turned player-sit off, is the world and region allowed, is the hand empty, is the
  * NPC close enough and is the stack full. GSit is read by reflection while it runs; a GSit that cannot be read leaves
- * Animus's own rules alone and says so once. Main thread.
+ * Animus's own rules alone and says so once. On the thread that owns the player: the main thread, or the player's
+ * region on Folia, where GSit runs its own player-sit handler too.
  */
 public final class GSitSeats {
     private static final String API = "dev.geco.gsit.api.GSitAPI";
     private final PluginManager plugins;
     private final java.util.function.Consumer<String> warn;
-    private Plugin bound;
-    private Bound api;
-    private boolean warned;
+    /** Read by every region on Folia: the binding is published before the plugin it was made for. */
+    private volatile Plugin bound;
+    private volatile Bound api;
+    private volatile boolean warned;
 
     private record Bound(Object main, Method canUsePlayerSit, Object config, Field allowNpc, Field emptyHand, Field maxStack, Field maxDistance,
                          Object permissions, Method hasPermission, Object environment, Method allowedWorld, Method allowedLocation,
@@ -73,34 +75,52 @@ public final class GSitSeats {
         Plugin plugin = plugins.getPlugin("GSit");
         if (plugin == null || !plugin.isEnabled()) { bound = null; api = null; return null; }
         if (plugin == bound) return api;
-        bound = plugin;
+        synchronized (this) {
+            if (plugin == bound) return api;
+            api = read(plugin);
+            bound = plugin;
+            return api;
+        }
+    }
+    private Bound read(Plugin plugin) {
         try {
             ClassLoader loader = plugin.getClass().getClassLoader();
             Class<?> gsit = Class.forName(API, true, loader);
             Object main = gsit.getMethod("getInstance").invoke(null);
             Method canUse = gsit.getMethod("canPlayerUsePlayerSit", UUID.class);
-            Object config = main.getClass().getMethod("getConfigService").invoke(main);
+            Object config = service(main, loader, "getConfigService", "dev.geco.gsit.service.ConfigService");
             Class<?> configs = config.getClass();
-            Object permissions = main.getClass().getMethod("getPermissionService").invoke(main);
-            Object environment = main.getClass().getMethod("getEnvironmentUtil").invoke(main);
-            Object crawl = main.getClass().getMethod("getCrawlService").invoke(main);
-            Object poses = main.getClass().getMethod("getPoseService").invoke(main);
-            api = new Bound(main, canUse, config, configs.getField("PS_ALLOW_SIT_NPC"), configs.getField("PS_EMPTY_HAND_ONLY"), configs.getField("PS_MAX_STACK"),
+            Object permissions = service(main, loader, "getPermissionService", "dev.geco.gsit.service.PermissionService");
+            Object environment = service(main, loader, "getEnvironmentUtil", "dev.geco.gsit.util.EnvironmentUtil");
+            Object crawl = service(main, loader, "getCrawlService", "dev.geco.gsit.service.CrawlService");
+            Object poses = service(main, loader, "getPoseService", "dev.geco.gsit.service.PoseService");
+            return new Bound(main, canUse, config, configs.getField("PS_ALLOW_SIT_NPC"), configs.getField("PS_EMPTY_HAND_ONLY"), configs.getField("PS_MAX_STACK"),
                     configs.getField("PS_MAX_DISTANCE"), permissions, permissions.getClass().getMethod("hasPermission", Permissible.class, String[].class),
                     environment, environment.getClass().getMethod("isEntityInAllowedWorld", Entity.class),
                     environment.getClass().getMethod("canUseInLocation", Location.class, Player.class, String.class),
                     crawl, crawl.getClass().getMethod("isPlayerCrawling", Player.class), poses, poses.getClass().getMethod("isPlayerPosing", Player.class));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
-            api = null;
-            unreadable(failure);
+            unreadable(plugin, failure);
+            return null;
         }
-        return api;
     }
 
-    private void unreadable(Throwable failure) {
+    /**
+     * One of GSit's services by its getter. Looked up by exact name and type: listing GSit's methods would load its
+     * PlaceholderAPI link, which fails on a server without PlaceholderAPI.
+     */
+    static Object service(Object main, ClassLoader loader, String getter, String type) throws ReflectiveOperationException {
+        java.lang.invoke.MethodHandle handle = java.lang.invoke.MethodHandles.publicLookup()
+                .findVirtual(main.getClass(), getter, java.lang.invoke.MethodType.methodType(Class.forName(type, true, loader)));
+        try { return handle.invoke(main); }
+        catch (RuntimeException | Error failure) { throw failure; }
+        catch (Throwable failure) { throw new java.lang.reflect.InvocationTargetException(failure); }
+    }
+    private void unreadable(Throwable failure) { unreadable(bound, failure); }
+    private void unreadable(Plugin plugin, Throwable failure) {
         if (warned) return;
         warned = true;
-        warn.accept("GSit " + (bound == null ? "" : bound.getDescription().getVersion() + " ") + "cannot be read, so its player-sit settings do not apply to NPC seats: "
+        warn.accept("GSit " + (plugin == null ? "" : plugin.getDescription().getVersion() + " ") + "cannot be read, so its player-sit settings do not apply to NPC seats: "
                 + failure.getClass().getSimpleName() + (failure.getMessage() == null ? "" : ": " + failure.getMessage()));
     }
 }

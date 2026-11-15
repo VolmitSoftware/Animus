@@ -283,7 +283,10 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         return module.running() && flying.containsKey(projectile.getUniqueId()) && module.engine().shootable(npc);
     }
     /** Whether this entity stands in for an NPC body: a decoy that mobs fight. On the entity's owner. */
-    boolean standIn(Entity entity) { return decoys != null && decoys.decoy(entity); }
+    boolean standIn(Entity entity) {
+        if (regions != null) return regions.combatStandIn(entity);
+        return decoys != null && decoys.decoy(entity);
+    }
     /** Who hears each projectile combat stops in an NPC's body, before the strike is dealt. */
     void strikes(ProjectileStrikes listener) {
         strikes = listener;

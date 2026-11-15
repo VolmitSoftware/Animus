@@ -44,6 +44,8 @@ import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcAttributes;
 import art.arcane.animus.core.control.LookClose;
 import art.arcane.animus.core.control.RideSettings;
+import art.arcane.animus.core.control.SeatModule;
+import art.arcane.animus.core.control.SeatRules;
 import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.navigation.BlockPos;
 import art.arcane.animus.core.navigation.BodyMobility;
@@ -109,7 +111,16 @@ final class RegionActor implements RegionOwner.Body {
                        String navigation, long arrivals, boolean ride, boolean mount, long revision, NpcRig.Snapshot<ItemStack> rig, int dragonPhase,
                        List<UUID> passengers, Player rider, CombatView combat, BodyLook look, long lookRevision, long swings, long gestures, int gesture, long attackSwings,
                        NpcAttributes attributes, long attributeRevision, long hurts, long deaths, String bubble, long bubbleRevision,
-                       art.arcane.animus.core.presentation.MirrorSettings mirror, art.arcane.animus.core.presentation.RestingPlacement.Seat seat) {}
+                       art.arcane.animus.core.presentation.MirrorSettings mirror, art.arcane.animus.core.presentation.RestingPlacement.Seat seat,
+                       List<Sitter> sitters, RealSeat vehicle) {}
+    /** A player sitting on this NPC, lowest first: the native ID it is shown by and the server's own passengers on it, read on the owner. */
+    record Sitter(Player player, int entityId, List<Integer> own, boolean attached) {
+        Sitter { own = List.copyOf(own); }
+    }
+    /** The real entity this NPC sits on, as its owner read it this turn: its native ID and the server's own passengers on it. */
+    record RealSeat(UUID uuid, int entityId, List<Integer> own) {
+        RealSeat { own = List.copyOf(own); }
+    }
     /** What other combat engines and status read of this NPC's combat; null when it has none. */
     record CombatView(CombatSettings settings, CombatLoadout loadout, UUID guarded, String status, int helpers) {}
     /** A passenger whose vehicle another region owns steps onto its seat at most this often. */
@@ -227,6 +238,12 @@ final class RegionActor implements RegionOwner.Body {
     private long nextMountTry;
     /** A real player riding this NPC; it moves with the NPC on every handoff. */
     private final ActorRide riding;
+    /** Players sitting on this NPC; they move with the NPC on every handoff. */
+    private final ActorSeats<Player, RegionActor> seats;
+    /** The definition's own seat, or null when {@code [seats] defaultEnabled} decides. */
+    private SeatModule seatModule;
+    /** The real entity this NPC rides when its definition names one, or null. */
+    private ActorVehicle<org.bukkit.entity.Entity> vehicle;
     private CombatSettings combatSettings;
     private CombatLoadout combatLoadout = CombatLoadout.NONE;
     private ActorCombat combat;
@@ -243,6 +260,7 @@ final class RegionActor implements RegionOwner.Body {
         configure(desired);
         owner = new RegionOwner(uuid, host.regions, host.budget, 32, 8, this);
         riding = new ActorRide(this, host);
+        seats = new ActorSeats<>(new SeatHost(), host.seats, this, uuid);
         publish(false);
     }
 
@@ -274,6 +292,14 @@ final class RegionActor implements RegionOwner.Body {
         rig = null; rigProblem = null; rigGeneration = -1;
         combatSettings = CombatSettings.active(spec.definition()).orElse(null);
         combatLoadout = CombatLoadout.of(spec.definition());
+        try { seatModule = SeatModule.parse(spec.definition().json()).orElse(null); }
+        catch (IllegalArgumentException malformed) { seatModule = null; }
+        if (vehicle != null) vehicle.forget();
+        try { vehicle = MountDeclaration.entity(spec.definition().json()).map(this::vehicle).orElse(null); }
+        catch (IllegalArgumentException malformed) { vehicle = null; }
+    }
+    private ActorVehicle<org.bukkit.entity.Entity> vehicle(MountDeclaration.EntityMount declared) {
+        return new ActorVehicle<>(new VehicleHost(), declared, host.geometry(spec.type()).seat().vehicleAttachmentY());
     }
 
     /** Binds the rig after a definition change or catalog reload; a replaced rig re-presents the body. Owner only. */
@@ -366,6 +392,8 @@ final class RegionActor implements RegionOwner.Body {
     }
     @Override public void suspended(String reason) {
         riding.end("npc-waiting", ActorRide.Exit.RESTORE_POSITION);
+        seats.endAll("npc-waiting", ActorSeats.Exit.RESTORE_POSITION);
+        if (vehicle != null) vehicle.forget();
         closeCombat();
         cancelPlan();
         doors.closeAll(host.doors);
@@ -379,6 +407,8 @@ final class RegionActor implements RegionOwner.Body {
     }
     @Override public void retired() {
         riding.end("npc-retired", ActorRide.Exit.RESTORE_POSITION);
+        seats.endAll("npc-retired", ActorSeats.Exit.RESTORE_POSITION);
+        if (vehicle != null) vehicle.forget();
         closeCombat();
         seated = false;
         stopRoute("cancelled by definition replacement/despawn");
@@ -406,6 +436,7 @@ final class RegionActor implements RegionOwner.Body {
         boolean sampled = metrics.sampling();
         long began = sampled ? metrics.start() : 0, mark = began;
         mounts();
+        realVehicle();
         riding.tick();
         if (sampled) mark = metrics.sampledLap(Subsystem.NAVIGATION, mark);
         tickCombat();
@@ -413,8 +444,10 @@ final class RegionActor implements RegionOwner.Body {
         if (reread) { reread = false; routeReadWanted |= routeSource != null || recordingToRead() != null || inlineSteps() != null; }
         if (routeRead != null && routeRead.refused) retryRouteRead();
         if (routeReadWanted) requestRouteRead();
-        if (route != null && !seated) { navigate(); supportWanted = false; fallSpeed = 0; }
-        else if (!seated && (supportWanted || fallSpeed > 0)) support();
+        if (route != null && !carried()) { navigate(); supportWanted = false; fallSpeed = 0; }
+        else if (!carried() && (supportWanted || fallSpeed > 0)) support();
+        // After every move of this turn, so seated players stand where the NPC ended up.
+        seats.tick();
         if (sampled) mark = metrics.sampledLap(Subsystem.NAVIGATION, mark);
         tickRig();
         if (sampled) mark = metrics.sampledLap(Subsystem.RIGS, mark);
@@ -438,6 +471,7 @@ final class RegionActor implements RegionOwner.Body {
 
     private void reconfigure(Desired next) {
         riding.end("definition-changed", ActorRide.Exit.RESTORE_POSITION);
+        seats.endAll("definition-changed", ActorSeats.Exit.RESTORE_POSITION);
         WorldPosition position = applied.spec().position().equals(next.spec().position()) ? state.snapshot().position() : next.spec().position();
         stopRoute("cancelled by definition replacement/despawn");
         failWatch("cancelled by definition replacement/despawn");
@@ -479,21 +513,41 @@ final class RegionActor implements RegionOwner.Body {
     }
     String displayName() { return displayName; }
     String navigationStatus() { return navigation(); }
-    /** Combat movement: a walking leg towards the goal, at most 30 blocks across and 7 up or down per request. */
     /**
-     * A chase on the navigation planner, walked in segments when the goal is farther than one plan reaches. A chase whose
-     * goal moved less than a block keeps its plan; otherwise it plans again from where the NPC stands.
+     * A chase on the navigation planner, walked in segments when the goal is farther than one plan reaches, at most 7 blocks
+     * up or down per request. A chase still walking keeps walking its path while the moved goal is planned, as on Paper;
+     * see {@link RouteRules#chaseStep}.
      */
     CombatWorld.MoveStatus combatMove(WorldPosition goal, double speed) {
-        if (seated || riding.active() || !navigable()) return CombatWorld.MoveStatus.REJECTED;
+        if (carried() || riding.active() || !navigable()) return CombatWorld.MoveStatus.REJECTED;
         Vec3 origin = state.snapshot().position().point(), delta = goal.point().subtract(origin);
         WorldPosition feet = new WorldPosition(goal.world(), new Vec3(goal.point().x(), Math.floor(origin.y() + clamp(delta.y(), 7)), goal.point().z()));
         Route current = route;
-        if (current != null && current.leg == null && current.recording == null && current.speed == speed && current.goal.world().equals(feet.world())
-                && current.goal.point().distance(feet.point()) < 1) return CombatWorld.MoveStatus.ACCEPTED;
-        try { navigate(feet, MovementProfile.Mode.WALK, speed); return CombatWorld.MoveStatus.ACCEPTED; }
+        boolean chasing = current != null && current.chase;
+        try {
+            switch (RouteRules.chaseStep(chasing, chasing ? current.goal : feet, chasing ? current.speed : speed, feet, speed)) {
+                case KEEP -> { }
+                case START -> { navigate(feet, MovementProfile.Mode.WALK, speed); route.chase = true; }
+                case REPLAN -> replanChase(current, feet, speed);
+            }
+            return CombatWorld.MoveStatus.ACCEPTED;
+        }
         catch (IllegalArgumentException refused) { return CombatWorld.MoveStatus.REJECTED; }
         catch (IllegalStateException busy) { return CombatWorld.MoveStatus.BUSY; }
+    }
+    /** The chase's goal moved: the new chase route walks the old path while its own plan is made on this owner. */
+    private void replanChase(Route old, WorldPosition goal, double speed) {
+        MovementProfile.Mode mode = movement.legMode(MovementProfile.Mode.WALK, null);
+        RouteRules.validateLeg(state.snapshot().position(), goal, mode, speed, hullWidth(), hullHeight());
+        Route next = styledRoute(goal, mode, speed, null, null);
+        next.chase = true;
+        if (old.execution != null && !old.execution.finished() && !old.execution.cancelled()) {
+            next.execution = old.execution; next.segment = old.segment; next.replanning = true;
+        }
+        if (old.plan != null) old.plan.cancel();
+        route = next;
+        routeStatus(next, "replanning", "chase goal moved");
+        publish(true);
     }
     private static double clamp(double value, double limit) { return Math.max(-limit, Math.min(limit, value)); }
     /** Same rules as {@link PersistedNpcService#resumePatrol}: a stopped recording continues from its cursor. */
@@ -544,7 +598,7 @@ final class RegionActor implements RegionOwner.Body {
      * the NPC to that region like any chunk crossing. False when the destination is not known to be loaded.
      */
     boolean combatTeleport(WorldPosition destination) {
-        if (!placeable(state.snapshot().active(), seated, riding)) return false;
+        if (!placeable(state.snapshot().active(), carried(), riding)) return false;
         World world = host.world(destination.world());
         if (world == null) return false;
         ChunkPosition chunk = destination.chunk();
@@ -557,7 +611,7 @@ final class RegionActor implements RegionOwner.Body {
         if (!host.knownLoaded(chunk)) return false;
         long epoch = owner.ownership().state().token() == null ? -1 : owner.ownership().state().token().epoch();
         return host.regions.execute(chunk, () -> clearSpot(world, destination, width, height).ifPresent((WorldPosition spot) -> owner.submit(new OwnerMailbox.Work() {
-            @Override public void run() { if (placeable(state.snapshot().active(), seated, riding)) place(spot); }
+            @Override public void run() { if (placeable(state.snapshot().active(), carried(), riding)) place(spot); }
             @Override public void refuse(String reason) { /* The NPC went dormant; it stays where it was. */ }
         })));
     }
@@ -589,7 +643,7 @@ final class RegionActor implements RegionOwner.Body {
     }
     /** A short step onto clear, supported ground at the point, swept along the way, within ground this region holds. */
     boolean combatStep(WorldPosition to) {
-        if (!placeable(state.snapshot().active(), seated, riding)) return false;
+        if (!placeable(state.snapshot().active(), carried(), riding)) return false;
         WorldPosition from = state.snapshot().position();
         World world = host.world(to.world());
         if (world == null || !to.world().equals(from.world())) return false;
@@ -607,7 +661,7 @@ final class RegionActor implements RegionOwner.Body {
     /** Knockback: a short slide onto clear, supported ground this region holds; otherwise the NPC stays put. */
     void combatKnockback(Vec3 direction, double strength) {
         double horizontal = Math.hypot(direction.x(), direction.z());
-        if (horizontal < .0001 || !placeable(state.snapshot().active(), seated, riding)) return;
+        if (horizontal < .0001 || !placeable(state.snapshot().active(), carried(), riding)) return;
         double distance = Math.min(1.5, strength);
         WorldPosition from = state.snapshot().position();
         World world = host.world(from.world());
@@ -700,23 +754,187 @@ final class RegionActor implements RegionOwner.Body {
     private List<UUID> passengers() {
         List<String> declared = host.mounts.passengersOf().get(id);
         if (declared == null) return List.of();
-        List<UUID> seats = new ArrayList<>(declared.size());
+        List<UUID> aboard = new ArrayList<>(declared.size());
         for (String passenger : declared) {
             RegionActor actor = host.actors.get(passenger);
-            if (actor != null && actor.seated && actor.owner.carried() && actor.owner.root() == owner.root()) seats.add(actor.uuid);
+            if (actor != null && actor.seated && actor.owner.carried() && actor.owner.root() == owner.root()) aboard.add(actor.uuid);
         }
-        return List.copyOf(seats);
+        return List.copyOf(aboard);
     }
     /** For inspect, from any thread. */
     String mountStatus() {
         StringBuilder summary = new StringBuilder();
-        String vehicle = host.mounts.vehicleOf().get(id);
-        if (vehicle != null) summary.append("; mounted-on=").append(vehicle).append(seated ? "" : " (not seated yet: the vehicle is not active on a loaded chunk)");
+        String vehicleId = host.mounts.vehicleOf().get(id);
+        if (vehicleId != null) summary.append("; mounted-on=").append(vehicleId).append(seated ? "" : " (not seated yet: the vehicle is not active on a loaded chunk)");
+        ActorVehicle<org.bukkit.entity.Entity> real = vehicle;
+        if (real != null) summary.append(real.summary());
         List<String> passengers = host.mounts.passengersOf().get(id);
         if (passengers != null) summary.append("; passengers=").append(passengers);
         for (art.arcane.animus.core.mount.MountRelations.Diagnostic problem : host.mounts.diagnostics())
             if (problem.id().equals(id)) summary.append("; mount-problem=").append(problem.field()).append(": ").append(problem.message());
+        List<Sitter> sitters = publication.sitters();
+        if (!sitters.isEmpty()) summary.append("; seated=").append(sitters.stream().map((Sitter sitter) -> sitter.player().getName()).toList());
         return summary.toString();
+    }
+    /** Owner only: carried by another NPC or a real entity, so only the vehicle moves this body. */
+    boolean carried() { return seated || vehicle != null && vehicle.vehicle() != null; }
+
+    // ---- A real entity this NPC rides ----
+
+    /** Owner only: the NPC sits on its real vehicle, gets off it, or steps onto the seat another region showed. */
+    private void realVehicle() {
+        ActorVehicle<org.bukkit.entity.Entity> current = vehicle;
+        if (current == null) return;
+        String unavailable = host.packets.carryAvailable() ? null : "this server build cannot show NPCs on real entities";
+        ActorVehicle.Turn turn = current.tick(turns, state.snapshot().active(), unavailable, state.snapshot().position().world(), spec.position());
+        switch (turn.kind()) {
+            case STAY -> { }
+            case BOARD -> {
+                if (route != null || waypoints != null || routeRead != null) { cancelRouteRead(); waypoints = null; stopRoute("unavailable: this NPC rides a " + current.vehicle().type()); }
+                riding.end("npc-mounted", ActorRide.Exit.RESTORE_POSITION);
+                sitOn(turn);
+            }
+            case SIT -> sitOn(turn);
+            // The seat lies on the vehicle's region: the step hands this NPC to that region, where it gets on.
+            case STEP -> { state.move(turn.at()); host.index.upsert(state.snapshot()); pose++; }
+            case RELEASE -> { state.move(spec.position()); host.index.upsert(state.snapshot()); setPose(spec.yaw(), spec.pitch(), true); pose++; }
+        }
+    }
+    private void sitOn(ActorVehicle.Turn turn) {
+        if (!turn.at().equals(state.snapshot().position())) { state.move(turn.at()); host.index.upsert(state.snapshot()); pose++; }
+        setPose(turn.yaw(), pitch, false);
+    }
+    private RealSeat realSeat() {
+        ActorVehicle<org.bukkit.entity.Entity> current = vehicle;
+        art.arcane.animus.core.runtime.RuntimeHost.RealEntity on = current == null ? null : current.vehicle();
+        return on == null ? null : new RealSeat(on.uuid(), on.entityId(), on.passengers());
+    }
+    /** What the vehicle binding reads, each on the region that owns it. */
+    private final class VehicleHost implements ActorVehicle.Host<org.bukkit.entity.Entity> {
+        @Override public Optional<org.bukkit.entity.Entity> entity(UUID entity) { return Optional.ofNullable(host.plugin.getServer().getEntity(entity)); }
+        @Override public boolean owns(org.bukkit.entity.Entity entity) { return host.regions.owns(entity); }
+        @Override public boolean usable(org.bukkit.entity.Entity entity) { return BukkitRuntimeHost.vehicle(host.plugin, entity); }
+        @Override public art.arcane.animus.core.runtime.RuntimeHost.RealEntity read(org.bukkit.entity.Entity entity) { return BukkitRuntimeHost.real(entity, host.packets); }
+        @Override public Optional<org.bukkit.entity.Entity> nearest(WorldPosition near, String type, double range, java.util.function.Predicate<UUID> free) {
+            World world = host.world(near.world());
+            if (world == null) return Optional.empty();
+            Vec3 point = near.point();
+            int minX = Math.floorDiv((int) Math.floor(point.x() - range), 16), maxX = Math.floorDiv((int) Math.floor(point.x() + range), 16);
+            int minZ = Math.floorDiv((int) Math.floor(point.z() - range), 16), maxZ = Math.floorDiv((int) Math.floor(point.z() + range), 16);
+            // Folia lets a region search only the chunks it owns.
+            if (!host.regions.owns(world, minX, minZ, maxX, maxZ)) return Optional.empty();
+            for (int x = minX; x <= maxX; x++) for (int z = minZ; z <= maxZ; z++) if (!world.isChunkLoaded(x, z)) return Optional.empty();
+            return BukkitRuntimeHost.nearest(host.plugin, world, point, type, range, free);
+        }
+        @Override public boolean ask(org.bukkit.entity.Entity entity, java.util.function.Consumer<art.arcane.animus.core.runtime.RuntimeHost.RealEntity> seen) {
+            return host.regions.submit(entity, () -> { if (BukkitRuntimeHost.vehicle(host.plugin, entity)) seen.accept(BukkitRuntimeHost.real(entity, host.packets)); }, () -> {});
+        }
+        @Override public boolean claim(UUID entity) { UUID had = host.realVehicles.putIfAbsent(entity, uuid); return had == null || had.equals(uuid); }
+        @Override public void unclaim(UUID entity) { host.realVehicles.remove(entity, uuid); }
+        @Override public boolean free(UUID entity) { UUID had = host.realVehicles.get(entity); return had == null || had.equals(uuid); }
+    }
+
+    // ---- Players sitting on this NPC ----
+
+    /** Owner only: whether this main-hand click asks for the seat. */
+    boolean seatAsked(boolean sneaking) { return seats.asked(sneaking); }
+    /** On the thread that owns both the NPC and the player. Null once admitted, an empty string for a silent refusal, otherwise a message. */
+    String requestSeat(Player player) { return seats.request(player); }
+    /** Owner only: the player this one sits on, or null on the NPC itself. */
+    Player seatBelow(Player player) { return seats.below(player); }
+    /** Owner only: the generation of this player's seat here, or null. */
+    UUID seatGeneration(Player player) { return seats.generation(player); }
+    void seatAttached(UUID generation, boolean succeeded) { seats.attached(generation, succeeded); publish(true); }
+    void endSeat(UUID generation, String reason, ActorSeats.Exit exit) { seats.end(generation, reason, exit); }
+    /** Owner only: players sit on this NPC now. */
+    boolean seatTaken() { return !seats.empty(); }
+    /** Owner only: the real entities that move with this NPC: the entity it rides, the players sitting on it and its rider. */
+    java.util.Set<UUID> attached() {
+        java.util.Set<UUID> attached = new java.util.HashSet<>();
+        // The entity it is about to board counts too, so it never touches or bumps the horse it gets on.
+        if (vehicle != null) vehicle.target(spec.position()).ifPresent(attached::add);
+        for (Player player : seats.players()) attached.add(player.getUniqueId());
+        Player rider = riding.rider();
+        if (rider != null) attached.add(rider.getUniqueId());
+        return java.util.Set.copyOf(attached);
+    }
+    private List<Sitter> sitters() {
+        List<ActorSeats.Seated<Player>> seated = seats.seated();
+        if (seated.isEmpty()) return List.of();
+        List<Sitter> shown = new ArrayList<>(seated.size());
+        Publication previous = publication;
+        for (ActorSeats.Seated<Player> seat : seated) {
+            Player player = seat.player();
+            // A player this region does not hold now keeps what was read of them while it did.
+            if (!host.regions.owns(player)) {
+                if (previous != null) for (Sitter known : previous.sitters()) if (known.player() == player) shown.add(new Sitter(player, known.entityId(), known.own(), seat.attached()));
+                continue;
+            }
+            shown.add(new Sitter(player, player.getEntityId(), player.getPassengers().stream().map(org.bukkit.entity.Entity::getEntityId).toList(), seat.attached()));
+        }
+        return List.copyOf(shown);
+    }
+    /** What the seats read and do, all on this NPC's owner. */
+    private final class SeatHost implements ActorSeats.Host<Player> {
+        @Override public String unavailable() { return host.packets.riderUnavailable(); }
+        @Override public art.arcane.animus.core.config.SeatSettings settings() { return host.seatSettings(); }
+        @Override public boolean toggledOn(UUID player) { return host.seatToggles.allows(player); }
+        @Override public art.arcane.animus.core.control.RideEntry.Rule entry() { return host.rideEntry; }
+        @Override public boolean riding(UUID player) { return host.rides.ofRider(player) != null; }
+        @Override public boolean stacking() { return host.packets.carryAvailable(); }
+        @Override public SeatModule offer() { return seatModule != null ? seatModule : SeatModule.byDefault(host.seatSettings().defaultEnabled()); }
+        @Override public boolean available() { return navigable(); }
+        @Override public String occupied() {
+            if (riding.active()) return "someone is riding this NPC";
+            if (host.mounts.passengersOf().containsKey(id)) return "it carries other NPCs";
+            return null;
+        }
+        @Override public boolean steered() { return SeatRules.steered(spec.type(), spec.appearance().equipment()); }
+        @Override public String npcName() { return spec.name(); }
+        @Override public String npcId() { return id; }
+        @Override public WorldPosition feet() { return state.snapshot().position(); }
+        @Override public double height() { return bodyHeight(); }
+        @Override public double width() { return hullWidth(); }
+        @Override public float yaw() { return yaw; }
+        /** Under the root of this NPC's mount chain, which the same owner holds: its real vehicle's feet, or its own. */
+        @Override public WorldPosition ground() {
+            RegionActor root = owner.root().body() instanceof RegionActor group ? group : RegionActor.this;
+            art.arcane.animus.core.runtime.RuntimeHost.RealEntity on = root.vehicle == null ? null : root.vehicle.vehicle();
+            WorldPosition feet = on != null ? on.position() : root.state.snapshot().position();
+            return SeatRules.ground(feet, terrain(feet.world()));
+        }
+        @Override public WorldPosition standingPlace(WorldPosition ground) { return SeatRules.standingPlace(ground, yaw, hullWidth(), terrain(ground.world())); }
+        @Override public boolean holds(WorldPosition at) {
+            World world = host.world(at.world());
+            ChunkPosition chunk = at.chunk();
+            return world != null && host.regions.owns(world, chunk.x(), chunk.z(), chunk.x(), chunk.z());
+        }
+        @Override public UUID id(Player player) { return player.getUniqueId(); }
+        @Override public String name(Player player) { return player.getName(); }
+        @Override public boolean owns(Player player) { return host.regions.owns(player); }
+        @Override public boolean online(Player player) { return player.isOnline(); }
+        @Override public boolean dead(Player player) { return player.isDead(); }
+        @Override public boolean busy(Player player) { return player.isSleeping() || player.getGameMode() == org.bukkit.GameMode.SPECTATOR || host.gsit.posed(player); }
+        @Override public boolean inVehicle(Player player) { return player.isInsideVehicle(); }
+        @Override public boolean permitted(Player player, String node) { return player.hasPermission(node); }
+        @Override public boolean emptyHand(Player player) { return player.getInventory().getItemInMainHand().getType().isAir(); }
+        @Override public WorldPosition position(Player player) { return RegionViewer.position(player.getLocation()); }
+        @Override public String gsit(Player player, WorldPosition npc, double height, int stacked) {
+            World world = host.world(npc.world());
+            return world == null ? null : host.gsit.refusal(player, new Location(world, npc.point().x(), npc.point().y(), npc.point().z()), height, stacked);
+        }
+        @Override public art.arcane.animus.core.presentation.BodyTransport.ControlSubscription subscribe(Player player) { return host.packets.subscribeControl(player); }
+        @Override public boolean presents(Player player) { return host.presents(player, uuid); }
+        @Override public void place(Player player, Vec3 feet) { host.packets.placeRider(player, feet.x(), feet.y(), feet.z()); }
+        @Override public void released(Player player, WorldPosition target, String message) {
+            host.dismounted(player, RegionActor.this, target, message == null ? null : art.arcane.animus.core.text.RichText.colorize(art.arcane.animus.core.text.Palette.reply(message)));
+        }
+        @Override public void changed() { publish(state.snapshot().active()); }
+        private MotionValidator.Sampler terrain(String world) {
+            World loaded = host.world(world);
+            if (loaded == null) return (int x, int y, int z) -> art.arcane.animus.core.navigation.VoxelSnapshot.Cell.UNAVAILABLE;
+            return LiveMovementProbe.owned(loaded, (int x, int z) -> host.regions.owns(loaded, x, z, x, z));
+        }
     }
 
     // ---- A real player riding this NPC ----
@@ -798,7 +1016,7 @@ final class RegionActor implements RegionOwner.Body {
     }
     /** True when a per-player NPC has viewers in range to look at. */
     private boolean lookOnce(LookClose look) {
-        if (mount || seated || riding.active() || !navigable()) return false;
+        if (mount || carried() || riding.active() || !navigable()) return false;
         if (!look.whileNavigating() && !pauseClock.paused(turns) && (routeRead != null || (route != null && (route.plan != null || route.execution != null)))) return false;
         // A playing recording faces where the recorder looked.
         if (performance.run != null) return false;
@@ -963,7 +1181,7 @@ final class RegionActor implements RegionOwner.Body {
      * false leaves it where it is. A move into another chunk hands the NPC on at the end of its next turn.
      */
     boolean relocate(WorldPosition destination) {
-        if (seated || mount || riding.active() || !owner.riders().isEmpty() || !state.snapshot().active() || !destination.world().equals(state.snapshot().position().world())) return false;
+        if (carried() || mount || riding.active() || !owner.riders().isEmpty() || !state.snapshot().active() || !destination.world().equals(state.snapshot().position().world())) return false;
         World world = host.world(destination.world());
         if (world == null) return false;
         ChunkOwnership owned = (int x, int z) -> host.regions.owns(world, x, z, x, z);
@@ -984,7 +1202,7 @@ final class RegionActor implements RegionOwner.Body {
         ActorCombat fighting = combat;
         // A guard stands still between its steps and a fighter between its hits; neither is idle.
         boolean engaged = fighting != null && (fighting.guarded() != null || !(fighting.status().startsWith("IDLE") || fighting.status().startsWith("not a combatant")));
-        if (engaged || route != null || routeRead != null || performance.run != null || (waypoints != null && !waypoints.complete()) || mount || seated || riding.active()
+        if (engaged || route != null || routeRead != null || performance.run != null || (waypoints != null && !waypoints.complete()) || mount || carried() || riding.active()
                 || !navigable() || !at.world().equals(spec.position().world()) || at.point().distance(home.position()) < HomeSettings.AT_HOME) { idleSince = turns; return; }
         if (!home.due(at.point(), turns - idleSince)) return;
         idleSince = turns;
@@ -1064,38 +1282,44 @@ final class RegionActor implements RegionOwner.Body {
         }
         ChunkOwnership owned = (x, z) -> host.regions.owns(world, x, z, x, z);
         try {
-            if (current.execution == null) {
+            if (current.execution == null || current.replanning) {
+                // A chase still walking its last path keeps walking whenever its new plan cannot start yet.
+                boolean walking = current.replanning;
                 if (current.plan == null) {
                     BlockPos feet = BlockPos.containing(state.snapshot().position().point()), goal = BlockPos.containing(current.goal.point());
                     LongLeg.Request request = current.longLeg.request(state.snapshot().position().point());
+                    CaptureBounds bounds = request.bounds();
                     if (!loaded(new ChunkPosition(current.goal.world(), Math.floorDiv(feet.x(), 16), Math.floorDiv(feet.z(), 16)))
                             || (request.direct() && !loaded(new ChunkPosition(current.goal.world(), Math.floorDiv(goal.x(), 16), Math.floorDiv(goal.z(), 16))))) {
-                        suspendRoute("unavailable terrain; no chunk loading requested"); return;
-                    }
-                    if (fallBeforeLeg(current, world, owned)) return;
-                    CaptureBounds bounds = request.bounds();
+                        if (walking) current.replanning = false;
+                        else { suspendRoute("unavailable terrain; no chunk loading requested"); return; }
+                    } else if (!walking && fallBeforeLeg(current, world, owned)) return;
                     // A long leg's segment reads only the chunks this region owns; the rest is unavailable, so it walks to
                     // the region's edge and the handoff moves it on. A whole leg must lie in this region.
-                    if (request.direct() && !host.regions.owns(current.goal.world(), Math.floorDiv(bounds.minX(), 16), Math.floorDiv(bounds.minZ(), 16),
+                    else if (request.direct() && !host.regions.owns(current.goal.world(), Math.floorDiv(bounds.minX(), 16), Math.floorDiv(bounds.minZ(), 16),
                             Math.floorDiv(bounds.minX() + bounds.sizeX() - 1, 16), Math.floorDiv(bounds.minZ() + bounds.sizeZ() - 1, 16))) {
-                        suspendRoute("route terrain belongs to another region; retrying"); return;
+                        if (walking) current.replanning = false;
+                        else { suspendRoute("route terrain belongs to another region; retrying"); return; }
+                    } else if (host.budget.take(RegionBudget.Kind.ROUTE_PLANS, 1) == 0) {
+                        if (!walking) {
+                            host.budget.routeRefused(waited); routeWaited = waited + 1;
+                            routeStatus(current, "queued", "waiting for a planning turn"); return;
+                        }
+                    } else {
+                        current.plan = host.navigation.plan(world.getUID().toString(), bounds, feet, request.aim(), profile(current), request.limits());
+                        current.result = current.plan.future().toCompletableFuture();
+                        routeStatus(current, "planning", walking ? "walking the last path meanwhile" : "");
                     }
-                    if (host.budget.take(RegionBudget.Kind.ROUTE_PLANS, 1) == 0) {
-                        host.budget.routeRefused(waited); routeWaited = waited + 1;
-                        routeStatus(current, "queued", "waiting for a planning turn"); return;
-                    }
-                    current.plan = host.navigation.plan(world.getUID().toString(), bounds, feet, request.aim(), profile(current), request.limits());
-                    current.result = current.plan.future().toCompletableFuture();
-                    routeStatus(current, "planning", "");
                 }
-                if (!current.result.isDone()) {
+                if (current.plan != null && !current.result.isDone()) {
                     int units = host.budget.take(RegionBudget.Kind.CAPTURE, 256);
                     host.budget.refund(RegionBudget.Kind.CAPTURE, units - host.navigation.capture(current.plan, world, owned, turns, units));
                 }
-                if (current.result.isDone()) {
+                if (current.plan != null && current.result.isDone()) {
                     PathPlanner.Result planned = current.result.join();
                     current.capture = current.plan.capture().orElse(null); current.plan = null; current.result = null;
-                    if (planned.status() == PathPlanner.Status.UNAVAILABLE_TERRAIN) suspendRoute("unavailable captured terrain");
+                    if (current.replanning) replanned(current, planned);
+                    else if (planned.status() == PathPlanner.Status.UNAVAILABLE_TERRAIN) suspendRoute("unavailable captured terrain");
                     else if (planned.status() == PathPlanner.Status.CANCELLED) { /* released for a handoff; the new owner plans again */ }
                     else {
                         LongLeg.Next next = current.longLeg.planned(planned);
@@ -1169,6 +1393,21 @@ final class RegionActor implements RegionOwner.Body {
             else if (current.execution.finished()) executed(current);
         }
         return true;
+    }
+    /**
+     * A chase's new plan is in: it replaces the path walked meanwhile from the step ahead of where the body stands. A plan
+     * that leads nowhere, or that a handoff cancelled, keeps the old path; the chase asks again on its next turn.
+     */
+    private void replanned(Route current, PathPlanner.Result planned) {
+        current.replanning = false;
+        if (planned.status() == PathPlanner.Status.UNAVAILABLE_TERRAIN || planned.status() == PathPlanner.Status.CANCELLED) return;
+        LongLeg.Next next = current.longLeg.planned(planned);
+        if (next != LongLeg.Next.FINAL && next != LongLeg.Next.SEGMENT && next != LongLeg.Next.ARRIVE) return;
+        current.segment = next == LongLeg.Next.SEGMENT;
+        Vec3 at = state.snapshot().position().point();
+        Vec3 end = next == LongLeg.Next.FINAL ? current.goal.point() : planned.path().getLast().point();
+        current.execution = new PathExecution(at, RouteRules.ahead(planned.path(), at), end, profile(current));
+        routeStatus(current, "moving", RouteRules.moving(current.segment) + "; region owner");
     }
     /** Same long leg rules as {@link PersistedNpcService}: a walked segment plans the next one, the last one arrives. */
     private void executed(Route current) {
@@ -1263,6 +1502,8 @@ final class RegionActor implements RegionOwner.Body {
     }
     private void arriveAt(Route current) {
         if (route != current) return;
+        // A chase can reach the end of its last path while the next plan is still being made.
+        if (current.plan != null) { current.plan.cancel(); current.plan = null; current.result = null; }
         if (current.recording != null) { route = null; performance.arrived(current.recording); return; }
         WaypointProgress progress = waypoints;
         route = null; routeStatus(current, "arrived", ""); arrivals++;
@@ -1786,12 +2027,13 @@ final class RegionActor implements RegionOwner.Body {
                 && Objects.equals(previous.navigation(), navigation()) && previous.rig() == rigSnapshot() && previous.dragonPhase() == dragonPhase
                 && previous.passengers().equals(passengers()) && previous.rider() == rider() && Objects.equals(previous.combat(), combatView())
                 && previous.lookRevision() == lookRevision && previous.swings() == swings && previous.gestures() == gestures && previous.attackSwings() == attackSwings && previous.attributeRevision() == attributeRevision
-                && previous.hurts() == hurts && previous.deaths() == deaths && previous.bubbleRevision() == bubbleRevision) return;
+                && previous.hurts() == hurts && previous.deaths() == deaths && previous.bubbleRevision() == bubbleRevision
+                && previous.sitters().equals(sitters()) && Objects.equals(previous.vehicle(), realSeat())) return;
         Map<EquipmentSlot, ItemStack> items = new EnumMap<>(EquipmentSlot.class);
         (rig == null ? equipment : rig.bodyEquipment(equipment)).forEach((slot, item) -> items.put(slot, item.clone()));
         publication = new Publication(presented, snapshot, spec, spec.type(), displayName, displaySkin, appearance, yaw, headYaw, pitch, onGround, pose, lookClose, lookingAtViewers,
                 Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot(), dragonPhase, passengers(), rider(), combatView(), look, lookRevision, swings, gestures, gesture, attackSwings,
-                attributes, attributeRevision, hurts, deaths, bubble, bubbleRevision, mirror, seat(snapshot));
+                attributes, attributeRevision, hurts, deaths, bubble, bubbleRevision, mirror, seat(snapshot), sitters(), realSeat());
     }
     /** The seat a sitting body is shown on, read from this region's terrain under its feet again only once it has moved. */
     private art.arcane.animus.core.presentation.RestingPlacement.Seat seat(VirtualNpcState.Snapshot snapshot) {
@@ -1807,7 +2049,8 @@ final class RegionActor implements RegionOwner.Body {
         seatAt = art.arcane.animus.core.presentation.RestingPlacement.seat(at.point(), LiveMovementProbe.owned(world, owned));
         return seatAt;
     }
-    private Player rider() { return riding.rider(); }
+    /** The real player on this body: its steering rider, or the lowest player sitting on it. */
+    private Player rider() { Player rider = riding.rider(); return rider != null ? rider : seats.bottom(); }
     private NpcRig.Snapshot<ItemStack> rigSnapshot() {
         NpcRig<ItemStack> current = rig;
         return current == null ? null : current.snapshot();
@@ -1824,6 +2067,8 @@ final class RegionActor implements RegionOwner.Body {
         long nextAttempt, progressTurn;
         /** The path being walked ends part way along a long leg. */
         boolean segment;
+        /** A combat chase; replanning: it walks the previous chase path while its new goal is planned. */
+        boolean chase, replanning;
         /** The style a route or manual leg walks in; a recording's walk and playback have none. */
         StyledLeg styled;
         /** A recording's turn: a planned walk to its goal pose when {@link #walk}, otherwise its frames; a walk fails after {@link #deadline}. */

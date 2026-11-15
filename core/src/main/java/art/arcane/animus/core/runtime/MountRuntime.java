@@ -2,6 +2,7 @@ package art.arcane.animus.core.runtime;
 
 import art.arcane.animus.core.control.RideLedger;
 import art.arcane.animus.core.control.RideSettings;
+import art.arcane.animus.core.control.SeatRules;
 import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.mount.MountReference;
 import art.arcane.animus.core.mount.MountRelations;
@@ -28,7 +29,7 @@ import java.util.function.Consumer;
  * Owner thread only.
  */
 final class MountRuntime<P, I> implements AutoCloseable {
-    private static final int ROSTER_RESEND_TICKS = 20, MOUNT_LOG_LIMIT = 20, GROUND_SEARCH = 16;
+    private static final int ROSTER_RESEND_TICKS = 20, MOUNT_LOG_LIMIT = 20;
     private final PersistedNpcService<P, I> host;
     private final RiderService<P, I> riders;
     private final RealMounts<P, I> real;
@@ -85,19 +86,7 @@ final class MountRuntime<P, I> implements AutoCloseable {
         }
         RuntimeHost.RealEntity entity = real.vehicle(root);
         WorldPosition feet = entity != null ? entity.position() : root.state.snapshot().position();
-        return groundBelow(feet);
-    }
-    private WorldPosition groundBelow(WorldPosition feet) {
-        art.arcane.animus.core.navigation.MotionValidator.Sampler terrain = host.host.collision(feet.world());
-        Vec3 point = feet.point();
-        int x = (int) Math.floor(point.x()), y = (int) Math.floor(point.y()), z = (int) Math.floor(point.z());
-        for (int down = 0; down <= GROUND_SEARCH; down++) {
-            art.arcane.animus.core.navigation.VoxelSnapshot.Cell cell = terrain.sample(x, y - down, z);
-            if (cell.unavailable() || cell.water()) return feet;
-            double top = y - down + cell.top();
-            if (cell.collides() && top <= point.y() + 0.000001) return new WorldPosition(feet.world(), new Vec3(point.x(), top, point.z()));
-        }
-        return feet;
+        return SeatRules.ground(feet, host.host.collision(feet.world()));
     }
 
     /** Structural mount problems stop an edit. A missing or dormant vehicle does not: it stays preserved and reported. */

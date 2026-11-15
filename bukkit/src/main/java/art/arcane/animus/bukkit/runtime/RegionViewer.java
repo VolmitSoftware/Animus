@@ -68,6 +68,8 @@ final class RegionViewer {
     final ViewerSession guard;
     final PreviewBodies<Player, ItemStack> preview;
     private final Map<UUID, Presented> visible = new HashMap<>(), retiring = new HashMap<>();
+    /** Real entities that carry NPC bodies or seated players for this player, by native ID, as last sent. */
+    private final Map<Integer, Carry> carried = new HashMap<>();
     /** {@code cosmeticOrder} holds the same bodies as {@code presentationOrder}, in its own rotation for cosmetic work. */
     private final Deque<Presented> retirements = new ArrayDeque<>(), presentationOrder = new ArrayDeque<>(), cosmeticOrder = new ArrayDeque<>();
     /** Packet operations handed to the transport and not yet finished, bounded by {@code [npcs] queuePerViewer}. */
@@ -531,7 +533,7 @@ final class RegionViewer {
     }
     /** Network and pure state only: callable from a retirement callback without world access. */
     void close() {
-        guard.close(); visible.clear(); retiring.clear(); retirements.clear(); presentationOrder.clear(); cosmeticOrder.clear(); completions.clear(); shown.set(0);
+        guard.close(); visible.clear(); retiring.clear(); carried.clear(); retirements.clear(); presentationOrder.clear(); cosmeticOrder.clear(); completions.clear(); shown.set(0);
         if (proximity != null) proximity.forget(id);
         AutoCloseable running = task;
         if (running != null) try { running.close(); } catch (Exception ignored) { /* Folia already retired the task. */ }
@@ -572,10 +574,18 @@ final class RegionViewer {
         NpcRuntime.InteractionListener<Player> listener = host.interactions;
         if (listener != null && listener.interacted(player, target, action == VirtualNpcInteractionEvent.Action.ATTACK, input.secondaryAction())) return;
         // Only the wand selects, through the listener above; a plain click is play.
-        if (target.equals(actor.uuid) && actor.publication.ride() && action == VirtualNpcInteractionEvent.Action.INTERACT && !input.secondaryAction() && "MAIN_HAND".equals(input.hand())) {
+        boolean ownClick = target.equals(actor.uuid) && action == VirtualNpcInteractionEvent.Action.INTERACT && "MAIN_HAND".equals(input.hand());
+        if (ownClick && actor.publication.ride() && !input.secondaryAction()) {
             String refusal = actor.requestRide(player);
             if (refusal != null) player.sendMessage(RichText.colorize(Palette.error("Cannot ride " + actor.spec.name() + ": " + refusal)));
             else attach(body, actor);
+            return;
+        }
+        // A seat takes only its own click, after every behavior, shop, GUI, quest and ride had theirs.
+        if (ownClick && actor.seatAsked(input.secondaryAction())) {
+            String refusal = actor.requestSeat(player);
+            if (refusal == null) attachSeat(body, actor);
+            else if (!refusal.isEmpty()) player.sendMessage(RichText.colorize(Palette.error("Cannot sit on " + actor.spec.name() + ": " + refusal)));
         }
     }
 
@@ -697,17 +707,121 @@ final class RegionViewer {
                     settle.accept(failure == null, failure == null ? "" : art.arcane.animus.core.runtime.PersistedNpcService.concise(failure))));
         } catch (RuntimeException failure) { settle.accept(false, art.arcane.animus.core.runtime.PersistedNpcService.concise(failure)); }
     }
-    /** Player owner only, after this player's ride on the NPC ended: the detach reaches this client before any teleport. */
+    /**
+     * The seated player's own attach goes out at once and authoritatively: on the NPC itself for the lowest seat, on the
+     * player below for the others. The seat starts on the NPC's owner when the client has it; the callback carries the
+     * seat's generation, so it never starts a later seat. On the click's thread, which owns the NPC and its seats.
+     */
+    private void attachSeat(Presented body, RegionActor actor) {
+        RegionSeats.Lease<RegionActor> lease = host.seats.of(id);
+        UUID generation = actor.seatGeneration(player);
+        if (lease == null || lease.actor() != actor || generation == null) return;
+        java.util.function.Consumer<Boolean> settle = (Boolean succeeded) -> actor.owner.submit(new OwnerMailbox.Work() {
+            @Override public void run() { actor.seatAttached(generation, succeeded); }
+            @Override public void refuse(String reason) { host.seats.release(lease); }
+        });
+        Player below = actor.seatBelow(player);
+        try {
+            CompletionStage<Void> shown;
+            if (below == null) {
+                List<NativePacketAdapter.Body> passengers = passengers(actor.publication);
+                body.sentRoster = roster(passengers, player);
+                shown = host.packets.passengers(player, body.body, passengers, player, true);
+            } else {
+                List<Integer> own = host.regions.owns(below) ? below.getPassengers().stream().map(org.bukkit.entity.Entity::getEntityId).toList() : List.of();
+                Carry carry = new Carry(own);
+                carry.riders.add(player.getEntityId());
+                carried.put(below.getEntityId(), carry);
+                shown = host.packets.carry(player, below.getEntityId(), own, List.of(), carry.riders);
+            }
+            shown.whenComplete((nothing, failure) -> enqueue(() -> settle.accept(failure == null)));
+        } catch (RuntimeException failure) { settle.accept(false); }
+    }
+    /**
+     * Player owner only, after this player's ride or seat on the NPC ended: the NPC's roster without this player and every
+     * carried roster that changed reach this client before any teleport.
+     */
     void detach(RegionActor actor) {
         Presented body = visible.get(actor.uuid);
-        if (body == null || !body.spawnFinished || body.retired) return;
-        List<NativePacketAdapter.Body> passengers = passengers(actor.publication);
-        body.sentRoster = roster(passengers, null);
+        if (body != null && body.spawnFinished && !body.retired) {
+            RegionActor.Publication now = actor.publication;
+            Player occupant = now.rider() == player ? null : now.rider();
+            List<NativePacketAdapter.Body> passengers = passengers(now);
+            body.sentRoster = roster(passengers, occupant);
+            try {
+                host.packets.passengers(player, body.body, passengers, occupant, true).whenComplete((nothing, failure) -> {
+                    if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) { body.sentRoster = null; host.cosmeticFailed(this, "passengers", body.actor, failure); } });
+                });
+            } catch (RuntimeException failure) { body.sentRoster = null; host.cosmeticFailed(this, "passengers", body.actor, failure); }
+        }
+        carries(Integer.MAX_VALUE, true);
+    }
+    /** What one real entity carries for this player, after the server's own passengers on it: NPC bodies, then players. */
+    private static final class Carry {
+        final List<Integer> own; final List<NativePacketAdapter.Body> bodies = new ArrayList<>(); final List<Integer> riders = new ArrayList<>();
+        Carry(List<Integer> own) { this.own = own; }
+        List<Integer> ids() {
+            List<Integer> ids = new ArrayList<>(bodies.size() + riders.size());
+            for (NativePacketAdapter.Body body : bodies) ids.add(body.entityId());
+            ids.addAll(riders);
+            return ids;
+        }
+    }
+    /** The real entities that carry something for this player now, by native ID, from the publications of the NPCs it sees. */
+    private Map<Integer, Carry> wantedCarries() {
+        Map<Integer, Carry> wanted = new HashMap<>();
+        for (Presented body : visible.values()) {
+            if (!body.spawnFinished || body.retired) continue;
+            RegionActor.Publication now = body.actor.publication;
+            RegionActor.RealSeat vehicle = now.vehicle();
+            if (vehicle != null) wanted.computeIfAbsent(vehicle.entityId(), (Integer ignored) -> new Carry(vehicle.own())).bodies.add(body.body);
+            List<RegionActor.Sitter> sitters = now.sitters();
+            for (int level = 1; level < sitters.size(); level++) {
+                RegionActor.Sitter below = sitters.get(level - 1);
+                wanted.computeIfAbsent(below.entityId(), (Integer ignored) -> new Carry(below.own())).riders.add(sitters.get(level).entityId());
+            }
+        }
+        return wanted;
+    }
+    /** Sends the carried rosters that changed for this player, releases first; {@code all} ignores the budget, as a detach must. */
+    private int carries(int packetBudget, boolean all) {
+        if (carried.isEmpty() && host.realVehicles.isEmpty() && host.seats.size() < 2) return 0;
+        if (!host.packets.carryAvailable()) return 0;
+        Map<Integer, Carry> wanted = wantedCarries();
+        int sent = 0;
+        for (Map.Entry<Integer, Carry> shown : List.copyOf(carried.entrySet())) {
+            if (wanted.containsKey(shown.getKey())) continue;
+            if (!admitCarry(sent, packetBudget, all)) return sent;
+            carried.remove(shown.getKey());
+            sendCarry(shown.getKey(), new Carry(shown.getValue().own), shown.getValue()); sent++;
+        }
+        for (Map.Entry<Integer, Carry> want : wanted.entrySet()) {
+            Carry before = carried.get(want.getKey());
+            if (before != null && before.ids().equals(want.getValue().ids())) continue;
+            if (!admitCarry(sent, packetBudget, all)) return sent;
+            carried.put(want.getKey(), want.getValue());
+            sendCarry(want.getKey(), want.getValue(), before); sent++;
+        }
+        return sent;
+    }
+    private boolean admitCarry(int sent, int packetBudget, boolean all) {
+        if (all) return admit(PresentationPressure.Tier.DESPAWN);
+        return sent < packetBudget && admit(PresentationPressure.Tier.AUTHORITATIVE);
+    }
+    /** A failed send puts back what this player had, so a later tick sends it again. */
+    private void sendCarry(int entity, Carry carry, Carry before) {
         try {
-            host.packets.passengers(player, body.body, passengers, null, true).whenComplete((nothing, failure) -> {
-                if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) { body.sentRoster = null; host.cosmeticFailed(this, "passengers", body.actor, failure); } });
+            handOver(() -> host.packets.carry(player, entity, carry.own, carry.bodies, carry.riders)).whenComplete((nothing, failure) -> {
+                if (failure != null) enqueue(() -> {
+                    if (!host.current(this)) return;
+                    if (before == null) carried.remove(entity); else carried.put(entity, before);
+                    host.cosmeticFailed(this, "real passengers", null, failure);
+                });
             });
-        } catch (RuntimeException failure) { body.sentRoster = null; host.cosmeticFailed(this, "passengers", body.actor, failure); }
+        } catch (RuntimeException failure) {
+            if (before == null) carried.remove(entity); else carried.put(entity, before);
+            host.cosmeticFailed(this, "real passengers", null, failure);
+        }
     }
     /** The seated passengers this viewer has spawned, from the vehicle owner's publication. */
     private List<NativePacketAdapter.Body> passengers(RegionActor.Publication vehicle) {
@@ -731,7 +845,8 @@ final class RegionViewer {
      * Other clients know a real rider only while vanilla tracks it, so a roster with a real rider repeats every second.
      */
     private int rosters(int packetBudget) {
-        int sent = 0;
+        int sent = carries(packetBudget, false);
+        if (sent >= packetBudget || !host.current(this)) return sent;
         boolean resend = ticks % ROSTER_RESEND_TICKS == 0;
         for (int pass = 0; pass < 2; pass++) {
             for (Presented vehicle : presentationOrder) {

@@ -14,6 +14,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -40,7 +41,8 @@ import org.bukkit.util.Vector;
  * <p>
  * Which mobs: monsters that hunt players (zombies, skeletons, creepers, spiders in the dark, illagers, witches and the
  * rest of {@link #HUNTERS}); wolves against a skeleton body, or against an NPC their owner fought; iron and snow golems
- * against a monster body. Main thread of Paper and Spigot only. Owner thread only.
+ * against a monster body. This class keeps the decoys of Paper and Spigot on the main thread; on Folia each NPC's owner
+ * keeps its own decoy with the same rules. Owner thread only.
  */
 public final class NpcDecoys implements AutoCloseable {
     /** What the decoys need from combat. */
@@ -132,28 +134,19 @@ public final class NpcDecoys implements AutoCloseable {
             World world = world(self);
             Vec3 at = self.position().point();
             if (world == null || !world.isChunkLoaded(((int) Math.floor(at.x())) >> 4, ((int) Math.floor(at.z())) >> 4)) continue;
-            Location centre = center(world, self.bounds());
             String body = host.body(npc);
-            List<Mob> drawn = new ArrayList<>(), candidates = new ArrayList<>();
             Decoy current = byNpc.get(npc);
-            for (Entity entity : world.getNearbyEntities(centre, RANGE, RANGE / 2, RANGE)) {
-                if (!(entity instanceof Mob mob) || !mob.isValid() || mob.isDead() || !mob.hasAI() || !mob.isAware()) continue;
-                LivingEntity target = mob.getTarget();
-                if (current != null && target != null && target.getUniqueId().equals(current.body().getUniqueId())) { drawn.add(mob); continue; }
-                if (target != null && target.isValid() && !target.isDead()) continue;
-                if (!fights(mob, npc, body) || !inFollowRange(mob, centre) || !sees(mob, centre) || !host.allows(mob, self)) continue;
-                candidates.add(mob);
-            }
+            Scan scan = scan(world, self, current == null ? null : current.body(), (Mob mob) -> fights(mob, npc, body) && host.allows(mob, self));
             // A decoy no mob targets any more is taken away until a mob would fight the NPC again.
-            if (candidates.isEmpty() && drawn.isEmpty() && current != null) { forget(npc); continue; }
-            if (candidates.isEmpty() || drawn.size() >= PER_NPC) continue;
-            candidates.sort(Comparator.comparingDouble((Mob mob) -> mob.getLocation().distanceSquared(centre)));
+            if (scan.candidates().isEmpty() && scan.drawn() == 0 && current != null) { forget(npc); continue; }
+            if (scan.candidates().isEmpty() || scan.drawn() >= PER_NPC) continue;
             Decoy decoy = decoy(npc, self, world);
             if (decoy == null) continue;
-            for (Mob mob : candidates) {
-                if (drawn.size() >= PER_NPC) break;
+            int drawn = scan.drawn();
+            for (Mob mob : scan.candidates()) {
+                if (drawn >= PER_NPC) break;
                 mob.setTarget(decoy.body());
-                if (mob.getTarget() == decoy.body()) drawn.add(mob);
+                if (mob.getTarget() == decoy.body()) drawn++;
             }
         }
     }
@@ -176,12 +169,40 @@ public final class NpcDecoys implements AutoCloseable {
         }
     }
 
+    /** Mobs near an NPC: how many target its decoy now, and those {@code wanted} accepts that have nothing else to fight, nearest first. */
+    public record Scan(int drawn, List<Mob> candidates) {}
+    /** On the thread that owns the whole area within {@link #RANGE} of the NPC. */
+    public static Scan scan(World world, VirtualNpcState.Snapshot self, Mannequin decoy, Predicate<Mob> wanted) {
+        Location centre = center(world, self.bounds());
+        int drawn = 0;
+        List<Mob> candidates = new ArrayList<>();
+        for (Entity entity : world.getNearbyEntities(centre, RANGE, RANGE / 2, RANGE)) {
+            if (!(entity instanceof Mob mob) || !mob.isValid() || mob.isDead() || !mob.hasAI() || !mob.isAware()) continue;
+            LivingEntity target = mob.getTarget();
+            if (decoy != null && target != null && target.getUniqueId().equals(decoy.getUniqueId())) { drawn++; continue; }
+            if (target != null && target.isValid() && !target.isDead()) continue;
+            if (!wanted.test(mob) || !inFollowRange(mob, centre) || !sees(mob, centre)) continue;
+            candidates.add(mob);
+        }
+        candidates.sort(Comparator.comparingDouble((Mob mob) -> mob.getLocation().distanceSquared(centre)));
+        return new Scan(drawn, candidates);
+    }
+    /** The corners of the area a draw for this NPC reads, as {@code {minX, minZ, maxX, maxZ}} chunk coordinates. */
+    public static int[] area(VirtualNpcState.Snapshot self) {
+        Hitbox bounds = self.bounds();
+        double x = (bounds.min().x() + bounds.max().x()) / 2, z = (bounds.min().z() + bounds.max().z()) / 2;
+        return new int[] {Math.floorDiv((int) Math.floor(x - RANGE), 16), Math.floorDiv((int) Math.floor(z - RANGE), 16),
+                Math.floorDiv((int) Math.floor(x + RANGE), 16), Math.floorDiv((int) Math.floor(z + RANGE), 16)};
+    }
+
+    /** {@link #fights(Mob, String, Set, Predicate)} with this decoy host's riders and fights. */
+    boolean fights(Mob mob, UUID npc, String body) { return fights(mob, body, host.attached(npc), (UUID owner) -> host.fought(npc, owner)); }
     /**
      * Whether this mob would fight a player standing where an NPC of this body stands, as its own AI chooses. A mob never
-     * fights the NPC riding it.
+     * fights the NPC riding it ({@code attached}); a tame wolf joins a fight its owner had with the NPC ({@code fought}).
      */
-    boolean fights(Mob mob, UUID npc, String body) {
-        if (host.attached(npc).contains(mob.getUniqueId())) return false;
+    public static boolean fights(Mob mob, String body, Set<UUID> attached, Predicate<UUID> fought) {
+        if (attached.contains(mob.getUniqueId())) return false;
         String type = mob.getType().getKey().toString();
         if (type.equals("minecraft:spider") || type.equals("minecraft:cave_spider")) return mob.getLocation().getBlock().getLightLevel() < SPIDER_LIGHT;
         if (HUNTERS.contains(type)) return true;
@@ -189,7 +210,7 @@ public final class NpcDecoys implements AutoCloseable {
         if (type.equals("minecraft:wolf")) {
             if (SKELETONS.contains(body)) return true;
             AnimalTamer owner = mob instanceof Tameable tame && tame.isTamed() ? tame.getOwner() : null;
-            return owner != null && host.fought(npc, owner.getUniqueId());
+            return owner != null && fought.test(owner.getUniqueId());
         }
         return false;
     }
@@ -210,6 +231,19 @@ public final class NpcDecoys implements AutoCloseable {
         Decoy existing = byNpc.get(npc);
         if (existing != null && existing.body().isValid()) return existing;
         if (existing != null) forget(npc);
+        Mannequin body = spawn(world, self, key);
+        if (body == null) return null;
+        Decoy made = new Decoy(npc, body);
+        byNpc.put(npc, made);
+        byEntity.put(body.getUniqueId(), npc);
+        return made;
+    }
+
+    /**
+     * A decoy on the NPC's feet: a mannequin no player is ever sent, with no gravity, no collision and no sound, marked
+     * with {@code key} and sized to the NPC's body; null when the world refused it. On the thread that owns the feet.
+     */
+    public static Mannequin spawn(World world, VirtualNpcState.Snapshot self, NamespacedKey key) {
         Vec3 feet = self.position().point();
         double height = self.bounds().max().y() - self.bounds().min().y();
         Mannequin body = world.spawn(new Location(world, feet.x(), feet.y(), feet.z()), Mannequin.class, (Mannequin made) -> {
@@ -223,11 +257,17 @@ public final class NpcDecoys implements AutoCloseable {
             AttributeInstance scale = made.getAttribute(Attribute.SCALE);
             if (scale != null && height > 0) scale.setBaseValue(Math.max(.0625, Math.min(16, height / MANNEQUIN_HEIGHT)));
         });
-        if (!body.isValid()) return null;
-        Decoy made = new Decoy(npc, body);
-        byNpc.put(npc, made);
-        byEntity.put(body.getUniqueId(), npc);
-        return made;
+        return body.isValid() ? body : null;
+    }
+    /**
+     * Removes a decoy on the thread that owns it. With {@code letGo}, mobs that targeted it let go now and choose again with
+     * their own AI; otherwise they notice on their own that it is gone.
+     */
+    public static void release(Mannequin decoy, boolean letGo) {
+        if (!decoy.isValid()) return;
+        if (letGo) for (Entity near : decoy.getNearbyEntities(RANGE * 2, RANGE, RANGE * 2))
+            if (near instanceof Mob mob && mob.getTarget() == decoy) mob.setTarget(null);
+        decoy.remove();
     }
 
     /** Removes the NPC's decoy; mobs that targeted it let go and choose again with their own AI. */
@@ -237,17 +277,14 @@ public final class NpcDecoys implements AutoCloseable {
     }
     private void remove(Decoy decoy) {
         byEntity.remove(decoy.body().getUniqueId());
-        if (!decoy.body().isValid()) return;
-        for (Entity near : decoy.body().getNearbyEntities(RANGE * 2, RANGE, RANGE * 2))
-            if (near instanceof Mob mob && mob.getTarget() == decoy.body()) mob.setTarget(null);
-        decoy.body().remove();
+        release(decoy.body(), true);
     }
 
     private World world(VirtualNpcState.Snapshot self) {
         try { return plugin.getServer().getWorld(UUID.fromString(self.position().world())); }
         catch (IllegalArgumentException notUuid) { return plugin.getServer().getWorld(self.position().world()); }
     }
-    private static Location center(World world, Hitbox bounds) {
+    static Location center(World world, Hitbox bounds) {
         return new Location(world, (bounds.min().x() + bounds.max().x()) / 2, (bounds.min().y() + bounds.max().y()) / 2, (bounds.min().z() + bounds.max().z()) / 2);
     }
 

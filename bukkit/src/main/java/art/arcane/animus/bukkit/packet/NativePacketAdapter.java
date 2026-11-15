@@ -683,6 +683,15 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
     }
 
     /**
+     * Moves a server entity to this position without a teleport, so the entity stays in the world and mobs keep it as
+     * their target. Folia allows only teleportAsync through Bukkit, which removes and re-adds the entity. Owner thread of
+     * the entity, and of the chunk it moves into.
+     */
+    public void place(org.bukkit.entity.Entity entity, double x, double y, double z) {
+        try { nativeApi.entitySetPosition.invoke(nativeApi.craftEntityHandle.invoke(entity), x, y, z); }
+        catch (ReflectiveOperationException failure) { throw new IllegalStateException("Cannot move " + entity.getType() + ": " + failure.getClass().getSimpleName(), failure); }
+    }
+    /**
      * Where a real server entity carries its passenger at {@code index}, at its current size and pose, and where a body of
      * its kind would attach as a passenger, in body-local coordinates. Owner thread of the entity.
      */
@@ -965,7 +974,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private final Method multimapCreate, multimapPut, dataValueCreate;
         private final Field playerInfoEntries;
         private final Class<? extends Enum> playerInfoAction;
-        private final Method craftPlayerHandle, craftEntityHandle, entityDimensions, entityPose;
+        private final Method craftPlayerHandle, craftEntityHandle, entityDimensions, entityPose, entitySetPosition;
         private final Field playerConnection, networkConnection, channel;
         private final Class<?> attackPacket, interactPacket, controlPacket, clientTickEndPacket;
         private final Method attackId, interactId, interactHand, interactSecondary;
@@ -1069,6 +1078,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             craftPlayerHandle = type(craftPackage + ".entity.CraftPlayer").getMethod("getHandle");
             craftEntityHandle = type(craftPackage + ".entity.CraftEntity").getMethod("getHandle");
             entityPose = type("net.minecraft.world.entity.Entity").getMethod("getPose");
+            entitySetPosition = type("net.minecraft.world.entity.Entity").getMethod("setPos", double.class, double.class, double.class);
             entityDimensions = type("net.minecraft.world.entity.Entity").getMethod("getDimensions", type("net.minecraft.world.entity.Pose"));
             EquipmentBindings boundEquipment = null;
             try { boundEquipment = new EquipmentBindings(craftPackage); }

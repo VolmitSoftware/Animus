@@ -155,14 +155,18 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
     @Override public String realVehiclesUnavailable() { return nativePackets == null ? "the packet transport is not bound" : null; }
     @Override public Optional<RealEntity> entity(UUID uuid) {
         org.bukkit.entity.Entity entity = plugin.getServer().getEntity(uuid);
-        return vehicle(plugin, entity) ? Optional.of(real(entity)) : Optional.empty();
+        return vehicle(plugin, entity) ? Optional.of(real(entity, nativePackets)) : Optional.empty();
     }
     @Override public Optional<RealEntity> nearestEntity(WorldPosition near, String type, double range, java.util.function.Predicate<UUID> free) {
         World world = terrain.world(near.world());
-        org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.fromString(type);
-        if (world == null || key == null) return Optional.empty();
         Vec3 point = near.point();
-        if (!world.isChunkLoaded(Math.floorDiv((int) Math.floor(point.x()), 16), Math.floorDiv((int) Math.floor(point.z()), 16))) return Optional.empty();
+        if (world == null || !world.isChunkLoaded(Math.floorDiv((int) Math.floor(point.x()), 16), Math.floorDiv((int) Math.floor(point.z()), 16))) return Optional.empty();
+        return nearest(plugin, world, point, type, range, free).map((org.bukkit.entity.Entity found) -> real(found, nativePackets));
+    }
+    /** The nearest vehicle of this type within range that {@code free} accepts, on the thread that owns the whole area. */
+    static Optional<org.bukkit.entity.Entity> nearest(org.bukkit.plugin.Plugin plugin, World world, Vec3 point, String type, double range, java.util.function.Predicate<UUID> free) {
+        org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.fromString(type);
+        if (key == null) return Optional.empty();
         Location center = new Location(world, point.x(), point.y(), point.z());
         org.bukkit.entity.Entity nearest = null;
         double best = range * range;
@@ -171,7 +175,7 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
             double distance = candidate.getLocation().distanceSquared(center);
             if (distance <= best) { best = distance; nearest = candidate; }
         }
-        return nearest == null ? Optional.empty() : Optional.of(real(nearest));
+        return Optional.ofNullable(nearest);
     }
     /**
      * A loaded entity that is not a player; boats, minecarts and armor stands count. GSit's own seats are left alone, so an
@@ -182,11 +186,12 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
                 && entity.getScoreboardTags().stream().noneMatch((String tag) -> tag.startsWith("GSit_"))
                 && !entity.getPersistentDataContainer().has(new org.bukkit.NamespacedKey(plugin, art.arcane.animus.bukkit.combat.NpcDecoys.MARK), org.bukkit.persistence.PersistentDataType.BYTE);
     }
-    private RealEntity real(org.bukkit.entity.Entity entity) {
+    /** The entity as a vehicle reads now, on the thread that owns it. */
+    static RealEntity real(org.bukkit.entity.Entity entity, NativePacketAdapter packets) {
         Location at = entity.getLocation();
         List<Integer> passengers = entity.getPassengers().stream().map(org.bukkit.entity.Entity::getEntityId).toList();
         return new RealEntity(entity.getUniqueId(), entity.getEntityId(), entity.getType().getKey().toString(), position(at), at.getYaw(),
-                nativePackets.seatOf(entity, passengers.size()), passengers);
+                packets.seatOf(entity, passengers.size()), passengers);
     }
     @Override public List<Integer> realPassengers(UUID uuid) {
         org.bukkit.entity.Entity entity = plugin.getServer().getEntity(uuid);

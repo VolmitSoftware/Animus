@@ -33,15 +33,23 @@ public final class RouteRules {
     public static int motionCells(double hullWidth, double hullHeight, double distance) {
         return Math.max(MOTION_CELLS, MotionValidator.cellBudget(hullWidth, hullHeight, distance));
     }
+    /** A chase walk whose goal moved less than this keeps its plan. */
+    public static final double CHASE_KEEP = 1;
+    /** What a combat chase does when it is asked for a goal again. */
+    public enum ChaseStep { START, KEEP, REPLAN }
     /**
-     * One route leg in the NPC's own world. A leg of any length is planned as a {@link LongLeg}, one bounded capture at
-     * a time.
+     * A chase already running in the goal's world keeps its plan when the goal moved less than {@link #CHASE_KEEP} at the
+     * same speed, and is planned again otherwise; anything else starts as a new route.
      */
+    public static ChaseStep chaseStep(boolean chasing, WorldPosition goal, double speed, WorldPosition next, double nextSpeed) {
+        if (!chasing || !goal.world().equals(next.world())) return ChaseStep.START;
+        return goal.point().distance(next.point()) < CHASE_KEEP && speed == nextSpeed ? ChaseStep.KEEP : ChaseStep.REPLAN;
+    }
     /**
      * The planned steps from the first one ahead of where the body stands now. A chase plans while the body keeps walking,
      * so the plan's first column can lie behind it.
      */
-    static List<PathPlanner.Step> ahead(List<PathPlanner.Step> path, Vec3 at) {
+    public static List<PathPlanner.Step> ahead(List<PathPlanner.Step> path, Vec3 at) {
         int nearest = 0;
         double best = Double.POSITIVE_INFINITY;
         for (int i = 0; i < Math.min(path.size(), 6); i++) {
@@ -51,6 +59,10 @@ public final class RouteRules {
         int from = Math.min(nearest + 1, path.size() - 1);
         return from == 0 ? path : path.subList(from, path.size());
     }
+    /**
+     * One route leg in the NPC's own world. A leg of any length is planned as a {@link LongLeg}, one bounded capture at
+     * a time.
+     */
     public static void validateLeg(WorldPosition origin, WorldPosition destination, MovementProfile.Mode mode, double speed, double hullWidth, double hullHeight) {
         if (!Double.isFinite(speed) || speed < 1 || speed > MAXIMUM_SPEED) throw new IllegalArgumentException("Navigation speed must be 1..10 blocks/second");
         if (!origin.world().equals(destination.world())) throw new IllegalArgumentException("Navigation requires the same world");

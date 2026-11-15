@@ -59,21 +59,21 @@ final class RouteNavigator<P, I> {
         value.route = route; order.add(route, service.tickNumber); value.navigationStatus = "queued; route=" + route.id;
         return route.id;
     }
-    /** A chase walk whose goal moved less than this keeps its plan. */
-    static final double CHASE_KEEP = 1;
     /**
      * A combat chase toward a moving goal. A chase already walking keeps walking its path while the new goal is planned,
-     * and takes the new path once it is ready; a goal that moved less than {@link #CHASE_KEEP} keeps the current plan.
+     * and takes the new path once it is ready; see {@link RouteRules#chaseStep} for when it keeps the current plan.
      * Anything else starts as {@link #navigate} does.
      */
     UUID chase(PersistedNpcService<P, I>.Value value, WorldPosition destination, double blocksPerSecond) {
         Route old = value.route;
-        if (old == null || !old.chase || !current(old) || !old.goal.world().equals(destination.world())) {
+        boolean chasing = old != null && old.chase && current(old);
+        RouteRules.ChaseStep step = RouteRules.chaseStep(chasing, chasing ? old.goal : destination, chasing ? old.speed : blocksPerSecond, destination, blocksPerSecond);
+        if (step == RouteRules.ChaseStep.START) {
             UUID started = navigate(value, destination, MovementProfile.Mode.WALK, blocksPerSecond);
             value.route.chase = true;
             return started;
         }
-        if (old.goal.point().distance(destination.point()) < CHASE_KEEP && old.speed == blocksPerSecond) return old.id;
+        if (step == RouteRules.ChaseStep.KEEP) return old.id;
         MovementProfile.Mode legMode = value.movement.legMode(MovementProfile.Mode.WALK, null);
         validateDestination(value, destination, legMode, blocksPerSecond);
         Route next = new Route(value, destination, legMode, blocksPerSecond, null, null);

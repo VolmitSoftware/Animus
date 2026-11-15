@@ -4,12 +4,9 @@ import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.config.SeatSettings;
 import art.arcane.animus.core.control.ControlInbox;
 import art.arcane.animus.core.control.RideEntry;
-import art.arcane.animus.core.control.RideSteering;
 import art.arcane.animus.core.control.SeatModule;
+import art.arcane.animus.core.control.SeatRules;
 import art.arcane.animus.core.control.SeatToggles;
-import art.arcane.animus.core.navigation.BodyMobility;
-import art.arcane.animus.core.npc.EquipmentSlot;
-import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.presentation.BodyTransport;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.virtual.Vec3;
@@ -19,7 +16,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -56,12 +52,7 @@ final class SeatService<P, I> implements AutoCloseable {
         }
     }
     private enum Exit { RESTORE_POSITION, LEAVE_POSITION }
-    /** Bodies a rider's own client steers when they carry a saddle or harness; they take riders through riding instead. */
-    private static final Set<String> SADDLED = Set.of("minecraft:horse", "minecraft:donkey", "minecraft:mule", "minecraft:skeleton_horse", "minecraft:zombie_horse",
-            "minecraft:camel", "minecraft:camel_husk", "minecraft:pig", "minecraft:strider", "minecraft:nautilus", "minecraft:zombie_nautilus");
     private static final long ATTACH_TIMEOUT_NANOS = 5_000_000_000L;
-    private static final int STAND_CELLS = 256;
-    private static final double PLAYER_WIDTH = 0.6, PLAYER_HEIGHT = 1.8;
     private final PersistedNpcService<P, I> service;
     private final RuntimeHost<P, I> host;
     private final Presentation<P, I> presentation;
@@ -123,7 +114,7 @@ final class SeatService<P, I> implements AutoCloseable {
         if (!service.valueCurrent(npc) || !npc.state.snapshot().active()) return "this NPC is not available";
         String occupied = presentation.occupied(npc);
         if (occupied != null) return occupied;
-        if (steered(npc)) return "its rider's own client steers a saddled body; give it the riding module instead";
+        if (SeatRules.steered(npc.spec.type(), npc.spec.appearance().equipment())) return SeatRules.STEERED;
         WorldPosition at = npc.state.snapshot().position();
         if (!host.position(player).world().equals(at.world())) return "this NPC is in another world";
         List<Seat> stack = stacks.getOrDefault(uuid, List.of());
@@ -151,14 +142,6 @@ final class SeatService<P, I> implements AutoCloseable {
         }, (String reason) -> { if (seats.get(id) == taken) end(taken, "attach-failed", Exit.LEAVE_POSITION); });
         return null;
     }
-    /** A body its rider's client steers once it wears a saddle, or a harness on a happy ghast. */
-    private static boolean steered(PersistedNpcService<?, ?>.Value npc) {
-        Map<EquipmentSlot, NpcItem> worn = npc.spec.appearance().equipment();
-        String type = npc.spec.type();
-        if (SADDLED.contains(type)) return worn.containsKey(EquipmentSlot.SADDLE);
-        NpcItem body = worn.get(EquipmentSlot.BODY);
-        return type.equals("minecraft:happy_ghast") && body != null && body.id().endsWith("_harness");
-    }
 
     void tick() {
         if (seats.isEmpty()) return;
@@ -170,7 +153,7 @@ final class SeatService<P, I> implements AutoCloseable {
             if (seats.get(seat.id) != seat) continue;
             try {
                 String stop = stop(seat, now);
-                if (stop != null) { end(seat, stop, leaves(stop) ? Exit.LEAVE_POSITION : Exit.RESTORE_POSITION); continue; }
+                if (stop != null) { end(seat, stop, SeatRules.leavesInPlace(stop) ? Exit.LEAVE_POSITION : Exit.RESTORE_POSITION); continue; }
                 if (seat.state != State.SEATED) continue;
                 WorldPosition ground = presentation.ground(seat.npc);
                 if (!seat.entry.allows(ground)) { end(seat, RideEntry.DENIED, Exit.RESTORE_POSITION); continue; }
@@ -180,10 +163,6 @@ final class SeatService<P, I> implements AutoCloseable {
                 end(seat, "failed", Exit.RESTORE_POSITION);
             }
         }
-    }
-    private static boolean leaves(String reason) {
-        return "offline".equals(reason) || "death".equals(reason) || "real-vehicle".equals(reason) || "world-changed".equals(reason)
-                || ControlInbox.CONNECTION_CLOSED.equals(reason) || "attach-failed".equals(reason);
     }
     private String stop(Seat seat, long now) {
         P player = seat.player;
@@ -252,8 +231,8 @@ final class SeatService<P, I> implements AutoCloseable {
         try { presentation.detach(seat.player, seat.npc); }
         catch (RuntimeException failure) { host.warn("Seat detach failed: " + failure.getMessage()); }
         if (exit == Exit.RESTORE_POSITION && host.online(seat.player) && !host.dead(seat.player)) restore(seat);
-        if (host.online(seat.player) && !"shift".equals(reason) && !"shutdown".equals(reason) && !"death".equals(reason) && !"offline".equals(reason) && !"stack-ended".equals(reason))
-            host.tell(seat.player, Palette.reply("Got off " + seat.npc.spec.name() + ": " + reason.replace('-', ' ')));
+        String told = SeatRules.told(seat.npc.spec.name(), reason);
+        if (host.online(seat.player) && told != null) host.tell(seat.player, Palette.reply(told));
     }
     /** The client leaves the seat once the detach arrives, then applies this ordinary teleport beside the NPC. */
     private void restore(Seat seat) {
@@ -271,13 +250,7 @@ final class SeatService<P, I> implements AutoCloseable {
     private WorldPosition standingPlace(Seat seat, WorldPosition from) {
         WorldPosition ground = presentation.ground(seat.npc);
         if (!from.world().equals(ground.world())) return from;
-        RideSteering.Probe stand = RideSteering.probe(BodyMobility.forBody("minecraft:player", PLAYER_WIDTH, PLAYER_HEIGHT), STAND_CELLS, host.collision(from.world()));
-        double half = Math.max(PersistedNpcService.moveWidth(seat.npc), PLAYER_WIDTH) / 2;
-        for (Vec3 candidate : RideSteering.dismountCandidates(ground.point(), seat.npc.yaw, half)) {
-            RideSteering.Result placed = stand.check(candidate, candidate);
-            if (placed.outcome() == RideSteering.Outcome.MOVED && placed.grounded()) return new WorldPosition(from.world(), placed.position());
-        }
-        return ground;
+        return SeatRules.standingPlace(ground, seat.npc.yaw, PersistedNpcService.moveWidth(seat.npc), host.collision(from.world()));
     }
 
     @Override public void close() {

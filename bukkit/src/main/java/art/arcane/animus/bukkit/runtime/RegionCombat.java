@@ -75,7 +75,15 @@ public final class RegionCombat implements Listener, AutoCloseable {
     private static final int MAXIMUM_FLYING = 2048, FLIGHT_TICKS = 1200;
     private final java.util.concurrent.atomic.AtomicInteger flying = new java.util.concurrent.atomic.AtomicInteger();
     /** The projectiles followed now, each read on its own region. */
-    private final Set<UUID> followed = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final Map<UUID, Flight> followed = new ConcurrentHashMap<>();
+    /** Decoys real mobs fight in NPCs' places, by entity UUID; each lives on its NPC's owner (see {@link ActorDecoy}). */
+    final Map<UUID, RegionActor> decoys = new ConcurrentHashMap<>();
+    final NamespacedKey decoyKey;
+    /** Marks a projectile that already struck an NPC, so the decoy it touches next does not count it again. */
+    private final NamespacedKey struckKey;
+    /** When each player and NPC last fought, either way round, by NPC; a tame wolf joins its owner's fight. */
+    private final Map<UUID, Map<UUID, Long>> fought = new ConcurrentHashMap<>();
+    private static final long FOUGHT_NANOS = 10_000_000_000L;
     private final RegionNpcRuntime host;
     /** The budgets in effect; replaced by a hotload, read by each NPC's owner at the start of its combat turn. */
     volatile CombatBudgets budgets;
@@ -109,6 +117,8 @@ public final class RegionCombat implements Listener, AutoCloseable {
         };
         helperKey = new NamespacedKey(host.plugin, "combat_helper");
         ownerKey = new NamespacedKey(host.plugin, "combat_helper_owner");
+        decoyKey = new NamespacedKey(host.plugin, art.arcane.animus.bukkit.combat.NpcDecoys.MARK);
+        struckKey = new NamespacedKey(host.plugin, "struck_npc");
         teams = new art.arcane.animus.bukkit.combat.PluginTeams(host.plugin.getServer());
         statistics = host.runtime.combatStatistics().sink();
         host.plugin.getServer().getPluginManager().registerEvents(this, host.plugin);
@@ -146,7 +156,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
         CombatBudgets budgets = this.budgets;
         return (budgets.enabled() ? "Combat ready on Folia regions" : "Combat unavailable: disabled in config.toml") + " | module npcs=" + combatants.size() + " | helpers=" + helpers + " | protection=" + protectionName
                 + " | protection-denials=" + denials.get() + " | protection-failures=" + failures.get() + " | owner-messages=" + messages.get()
-                + " | messages-dropped=" + dropped.get() + " | deleted-on-death=" + deleted.get()
+                + " | messages-dropped=" + dropped.get() + " | deleted-on-death=" + deleted.get() + " | decoys=" + decoys.size()
                 + " | limits per region tick: brains=" + budgets.brainsPerTick() + ", scans=" + budgets.targetScansPerTick() + ", paths=" + budgets.pathRequestsPerTick();
     }
 
@@ -178,7 +188,29 @@ public final class RegionCombat implements Listener, AutoCloseable {
         combatants.add(actor);
         return new ActorCombat(actor, this, settings, loadout);
     }
-    void closed(RegionActor actor) { combatants.remove(actor); }
+    void closed(RegionActor actor) { combatants.remove(actor); fought.remove(actor.uuid); }
+    /** Any thread: this player and this NPC fought just now. */
+    void foughtBetween(UUID npc, UUID player) { fought.computeIfAbsent(npc, (UUID key) -> new ConcurrentHashMap<>()).put(player, System.nanoTime()); }
+    /** Any thread: whether they fought lately; an old fight is forgotten as it is read. */
+    boolean fought(UUID npc, UUID player) {
+        Map<UUID, Long> players = fought.get(npc);
+        Long at = players == null ? null : players.get(player);
+        if (at == null) return false;
+        if (System.nanoTime() - at <= FOUGHT_NANOS) return true;
+        players.remove(player, at);
+        return false;
+    }
+    /** On the entity's owner: whether this entity stands in for an NPC body, current or left over from before a reload. */
+    boolean decoy(Entity entity) {
+        return entity != null && (decoys.containsKey(entity.getUniqueId()) || entity.getPersistentDataContainer().has(decoyKey, PersistentDataType.BYTE));
+    }
+    /** Another region holds the decoy: it is removed on its own scheduler, and mobs there notice it is gone. */
+    void removeThere(org.bukkit.entity.Mannequin decoy) {
+        decoys.remove(decoy.getUniqueId());
+        host.regions.submit(decoy, () -> art.arcane.animus.bukkit.combat.NpcDecoys.release(decoy, false), () -> {});
+    }
+    /** Owner of the entity: moves it without a teleport. */
+    void place(Entity entity, art.arcane.animus.core.virtual.Vec3 feet) { host.packets.place(entity, feet.x(), feet.y(), feet.z()); }
     RegionActor actor(UUID npc) { return host.byUuid.get(npc); }
     /**
      * Runs work on the target NPC's owner, at once when this thread owns it. The work sees the NPC's combat as it is on
@@ -408,7 +440,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
     @EventHandler(priority = EventPriority.LOWEST)
     public void helperHit(ProjectileHitEvent event) {
         Projectile projectile = event.getEntity();
-        if (!helper(projectile)) return;
+        if (!helper(projectile) || decoy(event.getHitEntity())) return;
         event.setCancelled(true);
         RegionActor owner = helperOwner(projectile);
         Entity struck = event.getHitEntity();
@@ -452,7 +484,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
             this.projectile = projectile; this.kind = kind; this.shooter = shooter; this.observed = observed;
             flight = new ProjectileFlight(BukkitShots.pierce(projectile));
             flight.launched(BukkitShots.position(projectile));
-            followed.add(projectile.getUniqueId());
+            followed.put(projectile.getUniqueId(), this);
         }
         @Override public void run() {
             if (ended) return;
@@ -460,6 +492,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
             Optional<ProjectileFlight.Hit> hit = flight.advance(BukkitShots.position(projectile), BukkitShots.velocity(projectile),
                     (WorldPosition center, double radius, SpatialNpcIndex.Budget budget) -> scan(center, radius, null, budget), RegionCombat.this::shootable);
             if (hit.isEmpty()) return;
+            struck(hit.get().npc());
             host.strikes.struck(projectile, hit.get().npc(), hit.get().point(), flight.spent());
             RegionActor struck = actor(hit.get().npc());
             RealShot shot = BukkitShots.shot(projectile, kind, shooter, flight, random);
@@ -467,12 +500,100 @@ public final class RegionCombat implements Listener, AutoCloseable {
             BukkitShots.land(projectile, kind, hit.get().point(), flight.spent());
             if (flight.spent()) stop();
         }
+        /** NPCs this flight struck already; the projectile carries the mark for the decoy it may touch after it lands. */
+        private final Set<UUID> struck = new java.util.HashSet<>();
+        private void struck(UUID npc) {
+            struck.add(npc);
+            projectile.getPersistentDataContainer().set(struckKey, PersistentDataType.BYTE, (byte) 1);
+        }
+        /** The projectile touched the NPC's decoy: the NPC is struck once, as if this flight had found its body. */
+        void strike(RegionActor npc, art.arcane.animus.core.virtual.Vec3 point) {
+            if (ended || struck.contains(npc.uuid)) return;
+            struck(npc.uuid);
+            host.strikes.struck(projectile, npc.uuid, point, true);
+            RealShot shot = BukkitShots.shot(projectile, kind, shooter, flight, random);
+            send(npc, "shot", (ActorCombat combat) -> combat.shot(shot, observed));
+            BukkitShots.land(projectile, kind, point, true);
+            stop();
+        }
         void stop() {
             AutoCloseable running = task;
             try { if (running != null) running.close(); } catch (Exception ignored) { }
             end();
         }
-        void end() { if (!ended) { ended = true; flying.decrementAndGet(); followed.remove(projectile.getUniqueId()); } }
+        void end() { if (!ended) { ended = true; flying.decrementAndGet(); followed.remove(projectile.getUniqueId(), this); } }
+    }
+    /**
+     * On the decoy's region: nothing hurts a decoy. A mob's melee hit on one goes to its NPC's owner, which applies the NPC's
+     * own defense, after the API's mob damage event; projectiles and explosions reach the NPC through their own handlers.
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void decoyDamage(org.bukkit.event.entity.EntityDamageEvent event) {
+        if (!decoy(event.getEntity())) return;
+        event.setCancelled(true);
+        RegionActor actor = decoys.get(event.getEntity().getUniqueId());
+        if (actor == null || closed || !enabled() || !(event instanceof EntityDamageByEntityEvent byEntity) || !(byEntity.getDamager() instanceof org.bukkit.entity.Mob mob)) return;
+        if (event.getCause() != org.bukkit.event.entity.EntityDamageEvent.DamageCause.ENTITY_ATTACK
+                && event.getCause() != org.bukkit.event.entity.EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK) return;
+        art.arcane.animus.bukkit.event.VirtualNpcDamagedByMobEvent api = new art.arcane.animus.bukkit.event.VirtualNpcDamagedByMobEvent(actor.uuid, mob, event.getDamage());
+        host.plugin.getServer().getPluginManager().callEvent(api);
+        if (api.isCancelled() || !(api.getDamage() > 0)) return;
+        org.bukkit.attribute.AttributeInstance push = mob.getAttribute(org.bukkit.attribute.Attribute.ATTACK_KNOCKBACK);
+        TargetRef attacker = new TargetRef(TargetKind.MOB, mob.getUniqueId());
+        WorldPosition from = RegionViewer.position(mob.getLocation());
+        double amount = api.getDamage(), knockback = art.arcane.animus.core.combat.VanillaMelee.BASE_KNOCKBACK + (push == null ? 0 : push.getValue() / 2);
+        send(actor, "decoy hit", (ActorCombat combat) -> combat.mobHit(attacker, from, amount, knockback));
+    }
+    /**
+     * On the projectile's region: a projectile that touches a decoy struck its NPC, once, as one striking the body does.
+     * An NPC's own helper passes through, as its flight is followed already.
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void decoyHit(ProjectileHitEvent event) {
+        Entity hit = event.getHitEntity();
+        Projectile projectile = event.getEntity();
+        RegionActor actor;
+        if (decoy(hit)) actor = decoys.get(hit.getUniqueId());
+        else {
+            // A player seated on or riding the NPC stands inside its decoy; a shot meant for the decoy by a mob this region holds is the NPC's.
+            if (!(projectile.getShooter() instanceof Entity shooter) || !owns(shooter)) return;
+            Optional<UUID> npc = art.arcane.animus.bukkit.combat.NpcDecoys.meantFor(projectile, hit,
+                    (Entity target) -> target == null ? Optional.empty() : Optional.ofNullable(decoys.get(target.getUniqueId())).map((RegionActor owner) -> owner.uuid),
+                    this::seatedOrRiding);
+            if (npc.isEmpty()) return;
+            actor = actor(npc.get());
+        }
+        event.setCancelled(true);
+        if (actor == null || closed || !enabled() || helper(projectile) || !shootable(actor.uuid)) return;
+        art.arcane.animus.core.virtual.Vec3 point = BukkitShots.position(projectile).point();
+        Flight followedHere = followed.get(projectile.getUniqueId());
+        if (followedHere != null) { followedHere.strike(actor, point); return; }
+        // A bouncing or dropping projectile whose flight already struck an NPC passes through.
+        if (!art.arcane.animus.bukkit.combat.NpcDecoys.firstStrike(projectile, struckKey)) return;
+        Optional<RealShot.Kind> kind = BukkitShots.kind(projectile);
+        TargetRef shooter = BukkitShots.shooter(projectile);
+        if (kind.isEmpty() || shooter == null) return;
+        ProjectileFlight once = new ProjectileFlight(BukkitShots.pierce(projectile));
+        once.launched(BukkitShots.position(projectile));
+        host.strikes.struck(projectile, actor.uuid, point, true);
+        RealShot shot = BukkitShots.shot(projectile, kind.get(), shooter, once, new java.util.SplittableRandom());
+        send(actor, "shot", (ActorCombat combat) -> combat.shot(shot, null));
+        BukkitShots.land(projectile, kind.get(), point, true);
+    }
+    /** Any thread: the players seated on or riding this NPC, as its owner last published them. */
+    private Set<UUID> seatedOrRiding(UUID npc) {
+        RegionActor actor = actor(npc);
+        RegionActor.Publication view = actor == null ? null : actor.publication;
+        if (view == null) return Set.of();
+        Set<UUID> players = new java.util.HashSet<>();
+        for (RegionActor.Sitter sitter : view.sitters()) players.add(sitter.player().getUniqueId());
+        if (view.rider() != null) players.add(view.rider().getUniqueId());
+        return players;
+    }
+    /** On the player's region: an NPC hit a player, so the player's wolves may turn on it. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void npcHitPlayer(art.arcane.animus.bukkit.event.VirtualNpcDamageEvent event) {
+        if (event.getTarget() instanceof Player player) foughtBetween(event.getNpcId(), player.getUniqueId());
     }
     /** On the explosion's region: every combat NPC in reach takes vanilla explosion damage, handed to its owner. */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -498,7 +619,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
         }
     }
     /** On the projectile's region: this projectile is followed here and stops in the NPC's body. */
-    boolean stops(Projectile projectile, UUID npc) { return followed.contains(projectile.getUniqueId()) && shootable(npc); }
+    boolean stops(Projectile projectile, UUID npc) { return followed.containsKey(projectile.getUniqueId()) && shootable(npc); }
     /** Whether a real projectile striking this NPC counts, from the view its owner published. */
     private boolean shootable(UUID npc) {
         RegionActor actor = actor(npc);

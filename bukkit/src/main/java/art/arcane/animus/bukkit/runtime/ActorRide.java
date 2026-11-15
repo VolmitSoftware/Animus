@@ -60,7 +60,8 @@ final class ActorRide {
         if (!host.regions.owns(player)) return "you are in another region";
         if (!player.hasPermission(settings.permission())) return "you do not have permission";
         if (!actor.navigable()) return "this NPC is not available";
-        if (actor.seated || host.mounts.vehicleOf().containsKey(actor.id)) return "this NPC is itself riding";
+        if (actor.carried() || host.mounts.vehicleOf().containsKey(actor.id)) return "this NPC is itself riding";
+        if (actor.seatTaken()) return "someone is sitting on this NPC";
         if (riding != null) return "someone else is riding this NPC";
         if (player.isDead() || player.isSleeping() || player.isInsideVehicle() || player.getGameMode() == GameMode.SPECTATOR) return "you cannot mount right now";
         WorldPosition at = actor.state.snapshot().position();
@@ -137,7 +138,7 @@ final class ActorRide {
         if (!player.isOnline()) return "offline";
         if (player.isDead()) return "death";
         if (!actor.state.snapshot().active() || !actor.navigable()) return "npc-retired";
-        if (actor.seated) return "npc-mounted";
+        if (actor.carried()) return "npc-mounted";
         if (!player.hasPermission(current.session.settings().permission())) return "permission-revoked";
         if (player.isInsideVehicle()) return "real-vehicle";
         if (player.isSleeping() || player.getGameMode() == GameMode.SPECTATOR) return "player-state";

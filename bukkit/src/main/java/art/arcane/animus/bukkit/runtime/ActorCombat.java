@@ -64,12 +64,15 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
     private UUID guarded;
     /** Ticks in a row this NPC's brain wanted a turn and the region had none left. */
     private int waited;
+    /** The decoy real mobs fight in this NPC's place when its combat lets mobs target it; null otherwise. */
+    private final ActorDecoy<org.bukkit.entity.Mob, org.bukkit.entity.Mannequin> decoy;
 
     ActorCombat(RegionActor actor, RegionCombat combat, CombatSettings settings, CombatLoadout loadout) {
         this.actor = actor; this.combat = combat; this.settings = settings; this.loadout = loadout;
         engine = new CombatEngine(combat.budgets, this, combat.protection, new SplittableRandom(), combat::warn, allowance(combat.allowance()));
         engine.statistics(combat.statistics);
         engine.register(actor.uuid, actor.id, settings, loadout);
+        decoy = settings.targetableByMobs() ? new ActorDecoy<>(new Decoys(), actor.uuid.hashCode()) : null;
         refreshIndexes();
     }
 
@@ -102,6 +105,7 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         else if (engine.stopping()) engine.resume();
         delivered.clear();
         engine.tick();
+        if (decoy != null) decoy.tick();
         for (UUID npc : engine.drainDeletions()) combat.deleteDead(npc);
         for (UUID npc : engine.drainPermadeaths()) combat.markDead(npc);
         refreshIndexes();
@@ -144,6 +148,12 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         if (!at.world().equals(from.world()) || at.point().distance(from.point()) > combat.budgets.maximumScanRange() + HIT_SLACK) return;
         engine.struck(actor.uuid, attacker, from, amount, knockback, kind);
     }
+    /** A message from the decoy's owner: a real mob's melee hit on this NPC's decoy, checked against where it stands now. */
+    void mobHit(TargetRef attacker, WorldPosition from, double amount, double knockback) {
+        WorldPosition at = actor.state.snapshot().position();
+        if (!at.world().equals(from.world()) || at.point().distance(from.point()) > combat.budgets.maximumScanRange() + HIT_SLACK) return;
+        engine.realHit(actor.uuid, attacker, from, amount, knockback, DamageKind.MELEE);
+    }
     /** A message from the projectile's owner: a helper this NPC launched touched a real entity, observed there. */
     void helperHit(UUID helper, TargetRef struck, CombatTarget observed) {
         helpers.remove(helper); helperPositions.remove(helper);
@@ -157,8 +167,9 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         Location at = player.getLocation();
         TargetRef attacker = new TargetRef(TargetKind.PLAYER, player.getUniqueId());
         BukkitCombatWorld.observe(player, combat::helper).ifPresent((CombatTarget target) -> delivered.put(attacker, target));
-        engine.playerAttack(actor.uuid, attacker, RegionViewer.position(at), swing, weapon).strike()
-                .ifPresent((art.arcane.animus.core.combat.VanillaMelee.Strike strike) -> art.arcane.animus.bukkit.combat.CombatHits.sounds(player, strike));
+        CombatEngine.PlayerHit hit = engine.playerAttack(actor.uuid, attacker, RegionViewer.position(at), swing, weapon);
+        hit.strike().ifPresent((art.arcane.animus.core.combat.VanillaMelee.Strike strike) -> art.arcane.animus.bukkit.combat.CombatHits.sounds(player, strike));
+        if (hit.outcome().status() == DamageStatus.APPLIED) combat.foughtBetween(actor.uuid, player.getUniqueId());
     }
 
     /**
@@ -175,12 +186,57 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
 
     int helpers() { return helpers.size(); }
     @Override public void close() {
+        if (decoy != null) decoy.close();
         engine.close();
         for (UUID npc : engine.drainPermadeaths()) combat.markDead(npc);
         combat.closed(actor);
         combat.guarding(actor, guarded, null); guarded = null;
         combat.watching(actor, false);
         helpers.clear(); helperPositions.clear(); seen.clear(); delivered.clear();
+    }
+
+    /** The decoy's world access, all on this NPC's owner; a decoy another region holds is removed there. */
+    private final class Decoys implements ActorDecoy.Host<org.bukkit.entity.Mob, org.bukkit.entity.Mannequin> {
+        @Override public Optional<VirtualNpcState.Snapshot> targetable() {
+            VirtualNpcState.Snapshot self = actor.state.snapshot();
+            return combat.enabled() && !engine.stopping() && engine.registered(actor.uuid) && self.active() && self.health() > 0 ? Optional.of(self) : Optional.empty();
+        }
+        @Override public ActorDecoy.Scan<org.bukkit.entity.Mob> scan(VirtualNpcState.Snapshot self, org.bukkit.entity.Mannequin current) {
+            World world = combat.world(self.position().world());
+            int[] area = art.arcane.animus.bukkit.combat.NpcDecoys.area(self);
+            // A mob and the decoy it targets need one region to hold both: only this owner's own chunks are searched.
+            if (world == null || !combat.owns(world, area[0], area[1], area[2], area[3])) return null;
+            for (int x = area[0]; x <= area[2]; x++) for (int z = area[1]; z <= area[3]; z++) if (!world.isChunkLoaded(x, z)) return null;
+            String body = actor.spec.type();
+            java.util.Set<UUID> attached = actor.attached();
+            art.arcane.animus.bukkit.combat.NpcDecoys.Scan found = art.arcane.animus.bukkit.combat.NpcDecoys.scan(world, self, current, (org.bukkit.entity.Mob mob) -> combat.owns(mob)
+                    && art.arcane.animus.bukkit.combat.NpcDecoys.fights(mob, body, attached, (UUID owner) -> combat.fought(actor.uuid, owner)) && allows(mob, self));
+            return new ActorDecoy.Scan<>(found.drawn(), found.candidates());
+        }
+        private boolean allows(org.bukkit.entity.Mob mob, VirtualNpcState.Snapshot self) {
+            try {
+                return combat.protection.decide(new art.arcane.animus.core.combat.ProtectionAdapter.Request(art.arcane.animus.core.combat.ProtectionAdapter.Action.MOB_ATTACK,
+                        new TargetRef(TargetKind.MOB, mob.getUniqueId()), RegionViewer.position(mob.getLocation()), new TargetRef(TargetKind.NPC, actor.uuid), self.position(),
+                        java.util.Set.of(art.arcane.animus.core.combat.TargetCategory.NPCS))) == art.arcane.animus.core.combat.ProtectionAdapter.Decision.ALLOW;
+            } catch (RuntimeException | LinkageError failure) { return false; }
+        }
+        @Override public org.bukkit.entity.Mannequin spawn(VirtualNpcState.Snapshot self) {
+            World world = combat.world(self.position().world());
+            art.arcane.animus.core.virtual.ChunkPosition chunk = self.position().chunk();
+            if (world == null || !combat.owns(world, chunk.x(), chunk.z(), chunk.x(), chunk.z()) || !world.isChunkLoaded(chunk.x(), chunk.z())) return null;
+            org.bukkit.entity.Mannequin made = art.arcane.animus.bukkit.combat.NpcDecoys.spawn(world, self, combat.decoyKey);
+            if (made != null) combat.decoys.put(made.getUniqueId(), actor);
+            return made;
+        }
+        @Override public boolean valid(org.bukkit.entity.Mannequin current) { return current.isValid(); }
+        @Override public boolean owns(org.bukkit.entity.Mannequin current) { return combat.owns(current); }
+        @Override public Vec3 at(org.bukkit.entity.Mannequin current) { Location at = current.getLocation(); return new Vec3(at.getX(), at.getY(), at.getZ()); }
+        @Override public void move(org.bukkit.entity.Mannequin current, Vec3 feet) { combat.place(current, feet); }
+        // Mobs on a removed decoy drop it with their own AI: their area may reach chunks this region does not hold.
+        @Override public void remove(org.bukkit.entity.Mannequin current) { combat.decoys.remove(current.getUniqueId()); art.arcane.animus.bukkit.combat.NpcDecoys.release(current, false); }
+        @Override public void removeThere(org.bukkit.entity.Mannequin current) { combat.removeThere(current); }
+        @Override public void forget(org.bukkit.entity.Mannequin current) { combat.decoys.remove(current.getUniqueId()); }
+        @Override public boolean target(org.bukkit.entity.Mob mob, org.bukkit.entity.Mannequin current) { mob.setTarget(current); return mob.getTarget() == current; }
     }
 
     // ---- CombatWorld: this NPC's own state, on its owner ----
