@@ -118,7 +118,8 @@ public final class BukkitCombatBridge implements Listener, AutoCloseable {
             if (closed || retired || combatants.get(npcId) != this || !state.snapshot().active()) return false;
             try { return current.getAsBoolean(); } catch (RuntimeException error) { return false; }
         }
-        public AttackResult attack(LivingEntity target, AttackProfile profile) {
+        /** One manual hit on {@code target}; a death it causes names {@code attackerName}, the NPC's name. */
+        public AttackResult attack(LivingEntity target, AttackProfile profile, String attackerName) {
             requireOwner(); Objects.requireNonNull(target); Objects.requireNonNull(profile);
             VirtualNpcState.Snapshot before = state.snapshot();
             Status validation = validate(this, before, target, profile.reach(), false);
@@ -139,7 +140,7 @@ public final class BukkitCombatBridge implements Listener, AutoCloseable {
                 Vec3 origin = CombatGeometry.center(before.bounds());
                 DamageSource source = DamageSource.builder(DamageType.MOB_ATTACK)
                         .withDamageLocation(new Location(target.getWorld(), origin.x(), origin.y(), origin.z())).build();
-                target.damage(event.getDamage(), source);
+                NpcKills.landing(attackerName, false, () -> target.damage(event.getDamage(), source));
                 double newHealth = target.getHealth();
                 double applied = Math.max(0, oldTotal - newHealth - target.getAbsorptionAmount());
                 return new AttackResult(applied > 0 ? Status.APPLIED : Status.NO_CHANGE, applied, oldHealth, newHealth,

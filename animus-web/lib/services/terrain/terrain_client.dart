@@ -15,6 +15,7 @@ import 'dart:collection';
 import 'dart:convert';
 import 'dart:math' as math;
 
+import '../../logic/suggest/completion_sources.dart';
 import '../../logic/terrain/terrain_data.dart';
 import '../server/page_activity.dart';
 import '../server/transport.dart';
@@ -78,12 +79,13 @@ final class TerrainClient {
   int fresh = 0;
   int unchanged = 0;
 
-  /// Worlds the server lists; null until it has said. A world outside the
-  /// list, or one the server answered 404 for, is never asked about.
+  /// Worlds the server lists, ids without `minecraft:` as every registry
+  /// list is kept; null until it has said. A world outside the list, or one
+  /// the server answered 404 for, is never asked about.
   Set<String>? worlds;
   final Set<String> _missing = <String>{};
 
-  bool _asks(String world) => !_missing.contains(world) && (worlds == null || worlds!.contains(world));
+  bool _asks(String world) => !_missing.contains(world) && (worlds == null || worlds!.contains(world) || worlds!.contains(stripMinecraft(world)));
 
   /// True once the server said [world] is not loaded (`world-unloaded`), or
   /// its list of worlds leaves it out.

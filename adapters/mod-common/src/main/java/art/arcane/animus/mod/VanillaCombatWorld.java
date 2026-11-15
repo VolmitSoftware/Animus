@@ -181,7 +181,7 @@ final class VanillaCombatWorld extends RuntimeCombatWorld<ServerPlayer, ItemStac
         Vec3 origin = self.get().bounds().min().add(self.get().bounds().max()).multiply(.5);
         ResourceKey<DamageType> type = kind == DamageKind.PROJECTILE ? DamageTypes.ARROW : DamageTypes.MOB_ATTACK;
         Holder<DamageType> holder = level.registryAccess().lookupOrThrow(Registries.DAMAGE_TYPE).getOrThrow(type);
-        DamageSource source = new DamageSource(holder, vanilla(origin));
+        DamageSource source = new NpcHit(holder, vanilla(origin), ModText.component(npcName(attacker)));
         double before = victim.getHealth() + victim.getAbsorptionAmount();
         boolean suppress = !victimDrops && !(victim instanceof Player);
         if (suppress) suppressedDrops.add(victim.getUUID());
@@ -288,4 +288,21 @@ final class VanillaCombatWorld extends RuntimeCombatWorld<ServerPlayer, ItemStac
 
     private static net.minecraft.world.phys.Vec3 vanilla(Vec3 point) { return new net.minecraft.world.phys.Vec3(point.x(), point.y(), point.z()); }
     static BlockPos block(Vec3 point) { return BlockPos.containing(point.x(), point.y(), point.z()); }
+
+    /**
+     * An NPC's hit. Vanilla takes the killer's name in a death message from the causing entity, which an NPC body does
+     * not have, and would print "%1$s was slain by %2$s"; this names the NPC instead.
+     */
+    static final class NpcHit extends DamageSource {
+        private final Component attacker;
+
+        NpcHit(Holder<DamageType> type, net.minecraft.world.phys.Vec3 position, Component attacker) {
+            super(type, position);
+            this.attacker = attacker;
+        }
+
+        @Override public Component getLocalizedDeathMessage(LivingEntity killed) { return deathMessage(killed.getDisplayName()); }
+
+        Component deathMessage(Component victim) { return Component.translatable("death.attack." + type().msgId(), victim, attacker); }
+    }
 }

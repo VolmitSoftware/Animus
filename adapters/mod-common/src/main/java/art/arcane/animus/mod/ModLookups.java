@@ -39,7 +39,7 @@ final class ModLookups {
             enchantments = List.of();
         }
         lists.put("enchantments", enchantments);
-        lists.put("worlds", List.copyOf(ModWorldKeys.loaded(server)));
+        lists.put("worlds", ModWorldKeys.names(ModWorldKeys.loaded(server), server.getWorldData().getLevelName()));
         return new EditorHost.Lookups(lists, commands(), List.of());
     }
 

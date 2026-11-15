@@ -61,25 +61,35 @@ final class BukkitPrompts implements Listener {
     void register(Plugin plugin) {
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
         Class<? extends Event> paper = paperChat();
-        if (paper != null) {
-            Method signed, text;
-            try {
-                signed = paper.getMethod("signedMessage");
-                text = Class.forName("net.kyori.adventure.chat.SignedMessage").getMethod("message");
-            } catch (ReflectiveOperationException missing) { signed = null; text = null; }
-            Method message = signed, plain = text;
-            if (message != null) {
-                plugin.getServer().getPluginManager().registerEvent(paper, this, EventPriority.LOWEST, (Listener listener, Event event) -> {
-                    if (!paper.isInstance(event) || !(event instanceof PlayerEvent chat) || !(event instanceof Cancellable cancellable)) return;
-                    try { if (chatted(chat.getPlayer(), String.valueOf(plain.invoke(message.invoke(event))))) cancellable.setCancelled(true); }
-                    catch (ReflectiveOperationException unreadable) { /* Leave a line we cannot read to the server. */ }
-                }, plugin, false);
-                return;
-            }
+        Function<Event, String> text = paper == null ? null : paperChatText(paper);
+        if (text != null) {
+            plugin.getServer().getPluginManager().registerEvent(paper, this, EventPriority.LOWEST, (Listener listener, Event event) -> {
+                if (!paper.isInstance(event) || !(event instanceof PlayerEvent chat) || !(event instanceof Cancellable cancellable)) return;
+                String line = text.apply(event);
+                if (line != null && chatted(chat.getPlayer(), line)) cancellable.setCancelled(true);
+            }, plugin, false);
+            return;
         }
         plugin.getServer().getPluginManager().registerEvent(AsyncPlayerChatEvent.class, this, EventPriority.LOWEST, (Listener listener, Event event) -> {
             if (event instanceof AsyncPlayerChatEvent chat && chatted(chat.getPlayer(), chat.getMessage())) chat.setCancelled(true);
         }, plugin, false);
+    }
+
+    /**
+     * The text of Paper's chat event, or null when the event has no signed message. The plugin bundles its own Adventure,
+     * relocated together with any Adventure class name written here, so the message type is the one the event returns.
+     * A line that cannot be read comes back null and is left to the server.
+     */
+    static Function<Event, String> paperChatText(Class<? extends Event> paper) {
+        Method signed, message;
+        try {
+            signed = paper.getMethod("signedMessage");
+            message = signed.getReturnType().getMethod("message");
+        } catch (ReflectiveOperationException missing) { return null; }
+        return (Event event) -> {
+            try { return String.valueOf(message.invoke(signed.invoke(event))); }
+            catch (ReflectiveOperationException | RuntimeException unreadable) { return null; }
+        };
     }
 
     @SuppressWarnings("unchecked")

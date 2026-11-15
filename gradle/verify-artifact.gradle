@@ -25,6 +25,27 @@ TaskProvider verification = tasks.register('verifyArtifact') {
             }
             null
         }
+        // The strings of a class file's constant pool: what ldc loads, such as a class name passed to Class.forName.
+        Closure<List<String>> stringConstants = { byte[] bytecode ->
+            DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytecode))
+            input.skipBytes(8)
+            int count = input.readUnsignedShort()
+            Map<Integer, String> texts = [:]
+            List<Integer> strings = []
+            for (int index = 1; index < count; index++) {
+                int tag = input.readUnsignedByte()
+                switch (tag) {
+                    case 1: texts[index] = input.readUTF(); break
+                    case 8: strings.add(input.readUnsignedShort()); break
+                    case [7, 16, 19, 20]: input.skipBytes(2); break
+                    case 15: input.skipBytes(3); break
+                    case [3, 4, 9, 10, 11, 12, 17, 18]: input.skipBytes(4); break
+                    case [5, 6]: input.skipBytes(8); index++; break
+                    default: throw new GradleException("${artifact.name}: unknown constant pool tag ${tag}")
+                }
+            }
+            strings.collect { Integer index -> texts[index] }
+        }
         String metadataPath = metadataPaths[platform]
         String entrypoint = entrypoints[platform]
         String namespace = animus.projectGroup.replace('.', '/') + '/'
@@ -53,6 +74,10 @@ TaskProvider verification = tasks.register('verifyArtifact') {
             (metadataPaths.values() + ['paper-plugin.yml']).findAll { String path -> path != metadataPath }.each { String path ->
                 require(archive.getEntry(path) == null, "contains foreign platform metadata ${path}")
             }
+            // Libraries the server provides that this jar also bundles under internal/: Paper's Adventure and Bukkit's
+            // Gson and SnakeYAML; Minecraft's Gson on the mod loaders.
+            List<String> serverLibraries = platform == 'bukkit' ? ['kyori', 'gson', 'snakeyaml'] : ['gson']
+            List<String> relocatedServerNames = serverLibraries.collectMany { String library -> [internal + library + '/', internal.replace('/', '.') + library + '.'] }
             Set<String> classes = new HashSet<>()
             List<String> forbidden = ['org/bukkit/', 'org/spigotmc/', 'io/papermc/', 'net/minecraft/',
                 'com/mojang/', 'net/minecraftforge/', 'net/neoforged/', 'net/fabricmc/', 'art/arcane/volmlib/', 'com/google/gson/', 'org/yaml/snakeyaml/', 'org/bstats/']
@@ -63,6 +88,12 @@ TaskProvider verification = tasks.register('verifyArtifact') {
                 require(classes.add(entry.name), "duplicate class ${entry.name}")
                 String classPath = entry.name.replaceFirst('^META-INF/versions/[0-9]+/', '')
                 require(!forbidden.any { String prefix -> classPath.startsWith(prefix) }, "bundled platform or unrelocated library class ${entry.name}")
+                // A class name in a string is meant for the server's own copy of a library it shares with this jar; Shadow
+                // relocates it like the bundled copy, and the lookup then finds the bundled class instead of the server's.
+                archive.getInputStream(entry).withCloseable { InputStream stream ->
+                    String relocated = stringConstants(stream.readAllBytes()).find { String text -> relocatedServerNames.any { String name -> text.contains(name) } }
+                    require(relocated == null, "${entry.name} names ${relocated}, a relocated class the server provides; resolve the server's class from a type it returns")
+                }
                 if (classPath.startsWith(namespace) && !classPath.startsWith(internal)) {
                     archive.getInputStream(entry).withCloseable { InputStream stream ->
                         byte[] bytecode = stream.readAllBytes()

@@ -49,4 +49,14 @@ class BukkitWorldsTest {
         assertEquals(Optional.empty(), BukkitWorlds.resolve(null, LOADED));
         assertEquals(Optional.empty(), BukkitWorlds.resolve("world", List.of()));
     }
+
+    @Test void theEditorHearsEveryNameAWorldAnswersToButItsUuid() {
+        assertEquals(List.of("world", "minecraft:overworld", "overworld", "world_nether", "minecraft:the_nether", "the_nether",
+                "world_the_end", "minecraft:the_end", "the_end", "Mining", "minecraft:mining", "mining"), BukkitWorlds.names(LOADED));
+        List<BukkitWorlds.Loaded> survival = List.of(new BukkitWorlds.Loaded("survival", UUID.randomUUID(), "minecraft:survival"),
+                new BukkitWorlds.Loaded("survival_nether", UUID.randomUUID(), "minecraft:survival_nether"));
+        assertEquals(List.of("survival", "minecraft:survival", "minecraft:overworld", "overworld",
+                "survival_nether", "minecraft:survival_nether", "minecraft:the_nether", "the_nether"), BukkitWorlds.names(survival));
+        for (String name : BukkitWorlds.names(LOADED)) assertTrue(BukkitWorlds.resolve(name, LOADED).isPresent(), name);
+    }
 }

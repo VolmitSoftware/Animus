@@ -3,6 +3,7 @@ package art.arcane.animus.bukkit.runtime;
 import art.arcane.animus.bukkit.combat.BukkitCombatWorld;
 import art.arcane.animus.bukkit.combat.MobAttackAnimation;
 import art.arcane.animus.bukkit.combat.MobProfile;
+import art.arcane.animus.bukkit.combat.NpcKills;
 import art.arcane.animus.bukkit.combat.NativeMobController;
 import art.arcane.animus.bukkit.event.VirtualNpcDamageEvent;
 import art.arcane.animus.bukkit.event.VirtualNpcDamagedByMobEvent;
@@ -162,7 +163,7 @@ public final class RegionManualCombat implements AutoCloseable {
             double oldHealth = target.getHealth(), oldTotal = oldHealth + target.getAbsorptionAmount();
             Vec3 origin = CombatGeometry.center(self.bounds());
             DamageSource source = DamageSource.builder(DamageType.MOB_ATTACK).withDamageLocation(new Location(target.getWorld(), origin.x(), origin.y(), origin.z())).build();
-            target.damage(event.getDamage(), source);
+            NpcKills.landing(actor.displayName(), false, () -> target.damage(event.getDamage(), source));
             double newHealth = target.getHealth(), done = Math.max(0, oldTotal - newHealth - target.getAbsorptionAmount());
             finish(id, actor, (done > 0 ? "APPLIED" : "NO_CHANGE") + " applied=" + done + " health-before=" + oldHealth + " health-after=" + newHealth, done > 0);
         } catch (RuntimeException failure) {

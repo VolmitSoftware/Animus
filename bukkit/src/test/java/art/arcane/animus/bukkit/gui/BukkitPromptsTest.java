@@ -2,6 +2,7 @@ package art.arcane.animus.bukkit.gui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import art.arcane.animus.core.gui.ScreenHost;
@@ -12,8 +13,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -179,5 +184,24 @@ class BukkitPromptsTest {
         assertEquals(List.of(Optional.of("jeb_")), answers, "the answer stands");
         assertEquals(List.of("anvil", "anvil"), cleared);
         assertEquals(0, serverCloses);
+    }
+
+    /** Paper's chat event and its signed message, as types of their own: the real ones are not on this test's classpath. */
+    public static final class Signed {
+        public String message() { return "Greeter"; }
+    }
+
+    public static final class PaperChat extends Event {
+        private static final HandlerList HANDLERS = new HandlerList();
+
+        public Signed signedMessage() { return new Signed(); }
+
+        @Override public HandlerList getHandlers() { return HANDLERS; }
+    }
+
+    @Test void paperChatIsReadThroughTheMessageTypeItsEventReturns() {
+        Function<Event, String> text = BukkitPrompts.paperChatText(PaperChat.class);
+        assertEquals("Greeter", text.apply(new PaperChat()));
+        assertNull(BukkitPrompts.paperChatText(InventoryOpenEvent.class), "an event without a signed message is not Paper's chat");
     }
 }

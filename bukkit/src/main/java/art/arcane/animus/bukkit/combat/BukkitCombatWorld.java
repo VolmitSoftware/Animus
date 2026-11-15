@@ -179,14 +179,14 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
         Entity entity = plugin.getServer().getEntity(target.ref().id());
         Optional<VirtualNpcState.Snapshot> self = npc(attacker);
         if (!(entity instanceof LivingEntity victim) || self.isEmpty()) return new DamageOutcome(DamageStatus.INVALID, 0, false);
-        return damage(plugin, attacker, self.get(), victim, amount, kind, knockback, victimDrops, suppressedDrops,
+        return damage(plugin, attacker, npcName(attacker), self.get(), victim, amount, kind, knockback, victimDrops, suppressedDrops,
                 () -> npc(attacker).filter(VirtualNpcState.Snapshot::active).isPresent());
     }
     /**
-     * On the victim's owner: one NPC hit with no causing entity. {@code attacking} is asked again after listeners ran,
-     * so a hit from an NPC that despawned meanwhile does nothing.
+     * On the victim's owner: one NPC hit with no causing entity, so a death it causes names {@code attackerName} through
+     * {@link NpcKills}. {@code attacking} is asked again after listeners ran, so a hit from an NPC that despawned meanwhile does nothing.
      */
-    public static DamageOutcome damage(Plugin plugin, UUID attacker, VirtualNpcState.Snapshot self, LivingEntity victim, double amount, DamageKind kind,
+    public static DamageOutcome damage(Plugin plugin, UUID attacker, String attackerName, VirtualNpcState.Snapshot self, LivingEntity victim, double amount, DamageKind kind,
                                        double knockback, boolean victimDrops, Set<UUID> suppressedDrops, java.util.function.BooleanSupplier attacking) {
         if (!victim.isValid() || victim.isDead() || !self.active()) return new DamageOutcome(DamageStatus.INVALID, 0, false);
         VirtualNpcDamageEvent event = new VirtualNpcDamageEvent(attacker, victim, Math.min(100, amount));
@@ -201,7 +201,7 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
         boolean suppress = !victimDrops && !(victim instanceof Player);
         if (suppress) suppressedDrops.add(victim.getUniqueId());
         try {
-            victim.damage(event.getDamage(), source);
+            NpcKills.landing(attackerName, kind == DamageKind.PROJECTILE, () -> victim.damage(event.getDamage(), source));
         } finally {
             if (suppress) suppressedDrops.remove(victim.getUniqueId());
         }

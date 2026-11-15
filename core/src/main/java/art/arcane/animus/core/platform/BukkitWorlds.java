@@ -1,7 +1,10 @@
 package art.arcane.animus.core.platform;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -31,5 +34,26 @@ public final class BukkitWorlds {
         if (folder == null) return Optional.empty();
         for (Loaded world : loaded) if (world.name().equals(folder)) return Optional.of(world.name());
         return Optional.empty();
+    }
+
+    /**
+     * Every name {@link #resolve} turns into a loaded world, world by world in load order: its name, its dimension key,
+     * the key's bare vanilla path and the vanilla dimension its folder stands for. The editor checks a definition's world
+     * against this list before it asks for terrain. UUIDs resolve too but are left out, since the editor offers these names.
+     */
+    public static List<String> names(List<Loaded> loaded) {
+        Set<String> names = new LinkedHashSet<>();
+        String main = loaded.isEmpty() ? "" : loaded.getFirst().name();
+        for (Loaded world : loaded) {
+            List<String> candidates = new ArrayList<>(List.of(world.name(), world.key()));
+            String vanilla = world.name().equals(main) ? ModWorlds.OVERWORLD : world.name().equals(main + "_nether") ? ModWorlds.NETHER
+                    : world.name().equals(main + "_the_end") ? ModWorlds.END : null;
+            if (vanilla != null) candidates.add(vanilla);
+            for (String key : List.copyOf(candidates))
+                if (key.startsWith("minecraft:")) candidates.add(key.substring("minecraft:".length()));
+            for (String candidate : candidates)
+                if (resolve(candidate, loaded).filter(world.name()::equals).isPresent()) names.add(candidate);
+        }
+        return List.copyOf(names);
     }
 }

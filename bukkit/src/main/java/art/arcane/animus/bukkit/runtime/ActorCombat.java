@@ -394,14 +394,14 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         VirtualNpcState.Snapshot self = actor.state.snapshot();
         if (!(entity instanceof LivingEntity victim) || !attacker.equals(actor.uuid)) return new DamageOutcome(DamageStatus.INVALID, 0, false);
         if (combat.owns(victim))
-            return BukkitCombatWorld.damage(combat.plugin(), attacker, self, victim, amount, kind, knockback, victimDrops, combat.suppressedDrops, () -> actor.state.snapshot().active());
+            return BukkitCombatWorld.damage(combat.plugin(), attacker, actor.displayName(), self, victim, amount, kind, knockback, victimDrops, combat.suppressedDrops, () -> actor.state.snapshot().active());
         double range = (kind == DamageKind.MELEE ? reach : combat.budgets.maximumScanRange()) + HIT_SLACK;
         boolean handed = combat.onEntity(victim, () -> {
             Location at = victim.getLocation();
             if (!victim.isValid() || victim.isDead() || !at.getWorld().getUID().toString().equals(self.position().world())
                     || RegionViewer.position(at).point().distance(self.position().point()) > range) return;
             if (!combat.allowsNpcHit(self, victim)) return;
-            DamageOutcome outcome = BukkitCombatWorld.damage(combat.plugin(), attacker, self, victim, amount, kind, knockback, victimDrops, combat.suppressedDrops, () -> true);
+            DamageOutcome outcome = BukkitCombatWorld.damage(combat.plugin(), attacker, actor.displayName(), self, victim, amount, kind, knockback, victimDrops, combat.suppressedDrops, () -> true);
             if (outcome.status() == DamageStatus.APPLIED) combat.fought(null, new TargetRef(TargetKind.NPC, attacker), target.ref(), RegionViewer.position(at));
         });
         return new DamageOutcome(handed ? DamageStatus.SCHEDULED : DamageStatus.FAILED, 0, false);

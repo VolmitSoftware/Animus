@@ -14,6 +14,7 @@ import art.arcane.animus.bukkit.combat.BukkitCombatWorld;
 import art.arcane.animus.bukkit.combat.BukkitShots;
 import art.arcane.animus.bukkit.combat.CombatLimits;
 import art.arcane.animus.bukkit.combat.MobProfile;
+import art.arcane.animus.bukkit.combat.NpcKills;
 import art.arcane.animus.bukkit.combat.Explosions;
 import art.arcane.animus.bukkit.combat.NpcDecoys;
 import art.arcane.animus.bukkit.combat.ProjectileStrikes;
@@ -136,6 +137,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
                 module.supported() ? new EngineDefense() : BukkitCombatBridge.Defense.NONE);
         decoys = folia ? null : new NpcDecoys(plugin, new DecoyHost());
         struckKey = new org.bukkit.NamespacedKey(plugin, "struck_npc");
+        plugin.getServer().getPluginManager().registerEvents(new NpcKills(), plugin);
         if (module.supported()) {
             plugin.getServer().getPluginManager().registerEvents(this, plugin);
             task = plugin.getServer().getScheduler().runTaskTimer(plugin, this::tick, 1, 1);
@@ -171,7 +173,8 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
                 if (regions != null) return regionManual.attack(npc, target, damage);
                 LivingEntity victim = manual(target);
                 AttackProfile attack = new AttackProfile(damage, AttackProfile.DEFAULT.reach(), AttackProfile.DEFAULT.cooldownTicks());
-                BukkitCombatBridge.AttackResult result = registration(npc).combatant().attack(victim, attack);
+                Registration attacker = registration(npc);
+                BukkitCombatBridge.AttackResult result = attacker.combatant().attack(victim, attack, world.npcName(attacker.state().snapshot().npcId()));
                 return "Attack " + npc + ": " + result.status() + " applied=" + result.appliedDamage()
                         + " health-before=" + result.healthBefore() + " health-after=" + result.healthAfter();
             }

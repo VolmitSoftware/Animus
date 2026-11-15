@@ -1,6 +1,7 @@
 package art.arcane.animus.bukkit;
 
 import art.arcane.animus.core.editor.EditorHost;
+import art.arcane.animus.core.platform.BukkitWorlds;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,7 +11,6 @@ import org.bukkit.Keyed;
 import org.bukkit.Material;
 import org.bukkit.Registry;
 import org.bukkit.Server;
-import org.bukkit.World;
 import org.bukkit.command.CommandMap;
 
 /**
@@ -26,9 +26,7 @@ final class BukkitLookups {
 
     EditorHost.Lookups read() {
         Map<String, List<String>> lists = new LinkedHashMap<>(registries());
-        List<String> worlds = new ArrayList<>();
-        for (World world : server.getWorlds()) worlds.add(world.getName());
-        lists.put("worlds", worlds);
+        lists.put("worlds", BukkitWorlds.names(BukkitWorldLookup.loaded(server)));
         return new EditorHost.Lookups(lists, commands(), papi());
     }
 

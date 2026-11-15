@@ -393,6 +393,15 @@ void main() {
       await client.surface('world', 0, 0);
       expect(calls, 2);
     });
+
+    test('a world named by its minecraft key is listed, as lookups list ids without minecraft:', () {
+      final TerrainClient client = TerrainClient(server: 's', send: (ApiRequest request) async => const ApiResponse(404, null), cache: MemoryTerrainCache())
+        ..worlds = <String>{'overworld', 'world', 'example:mining'};
+      expect(client.worldUnloaded('minecraft:overworld'), isFalse);
+      expect(client.worldUnloaded('world'), isFalse);
+      expect(client.worldUnloaded('example:mining'), isFalse);
+      expect(client.worldUnloaded('minecraft:the_end'), isTrue);
+    });
   });
 }
 

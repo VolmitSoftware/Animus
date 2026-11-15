@@ -1,7 +1,10 @@
 package art.arcane.animus.mod;
 
 import art.arcane.animus.core.platform.ModWorlds;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import net.minecraft.core.registries.Registries;
@@ -24,6 +27,19 @@ final class ModWorldKeys {
 
     static Optional<String> resolve(MinecraftServer server, String reference) {
         return ModWorlds.resolve(reference, server.getWorldData().getLevelName(), loaded(server));
+    }
+
+    /**
+     * Every name {@link #resolve} turns into one of the {@code loaded} keys, key by key in order: the key, its bare vanilla
+     * path and its Bukkit folder name. The editor checks a definition's world against this list before it asks for terrain.
+     */
+    static List<String> names(Set<String> loaded, String levelName) {
+        Set<String> names = new LinkedHashSet<>();
+        for (String key : loaded.stream().sorted().toList()) {
+            names.add(key);
+            names.addAll(ModWorlds.aliases(key, levelName).stream().filter((String alias) -> !alias.equals(key)).sorted().toList());
+        }
+        return new ArrayList<>(names);
     }
 
     /** The keys of the loaded dimensions. */
