@@ -78,6 +78,8 @@ public interface RuntimeHost<P, I> extends TerrainReader {
     Optional<String> resolveWorld(String reference);
     /** The server has delivered this chunk to the player and is not still sending it. */
     boolean chunkSent(P player, int chunkX, int chunkZ);
+    /** The view distance in chunks the server's entity tracker uses for this player: the client's request clamped to the world's. */
+    int viewDistance(P player);
     /** No collidable block lies between the eye and the point {@code distance} along the direction. Loaded chunks only. */
     boolean clearSight(P player, Vec3 eye, Vec3 direction, double distance);
     /** Opens and closes real doors for NPCs whose movement opens doors, behind the platform's protection. */

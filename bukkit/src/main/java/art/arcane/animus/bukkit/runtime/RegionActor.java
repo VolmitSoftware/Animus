@@ -813,7 +813,7 @@ final class RegionActor implements RegionOwner.Body {
             if (!lookCandidate(player, look)) continue;
             Location location = player.getEyeLocation();
             Vec3 playerEye = new Vec3(location.getX(), location.getY(), location.getZ());
-            candidates.add(new LookClose.Candidate<>(player, playerEye, playerEye.distance(at.point()) <= host.settings().viewDistance()));
+            candidates.add(new LookClose.Candidate<>(player, playerEye, playerEye.horizontalDistance(at.point()) <= host.settings().viewDistance()));
         }
         List<LookClose.Candidate<Player>> ranked = look.ranked(eye, candidates);
         if (look.perPlayer() && !ranked.isEmpty()) return true;

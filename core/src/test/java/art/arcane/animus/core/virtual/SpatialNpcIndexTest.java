@@ -21,6 +21,16 @@ class SpatialNpcIndexTest {
         assertEquals(1, scan.candidates().size()); assertEquals(new UUID(0, 1), scan.candidates().getFirst().npcId());
         assertEquals(1, scan.candidatesVisited()); assertEquals(1, scan.cellsVisited()); assertEquals(1, chunkReads.get()); assertTrue(scan.complete());
     }
+    @Test void aHorizontalQueryIgnoresHeightAsTheEntityTrackerDoes() {
+        SpatialNpcIndex index = new SpatialNpcIndex(10);
+        index.upsert(npc(1, "world", 40.5, 0.5).snapshot());
+        index.upsert(npc(2, "world", 0.5, 50.5).snapshot());
+        WorldPosition above = new WorldPosition("world", new Vec3(0.5, 94, 0.5));
+        SpatialNpcIndex.Budget budget = new SpatialNpcIndex.Budget(64, 64);
+        assertTrue(index.scan(new SpatialNpcIndex.Query(above, 48), null, budget, c -> true).candidates().isEmpty(), "50 blocks in a straight line");
+        List<VirtualNpcState.Snapshot> found = index.scan(new SpatialNpcIndex.Query(above, 48, true), null, budget, c -> true).candidates();
+        assertEquals(List.of(new UUID(0, 1)), found.stream().map(VirtualNpcState.Snapshot::npcId).toList());
+    }
     @Test void resumesDenseCellsWithoutDuplicatingCandidates() {
         SpatialNpcIndex index = new SpatialNpcIndex(20);
         for (int i = 1; i <= 20; i++) index.upsert(npc(i, "world", 8, 8).snapshot());

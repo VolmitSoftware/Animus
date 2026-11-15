@@ -44,7 +44,11 @@ public final class NearbyPlayers<P> {
     public int size() { return size; }
 
     /** At most {@code limit} players within {@code radius} blocks of the point, in its world. */
-    public List<P> near(WorldPosition at, double radius, int limit) {
+    public List<P> near(WorldPosition at, double radius, int limit) { return find(at, radius, limit, false); }
+    /** At most {@code limit} players within {@code radius} blocks of the point over x and z, at any height, in its world. */
+    public List<P> nearHorizontally(WorldPosition at, double radius, int limit) { return find(at, radius, limit, true); }
+
+    private List<P> find(WorldPosition at, double radius, int limit, boolean horizontal) {
         List<P> result = new ArrayList<>();
         List<P> inWorld = worlds.get(at.world());
         if (inWorld == null || limit <= 0 || !(radius >= 0)) return result;
@@ -54,7 +58,7 @@ public final class NearbyPlayers<P> {
         long area = (maxX - minX + 1) * (maxZ - minZ + 1);
         if (area >= inWorld.size()) {
             // Fewer players than chunks to visit: testing each player is cheaper.
-            for (P player : inWorld) if (accept(player, at, radius, result) && result.size() >= limit) break;
+            for (P player : inWorld) if (accept(player, at, radius, horizontal, result) && result.size() >= limit) break;
             return result;
         }
         Map<Long, List<P>> world = cells.get(at.world());
@@ -62,15 +66,16 @@ public final class NearbyPlayers<P> {
             for (long chunkZ = minZ; chunkZ <= maxZ; chunkZ++) {
                 List<P> bucket = world.get(ChunkPosition.key((int) chunkX, (int) chunkZ));
                 if (bucket == null) continue;
-                for (P player : bucket) if (accept(player, at, radius, result) && result.size() >= limit) return result;
+                for (P player : bucket) if (accept(player, at, radius, horizontal, result) && result.size() >= limit) return result;
             }
         }
         return result;
     }
 
-    private boolean accept(P player, WorldPosition center, double radius, List<P> result) {
+    private boolean accept(P player, WorldPosition center, double radius, boolean horizontal, List<P> result) {
         WorldPosition now = position.apply(player);
-        if (now == null || !now.world().equals(center.world()) || now.point().distance(center.point()) > radius) return false;
+        if (now == null || !now.world().equals(center.world())
+                || (horizontal ? now.point().horizontalDistance(center.point()) : now.point().distance(center.point())) > radius) return false;
         result.add(player);
         return true;
     }

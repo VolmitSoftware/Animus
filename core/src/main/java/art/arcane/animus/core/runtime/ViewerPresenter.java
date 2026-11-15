@@ -170,12 +170,13 @@ final class ViewerPresenter<P, I> {
         int sent = 0;
         viewer.turns++;
         WorldPosition at = host.position(viewer.player);
+        double range = settings.viewRange(host.viewDistance(viewer.player));
         Map<Long, Boolean> delivered = viewer.deliveredChunks; delivered.clear();
         Predicate<ChunkPosition> visibleChunk = (ChunkPosition chunk) -> chunk.world().equals(at.world()) && delivered.computeIfAbsent(ChunkPosition.key(chunk.x(), chunk.z()),
                 (Long ignored) -> host.chunkLoaded(at.world(), chunk.x(), chunk.z()) && host.chunkSent(viewer.player, chunk.x(), chunk.z()));
         List<Presented> leaving = null;
         for (Presented body : viewer.visible.values())
-            if (!eligible(viewer, body.value, at, visibleChunk)) { if (leaving == null) leaving = new ArrayList<>(); leaving.add(body); }
+            if (!eligible(viewer, body.value, at, range, visibleChunk)) { if (leaving == null) leaving = new ArrayList<>(); leaving.add(body); }
         if (leaving != null) for (Presented body : leaving) retire(viewer, body);
         while (!viewer.retirements.isEmpty() && sent < packetBudget && admit(viewer, PresentationPressure.Tier.DESPAWN)) {
             Presented body = viewer.retirements.removeFirst(); sent++;
@@ -223,11 +224,11 @@ final class ViewerPresenter<P, I> {
             sent += service.mountRuntime.updatePassengers(viewer, packetBudget - sent);
         }
         if (viewer.ready && sent < packetBudget)
-            sent += viewer.preview.update(viewer.player, service.packets, at, settings.viewDistance(), visibleChunk,
+            sent += viewer.preview.update(viewer.player, service.packets, at, range, visibleChunk,
                     (NpcDefinition definition) -> service.parse(definition),
                     (Runnable completion) -> enqueue(viewer, () -> { if (current(viewer)) completion.run(); }), viewer.nativeIds, packetBudget - sent);
-        NearestSelection.Area area = new NearestSelection.Area(service.index, at, settings.viewDistance(), visibleChunk);
-        NearestSelection.View<PersistedNpcService<P, I>.Value> npcs = npcs(viewer, at);
+        NearestSelection.Area area = new NearestSelection.Area(service.index, at, range, visibleChunk);
+        NearestSelection.View<PersistedNpcService<P, I>.Value> npcs = npcs(viewer, at, range);
         if (viewer.ready && viewer.retirements.isEmpty() && viewer.nearest.due(viewer.turns, at, viewer.visible.size(), settings.maximumVisible())) rank(viewer, area, npcs);
         if (!viewer.ready || !viewer.retirements.isEmpty() || sent >= packetBudget || viewer.pendingSpawns >= settings.pendingSpawnsPerViewer()
                 || viewer.visible.size() >= settings.maximumVisible()) return sent;
@@ -235,10 +236,10 @@ final class ViewerPresenter<P, I> {
         return sent + viewer.nearest.fill(area, npcs, capacity, settings.maximumVisible());
     }
     /** This viewer's NPCs as {@link NearestSelection} ranks and spawns them. */
-    private NearestSelection.View<PersistedNpcService<P, I>.Value> npcs(Viewer viewer, WorldPosition at) {
+    private NearestSelection.View<PersistedNpcService<P, I>.Value> npcs(Viewer viewer, WorldPosition at, double range) {
         return new NearestSelection.View<>() {
             @Override public PersistedNpcService<P, I>.Value npc(UUID id) { PersistedNpcService<P, I>.Entry entry = service.byUuid.get(id); return entry == null ? null : entry.value; }
-            @Override public boolean eligible(PersistedNpcService<P, I>.Value value, Predicate<ChunkPosition> chunks) { return ViewerPresenter.this.eligible(viewer, value, at, chunks); }
+            @Override public boolean eligible(PersistedNpcService<P, I>.Value value, Predicate<ChunkPosition> chunks) { return ViewerPresenter.this.eligible(viewer, value, at, range, chunks); }
             @Override public WorldPosition position(PersistedNpcService<P, I>.Value value) { return value.state.snapshot().position(); }
             @Override public int ids(PersistedNpcService<P, I>.Value value) { return nativeIds(value); }
             @Override public boolean showing(UUID id) { return viewer.visible.containsKey(id); }
@@ -259,21 +260,26 @@ final class ViewerPresenter<P, I> {
             if (body != null) retire(viewer, body);
         }
     }
-    /** A live NPC a preview stands in for stays hidden from that viewer only, as does one whose viewers filter hides it from them. */
-    private boolean eligible(Viewer viewer, PersistedNpcService<P, I>.Value value, WorldPosition at, Predicate<ChunkPosition> delivered) {
+    /**
+     * Within {@code range} over x and z, at any height, in a chunk the viewer has: the rule the server's entity tracker
+     * applies to a real entity. A live NPC a preview stands in for stays hidden from that viewer only, as does one whose
+     * viewers filter hides it from them; a filter's own range is measured in a straight line.
+     */
+    private boolean eligible(Viewer viewer, PersistedNpcService<P, I>.Value value, WorldPosition at, double range, Predicate<ChunkPosition> delivered) {
         PersistedNpcService<P, I>.Entry entry = service.byUuid.get(value.spec.definition().uuid());
         VirtualNpcState.Snapshot snapshot = value.state.snapshot();
         if (entry == null || entry.value != value || !(snapshot.active() || value.dyingUntil > service.tickNumber) || service.previews.hides(viewer.id, entry.id, value.spec.definition().uuid())
                 || !snapshot.position().world().equals(at.world())) return false;
-        double distance = snapshot.position().point().distance(at.point());
-        return distance <= service.settings.viewDistance() && delivered.test(snapshot.position().chunk())
-                && !value.spec.viewers().hides(viewer.id, distance, (String node) -> service.host.permitted(viewer.player, node), (String node) -> service.host.granted(viewer.player, node));
+        Vec3 point = snapshot.position().point();
+        return point.horizontalDistance(at.point()) <= range && delivered.test(snapshot.position().chunk())
+                && !value.spec.viewers().hides(viewer.id, point.distance(at.point()), (String node) -> service.host.permitted(viewer.player, node), (String node) -> service.host.granted(viewer.player, node));
     }
     private boolean eligibleNow(Viewer viewer, PersistedNpcService<P, I>.Value value) {
         RuntimeHost<P, I> host = service.host;
         if (!current(viewer) || !host.online(viewer.player) || host.dead(viewer.player)) return false;
         WorldPosition at = host.position(viewer.player);
-        return eligible(viewer, value, at, (ChunkPosition chunk) -> host.chunkLoaded(at.world(), chunk.x(), chunk.z()) && host.chunkSent(viewer.player, chunk.x(), chunk.z()));
+        return eligible(viewer, value, at, service.settings.viewRange(host.viewDistance(viewer.player)),
+                (ChunkPosition chunk) -> host.chunkLoaded(at.world(), chunk.x(), chunk.z()) && host.chunkSent(viewer.player, chunk.x(), chunk.z()));
     }
 
     // ---- Authoritative work ----

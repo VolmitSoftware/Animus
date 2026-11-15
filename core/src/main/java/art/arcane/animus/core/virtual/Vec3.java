@@ -13,6 +13,8 @@ public record Vec3(double x, double y, double z) {
     public Vec3 subtract(Vec3 other) { return new Vec3(x - other.x, y - other.y, z - other.z); }
     public Vec3 multiply(double scale) { return new Vec3(x * scale, y * scale, z * scale); }
     public double distance(Vec3 other) { return Math.hypot(Math.hypot(x - other.x, y - other.y), z - other.z); }
+    /** Distance over x and z only, as the server's entity tracker measures how far an entity is from a player. */
+    public double horizontalDistance(Vec3 other) { return Math.hypot(x - other.x, z - other.z); }
 
     /** Scaling first avoids overflow/underflow for finite but extreme supplied directions. */
     public Vec3 normalized() {

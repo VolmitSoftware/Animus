@@ -102,6 +102,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                     || queuePerViewer < 4 || queuePerViewer > BodyRules.MAX_OPERATIONS || degradedIntervalTicks < 1 || degradedIntervalTicks > 40)
                 throw new IllegalArgumentException("Invalid persisted NPC runtime budgets");
         }
+        /**
+         * How far a viewer whose view distance is {@code viewDistanceChunks} is shown NPCs: {@code viewDistance} clamped
+         * to that many chunks, as the server's entity tracker clamps an entity's tracking range. Measured over x and z.
+         */
+        public double viewRange(int viewDistanceChunks) { return Math.min(viewDistance, viewDistanceChunks * 16.0); }
         /** The {@code [npcs]} table of config.toml. */
         public static Settings from(NpcRuntimeSettings config) {
             return new Settings(config.enabled(), config.viewDistance(), config.maximumVisible(), config.maximumViewers(), config.updatesPerTick(),
@@ -374,6 +379,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     @Override public PlayerAccess<P> players() { return players; }
     /** Owner only: online players near a point, from an index rebuilt at most once per tick. */
     List<P> playersNear(WorldPosition at, double radius, int limit) { return players.near(at, radius, limit); }
+    /** Owner only: online players within {@code radius} of a point over x and z, at any height. */
+    List<P> playersNearHorizontally(WorldPosition at, double radius, int limit) { return players.nearHorizontally(at, radius, limit); }
     @Override public ViewerPreviews previews() { return previews; }
     /** Previews, plugin hiding and each NPC's viewers filter, as one check for speech, sounds, particles, triggers and GUIs. */
     @Override public art.arcane.animus.core.behavior.trigger.HiddenNpcs hidden() { return this::hiddenFrom; }
@@ -565,7 +572,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     @Override public boolean watched(UUID npc) {
         owner();
         Optional<VirtualNpcState.Snapshot> body = index.find(npc);
-        return body.isPresent() && !players.ownedNear(body.get().position(), settings.viewDistance(), 1).isEmpty();
+        // Over x and z, as players are shown NPCs and patrols stay awake.
+        return body.isPresent() && !playersNearHorizontally(body.get().position(), settings.viewDistance(), 1).isEmpty();
     }
     /** Owner only. */
     @Override public java.util.Set<UUID> attached(UUID npc) {

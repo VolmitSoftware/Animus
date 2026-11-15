@@ -380,15 +380,15 @@ final class RouteNavigator<P, I> {
                 + " in [navigation] of config.toml").ifPresent(service.host::warn);
     }
     /**
-     * A patrol sleeps while no player is within view distance: it holds no turn, plan or budget. A manual route, and one
-     * a behavior waits for, never sleeps. The answer is kept for a second, so checking costs one player scan per route per second.
+     * A patrol sleeps while no player is within view distance over x and z, the reach players are shown NPCs in: it holds
+     * no turn, plan or budget. A manual route, and one a behavior waits for, never sleeps. The answer is kept for a second, so checking costs one player scan per route per second.
      */
     private boolean routeAwake(Route route) {
         if ((route.leg == null && route.recording == null) || route.value.routeWatch != null || !current(route)) return true;
         // A new route has never looked: awakeChecked starts unset, and subtracting from it must not overflow into "recent".
         if (route.awakeChecked != Long.MIN_VALUE && service.tickNumber - route.awakeChecked < AWAKE_RECHECK_TICKS) return route.awake;
         route.awakeChecked = service.tickNumber;
-        route.awake = !service.playersNear(route.value.state.snapshot().position(), service.settings.viewDistance(), 1).isEmpty();
+        route.awake = !service.playersNearHorizontally(route.value.state.snapshot().position(), service.settings.viewDistance(), 1).isEmpty();
         return route.awake;
     }
     /** Whether the NPC's route pause holds it now; a player within its range starts one, at most every few ticks. */

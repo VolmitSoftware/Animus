@@ -19,7 +19,7 @@ import org.bukkit.plugin.Plugin;
 public final class FoliaRegions implements RegionScheduler {
     private final Plugin plugin;
     private final Server server;
-    private final Method entityScheduler, entityExecute, entityRepeat, cancel, entityOwned, rectangleOwned, chunkSent;
+    private final Method entityScheduler, entityExecute, entityRepeat, cancel, entityOwned, rectangleOwned, chunkSent, sendViewDistance;
     private final Method regionScheduler, regionExecute, regionRepeat, globalScheduler, globalExecute, globalRepeat;
     private final Method currentRegion, regionData, regionTick, teleportAsync;
     private final java.util.Map<String, World> worlds = new java.util.concurrent.ConcurrentHashMap<>();
@@ -43,6 +43,7 @@ public final class FoliaRegions implements RegionScheduler {
         entityOwned = Server.class.getMethod("isOwnedByCurrentRegion", Entity.class);
         rectangleOwned = Server.class.getMethod("isOwnedByCurrentRegion", World.class, int.class, int.class, int.class, int.class);
         chunkSent = Player.class.getMethod("isChunkSent", long.class);
+        sendViewDistance = Player.class.getMethod("getSendViewDistance");
         regionScheduler = Server.class.getMethod("getRegionScheduler");
         regionExecute = region.getMethod("execute", Plugin.class, World.class, int.class, int.class, Runnable.class);
         regionRepeat = region.getMethod("runAtFixedRate", Plugin.class, World.class, int.class, int.class, Consumer.class, long.class, long.class);
@@ -119,6 +120,12 @@ public final class FoliaRegions implements RegionScheduler {
     public boolean sent(Player player, int x, int z) {
         require(player);
         return invokeBoolean(chunkSent, player, ((long) z << 32) | (x & 0xffffffffL));
+    }
+    /** Owner of the player only: the send view distance in chunks, which the entity tracker clamps tracking ranges to. */
+    public int viewDistance(Player player) {
+        require(player);
+        try { return (int) sendViewDistance.invoke(player); }
+        catch (ReflectiveOperationException failure) { throw new IllegalStateException("Folia view distance unavailable", failure); }
     }
 
     @Override public boolean owns(String world, int minChunkX, int minChunkZ, int maxChunkX, int maxChunkZ) {

@@ -35,9 +35,12 @@ public final class NearestSelection {
     /** An NPC in range the viewer may see: its distance, whether the viewer is shown it now, and the native IDs its body takes. */
     record Candidate(UUID id, double distance, boolean shown, IntSupplier ids) {}
 
-    /** Where one update looks: the NPC index, the viewer's spot and view distance, and the chunks that reached the viewer. */
-    public record Area(SpatialNpcIndex index, WorldPosition at, double viewDistance, Predicate<ChunkPosition> sent) {
-        SpatialNpcIndex.Query query() { return new SpatialNpcIndex.Query(at, viewDistance); }
+    /**
+     * Where one update looks: the NPC index, the viewer's spot, the horizontal range they are shown NPCs in (see
+     * {@link art.arcane.animus.core.runtime.PersistedNpcService.Settings#viewRange}), and the chunks that reached the viewer.
+     */
+    public record Area(SpatialNpcIndex index, WorldPosition at, double range, Predicate<ChunkPosition> sent) {
+        SpatialNpcIndex.Query query() { return new SpatialNpcIndex.Query(at, range, true); }
     }
 
     /** One presenter's NPCs as its viewer sees them; {@code T} is the platform's live NPC, read once per lookup. */

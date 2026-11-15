@@ -43,6 +43,15 @@ class NearbyPlayersTest {
     }
 
     @Test
+    void aHorizontalLookupFindsPlayersAtAnyHeight() {
+        place("above", "world", 30.5, 120, 0.5);
+        place("beside", "world", 0.5, 64, 50.5);
+        index.rebuild(positions.keySet());
+        assertEquals(List.of("above"), index.nearHorizontally(at("world", 0.5, 64, 0.5), 48, 4));
+        assertTrue(index.near(at("world", 0.5, 64, 0.5), 48, 4).isEmpty());
+    }
+
+    @Test
     void stopsAtTheLimit() {
         for (int i = 0; i < 10; i++) place("p" + i, "world", i, 64, 0);
         index.rebuild(positions.keySet());

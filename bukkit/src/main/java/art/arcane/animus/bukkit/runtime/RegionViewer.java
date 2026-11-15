@@ -152,10 +152,11 @@ final class RegionViewer {
     private int update(WorldPosition at, int packetBudget) {
         int sent = 0;
         updates++;
+        double range = host.settings().viewRange(host.regions.viewDistance(player));
         Map<Long, Boolean> delivered = new HashMap<>();
         Predicate<ChunkPosition> sentChunk = chunk -> chunk.world().equals(at.world())
                 && delivered.computeIfAbsent(ChunkPosition.key(chunk.x(), chunk.z()), ignored -> host.regions.sent(player, chunk.x(), chunk.z()));
-        for (Presented body : List.copyOf(visible.values())) if (!eligible(body.actor.publication, at, sentChunk)) retire(body);
+        for (Presented body : List.copyOf(visible.values())) if (!eligible(body.actor.publication, at, range, sentChunk)) retire(body);
         while (!retirements.isEmpty() && sent < packetBudget && admit(PresentationPressure.Tier.DESPAWN)) {
             Presented body = retirements.removeFirst(); sent++;
             handOver(() -> host.packets.despawn(player, body.body)).whenComplete((nothing, failure) -> enqueue(() -> {
@@ -196,12 +197,12 @@ final class RegionViewer {
         }
         if (ready && retirements.isEmpty() && sent < packetBudget) { sent += rosters(packetBudget - sent); if (!host.current(this)) return sent; }
         if (ready && sent < packetBudget)
-            sent += preview.update(player, host.packets, at, host.settings().viewDistance(), sentChunk, host::previewSpec,
+            sent += preview.update(player, host.packets, at, range, sentChunk, host::previewSpec,
                     (Runnable completion) -> enqueue(() -> { if (host.current(this)) completion.run(); }), nativeIds, packetBudget - sent);
         // A hotloaded maximumVisible: bodies already shown stay; new spawns wait until under it.
         int maximumVisible = host.settings().maximumVisible();
-        NearestSelection.Area area = new NearestSelection.Area(host.index, at, host.settings().viewDistance(), sentChunk);
-        NearestSelection.View<Live> npcs = npcs(at);
+        NearestSelection.Area area = new NearestSelection.Area(host.index, at, range, sentChunk);
+        NearestSelection.View<Live> npcs = npcs(at, range);
         if (ready && retirements.isEmpty() && nearest.due(updates, at, visible.size(), maximumVisible)) rank(area, npcs);
         if (!ready || !retirements.isEmpty() || sent >= packetBudget || pendingSpawns >= host.settings().pendingSpawnsPerViewer() || visible.size() >= maximumVisible) return sent;
         int capacity = Math.min(Math.min(8, packetBudget - sent), Math.min(maximumVisible - visible.size(), host.settings().pendingSpawnsPerViewer() - pendingSpawns));
@@ -210,14 +211,14 @@ final class RegionViewer {
     /** An NPC's actor with the publication read once for this update. */
     private record Live(RegionActor actor, RegionActor.Publication now) {}
     /** This viewer's NPCs as {@link NearestSelection} ranks and spawns them. */
-    private NearestSelection.View<Live> npcs(WorldPosition at) {
+    private NearestSelection.View<Live> npcs(WorldPosition at, double range) {
         return new NearestSelection.View<>() {
             @Override public Live npc(UUID npc) {
                 RegionActor actor = host.byUuid.get(npc);
                 RegionActor.Publication now = actor == null ? null : actor.publication;
                 return now == null ? null : new Live(actor, now);
             }
-            @Override public boolean eligible(Live npc, Predicate<ChunkPosition> chunks) { return RegionViewer.this.eligible(npc.now(), at, chunks); }
+            @Override public boolean eligible(Live npc, Predicate<ChunkPosition> chunks) { return RegionViewer.this.eligible(npc.now(), at, range, chunks); }
             @Override public WorldPosition position(Live npc) { return npc.now().snapshot().position(); }
             @Override public int ids(Live npc) { return npc.now().ids(); }
             @Override public boolean showing(UUID npc) { return visible.containsKey(npc); }
@@ -237,17 +238,22 @@ final class RegionViewer {
             if (body != null) retire(body);
         }
     }
-    /** A live NPC a preview stands in for stays hidden from this viewer only, as does one whose viewers filter hides it from them. */
-    private boolean eligible(RegionActor.Publication now, WorldPosition at, Predicate<ChunkPosition> sentChunk) {
+    /**
+     * Within {@code range} over x and z, at any height, in a chunk the player has, as the entity tracker shows a real
+     * entity. A live NPC a preview stands in for stays hidden from this viewer only, as does one whose viewers filter
+     * hides it from them; a filter's own range is measured in a straight line.
+     */
+    private boolean eligible(RegionActor.Publication now, WorldPosition at, double range, Predicate<ChunkPosition> sentChunk) {
         if (!now.live() || host.previews.hides(id, now.spec().definition().id(), now.spec().definition().uuid()) || !now.snapshot().position().world().equals(at.world())) return false;
-        double distance = now.snapshot().position().point().distance(at.point());
-        return distance <= host.settings().viewDistance() && sentChunk.test(now.snapshot().position().chunk())
-                && !now.spec().viewers().hides(id, distance, player::hasPermission, (String node) -> BukkitRuntimeHost.setAndHeld(player, node));
+        Vec3 point = now.snapshot().position().point();
+        return point.horizontalDistance(at.point()) <= range && sentChunk.test(now.snapshot().position().chunk())
+                && !now.spec().viewers().hides(id, point.distance(at.point()), player::hasPermission, (String node) -> BukkitRuntimeHost.setAndHeld(player, node));
     }
     private boolean eligibleNow(RegionActor actor) {
         if (!host.current(this) || !player.isOnline() || player.isDead()) return false;
         WorldPosition at = position(player.getLocation());
-        return eligible(actor.publication, at, chunk -> chunk.world().equals(at.world()) && host.regions.sent(player, chunk.x(), chunk.z()));
+        return eligible(actor.publication, at, host.settings().viewRange(host.regions.viewDistance(player)),
+                chunk -> chunk.world().equals(at.world()) && host.regions.sent(player, chunk.x(), chunk.z()));
     }
     private void spawn(RegionActor actor, RegionActor.Publication now) {
         try {

@@ -29,9 +29,12 @@ final class RuntimePlayers<P, I> implements NpcRuntime.PlayerAccess<P> {
     void joined(UUID player) { onlineIds.add(player); }
     void left(UUID player) { onlineIds.remove(player); }
     /** Owner only. A runtime that stopped ticking rebuilds for every lookup instead of answering from a stale tick. */
-    List<P> near(WorldPosition at, double radius, int limit) {
+    List<P> near(WorldPosition at, double radius, int limit) { return nearby().near(at, radius, limit); }
+    /** Owner only, as {@link #near}, measured over x and z at any height. */
+    List<P> nearHorizontally(WorldPosition at, double radius, int limit) { return nearby().nearHorizontally(at, radius, limit); }
+    private NearbyPlayers<P> nearby() {
         if (nearbyTick != service.tickNumber || !service.available()) { nearby.rebuild(host.onlinePlayers()); nearbyTick = service.tickNumber; }
-        return nearby.near(at, radius, limit);
+        return nearby;
     }
 
     @Override public boolean online(UUID player) { return host.ownerThread() ? host.player(player).isPresent() : onlineIds.contains(player); }

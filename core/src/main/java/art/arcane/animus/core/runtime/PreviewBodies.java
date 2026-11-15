@@ -40,7 +40,7 @@ public final class PreviewBodies<P, I> {
      * {@code otherIds} are the native IDs the live presentation already holds; {@code completions} runs packet callbacks
      * on the viewer's owner. Returns the packets sent.
      */
-    public int update(P player, BodyTransport<P, I> packets, WorldPosition at, double viewDistance, Predicate<ChunkPosition> delivered,
+    public int update(P player, BodyTransport<P, I> packets, WorldPosition at, double range, Predicate<ChunkPosition> delivered,
                       Function<NpcDefinition, DefinitionSpec<I>> parse, Consumer<Runnable> completions, int otherIds, int budget) {
         int sent = 0;
         ViewerPreviews.Staged staged = previews.staged(viewer);
@@ -69,7 +69,7 @@ public final class PreviewBodies<P, I> {
         }
         for (Shown shown : bodies) {
             if (sent >= budget) break;
-            boolean eligible = eligible(shown.spec.position(), at, viewDistance, delivered);
+            boolean eligible = eligible(shown.spec.position(), at, range, delivered);
             if (eligible && !shown.present && !shown.failed && otherIds + reservedIds + shown.body.entityIds().length <= BodyRules.MAX_BODIES_PER_VIEWER) {
                 spawn(player, packets, shown, completions); sent++;
             } else if (!eligible && shown.present && !shown.pending) { despawn(player, packets, shown); sent++; }
@@ -77,8 +77,8 @@ public final class PreviewBodies<P, I> {
         return sent;
     }
 
-    private static boolean eligible(WorldPosition position, WorldPosition at, double viewDistance, Predicate<ChunkPosition> delivered) {
-        return position.world().equals(at.world()) && position.point().distance(at.point()) <= viewDistance && delivered.test(position.chunk());
+    private static boolean eligible(WorldPosition position, WorldPosition at, double range, Predicate<ChunkPosition> delivered) {
+        return position.world().equals(at.world()) && position.point().horizontalDistance(at.point()) <= range && delivered.test(position.chunk());
     }
 
     private void spawn(P player, BodyTransport<P, I> packets, Shown shown, Consumer<Runnable> completions) {

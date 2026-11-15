@@ -127,6 +127,10 @@ final class VanillaRuntimeHost implements RuntimeHost<ServerPlayer, ItemStack> {
         return player.getChunkTrackingView().contains(chunkX, chunkZ)
                 && !player.connection.chunkSender.isPending(art.arcane.animus.core.virtual.ChunkPosition.key(chunkX, chunkZ));
     }
+    /** The tracking view's distance is the one the entity tracker clamps to; a player not tracked yet sees nothing. */
+    @Override public int viewDistance(ServerPlayer player) {
+        return player.getChunkTrackingView() instanceof net.minecraft.server.level.ChunkTrackingView.Positioned view ? view.viewDistance() : 0;
+    }
     @Override public boolean clearSight(ServerPlayer player, Vec3 eye, Vec3 direction, double distance) {
         net.minecraft.world.phys.Vec3 from = new net.minecraft.world.phys.Vec3(eye.x(), eye.y(), eye.z());
         net.minecraft.world.phys.Vec3 to = from.add(direction.x() * distance, direction.y() * distance, direction.z() * distance);

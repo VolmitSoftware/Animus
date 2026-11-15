@@ -137,6 +137,7 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
     @Override public boolean chunkLoaded(String world, int chunkX, int chunkZ) { return terrain.chunkLoaded(world, chunkX, chunkZ); }
     @Override public MotionValidator.Sampler collision(String world) { return terrain.collision(world); }
     @Override public boolean chunkSent(Player player, int chunkX, int chunkZ) { return chunks.sent(player, chunkX, chunkZ); }
+    @Override public int viewDistance(Player player) { return chunks.viewDistance(player); }
     @Override public boolean clearSight(Player player, Vec3 eye, Vec3 direction, double distance) {
         World world = player.getWorld();
         return world.rayTraceBlocks(new Location(world, eye.x(), eye.y(), eye.z()), new Vector(direction.x(), direction.y(), direction.z()),

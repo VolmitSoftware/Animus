@@ -5,12 +5,15 @@ import java.util.function.Predicate;
 
 /** Chunk-indexed active NPC snapshots. Queries visit bounded cells/candidates, never the entire NPC registry. */
 public final class SpatialNpcIndex {
-    public record Query(WorldPosition center, double radius) {
+    /** NPCs within {@code radius} of the center; a {@code horizontal} query measures over x and z only, at any height. */
+    public record Query(WorldPosition center, double radius, boolean horizontal) {
         public Query {
             Objects.requireNonNull(center, "center");
             if (!Double.isFinite(radius) || radius < 0 || radius > 4096)
                 throw new IllegalArgumentException("Query radius must be within [0, 4096]");
         }
+        public Query(WorldPosition center, double radius) { this(center, radius, false); }
+        boolean reaches(Vec3 point) { return (horizontal ? center.point().horizontalDistance(point) : center.point().distance(point)) <= radius; }
     }
     public record Budget(int maxCells, int maxCandidates) {
         public Budget {
@@ -93,7 +96,6 @@ public final class SpatialNpcIndex {
         return found;
     }
     private synchronized Scan scan(Query query, Window window, Cursor cursor, Budget budget, Predicate<ChunkPosition> chunkVisible) {
-        Vec3 center = query.center().point();
         int cell = cursor != null && cursor.window.equals(window) ? cursor.cell : 0;
         UUID after = cursor != null && cursor.window.equals(window) ? cursor.after : null;
         int cellsVisited = 0, candidatesVisited = 0;
@@ -108,7 +110,7 @@ public final class SpatialNpcIndex {
                 VirtualNpcState.Snapshot candidate = iterator.next();
                 after = candidate.npcId();
                 candidatesVisited++;
-                if (center.distance(candidate.position().point()) <= query.radius()) candidates.add(candidate);
+                if (query.reaches(candidate.position().point())) candidates.add(candidate);
             }
             if (iterator.hasNext()) break;
             cell++; after = null;

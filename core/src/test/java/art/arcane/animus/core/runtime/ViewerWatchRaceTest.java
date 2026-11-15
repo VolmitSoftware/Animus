@@ -142,6 +142,8 @@ class ViewerWatchRaceTest {
         volatile java.util.function.BiPredicate<Integer, Integer> loaded = (Integer x, Integer z) -> true;
         /** Chunks the host reports sent to the player; every chunk by default, as after a join has settled. */
         volatile java.util.function.BiPredicate<Integer, Integer> sent = (Integer x, Integer z) -> true;
+        /** The view distance in chunks the host reports for every player. */
+        volatile int viewDistance = 10;
         art.arcane.animus.core.navigation.DoorPassage.Doors doors = art.arcane.animus.core.navigation.DoorPassage.NONE;
         /** What {@code item} answers for each definition item. */
         java.util.function.Function<NpcItem, Object> items = (NpcItem item) -> new Object();
@@ -345,6 +347,7 @@ class ViewerWatchRaceTest {
         @Override public List<Integer> realPassengers(UUID entity) { RealEntity real = harness.entities.get(entity); return real == null ? List.of() : real.passengers(); }
         @Override public Optional<String> resolveWorld(String reference) { return harness.worlds.apply(reference); }
         @Override public boolean chunkSent(Player player, int chunkX, int chunkZ) { return harness.sent.test(chunkX, chunkZ); }
+        @Override public int viewDistance(Player player) { return harness.viewDistance; }
         @Override public boolean clearSight(Player player, Vec3 eye, Vec3 direction, double distance) { return true; }
         @Override public art.arcane.animus.core.navigation.DoorPassage.Doors doors() { return harness.doors; }
         @Override public boolean solid(String world, int x, int y, int z) { return y < 64; }
