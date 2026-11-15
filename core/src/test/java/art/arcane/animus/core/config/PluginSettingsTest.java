@@ -208,6 +208,24 @@ class PluginSettingsTest {
             assertEquals(0, PluginSettings.load(store).placeholders().refreshTicks(), "an unknown key is ignored");
         }
     }
+    @Test void skinsTableHoldsTheMineSkinKeyAndRefresh() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            PluginSettings defaults = PluginSettings.load(store);
+            assertFalse(defaults.skins().keyed(), "no key by default");
+            assertEquals(30, defaults.skins().refreshMinutes());
+            String written = Files.readString(root.resolve("config.toml"));
+            assertTrue(written.contains("[skins]") && written.contains("mineskinKey = \"\""), written);
+            assertTrue(written.contains("# A MineSkin API key"), "the key is explained where it is set");
+            Files.writeString(root.resolve("config.toml"), "[skins]\nmineskinKey = \"msk_abc\"\nrefreshMinutes = 10\n");
+            PluginSettings keyed = PluginSettings.load(store);
+            assertEquals("msk_abc", keyed.skins().mineskinKey());
+            assertEquals(10, keyed.skins().refreshMinutes());
+            Files.writeString(root.resolve("config.toml"), "[skins]\nmineskinKey = \"msk_abc\"\nrefreshMinutes = 1\n");
+            IOException error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("skins: refreshMinutes must be within 5..1440"), error.getMessage());
+            assertFalse(error.getMessage().contains("msk_abc"), "the key is never printed");
+        }
+    }
     @Test void recordingSettingsAreReadFromTomlAndBounded() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             assertEquals(RecordingSettings.DEFAULT, PluginSettings.load(store).recordings());

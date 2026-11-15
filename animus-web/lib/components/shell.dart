@@ -27,6 +27,7 @@ import '../state/editor_store.dart';
 import '../state/library.dart';
 import '../state/live_session.dart';
 import '../state/server_hub.dart';
+import '../state/skin_signing.dart';
 import '../state/workspace_repository.dart';
 import '../state/workspace_route.dart';
 import '../ui/alert.dart';
@@ -704,6 +705,7 @@ class _EditorShellState extends State<EditorShell> with WorkspaceActions {
             skinEditing: SkinEditing(
               resources: workspace.resources,
               commit: (SkinChange change) => component.store.commit(documents: change.documents, resources: change.resources, label: change.label),
+              sign: serverSigner(session),
             ),
           )
         else if (selected != null)
@@ -720,7 +722,7 @@ class _EditorShellState extends State<EditorShell> with WorkspaceActions {
         else if (route is NpcListRoute)
           NpcBrowser(key: ValueKey<String>('npc-browser:${workspace.id}'), store: component.store, workspace: workspace, session: session)
         else if (route is KindListRoute)
-          ListPage(key: ValueKey<String>('list:${workspace.id}:${route.kind.wireName}'), store: component.store, workspace: workspace, kind: route.kind, onNavigate: component.onNavigate)
+          ListPage(key: ValueKey<String>('list:${workspace.id}:${route.kind.wireName}'), store: component.store, workspace: workspace, kind: route.kind, onNavigate: component.onNavigate, sign: serverSigner(session))
         else if (route is NewDocumentRoute)
           NewDocumentPage(
             key: ValueKey<String>('new:${workspace.id}:${route.folder ?? ''}:${route.name ?? ''}:${route.conversation}'),
@@ -731,6 +733,7 @@ class _EditorShellState extends State<EditorShell> with WorkspaceActions {
             name: route.name,
             conversation: route.conversation,
             owner: session?.connection.token?.admin,
+            sign: serverSigner(session),
             onNavigate: component.onNavigate,
           )
         else if (route is SyncRoute && workspace.server == null)

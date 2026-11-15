@@ -43,6 +43,9 @@ public interface EditorHost {
     /** Platform features for {@code GET /v1/capabilities}: combat, rigs, gloss, placeholderapi and the like. */
     Map<String, Feature> features();
 
+    /** Signs skin PNGs and addresses for {@code POST /v1/skins/sign}; off on a host without one. */
+    default art.arcane.animus.core.skin.SkinSigner skinSigner() { return art.arcane.animus.core.skin.SkinSigner.off("This server does not sign skins"); }
+
     /** Module ids and states for {@code GET /v1/capabilities}. */
     List<Map.Entry<String, String>> modules();
 

@@ -58,6 +58,7 @@ public final class AnimusRuntime implements AutoCloseable {
     private volatile java.util.Set<String> bodyTypes = art.arcane.animus.core.presentation.BodyRules.TYPES;
     private volatile CatalogReloads catalogs = CatalogReloads.NONE;
     private volatile art.arcane.animus.core.text.Placeholders placeholders = art.arcane.animus.core.text.Placeholders.NONE;
+    private volatile art.arcane.animus.core.skin.SkinSigner skinSigner = art.arcane.animus.core.skin.SkinSigner.off("Skin signing is not running on this server");
     private final java.util.List<Consumer<PluginSettings>> settingsListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     public AnimusRuntime(RuntimeEnvironment environment) {
@@ -325,6 +326,7 @@ public final class AnimusRuntime implements AutoCloseable {
     public synchronized art.arcane.animus.core.config.HotloadSettings hotloadSettings() { return settings().hotload(); }
     public synchronized art.arcane.animus.core.config.RecordingSettings recordingSettings() { return settings().recordings(); }
     public synchronized art.arcane.animus.core.config.PlaceholderSettings placeholderSettings() { return settings().placeholders(); }
+    public synchronized art.arcane.animus.core.config.SkinSettings skinSettings() { return settings().skins(); }
 
     /**
      * Replaces the running settings after a hotload of {@code config.toml}: the file lane takes its new limits here, then
@@ -367,6 +369,10 @@ public final class AnimusRuntime implements AutoCloseable {
     /** PlaceholderAPI on Bukkit when it is installed; none elsewhere. The platform sets it during startup. */
     public art.arcane.animus.core.text.Placeholders placeholders() { return placeholders; }
     public void placeholders(art.arcane.animus.core.text.Placeholders filler) { placeholders = Objects.requireNonNull(filler, "filler"); }
+
+    /** Signs skin PNGs and skin addresses through MineSkin, for the web editor and the skin commands. */
+    public art.arcane.animus.core.skin.SkinSigner skinSigner() { return skinSigner; }
+    public void skinSigner(art.arcane.animus.core.skin.SkinSigner signer) { skinSigner = Objects.requireNonNull(signer, "signer"); }
     private PluginSettings settings() {
         if (!isRunning()) throw new IllegalStateException("Animus is not running");
         return settings;

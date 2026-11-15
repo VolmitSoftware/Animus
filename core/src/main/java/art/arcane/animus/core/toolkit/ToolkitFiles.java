@@ -137,6 +137,25 @@ final class ToolkitFiles {
         return drafts.isEmpty() ? head : head + "; tx " + npcs.applyAll(drafts);
     }
 
+    /**
+     * Turns the {@code animus:skin} option {@code key} ({@code refresh} or {@code fromName}) on or off for every listed
+     * player body, labelled {@code label} in the reply; other bodies are skipped.
+     */
+    String skinOption(String key, String label, boolean on, List<String> ids) throws IOException {
+        int[] skipped = {0};
+        List<NpcRepository.Draft> drafts = drafts(ids, (JsonObject document) -> {
+            if (!PLAYER.equals(document.get("type").getAsString())) { skipped[0]++; return false; }
+            boolean was = art.arcane.animus.core.skin.SkinOptions.parse(document).map((art.arcane.animus.core.skin.SkinOptions options) ->
+                    key.equals("refresh") ? options.refresh() : options.fromName()).orElse(false);
+            if (was == on) return false;
+            art.arcane.animus.core.skin.SkinOptions.set(document, key, on);
+            return true;
+        });
+        if (drafts.isEmpty() && skipped[0] == ids.size()) return "No player bodies in the selection; skins only show on player bodies";
+        String head = label + ": " + (on ? "on" : "off") + " for " + named(drafts) + (skipped[0] == 0 ? "" : ", " + skipped[0] + " skipped (not a player body)");
+        return drafts.isEmpty() ? label + " already " + (on ? "on" : "off") : head + "; tx " + npcs.applyAll(drafts);
+    }
+
     /** Saves where the NPCs stand, keeping each one's world, in one transaction; {@code note} goes before the change id. */
     String positions(List<String> ids, Vec3 at, float yaw, float pitch, String note) throws IOException {
         List<NpcRepository.Draft> drafts = drafts(ids, (JsonObject document) -> {

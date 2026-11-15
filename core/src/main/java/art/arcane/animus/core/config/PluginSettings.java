@@ -22,7 +22,7 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
                              FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat, BuildSettings builds,
                              ShopSettings shops, EditorRelaySettings relay, EditorSettings editor, RigSettings rigs,
                              NavigationSettings navigation, HotloadSettings hotload, RecordingSettings recordings,
-                             PlaceholderSettings placeholders) {
+                             PlaceholderSettings placeholders, SkinSettings skins) {
     /** As {@link #load(DocumentStore, Consumer)}, dropping the warnings; for tools and tests. */
     public static PluginSettings load(DocumentStore store) throws IOException { return load(store, (String ignored) -> {}); }
 
@@ -72,6 +72,7 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
         document.add("hotload", gson.toJsonTree(HotloadSettings.DEFAULT));
         document.add("recordings", gson.toJsonTree(RecordingSettings.DEFAULT));
         document.add("placeholders", gson.toJsonTree(PlaceholderSettings.DEFAULT));
+        document.add("skins", gson.toJsonTree(SkinSettings.DEFAULT));
         return document;
     }
 
@@ -83,7 +84,7 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
             Map.entry("combat", "Combat NPCs"), Map.entry("builds", "Builder NPCs"), Map.entry("shops", "Shops and their messages"),
             Map.entry("editor", "Web editor listener, relay and notices"), Map.entry("rigs", "Rigs and animations"), Map.entry("navigation", "Route planning"),
             Map.entry("hotload", "Live reload of hand edits"), Map.entry("recordings", "Recordings and ghost replays"),
-            Map.entry("placeholders", "PlaceholderAPI refresh"));
+            Map.entry("placeholders", "PlaceholderAPI refresh"), Map.entry("skins", "Skin signing through MineSkin and skins that follow a player"));
     /** Notes above single keys and sub-tables that a table note does not explain. */
     private static final Map<String, String> NOTES = Map.ofEntries(
             Map.entry("files.backupsKept", "Rollback receipts kept regardless of age. Each edit keeps about two small files until both limits pass"),
@@ -97,7 +98,8 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
             Map.entry("behaviors.triggers.playerCooldownTicks", "Spacing of one player's runs of an interaction trigger that sets no cooldownTicks; 0 turns it off"),
             Map.entry("behaviors.triggers.entityIntervalTicks", "How often an NPC with entity triggers looks around while a player is near; the next four bound that work"),
             Map.entry("behaviors.triggers.projectilesFollowed", "Real projectiles followed at once for hit_by_projectile triggers"),
-            Map.entry("behaviors.server.maximumAreas", "Areas tracked for player_area triggers"));
+            Map.entry("behaviors.server.maximumAreas", "Areas tracked for player_area triggers"),
+            Map.entry("skins.mineskinKey", "A MineSkin API key (account.mineskin.org) for signing uploaded PNGs and skin addresses. Blank signs at MineSkin's anonymous limit"));
 
     private static String commented(String encoded) {
         StringBuilder text = new StringBuilder(encoded.length() + 2048);
@@ -178,8 +180,12 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
         RecordingSettings recordingSettings = section(path, lines, "recordings", () -> recordings(table(root, "recordings")));
         PlaceholderSettings placeholderSettings = section(path, lines, "placeholders",
                 () -> new PlaceholderSettings(integer(table(root, "placeholders"), "refreshTicks", PlaceholderSettings.DEFAULT.refreshTicks())));
+        SkinSettings skinSettings = section(path, lines, "skins", () -> {
+            JsonObject skins = table(root, "skins");
+            return new SkinSettings(text(skins, "mineskinKey", SkinSettings.DEFAULT.mineskinKey()), integer(skins, "refreshMinutes", SkinSettings.DEFAULT.refreshMinutes()));
+        });
         return new PluginSettings(proof, splash, metrics, npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings,
-                relaySettings, editorSettings, rigSettings, navigationSettings, hotloadSettings, recordingSettings, placeholderSettings);
+                relaySettings, editorSettings, rigSettings, navigationSettings, hotloadSettings, recordingSettings, placeholderSettings, skinSettings);
     }
 
     /** One table's reader; its range and type errors become one line naming the file, the line, the table and the key. */

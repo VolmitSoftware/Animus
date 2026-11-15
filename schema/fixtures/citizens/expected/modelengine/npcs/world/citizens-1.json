@@ -29,6 +29,9 @@
         "walk": "stomp"
       }
     },
+    "animus:skin": {
+      "fromName": true
+    },
     "citizens:review": {
       "type": "PLAYER",
       "location": {

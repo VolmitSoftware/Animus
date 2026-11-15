@@ -14,6 +14,10 @@
     "/traits/location/x": "CONVERTED",
     "/traits/location/y": "CONVERTED",
     "/traits/location/z": "CONVERTED",
+    "/traits/skintrait/skinName": "CONVERTED",
+    "/traits/skintrait/updateSkins": "CONVERTED",
+    "/traits/skintrait/signature": "CONVERTED",
+    "/traits/skintrait/textureRaw": "CONVERTED",
     "/traits/equipment/hand/type": "CONVERTED",
     "/traits/equipment/hand/amount": "CONVERTED",
     "/traits/equipment/hand/meta": "CONVERTED",
@@ -36,6 +40,7 @@
     "/traits/commandtrait/commands/2/player": "CONVERTED"
   },
   "reasons": {
+    "/traits/skintrait/skinName": "filled by PlaceholderAPI for no viewer and looked up again every [skins] refreshMinutes",
     "/traits/sentinel/stats_potionsThrown": "Sentinel's record of past fights; Animus keeps counting from it"
   },
   "worldRemaps": [

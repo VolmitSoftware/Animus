@@ -154,6 +154,7 @@ final class AnimusBukkit {
     // AnimusBStats owns all bStats types; never reference them from this class or AnimusPlugin (link trap)
     private AnimusBStats bStats;
     private HotloadService hotload;
+    private art.arcane.animus.core.skin.SkinService skins;
     private BukkitServerBehaviors serverBehaviors;
     private AutoCloseable mythic;
     private final JavaPlugin host;
@@ -299,6 +300,16 @@ final class AnimusBukkit {
                     }, living, new BukkitOperators(host, replies), screenService::refreshOpen,
                     (String message) -> host.getLogger().info(message), (String message) -> host.getLogger().warning(message)));
             hotload.start();
+            AnimusRuntime filling = runtime;
+            skins = art.arcane.animus.core.skin.SkinService.start(runtime, commands, living::refresh, (String text) -> {
+                java.util.concurrent.CompletableFuture<Optional<String>> filled = new java.util.concurrent.CompletableFuture<>();
+                Runnable fill = () -> {
+                    try { filled.complete(filling.placeholders().fillServer(text)); }
+                    catch (RuntimeException failure) { filled.complete(Optional.empty()); }
+                };
+                if (!replies.reply(host.getServer().getConsoleSender(), fill)) filled.complete(Optional.empty());
+                return filled;
+            }, (String message) -> host.getLogger().info(message));
             TriggerDispatcher triggers = behaviors.triggers();
             ServerTriggerDispatcher servers = behaviors.servers();
             if (triggers != null) triggerTicks = ownerTicks.apply(new art.arcane.animus.core.behavior.trigger.TriggerLink(triggers, servers, living, (String message) -> host.getLogger().info(message)));
@@ -379,6 +390,7 @@ final class AnimusBukkit {
         // Stop bStats first so no chart callable reads a runtime that is shutting down.
         updateMetrics(false);
         if (hotload != null) { hotload.close(); hotload = null; }
+        if (skins != null) { skins.close(); skins = null; }
         LibsDisguisesIntegration.uninstall();
         CitizensGuard.clear();
         EditorService activeEditor = editor;

@@ -64,6 +64,14 @@ final class BukkitPlaceholders implements CachedPlaceholders.Source {
 
     @Override public boolean available() { return setPlaceholders != null; }
 
+    @Override public String fillServer(String text) {
+        MethodHandle fill = setPlaceholders;
+        if (fill == null) return null;
+        try { return (String) fill.invokeExact((OfflinePlayer) null, text); }
+        catch (VirtualMachineError fatal) { throw fatal; }
+        catch (Throwable failure) { throw new IllegalStateException("PlaceholderAPI failed: " + failure, failure); }
+    }
+
     @Override public String fill(UUID viewer, String text) {
         MethodHandle fill = setPlaceholders;
         OfflinePlayer player = fill == null ? null : players.apply(viewer);

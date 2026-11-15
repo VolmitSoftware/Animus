@@ -8,7 +8,7 @@
   "type": "minecraft:player",
   "spawned": true,
   "migration": {
-    "importId": "424e50a00256dccf2e9833c3499091f2e28960420d9a08164deece52221ffb65",
+    "importId": "f453cbdb8da09179f1dfa93899d2dbfb922ebb776452a8e25a4682643af4d9ca",
     "citizensId": 3,
     "references": []
   },
@@ -136,6 +136,9 @@
         "delayTicks": 100
       }
     },
+    "animus:skin": {
+      "refresh": true
+    },
     "citizens:review": {
       "type": "PLAYER",
       "location": {
@@ -192,5 +195,6 @@
         }
       }
     }
-  }
+  },
+  "skin": "05f18834916c6590edc8fc596c532623084f39c4d47e331ce3a0a41a4f161d7a"
 }

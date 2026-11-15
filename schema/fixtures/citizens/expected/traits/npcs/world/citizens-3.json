@@ -32,6 +32,9 @@
   },
   "pose": "sneaking",
   "modules": {
+    "animus:skin": {
+      "refresh": true
+    },
     "citizens:review": {
       "type": "PLAYER",
       "location": {
@@ -59,5 +62,5 @@
       }
     }
   },
-  "skin": "25acce198f371e8a14720e1aebe18d881a76b32a48c7fb5217ca8d9f1bdabc6e"
+  "skin": "af6c514bf95ebee66002de7c57a9400cc220557eaf095123c79a66a12f8a6477"
 }

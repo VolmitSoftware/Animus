@@ -270,7 +270,7 @@ class AnimusDirectorTest {
         admin.lines.clear();
         real.execute(admin, new String[]{"help", "npc", "skin"});
         assertTrue(admin.lines.getFirst().startsWith("[Animus]: npc skin: "), admin.text());
-        assertTrue(admin.text().contains("Usage: /animus npc skin <npc> <player>"), admin.text());
+        assertTrue(admin.text().contains("Usage: /animus npc skin <npc> [player=] [url=] [file=] [slim=false] [follow=] [from-name=]"), admin.text());
         admin.lines.clear();
         real.execute(admin, new String[]{"help", "record", "start"});
         assertTrue(admin.text().endsWith(art.arcane.animus.core.text.DocsLink.RECORDINGS.url()), admin.text());

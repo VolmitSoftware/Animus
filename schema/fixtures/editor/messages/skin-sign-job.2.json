@@ -1,0 +1,5 @@
+{
+  "job": "0123456789abcdef0123456789abcdef",
+  "state": "failed",
+  "message": "MineSkin could not read the skin image: Invalid image dimensions"
+}

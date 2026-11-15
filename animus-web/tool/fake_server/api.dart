@@ -14,6 +14,7 @@ import 'previews.dart';
 import 'protocol.dart';
 import 'rate_limit.dart';
 import 'reads.dart';
+import 'skins.dart';
 import 'terrain.dart';
 import 'tokens.dart';
 import 'validation.dart';
@@ -194,6 +195,7 @@ class FakeApi {
     runningPlugins = <String>{};
     live.clear();
     rates.clear();
+    skinJobs.failing = false;
   }
 
   /// Once a second: expired tokens close their streams; expired previews end.
@@ -307,6 +309,7 @@ class FakeApi {
           'lookups' when n == 1 => _Route('read', false, _lookups),
           'catalog' when n == 1 => _Route('read', false, (FakeRequest request, FakeToken token, List<String> _) => reads.catalog(request, token)),
           'documents' when n >= 3 => _Route('read', false, (FakeRequest request, FakeToken token, List<String> s) => reads.document(s, token)),
+          'skins' when n == 3 && s[1] == 'sign' => _Route('apply:npcs', false, (FakeRequest request, FakeToken token, List<String> s) => skinJobs.status(s[2], token.id)),
           'skins' when n == 3 && s[2] == 'texture.png' => _Route('read', false, _skin),
           'changes' when n == 2 => _Route('read', false, _changeStatus),
           'imports' when n == 1 => _Route('import', false, _importStatus),
@@ -326,6 +329,7 @@ class FakeApi {
           'imports' when n == 2 && s[1] == 'stage' => _Route('import', false, _importStage),
           'imports' when n == 3 && const <String>{'apply', 'rollback'}.contains(s[2]) => _Route('import', false, _importStep),
           'npcs' when n == 3 && (s[2] == 'spawn' || s[2] == 'despawn') => _Route('spawn', false, _spawn),
+          'skins' when n == 2 && s[1] == 'sign' => _Route('apply:npcs', false, (FakeRequest request, FakeToken token, List<String> _) => skinJobs.sign(request, token.id)),
           _ => null,
         };
       case 'DELETE':
@@ -334,6 +338,9 @@ class FakeApi {
         return null;
     }
   }
+
+  /// Skin signing jobs, signed with a stand-in signature.
+  final FakeSkinJobs skinJobs = FakeSkinJobs();
 
   /// Where each spawned NPC stands now, by id, set through `/__fake/live`.
   final Map<String, ({String world, double x, double y, double z})> live = <String, ({String world, double x, double y, double z})>{};
@@ -438,6 +445,7 @@ class FakeApi {
         'spawn': yes,
         'terrain': yes,
         'skins.texture': no('the server does not cache decoded skin textures; the editor loads them from the skin\'s texture URL'),
+        'skins.sign': yes,
         for (final String plugin in runningPlugins) plugin: yes,
       },
       'modules': <Object?>[],

@@ -30,8 +30,8 @@ public final class SkinFiles {
 
     public SkinFiles(NpcRepository npcs, DocumentStore store) { this.npcs = npcs; this.store = store; }
 
-    /** A skin file, its optional label and who wears it. */
-    record Entry(String hash, Optional<String> label, Optional<NpcItem> head, List<String> npcs, List<String> groups) {
+    /** A skin file, its optional label, whether Mojang signed it and who wears it. */
+    record Entry(String hash, Optional<String> label, Optional<NpcItem> head, boolean signed, List<String> npcs, List<String> groups) {
         Entry { npcs = List.copyOf(npcs); groups = List.copyOf(groups); }
         boolean used() { return !npcs.isEmpty() || !groups.isEmpty(); }
         String shortHash() { return hash.substring(0, 12); }
@@ -48,45 +48,59 @@ public final class SkinFiles {
         List<Entry> entries = new ArrayList<>();
         for (ToolkitFiles.Skin skin : new ToolkitFiles(npcs, store).skins()) {
             String text = store.read(path(skin.hash()));
-            entries.add(new Entry(skin.hash(), label(text), head(text), skin.npcs(), skin.groups()));
+            entries.add(new Entry(skin.hash(), label(text), head(text), signed(text), skin.npcs(), skin.groups()));
         }
         return entries;
     }
 
     /** A skin to wear by its hash, with the file's text when the file may not be saved yet. */
-    record Skin(String hash, Optional<String> text) {
+    public record Skin(String hash, Optional<String> text) {
         /** The change that saves the file, when it is new. */
-        Optional<DocumentStore.Change> file(DocumentStore store) throws IOException {
+        public Optional<DocumentStore.Change> file(DocumentStore store) throws IOException {
             return text.isEmpty() || store.read(path(hash)) != null ? Optional.empty() : Optional.of(new DocumentStore.Change(path(hash), "missing", text.get()));
         }
     }
 
     /** The file for a signed skin labelled {@code label}, not yet saved. */
-    static Skin skin(BodySkin skin, String label) throws IOException {
+    static Skin skin(BodySkin skin, String label) throws IOException { return skin(skin, label, Optional.empty()); }
+
+    /** The file for a skin labelled {@code label}, taken from the account {@code player} when there is one; not yet saved. */
+    public static Skin skin(BodySkin skin, String label, Optional<String> player) throws IOException {
         JsonObject document = new JsonObject();
         document.addProperty("textureRaw", skin.textureValue());
         if (skin.signature() != null) document.addProperty("signature", skin.signature());
         document.addProperty("label", checked(label).orElseThrow(() -> new IOException("A skin label needs at least one character")));
+        player.ifPresent((String name) -> document.addProperty("player", name));
         String text = JsonDocuments.write(document);
         return new Skin(JsonDocuments.hash(text), Optional.of(text));
     }
 
-    /** Writes the signed skin labelled {@code label} when that file is new; returns its hash. */
-    String save(BodySkin skin, String label) throws IOException {
-        Skin file = skin(skin, label);
+    /** Writes the skin labelled {@code label} when that file is new; returns its hash. */
+    String save(BodySkin skin, String label, Optional<String> player) throws IOException {
+        Skin file = skin(skin, label, player);
         Optional<DocumentStore.Change> change = file.file(store);
         if (change.isPresent()) store.commit(List.of(change.get()));
         return file.hash();
     }
 
     /**
-     * Saves a looked-up skin labelled {@code label} and puts it on the listed player bodies; with none listed it is only
-     * saved. Read and written on the file lane.
+     * Saves a skin labelled {@code label} and puts it on the listed player bodies; with none listed it is only saved.
+     * {@code player} names the account a looked-up skin came from, which NPCs that follow it look up again. Read and
+     * written on the file lane.
      */
-    public String wear(BodySkin skin, String label, List<String> ids) throws IOException {
-        String hash = save(skin, label);
+    public String wear(BodySkin skin, String label, Optional<String> player, List<String> ids) throws IOException {
+        String hash = save(skin, label, player);
         return ids.isEmpty() ? "Saved " + label + "'s skin; select NPCs and click it to wear it" : new ToolkitFiles(npcs, store).skin(Optional.of(hash), ids);
     }
+
+    /** The two {@code animus:skin} options as players read them. */
+    public static final String FOLLOW = "Follow player", FROM_NAME = "Skin from name";
+
+    /** Turns {@code animus:skin refresh} on or off for the listed player bodies. Read and written on the file lane. */
+    public String follow(boolean on, List<String> ids) throws IOException { return new ToolkitFiles(npcs, store).skinOption("refresh", FOLLOW, on, ids); }
+
+    /** Turns {@code animus:skin fromName} on or off for the listed player bodies. Read and written on the file lane. */
+    public String fromName(boolean on, List<String> ids) throws IOException { return new ToolkitFiles(npcs, store).skinOption("fromName", FROM_NAME, on, ids); }
 
     /** Takes the skin off the listed player bodies. */
     public String remove(List<String> ids) throws IOException { return new ToolkitFiles(npcs, store).skin(Optional.empty(), ids); }
@@ -99,7 +113,32 @@ public final class SkinFiles {
         Optional<String> next = checked(label);
         if (next.equals(label(current))) return "Skin " + hash.substring(0, 12) + " already " + next.map((String name) -> "labelled " + name).orElse("has no label");
         if (next.isPresent()) document.addProperty("label", next.get()); else document.remove("label");
-        String text = JsonDocuments.write(document), moved = JsonDocuments.hash(text);
+        Moved moved = replace(hash, JsonDocuments.write(document));
+        String what = next.map((String name) -> "Labelled skin " + hash.substring(0, 12) + " " + name).orElse("Removed the label of skin " + hash.substring(0, 12));
+        return what + "; now " + moved.hash().substring(0, 12) + moved.carried(npcs) + "; tx " + moved.tx();
+    }
+
+    /** Where {@link #replace} moved a skin's wearers. */
+    public record Moved(String hash, List<String> npcs, List<String> groups, String tx) {
+        public Moved { npcs = List.copyOf(npcs); groups = List.copyOf(groups); }
+
+        /** {@code , moved guard and 1 trait group}, or nothing when nothing wore it. */
+        public String carried(NpcRepository repository) {
+            if (npcs.isEmpty() && groups.isEmpty()) return "";
+            return ", moved " + (npcs.isEmpty() ? "" : ToolkitFiles.named(repository, npcs)) + (npcs.isEmpty() || groups.isEmpty() ? "" : " and ")
+                    + (groups.isEmpty() ? "" : groups.size() + (groups.size() == 1 ? " trait group" : " trait groups"));
+        }
+    }
+
+    /**
+     * Writes {@code text} as a new skin file and moves every NPC and trait group wearing {@code hash} onto it, deleting
+     * the old file, in one transaction with Undo. Read and written on the file lane.
+     */
+    public Moved replace(String hash, String text) throws IOException {
+        String current = store.read(path(hash));
+        if (current == null) throw new IOException("That skin was deleted");
+        String moved = JsonDocuments.hash(text);
+        if (moved.equals(hash)) throw new IOException("The skin is unchanged");
         List<DocumentStore.Change> changes = new ArrayList<>();
         if (store.read(path(moved)) == null) changes.add(new DocumentStore.Change(path(moved), "missing", text));
         changes.add(new DocumentStore.Change(path(hash), JsonDocuments.hash(current), null));
@@ -127,9 +166,7 @@ public final class SkinFiles {
         }
         String tx = DefinitionBatch.commit(store, wearers, expected, changes);
         npcs.reload();
-        String what = next.map((String name) -> "Labelled skin " + hash.substring(0, 12) + " " + name).orElse("Removed the label of skin " + hash.substring(0, 12));
-        String carried = wearers.isEmpty() && groups.isEmpty() ? "" : ", moved " + ToolkitFiles.named(npcs, wearers.stream().map(NpcDefinition::id).toList()) + (groups.isEmpty() ? "" : " and " + groups.size() + (groups.size() == 1 ? " trait group" : " trait groups"));
-        return what + "; now " + moved.substring(0, 12) + carried + "; tx " + tx;
+        return new Moved(moved, wearers.stream().map(NpcDefinition::id).toList(), groups, tx);
     }
 
     /** Deletes a skin file nothing wears. */
@@ -159,6 +196,15 @@ public final class SkinFiles {
             JsonElement label = JsonDocuments.object(text).get("label");
             return label != null && label.isJsonPrimitive() && label.getAsJsonPrimitive().isString() && !label.getAsString().isBlank() ? Optional.of(label.getAsString()) : Optional.empty();
         } catch (IOException | RuntimeException unreadable) { return Optional.empty(); }
+    }
+
+    /** Whether a skin file's text carries Mojang's signature; clients draw the default skin for one that does not. */
+    static boolean signed(String text) {
+        if (text == null) return false;
+        try {
+            JsonElement signature = JsonDocuments.object(text).get("signature");
+            return signature != null && signature.isJsonPrimitive() && signature.getAsJsonPrimitive().isString();
+        } catch (IOException | RuntimeException unreadable) { return false; }
     }
 
     /** The {@code textureRaw} of a skin file's text, or empty when it has none or cannot be read. */

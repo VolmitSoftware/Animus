@@ -112,12 +112,12 @@
     "npcs/world/citizens-2.json": "58e0b481b37a278643cd1f1ca9b77d80b6c5790270058a50c9d31f945464b1d2",
     "npcs/world/citizens-3.json": "76c377d2a32a36a76b2897c262342e29f2e51809968f7ecf45b6fa3e91d88ced",
     "npcs/world/citizens-4.json": "25cb5b7c278a027f5c6c515501acb57846af813606305b4415db3e81f204a1e8",
-    "npcs/world/citizens-5.json": "c7df958918ee573b1983aa2922add0a183360704e8aea414ff87acc4d4069cc0",
+    "npcs/world/citizens-5.json": "1e6241bafa84fb4fffba4c0aa9d8665d57d0a0fe667ba20a44869bb7b818756c",
     "behaviors/citizens/text-6.json": "f8f86ae6c4fde62818c1d8bdd191d29f238b4b58be77bc276529f8b3bce27b65",
-    "npcs/world/citizens-6.json": "d4534b6332cb7ffffdd95c16c8f881936cfb140a30322072bd8a37061fea7f73",
+    "npcs/world/citizens-6.json": "53536b805d9e56ee9e9c8d8f9291ecd113a9eadde930d18cd59f2c7c72253435",
     "npcs/world/citizens-7.json": "a9d78c1932432dc529be95ce388c25b61f98d28faa0d33e9dac158f6f9d84da9",
     "npcs/world/citizens-8.json": "36681e1b5c6e7b38e9b3a32f8617645bf9e1b353b6c1bd416c757e171fdc3355",
-    "npcs/world/citizens-9.json": "36e210b87c7513499961a62f9bc5c1de8ee97d978dda15132f4e1e50c13237bc",
+    "npcs/world/citizens-9.json": "3802f1b8c24d20aa8be712d39cb38b0d9c84d58714e15abef037ef81d229a466",
     "npcs/world/citizens-10.json": "f47a0b322a091bb98daa2433129b0a0b4678affd031a8d1cc6b6de6fec6c77ea",
     "npcs/world/citizens-11.json": "3f3139ba6a4a6a56afaffc282e455e5f1c9ecae6a64301e8182b36f459270aa6",
     "npcs/world/citizens-12.json": "2a0afb920b2d3c6051ad49a87d229a0c81280830a744fc3bfe4e026b61d8b9d2",
@@ -126,8 +126,8 @@
     "npcs/world/citizens-15.json": "5c8a02a878c4974c8258686c29687dc45af5b10648f8dee507ca2b051ebec3b0",
     "npcs/world/citizens-16.json": "deabd231995c55d73383270383660b1fc219ea97184efe9cb7ce8ec09d6dbc1f",
     "npcs/world/citizens-17.json": "08ca5e6d9afacbb8454333eec20f59a7ddf0c9c5bf2ec22f6f98d2e487444ef1",
-    "npcs/world/citizens-18.json": "383c3277d26886ab70e72847885bdfcc456fd64dab8040f7da374235f5b8df6f",
+    "npcs/world/citizens-18.json": "ebcbe545ad0567ada9d1ae00a78c832f8efd5d11a660ba4c4386364a3c39c645",
     "behaviors/citizens/text-19.json": "b8778e85e9e6b52fdc4e349a24c6e3c3b32d11a5df916bda38906cfd3ea6c360",
-    "npcs/world/citizens-19.json": "b8f0d0cbc008ea066d81b208a74ab7d08f4787834fc4d0fc32740642670726a2"
+    "npcs/world/citizens-19.json": "8e7ae73c03753bc4edaa158ad650be63726bdbd546b8006d78759a0ecb4dbd80"
   }
 }

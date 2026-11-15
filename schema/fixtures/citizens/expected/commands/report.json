@@ -2,15 +2,15 @@
   "schemaVersion": 1,
   "converterVersion": 22,
   "fieldPathFormat": "json-pointer",
-  "importId": "424e50a00256dccf2e9833c3499091f2e28960420d9a08164deece52221ffb65",
-  "sourceSha256": "c799d0dbefc72305d299e52c21282356e368ce17e9484c93b8aa356c219d74ae",
+  "importId": "f453cbdb8da09179f1dfa93899d2dbfb922ebb776452a8e25a4682643af4d9ca",
+  "sourceSha256": "3a7440878a8dd027a7e2115b100f60f88d4d556441d54920afe4ea644284cd07",
   "worldMap": {
     "old_harbor": "harbor"
   },
   "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs spawn as Citizens had them, and converted patrols, schedules, combat, riding, shops and builds are on.",
   "records": 4,
   "valid": 4,
-  "skins": 0,
+  "skins": 1,
   "behaviors": 4,
   "shops": 0,
   "conversions": {
@@ -34,6 +34,7 @@
     "type": 4,
     "location": 4,
     "commandtrait": 4,
+    "skintrait": 2,
     "equipment": 1,
     "sentinel": 1
   },
@@ -80,12 +81,13 @@
   },
   "documents": {
     "behaviors/citizens/commands-0.json": "0006e7c3e75ce3364487bb91d3f70d565356c0a18d9703ef0800b4a6afa4fc32",
-    "npcs/harbor/citizens-0.json": "aeb661ba644ed3dadafc5c5dfb5d13dc458a243dd938522c54eb4c9c334430c9",
+    "npcs/harbor/citizens-0.json": "b09d1e13c74f20c25c07a14201170db34764e9b152daa0c5c8f50a9fd74c65b5",
     "behaviors/citizens/commands-1.json": "1e511b645287fff671d5036f0d058596999538468735f1567c685177567df267",
-    "npcs/harbor/citizens-1.json": "d6e0aff779dac2547f9d75ee99509eb534e660d11f0784ead04586a01ff765b3",
+    "npcs/harbor/citizens-1.json": "7db1cc6203c8be2af3019c405d461e77cb0b0945edf1964d392d375c5270fb2c",
     "behaviors/citizens/commands-2.json": "fda3eabd7bad88d8c617b091d982f54b7c6c91a540d2f50b9ac7cbb3f0e80f47",
-    "npcs/harbor/citizens-2.json": "0e400d5d808182efdca24494b8aafba8fda18600aef0d934a7854448674b4524",
+    "npcs/harbor/citizens-2.json": "5c67917fa8da501291a12c76cbd3de07e447660889cece87c4506d202410440b",
     "behaviors/citizens/commands-3.json": "bc3d32da811070466ba5b62b73c2b80ac31cf3394c84cbf9393a11d34d581d71",
-    "npcs/harbor/citizens-3.json": "ae5e79b452f90d6e61d5577070f0f5cf89bc15052739c7d1a01f589ebecdc40b"
+    "skins/05f18834916c6590edc8fc596c532623084f39c4d47e331ce3a0a41a4f161d7a.json": "05f18834916c6590edc8fc596c532623084f39c4d47e331ce3a0a41a4f161d7a",
+    "npcs/harbor/citizens-3.json": "9acc1bcc46bbb5ee4d5521279da769b50bdadde8191b9ae048f15a09c77c1929"
   }
 }

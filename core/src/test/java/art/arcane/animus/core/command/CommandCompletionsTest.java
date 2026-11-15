@@ -23,7 +23,7 @@ class CommandCompletionsTest {
     @TempDir Path data;
 
     /** Parameters whose value is free text a player makes up; nothing useful can be offered for them. */
-    private static final List<String> FREE_TEXT = List.of("name", "token", "option", "text", "title");
+    private static final List<String> FREE_TEXT = List.of("name", "token", "option", "text", "title", "url");
 
     /** A player standing at 10.7 64 -3.2 in town with one mob nearby. */
     private static class Standing extends AnimusDirectorTest.Actor {

@@ -4,6 +4,7 @@
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
+import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../config/docs_links.dart';
@@ -68,9 +69,10 @@ class NpcBasicsTab extends StatelessWidget {
           onRemove: (String field) => form.write(<JsonStep>[field], null),
           onRemoveAll: () => form.onJson((Object? latest) => withoutMisplacedBodyFields(asMap(latest), type), coalesce: 'npc:misplaced'),
         ),
-      if (type == 'minecraft:player')
-        NpcSkinPart(form: form)
-      else
+      if (type == 'minecraft:player') ...<Widget>[
+        NpcSkinPart(form: form),
+        if (!form.group) NpcSkinOptions(form: form, all: extras),
+      ] else
         NoSkinNote(diagnostics: form.diagnostics),
       Field(
         label: 'Spawned',
@@ -288,10 +290,61 @@ class NpcSkinPart extends StatelessWidget {
         documents: form.workspaceDocuments,
         resources: form.resources,
         onCommit: form.skinEditing?.commit,
+        sign: form.skinEditing?.sign,
         diagnostics: form.diagnostics,
         onLoaded: form.onSkinLoaded,
         onChanged: (String? value) => form.write(const <JsonStep>['skin'], value),
       );
+}
+
+/// `animus:skin`: Follow player (the skin came from a player name and the
+/// server puts their new one on) and Skin from name (with no skin, the skin
+/// of the account named like the NPC). Simple shows each one where it
+/// applies or while it is on; [all] shows both.
+class NpcSkinOptions extends StatelessWidget {
+  const NpcSkinOptions({required this.form, required this.all, super.key});
+
+  final NpcForm form;
+  final bool all;
+
+  static const String module = 'animus:skin';
+
+  void _set(String key, bool on) {
+    final JsonMap next = <String, Object?>{...asMap(form.modules[module])}..remove('enabled');
+    if (on) {
+      next[key] = true;
+    } else {
+      next.remove(key);
+    }
+    form.putModule(module, next.isEmpty ? null : next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final JsonMap options = asMap(form.modules[module]);
+    final bool follow = options['refresh'] == true, fromName = options['fromName'] == true;
+    final String? skin = asString(form.doc['skin']);
+    final AnimusDocument? worn = skin == null ? null : form.documents(DocumentKind.skin).where((AnimusDocument d) => d.id == skin).firstOrNull;
+    final bool byName = worn != null && asMap(worn.json)['player'] is String;
+    final List<Diagnostic> problems = diagnosticsAt(form.diagnostics, r'$.modules.animus:skin');
+    return dom.div(attributes: const <String, String>{'data-npc': 'skin-options'}, <Widget>[
+      if (all || follow || byName)
+        Field(
+          label: 'Follow player',
+          tip: 'Wears the player\'s new skin when they change it. Works for a skin set by player name.',
+          docs: Docs.npcSkins,
+          problems: problems,
+          child: ArcaneToggleSwitch(value: follow, ariaLabel: 'Follow player', onChanged: (bool on) => _set('refresh', on), size: ComponentSize.sm),
+        ),
+      if (all || fromName || skin == null)
+        Field(
+          label: 'Skin from name',
+          tip: 'With no skin set, wears the skin of the Minecraft account named like the NPC.',
+          docs: Docs.npcSkins,
+          child: ArcaneToggleSwitch(value: fromName, ariaLabel: 'Skin from name', onChanged: (bool on) => _set('fromName', on), size: ComponentSize.sm),
+        ),
+    ]);
+  }
 }
 
 class _Owner extends StatelessWidget {

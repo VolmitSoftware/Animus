@@ -56,6 +56,7 @@ public final class RuntimeEditorHost<P> implements EditorHost {
     @Override public Executor files() { return parts.files(); }
 
     @Override public Map<String, Feature> features() { return parts.features().get(); }
+    @Override public art.arcane.animus.core.skin.SkinSigner skinSigner() { return parts.runtime().skinSigner(); }
 
     @Override public Lookups lookups() { return parts.lookups().get(); }
 

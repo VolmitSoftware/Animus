@@ -25,6 +25,7 @@ import '../../model/document_kind.dart';
 import '../../services/browser.dart';
 import '../../services/skin_images.dart';
 import '../../state/document_return.dart';
+import '../../state/skin_signing.dart';
 import '../../state/editor_store.dart';
 import '../../state/workspace_repository.dart';
 import '../../state/workspace_route.dart';
@@ -53,7 +54,11 @@ part 'new_document_fields.dart';
 enum _SkinSource { none, file, url, existing }
 
 class NewDocumentPage extends StatefulWidget {
-  const NewDocumentPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, this.folder, this.name, this.conversation = false, this.owner, this.onClose, super.key});
+  const NewDocumentPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, this.folder, this.name, this.conversation = false, this.owner, this.sign, this.onClose, super.key});
+
+  /// Signs a new skin through the paired server; null makes an unsigned skin
+  /// that keeps its PNG for the server it is applied on.
+  final SkinSigner? sign;
 
   /// Shows the form as a list's New dialog, closed by this, instead of a page.
   final void Function()? onClose;
@@ -246,12 +251,23 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
 
   DocumentChange _change(DocumentKind kind, String id, Object? json) => DocumentChange(kind, id, prettyJson(json), path: newDocumentPath(kind, id));
 
-  /// A local skin document from the picked or fetched PNG, with the PNG kept
-  /// as a workspace resource.
-  (DocumentChange, String, Map<String, Uint8List?>)? _skinDocument() {
+  /// A skin document from the picked or fetched PNG, signed through the
+  /// paired server when there is one, with the PNG kept as a workspace
+  /// resource for the preview.
+  Future<(DocumentChange, String, Map<String, Uint8List?>)?> _skinDocument() async {
     final LoadedSkin? skin = _skin;
     if (skin == null) return null;
     final Uint8List png = SkinImages.pngBytes(skin);
+    final SkinSigner? sign = component.sign;
+    if (sign != null) {
+      final SignedSkin signed = await sign(png: png, slim: _slim);
+      SkinImages.alias(signed.id, skin);
+      return (
+        DocumentChange(DocumentKind.skin, signed.id, signed.source, path: newDocumentPath(DocumentKind.skin, signed.id)),
+        signed.id,
+        <String, Uint8List?>{skinImagePath(signed.id): png},
+      );
+    }
     final String url = _skinUrl.trim();
     final ({String id, String source}) made = newSkin(slim: _slim, url: _skinSource == _SkinSource.url && isMojangSkinUrl(url) ? url : null, image: png);
     SkinImages.alias(made.id, skin);
@@ -260,6 +276,16 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
       made.id,
       <String, Uint8List?>{skinImagePath(made.id): png},
     );
+  }
+
+  /// [_skinDocument], with a signing the server refused shown as the problem.
+  Future<(DocumentChange, String, Map<String, Uint8List?>)?> _signedOrRefused() async {
+    try {
+      return await _skinDocument();
+    } on Object catch (failure) {
+      if (mounted) setState(() => _problem = signFailureText(failure));
+      return null;
+    }
   }
 
   Future<void> _loadSkin({required bool fromUrl}) async {
@@ -331,11 +357,12 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
         case DocumentKind.animation:
           await _createAnimation(id);
         case DocumentKind.skin:
-          final (DocumentChange, String, Map<String, Uint8List?>)? skin = _skinDocument();
-          if (skin == null) {
+          if (_skin == null) {
             setState(() => _problem = 'Load a 64x64 skin PNG first.');
             return;
           }
+          final (DocumentChange, String, Map<String, Uint8List?>)? skin = await _signedOrRefused();
+          if (skin == null) return;
           if (component.store.document(DocumentKind.skin, skin.$2) != null) {
             component.onNavigate(DocumentRoute(component.workspace.id, kind, skin.$2));
             return;
@@ -398,11 +425,12 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
     if (_type == 'minecraft:player') {
       if (_skinSource == _SkinSource.existing) skin = _existingSkin;
       if (_skinSource == _SkinSource.file || _skinSource == _SkinSource.url) {
-        final (DocumentChange, String, Map<String, Uint8List?>)? made = _skinDocument();
-        if (made == null) {
+        if (_skin == null) {
           setState(() => _problem = 'Load the skin PNG, or pick Default.');
           return;
         }
+        final (DocumentChange, String, Map<String, Uint8List?>)? made = await _signedOrRefused();
+        if (made == null) return;
         skin = made.$2;
         if (component.store.document(DocumentKind.skin, made.$2) == null) changes.add(made.$1);
         resources.addAll(made.$3);

@@ -99,10 +99,11 @@ public final class Toolkit<P, S> implements AutoCloseable {
 
     /** {@code skins} reads a player's signed textures; {@code clock} is nanoseconds. */
     public record Parts<P, S>(Supplier<NpcRepository> npcs, Supplier<DocumentStore> documents, ScreenManager<P, S> screens, NpcRuntime<P, ?> living,
-                              Executor files, Function<P, Optional<BodySkin>> skins, Optional<Relocator> relocator, LongSupplier clock) {
+                              Executor files, Function<P, Optional<BodySkin>> skins, Optional<Relocator> relocator, LongSupplier clock,
+                              Supplier<art.arcane.animus.core.skin.SkinSigner> signer) {
         public Parts {
             Objects.requireNonNull(npcs); Objects.requireNonNull(documents); Objects.requireNonNull(screens); Objects.requireNonNull(living);
-            Objects.requireNonNull(files); Objects.requireNonNull(skins); Objects.requireNonNull(relocator); Objects.requireNonNull(clock);
+            Objects.requireNonNull(files); Objects.requireNonNull(skins); Objects.requireNonNull(relocator); Objects.requireNonNull(clock); Objects.requireNonNull(signer);
         }
     }
 
@@ -169,6 +170,9 @@ public final class Toolkit<P, S> implements AutoCloseable {
     NpcRepository npcs() { return parts.npcs().get(); }
     /** The document store, for file classes beside {@link ToolkitFiles}; read and write it on the file lane only. */
     DocumentStore documents() { return parts.documents().get(); }
+
+    /** Signs skin PNGs and addresses through MineSkin. */
+    art.arcane.animus.core.skin.SkinSigner skinSigner() { return parts.signer().get(); }
     ToolkitSelection selection() { return selection; }
     ScreenManager<P, S> screens() { return parts.screens(); }
     /** The file lane. */
@@ -668,7 +672,7 @@ public final class Toolkit<P, S> implements AutoCloseable {
         Optional<BodySkin> skin = skin(viewer.player());
         if (skin.isEmpty()) { refuse(viewer.player(), "Your skin has no signature; offline-mode servers cannot copy it"); return; }
         String label = host().name(viewer.player());
-        write(viewer, (ToolkitFiles files) -> files.skin(Optional.of(new SkinFiles(npcs(), documents()).save(skin.get(), label)), ids));
+        write(viewer, (ToolkitFiles files) -> files.skin(Optional.of(new SkinFiles(npcs(), documents()).save(skin.get(), label, Optional.of(label))), ids));
     }
 
     /** Runs file work, then tells the player its line and redraws the screen. A line with a transaction refreshes the NPCs. */

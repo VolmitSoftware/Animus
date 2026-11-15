@@ -225,6 +225,11 @@ class ControlPath {
           server.api.live[npc] = (world: world, x: x.toDouble(), y: y.toDouble(), z: z.toDouble());
         }
         return FakeResponse(200, body: <String, Object?>{'npc': npc, 'live': x != null});
+      case 'POST /skin-sign':
+        final String? fail = uri.queryParameters['fail'];
+        if (fail != 'true' && fail != 'false') throw invalid('fail: true or false');
+        server.api.skinJobs.failing = fail == 'true';
+        return FakeResponse(200, body: <String, Object?>{'failing': server.api.skinJobs.failing});
       case 'POST /restore':
         server.restore();
         return const FakeResponse(200, body: <String, Object?>{'restored': true});

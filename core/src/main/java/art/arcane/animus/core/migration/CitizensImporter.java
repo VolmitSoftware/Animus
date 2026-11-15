@@ -1,5 +1,6 @@
 package art.arcane.animus.core.migration;
 
+import art.arcane.animus.core.skin.SkinOptions;
 import art.arcane.animus.core.integration.ModelEngineModule;
 import art.arcane.animus.core.npc.GroupDocument;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -63,6 +64,9 @@ public final class CitizensImporter {
     private static final Set<String> REVIEW = Set.of("skintrait", "location", "owner", "equipment", "inventory", "waypoints", "text", "hologramtrait", "poses", "lookclose", "type", "spawned", "mounttrait", "controllable",
             BuilderMapping.BUILDER_TRAIT, BuilderMapping.CONSTRUCTOR_TRAIT);
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
+
+    /** Why a skin trait that is not a map is kept: there is no texture to read from it. */
+    static final String UNREADABLE_SKIN = "the skin trait is not a map Citizens writes; kept in citizens:review";
 
     /** Why a skin on a body that is not a player is kept: Citizens never drew it either. */
     static String unusedSkin(String type) {
@@ -211,9 +215,12 @@ public final class CitizensImporter {
                         });
                     } catch (IllegalArgumentException invalidUuid) { /* reported by the validator */ }
                     // A skin is only drawn on a player body; any other body keeps it under citizens:review.
-                    boolean skinApplied = traits.has("skintrait") && definition.get("type").getAsString().equals(BodyRules.PLAYER);
+                    boolean playerBody = definition.get("type").getAsString().equals(BodyRules.PLAYER);
+                    boolean skinReadable = !traits.has("skintrait") || traits.get("skintrait").isJsonObject();
+                    boolean skinApplied = traits.has("skintrait") && playerBody && skinReadable;
+                    CitizensSkins.Result skinned = playerBody && skinReadable ? CitizensSkins.map(traits.get("skintrait"), definition.get("name").getAsString()) : null;
                     List<String> presentationWarnings = new ArrayList<>(presentation.warnings());
-                    if (traits.has("skintrait") && !skinApplied) increment(conversions, "skinsKept");
+                    if (traits.has("skintrait") && !playerBody) increment(conversions, "skinsKept");
                     for (String warning : presentationWarnings) migrationWarnings.add("citizens-" + key + ": " + warning);
                     JsonObject modules = new JsonObject();
                     if (traits.has("sentinel")) {
@@ -304,6 +311,16 @@ public final class CitizensImporter {
                     if (modules.has("animus:navigation")) CitizensTraits.pause(reviewed).ifPresent((JsonObject pause) -> modules.getAsJsonObject("animus:navigation").add("pause", pause));
                     CitizensTraits.home(reviewed, world).ifPresent((JsonObject home) -> modules.add(HomeSettings.MODULE, home));
                     CitizensTraits.mirror(reviewed).ifPresent((JsonObject mirror) -> modules.add("animus:mirror", mirror));
+                    if (skinned != null) {
+                        if (skinned.mirror() && !modules.has("animus:mirror")) {
+                            JsonObject own = new JsonObject();
+                            own.addProperty("skin", true);
+                            modules.add("animus:mirror", own);
+                        }
+                        JsonObject skinOptions = skinned.options();
+                        if (modules.has("animus:mirror")) skinOptions.remove("fromName");
+                        if (!skinOptions.isEmpty()) modules.add(SkinOptions.MODULE, skinOptions);
+                    }
                     CitizensTraits.Result state = CitizensTraits.map(definition.get("type").getAsString(), record, reviewed, modules.has("animus:combat"),
                             modules.has("animus:navigation"), runtime.navigation().isPresent(), references);
                     if (runtime.navigation().isPresent()) patrols++;
@@ -326,9 +343,8 @@ public final class CitizensImporter {
                     }
                     if (!listed.isEmpty()) definition.add("behaviors", GSON.toJsonTree(listed));
                     definition.add("modules", modules);
-                    if (skinApplied) {
-                        JsonElement skin = traits.get("skintrait");
-                        String serialized = JsonDocuments.write(skin);
+                    if (skinned != null && skinned.file().isPresent()) {
+                        String serialized = skinned.file().get();
                         String hash = JsonDocuments.hash(serialized);
                         definition.addProperty("skin", hash);
                         skins.add(hash);
@@ -349,8 +365,11 @@ public final class CitizensImporter {
                     if (schedule != null) notes.putAll(schedule.notes());
                     if (model != null) notes.putAll(model.notes());
                     notes.putAll(looks.notes());
-                    if (traits.has("skintrait") && !skinApplied)
+                    if (skinned != null) notes.putAll(skinned.notes());
+                    if (traits.has("skintrait") && !playerBody)
                         notes.put("/traits/skintrait", new Note(Status.UNSUPPORTED_PRESERVED, unusedSkin(definition.get("type").getAsString())));
+                    else if (traits.has("skintrait") && !skinReadable)
+                        notes.put("/traits/skintrait", new Note(Status.UNSUPPORTED_PRESERVED, UNREADABLE_SKIN));
                     JsonObject reasons = new JsonObject();
                     classify(record, "", fields, convertedFields, notes, reasons);
                     report.add("presentationWarnings", GSON.toJsonTree(presentationWarnings));

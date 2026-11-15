@@ -140,7 +140,7 @@ class CreateFlowTest extends ToolkitHarness {
         click("Player", Click.LEFT);
         drain();
         assertEquals("Skin", title());
-        assertEquals(Map.of(4, "Smith", 9, "Spare", 36, "My skin", 37, "Player name", 38, "Default", 45, "Back", 46, "Search", 53, "Help"), buttons(),
+        assertEquals(Map.of(4, "Smith", 9, "Spare", 36, "My skin", 37, "Player name", 38, "Default", 39, "Skin address", 45, "Back", 46, "Search", 53, "Help"), buttons(),
                 "the header sits at 4, as on the Body step, and the skins start below it");
         assertTrue(lore("Spare").contains("Click: pick it"));
         assertFalse(lore("Spare").contains(SPARE.substring(0, 12)), "Simple shows no hash");

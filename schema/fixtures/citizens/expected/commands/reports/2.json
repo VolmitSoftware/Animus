@@ -14,12 +14,14 @@
     "/traits/location/x": "CONVERTED",
     "/traits/location/y": "CONVERTED",
     "/traits/location/z": "CONVERTED",
+    "/traits/skintrait/skinName": "CONVERTED",
     "/traits/commandtrait/temporaryPermissions/0": "REQUIRES_REVIEW",
     "/traits/commandtrait/temporaryPermissionsDuration": "REQUIRES_REVIEW",
     "/traits/commandtrait/commands/0/command": "CONVERTED",
     "/traits/commandtrait/commands/0/hand": "CONVERTED"
   },
   "reasons": {
+    "/traits/skintrait/skinName": "each viewer sees their own skin; became animus:mirror",
     "/traits/commandtrait/temporaryPermissions/0": "Animus lends permissions only to commands the clicking player runs, and this NPC has none",
     "/traits/commandtrait/temporaryPermissionsDuration": "Animus lends permissions only to commands the clicking player runs, and this NPC has none"
   },

@@ -57,7 +57,8 @@ class SkinScreenTest extends ToolkitHarness {
     }
 
     @Test void simpleShowsTheSkinsAndTheThreeWaysToGetOne() {
-        assertEquals(Map.of(0, "guard", 1, "Spare", 36, "My skin", 37, "Player name", 38, "Default", 44, "Player bodies only", 45, "Back", 46, "Search", 53, "Help"), buttons());
+        assertEquals(Map.of(0, "guard", 1, "Spare", 36, "My skin", 37, "Player name", 38, "Default", 39, "Skin address", 44, "Player bodies only", 45, "Back", 46, "Search", 53, "Help"), buttons());
+        assertTrue(lore("Spare").contains("Unsigned: players see the default skin"), "an unsigned skin says so: " + lore("Spare"));
         String worn = lore("guard");
         assertTrue(worn.contains("Worn by guard, trait group looks"), worn);
         assertFalse(worn.contains(WORN.substring(0, 12)), "Simple shows no hash");
@@ -211,6 +212,58 @@ class SkinScreenTest extends ToolkitHarness {
         assertEquals("'not a name!' is not a Minecraft name (1-16 letters, digits or _)", last());
         assertEquals(List.of("Ghost"), looked, "a bad name is refused before any lookup");
         assertEquals(before, new SkinFiles(npcs, store).skins().size());
+    }
+
+    @Test void aSkinAddressIsSignedThroughMineSkinAndWornByTheSelection() throws IOException {
+        String texture = Base64.getEncoder().encodeToString("{\"textures\":{\"SKIN\":{\"url\":\"http://textures.minecraft.net/texture/abc\"}}}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        List<art.arcane.animus.core.skin.SkinSigner.Request> asked = new ArrayList<>();
+        signer = new art.arcane.animus.core.skin.SkinSigner() {
+            @Override public Optional<String> unavailable() { return Optional.empty(); }
+            @Override public CompletableFuture<Signed> sign(Request request) {
+                asked.add(request);
+                return CompletableFuture.completedFuture(new Signed(new BodySkin(texture, Base64.getEncoder().encodeToString(new byte[]{7})), "https://textures.minecraft.net/texture/abc", false));
+            }
+        };
+        select("guard");
+        toolkit.open(alex.id, (Toolkit<Player, Stack> kit, ScreenManager<Player, Stack>.Viewer viewer, Toolkit.Commands given) -> new SkinScreen<>(kit, viewer, given, lookup));
+        click("Skin address", Click.LEFT);
+        assertEquals("Skin PNG address", alex.prompt.label());
+        MockScreenHost.answer(alex, Optional.of("https://example.com/skins/knight.png"));
+        assertEquals(new art.arcane.animus.core.skin.SkinSigner.Address("https://example.com/skins/knight.png"), asked.getFirst().source());
+        assertTrue(alex.messages.contains("[Animus]: Signing the skin through MineSkin"), alex.messages.toString());
+        String hash = npcs.find("guard").orElseThrow().json().get("skin").getAsString();
+        assertEquals("knight", JsonDocuments.object(store.read("skins/" + hash + ".json")).get("label").getAsString());
+        assertTrue(SkinDocuments.read(store, hash).signature() != null, "the worn skin is signed");
+        click("Skin address", Click.LEFT);
+        MockScreenHost.answer(alex, Optional.of("not an address"));
+        assertEquals("A skin address is an http or https link to a 64x64 PNG", last());
+    }
+
+    @Test void aRefusedSigningSaysWhyAndChangesNothing() {
+        signer = art.arcane.animus.core.skin.SkinSigner.off("MineSkin is rate limiting this server; try again in a minute");
+        select("guard");
+        toolkit.open(alex.id, (Toolkit<Player, Stack> kit, ScreenManager<Player, Stack>.Viewer viewer, Toolkit.Commands given) -> new SkinScreen<>(kit, viewer, given, lookup));
+        click("Skin address", Click.LEFT);
+        MockScreenHost.answer(alex, Optional.of("https://example.com/a.png"));
+        assertEquals("MineSkin is rate limiting this server; try again in a minute", last());
+        assertEquals(WORN, npcs.find("guard").orElseThrow().json().get("skin").getAsString());
+    }
+
+    @Test void followPlayerAndSkinFromNameTurnOnAndOffForTheSelectedPlayerBodies() {
+        assertFalse(shows(SkinFiles.FOLLOW), "nothing selected, nothing to turn on");
+        select("guard", "cow");
+        toolkit.open(alex.id, (Toolkit<Player, Stack> kit, ScreenManager<Player, Stack>.Viewer viewer, Toolkit.Commands given) -> new SkinScreen<>(kit, viewer, given, lookup));
+        assertEquals(SkinFiles.FOLLOW, name(SkinScreen.FOLLOW));
+        assertEquals(SkinFiles.FROM_NAME, name(SkinScreen.FROM_NAME));
+        assertTrue(lore(SkinScreen.FOLLOW).contains("Now: off"), lore(SkinScreen.FOLLOW));
+        click(SkinFiles.FOLLOW, Click.LEFT);
+        assertEquals("Follow player: on for guard, 1 skipped (not a player body)", last(), "the change id becomes Undo in chat");
+        assertTrue(npcs.find("guard").orElseThrow().json().getAsJsonObject("modules").getAsJsonObject("animus:skin").get("refresh").getAsBoolean());
+        assertTrue(lore(SkinScreen.FOLLOW).contains("Now: on"), lore(SkinScreen.FOLLOW));
+        click(SkinFiles.FOLLOW, Click.LEFT);
+        assertFalse(npcs.find("guard").orElseThrow().json().has("modules") && npcs.find("guard").orElseThrow().json().getAsJsonObject("modules").has("animus:skin"), "off removes the module");
+        click(SkinFiles.FROM_NAME, Click.LEFT);
+        assertTrue(npcs.find("guard").orElseThrow().json().getAsJsonObject("modules").getAsJsonObject("animus:skin").get("fromName").getAsBoolean());
     }
 
     @Test void withoutTextInputTheScreenStaysAndSaysSo() {

@@ -123,8 +123,9 @@ public final class ApplicationChecks {
                 var converted=new CitizensImporter().preview(source,store,Map.of());
                 var staged=ImportApplications.stage(store,converted.id(),ImportProjection.Mode.REJECT,null);
                 ImportApplications.apply(store,converted.id(),staged.applicationId());
-                String skin=NpcDefinition.parse(store.read("npcs/world/citizens-1.json")).json().get("skin").getAsString();
-                check(store.read("skins/"+skin+".json").contains("opaque-unrecognized-skin"),"unknown skin data remains preserved");
+                JsonObject imported=NpcDefinition.parse(store.read("npcs/world/citizens-1.json")).json();
+                check(!imported.has("skin"),"an unreadable skin trait makes no skin file");
+                check(imported.getAsJsonObject("modules").getAsJsonObject("citizens:review").get("skintrait").getAsString().equals("opaque-unrecognized-skin"),"unknown skin data remains preserved");
             }
             try(DocumentStore store=DocumentStore.readOnly(root.resolve("roundtrip"))){
                 String id;try(var paths=Files.list(store.resolve("imports"))){id=paths.filter(p->p.getFileName().toString().matches("[a-f0-9]{64}")).findFirst().orElseThrow().getFileName().toString();}

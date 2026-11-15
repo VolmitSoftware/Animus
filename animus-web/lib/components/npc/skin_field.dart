@@ -3,7 +3,9 @@
 /// opens a chooser with every skin of the workspace and the built-in ones
 /// as a windowed list, so only the rows in view are drawn and only their
 /// faces load; nothing is decoded until the chooser opens. A PNG file or
-/// address makes a new skin document (`lib/logic/npc/skin_edits.dart`).
+/// address makes a new skin document (`lib/logic/npc/skin_edits.dart`),
+/// signed through the paired server, or unsigned with its PNG kept for the
+/// server it is applied on.
 library;
 
 import 'dart:typed_data';
@@ -21,6 +23,7 @@ import '../../mc/npc/npc_skin.dart';
 import '../../mc/npc/npc_skin_failure.dart';
 import '../../model/animus_document.dart';
 import '../../services/skin_images.dart';
+import '../../state/skin_signing.dart';
 import '../../ui/action_row.dart';
 import '../../ui/alert.dart';
 import '../../ui/dialog.dart';
@@ -75,6 +78,7 @@ class SkinField extends StatefulWidget {
     required this.onChanged,
     this.resources = const <String, Uint8List>{},
     this.onCommit,
+    this.sign,
     this.diagnostics = const <Diagnostic>[],
     this.onLoaded,
     this.label = 'Skin',
@@ -100,6 +104,9 @@ class SkinField extends StatefulWidget {
   /// Writes a skin edit over several documents; null hides new skins from a
   /// PNG and the built-in ones.
   final SkinCommit? onCommit;
+
+  /// Signs a new or unsigned skin through the paired server; null when none is paired.
+  final SkinSigner? sign;
   final List<Diagnostic> diagnostics;
 
   /// A PNG was loaded or a built-in skin worn; the preview redraws.
@@ -112,6 +119,48 @@ class SkinField extends StatefulWidget {
 
 class _SkinFieldState extends State<SkinField> {
   bool _choosing = false;
+  bool _signing = false;
+
+  /// Signs the worn unsigned skin through the server and moves its wearers onto the signed one.
+  Future<void> _signWorn(AnimusDocument skin, Uint8List png) async {
+    final SkinSigner? sign = component.sign;
+    final SkinCommit? commit = component.onCommit;
+    if (sign == null || commit == null) return;
+    setState(() => _signing = true);
+    try {
+      final SignedSkin signed = await sign(png: png, slim: skinInfoOf(skin)?.slim ?? false, label: skinDocumentLabel(skin.json));
+      final LoadedSkin? shown = SkinImages.forKeyOrWorkspace(skin.id, png);
+      if (shown != null) SkinImages.alias(signed.id, shown);
+      final SkinChange? change = signedInPlace(documents: component.documents, resources: component.resources, hash: skin.id, signed: signed);
+      if (change != null) await commit(change);
+      component.onLoaded?.call();
+      ArcaneSonner.success('Skin signed. Apply to show it in game.');
+    } on Object catch (failure) {
+      ArcaneSonner.error(signFailureText(failure));
+    } finally {
+      if (mounted) setState(() => _signing = false);
+    }
+  }
+
+  /// Whether players see the worn skin, and how it gets signed when they do not.
+  Widget? _signature(AnimusDocument? current) {
+    if (current == null || !skinUnsigned(current.json)) return null;
+    final Uint8List? png = component.resources[skinImagePath(current.id)];
+    final bool paired = component.sign != null && component.onCommit != null;
+    final bool kept = skinKeepsImage(current.json);
+    final String line = paired && png != null
+        ? 'Unsigned. Players see the default skin.'
+        : kept
+            ? 'Unsigned. Signed when applied on a server.'
+            : (paired ? 'Unsigned. Upload the PNG again to sign it.' : 'Unsigned. Upload the PNG on a paired server to sign it.');
+    return ActionRow(
+      label: 'Skin signing',
+      leading: <Widget>[dom.span(attributes: const <String, String>{'data-skin': 'signature', 'role': 'status'}, <Widget>[mutedText(line)])],
+      secondary: <RowAction>[
+        if (paired && png != null) RowAction('Sign', _signing ? null : () => _signWorn(current, png), loading: _signing, attributes: const <String, String>{'data-skin': 'sign'}),
+      ],
+    );
+  }
 
   AnimusDocument? get _current {
     final String? value = component.value;
@@ -151,6 +200,7 @@ class _SkinFieldState extends State<SkinField> {
             RowAction('Change', () => setState(() => _choosing = true), attributes: const <String, String>{'data-skin': 'change'}),
           ],
         ),
+        ?_signature(current),
         if (_choosing)
           SkinChooser(
             title: 'Choose a skin',
@@ -160,6 +210,7 @@ class _SkinFieldState extends State<SkinField> {
             resources: component.resources,
             target: component.target,
             onCommit: component.onCommit,
+            sign: component.sign,
             onLoaded: component.onLoaded,
             onPick: (String id) {
               setState(() => _choosing = false);
@@ -185,6 +236,7 @@ class SkinChooser extends StatefulWidget {
     this.resources = const <String, Uint8List>{},
     this.target,
     this.onCommit,
+    this.sign,
     this.onLoaded,
     this.exclude = const <String>{},
     super.key,
@@ -202,6 +254,10 @@ class SkinChooser extends StatefulWidget {
   /// uploads (a skin pool picks saved skins only).
   final SkinTarget? target;
   final SkinCommit? onCommit;
+
+  /// Signs a new skin through the paired server; null makes an unsigned one
+  /// that keeps its PNG for the server it is applied on.
+  final SkinSigner? sign;
   final void Function()? onLoaded;
 
   /// Skins not to offer (already in a pool).
@@ -218,6 +274,7 @@ class _SkinChooserState extends State<SkinChooser> {
   String _url = '';
   String _hashText = '';
   bool _loading = false;
+  bool _signingNow = false;
   String? _failure;
 
   bool get _canMake => component.onCommit != null && component.target != null;
@@ -236,15 +293,36 @@ class _SkinChooserState extends State<SkinChooser> {
       if (skin == null) return;
       final AnimusDocument? current = component.skins.where((AnimusDocument s) => s.id == component.current).firstOrNull;
       final bool slim = current != null && (skinInfoOf(current)?.slim ?? false);
-      final SkinChange change = skinFromPng(documents: component.documents, png: SkinImages.pngBytes(skin), slim: slim, url: url, label: label, target: target);
+      final Uint8List png = SkinImages.pngBytes(skin);
+      final SkinSigner? sign = component.sign;
+      final SkinChange change;
+      if (sign != null) {
+        setState(() => _signingNow = true);
+        final SignedSkin signed = await sign(png: png, slim: slim, label: label);
+        change = skinFromSigned(documents: component.documents, signed: signed, png: png, target: target);
+      } else {
+        change = skinFromPng(documents: component.documents, png: png, slim: slim, url: url, label: label, target: target);
+      }
       SkinImages.alias(change.skin!, label == null ? skin : LoadedSkin(textureId: skin.textureId, source: 'the built-in $label skin', dataUrl: skin.dataUrl));
       await commit(change);
       component.onLoaded?.call();
+      if (sign != null) {
+        ArcaneSonner.success('Skin signed. Apply to show it in game.');
+      } else {
+        ArcaneSonner.info('Skin added. It is signed when applied on a server.');
+      }
       component.onClose();
+    } on SkinSignFailure catch (failure) {
+      if (mounted) setState(() => _failure = signFailureText(failure));
     } on Object catch (failure) {
-      if (mounted) setState(() => _failure = skinFailureText(failure));
+      if (mounted) setState(() => _failure = _signingNow ? signFailureText(failure) : skinFailureText(failure));
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _signingNow = false;
+        });
+      }
     }
   }
 
@@ -350,7 +428,9 @@ class _SkinChooserState extends State<SkinChooser> {
               secondary: <RowAction>[RowAction('Wear', _hash.hasMatch(_hashText) ? () => component.onPick(_hashText) : null)],
             ),
           ),
-        if (_loading) dom.div(attributes: const <String, String>{'role': 'status'}, <Widget>[mutedText('Loading the PNG...')]),
+        if (_canMake && component.sign == null && !_loading)
+          dom.div(attributes: const <String, String>{'data-skin': 'unpaired'}, <Widget>[mutedText('Not paired: a new skin is signed when applied on a server.')]),
+        if (_loading) dom.div(attributes: const <String, String>{'role': 'status', 'data-skin': 'progress'}, <Widget>[mutedText(_signingNow ? 'Signing on the server...' : 'Loading the PNG...')]),
         if (_failure != null) AppAlert(tone: AlertTone.error, message: _failure!, live: true),
         LibraryList(
           key: ValueKey<String>(builtIn ? 'skins-builtin' : 'skins-saved'),

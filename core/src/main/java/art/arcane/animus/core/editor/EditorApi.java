@@ -86,6 +86,7 @@ public final class EditorApi implements EditorRequestHandler {
     private final EditorImportRoutes imports = new EditorImportRoutes(this);
     private final EditorDocumentRoutes documents = new EditorDocumentRoutes(this);
     private final EditorPairingRoutes pairing = new EditorPairingRoutes(this);
+    private final EditorSkinRoutes skins = new EditorSkinRoutes(this::parts);
 
     public EditorApi(Parts parts) { this.parts = Objects.requireNonNull(parts); }
 
@@ -233,7 +234,8 @@ public final class EditorApi implements EditorRequestHandler {
                 case "lookups" -> n == 1 ? new Route(EditorScope.READ, this::lookups) : null;
                 case "catalog" -> n == 1 ? new Route(EditorScope.READ, documents::catalog) : null;
                 case "documents" -> n >= 3 ? new Route(EditorScope.READ, documents::document) : null;
-                case "skins" -> n == 3 && s[2].equals("texture.png") ? new Route(EditorScope.READ, this::skin) : null;
+                case "skins" -> n == 3 && s[1].equals("sign") ? new Route(EditorScope.APPLY_NPCS, skins::status)
+                        : n == 3 && s[2].equals("texture.png") ? new Route(EditorScope.READ, this::skin) : null;
                 case "changes" -> n == 2 ? new Route(EditorScope.READ, this::changeStatus) : null;
                 case "imports" -> n == 1 ? new Route(EditorScope.IMPORT, imports::status) : null;
                 case "terrain" -> n == 2 && s[1].equals("surface") ? new Route(EditorScope.TERRAIN, (EditorRequest request, EditorTokens.Token token, String[] path) -> terrain.surface(request, token))
@@ -250,6 +252,7 @@ public final class EditorApi implements EditorRequestHandler {
                         : n == 2 && s[1].equals("stage") ? new Route(EditorScope.IMPORT, imports::stage)
                         : n == 3 && Set.of("apply", "rollback").contains(s[2]) ? new Route(EditorScope.IMPORT, imports::step) : null;
                 case "npcs" -> n == 3 && (s[2].equals("spawn") || s[2].equals("despawn")) ? new Route(EditorScope.SPAWN, this::spawn) : null;
+                case "skins" -> n == 2 && s[1].equals("sign") ? new Route(EditorScope.APPLY_NPCS, skins::sign) : null;
                 default -> null;
             };
             case "DELETE" -> first.equals("previews") && n == 2 ? new Route(EditorScope.PREVIEW, this::endPreview) : null;
@@ -332,6 +335,7 @@ public final class EditorApi implements EditorRequestHandler {
         features.put("spawn", EditorHost.Feature.yes());
         features.put("terrain", terrain.feature());
         features.put("skins.texture", EditorHost.Feature.no("the server does not cache decoded skin textures; the editor loads them from the skin's texture URL"));
+        features.put("skins.sign", parts.host().skinSigner().unavailable().map(EditorHost.Feature::no).orElse(EditorHost.Feature.yes()));
         features.putAll(parts.host().features());
         JsonObject body = new JsonObject(), list = new JsonObject();
         features.forEach((String name, EditorHost.Feature feature) -> {

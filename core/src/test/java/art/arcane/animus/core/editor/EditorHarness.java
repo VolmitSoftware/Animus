@@ -82,6 +82,11 @@ final class EditorHarness implements AutoCloseable {
 
         @Override public Map<String, Feature> features() { return Map.of("combat", Feature.no("Folia combat is not available"), "rigs", Feature.yes()); }
 
+        /** What POST /v1/skins/sign signs with; tests that sign set their own. */
+        volatile art.arcane.animus.core.skin.SkinSigner signer = art.arcane.animus.core.skin.SkinSigner.off("Skin signing is off in this test");
+
+        @Override public art.arcane.animus.core.skin.SkinSigner skinSigner() { return signer; }
+
         @Override public List<Map.Entry<String, String>> modules() { return List.of(Map.entry("example", "ACTIVE")); }
 
         @Override public Lookups lookups() {

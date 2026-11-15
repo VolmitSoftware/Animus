@@ -12,6 +12,7 @@ import art.arcane.animus.core.admin.Administration;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.toolkit.SkinFiles;
 import art.arcane.animus.core.toolkit.SkinLookup;
+import art.arcane.animus.core.skin.SkinSigner;
 import art.arcane.animus.core.toolkit.Toolkit;
 import art.arcane.animus.core.virtual.WorldPosition;
 import art.arcane.volmlib.util.director.DirectorOrigin;
@@ -20,6 +21,9 @@ import art.arcane.volmlib.util.director.annotations.Param;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -34,36 +38,116 @@ final class NpcCommands extends CommandGroup {
 
     NpcCommands(CommandServices services) { super(services); }
 
-    @Director(description = "Give an NPC the skin of a Minecraft account by its name, or reset it")
+    @Director(description = "Give an NPC a skin: a Minecraft account's by name, a PNG address or a PNG file signed through MineSkin, or reset it")
     @AnimusPermission(PermissionNodes.NPC_SKIN)
+    @Positional("player")
     void skin(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
-              @Param(name = "player", description = "A Minecraft account name, or reset to remove the skin") String player) {
+              @Param(name = "player", defaultValue = "", description = "A Minecraft account name, or reset to remove the skin") String player,
+              @Param(name = "url", defaultValue = "", description = "The address of a 64x64 skin PNG, signed through MineSkin") String url,
+              @Param(name = "file", defaultValue = "", description = "A skin PNG in plugins/Animus/skins/, such as guard.png, signed through MineSkin") String file,
+              @Param(name = "slim", defaultValue = "false", description = "Slim (Alex) arms for url= and file=") boolean slim,
+              @Param(name = "follow", defaultValue = "", description = "true: wear the player's new skin when they change it; false: keep this one") String follow,
+              @Param(name = "from-name", defaultValue = "", description = "true: with no skin set, wear the skin of the account named like the NPC") String fromName) {
         CommandActor actor = actor();
-        npc(actor, npc).ifPresent((String id) -> skin(this, actor, id, player, SkinLookup.shared()));
+        for (String[] option : new String[][]{{"follow", follow}, {"from-name", fromName}})
+            if (!option[1].isBlank() && flag(option[1]).isEmpty()) { actor.tell(Palette.error(option[0] + " takes true or false")); return; }
+        npc(actor, npc).ifPresent((String id) -> skin(this, actor, id, new SkinRequest(player, url, file, slim, flag(follow), flag(fromName)), SkinLookup.shared()));
+    }
+
+    /** What {@code /animus npc skin} was asked: at most one source, then the two options, each empty when not given. */
+    record SkinRequest(String player, String url, String file, boolean slim, Optional<Boolean> follow, Optional<Boolean> fromName) {}
+
+    /** {@code true} or {@code false} (also {@code on} and {@code off}); empty when blank or anything else. */
+    static Optional<Boolean> flag(String value) {
+        return switch (value.strip().toLowerCase(Locale.ROOT)) {
+            case "true", "on" -> Optional.of(true);
+            case "false", "off" -> Optional.of(false);
+            default -> Optional.empty();
+        };
     }
 
     /**
-     * Looks the name up off the server thread, then saves the signed skin labelled with the account's spelling and puts it
-     * on the NPC on the file lane, as the toolkit's "From a player name" does. Works from the console.
+     * Sets the skin from a name (looked up off the server thread), an address or a PNG file (both signed through MineSkin
+     * off the server thread), then saves it labelled and puts it on the NPC on the file lane, as the toolkit does. The
+     * options follow on the file lane. Works from the console.
      */
-    static void skin(CommandGroup group, CommandActor actor, String id, String player, SkinLookup lookup) {
-        Optional<String> refused = skinProblem(group.runtime().npcs(), id, player);
+    static void skin(CommandGroup group, CommandActor actor, String id, SkinRequest request, SkinLookup lookup) {
+        long sources = java.util.stream.Stream.of(request.player(), request.url(), request.file()).filter((String given) -> !given.isBlank()).count();
+        if (sources > 1) { actor.tell(Palette.error("Give one skin source: a player name, url= or file=")); return; }
+        if (sources == 0 && request.follow().isEmpty() && request.fromName().isEmpty()) { actor.tell(Palette.error("Give a player name, url= or file=, or set follow= or from-name=")); return; }
+        Optional<String> refused = skinProblem(group.runtime().npcs(), id, request.player().isBlank() ? RESET : request.player());
         if (refused.isPresent()) { actor.tell(Palette.error(refused.get())); return; }
         SkinFiles skins = new SkinFiles(group.runtime().npcs(), group.runtime().documents());
-        if (player.equalsIgnoreCase(RESET)) {
-            group.files(actor, () -> { String line = skins.remove(List.of(id)); group.living().refresh(); return List.of(Palette.success(line)); });
+        Runnable options = () -> {
+            if (request.follow().isEmpty() && request.fromName().isEmpty()) return;
+            group.files(actor, () -> {
+                List<String> lines = new ArrayList<>();
+                if (request.follow().isPresent()) lines.add(Palette.success(skins.follow(request.follow().get(), List.of(id))));
+                if (request.fromName().isPresent()) lines.add(Palette.success(skins.fromName(request.fromName().get(), List.of(id))));
+                group.living().refresh();
+                return lines;
+            });
+        };
+        if (request.player().equalsIgnoreCase(RESET)) {
+            group.files(actor, () -> { String line = skins.remove(List.of(id)); group.living().refresh(); return List.of(Palette.success(line)); }, options);
             return;
         }
-        actor.tell("Looking up " + player + " on Mojang");
-        lookup.find(player).thenAccept((SkinLookup.Found found) -> actor.reply(() -> {
+        if (!request.player().isBlank()) {
+            actor.tell("Looking up " + request.player() + " on Mojang");
+            lookup.find(request.player()).thenAccept((SkinLookup.Found found) -> actor.reply(() -> {
+                if (group.stopping()) return;
+                if (found.skin().isEmpty()) { actor.tell(Palette.error(found.problem())); return; }
+                group.files(actor, () -> {
+                    String name = found.name().orElse(request.player());
+                    String line = skins.wear(found.skin().get(), name, Optional.of(name), List.of(id));
+                    group.living().refresh();
+                    return List.of(Palette.success(line));
+                }, options);
+            }));
+            return;
+        }
+        if (!request.url().isBlank()) {
+            signed(group, actor, id, new SkinSigner.Address(request.url().strip()), request.slim(), SkinSigner.label(request.url()), skins, options);
+            return;
+        }
+        if (!request.file().isBlank()) {
+            try {
+                group.services.files().execute(() -> {
+                    byte[] bytes;
+                    try {
+                        Optional<Path> png = skinFile(group.runtime().documents().resolve("skins"), request.file());
+                        if (png.isEmpty()) { group.reply(actor, Palette.error("file= names a .png in plugins/Animus/skins/, such as guard.png")); return; }
+                        if (Files.size(png.get()) > art.arcane.animus.core.skin.SkinFile.MAXIMUM_IMAGE) { group.reply(actor, Palette.error("skins/" + request.file() + " is over " + art.arcane.animus.core.skin.SkinFile.MAXIMUM_IMAGE + " bytes; a skin PNG is a few kilobytes")); return; }
+                        bytes = Files.readAllBytes(png.get());
+                    } catch (IOException unreadable) { group.reply(actor, Palette.error("Cannot read skins/" + request.file() + ": " + unreadable.getClass().getSimpleName())); return; }
+                    signed(group, actor, id, new SkinSigner.Image(bytes), request.slim(), SkinSigner.label(request.file()), skins, options);
+                });
+            } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
+            return;
+        }
+        options.run();
+    }
+
+    /** Signs the PNG through MineSkin off the server thread, then saves it labelled {@code label} and puts it on the NPC. */
+    private static void signed(CommandGroup group, CommandActor actor, String id, SkinSigner.Source source, boolean slim, String label, SkinFiles skins, Runnable options) {
+        group.reply(actor, "Signing the skin through MineSkin");
+        group.runtime().skinSigner().sign(new SkinSigner.Request(source, slim, label)).whenComplete((SkinSigner.Signed signed, Throwable failure) -> actor.reply(() -> {
             if (group.stopping()) return;
-            if (found.skin().isEmpty()) { actor.tell(Palette.error(found.problem())); return; }
+            if (failure != null) { actor.tell(Palette.error(SkinSigner.message(failure))); return; }
             group.files(actor, () -> {
-                String line = skins.wear(found.skin().get(), found.name().orElse(player), List.of(id));
+                String line = skins.wear(signed.skin(), label, Optional.empty(), List.of(id));
                 group.living().refresh();
                 return List.of(Palette.success(line));
-            });
+            }, options);
         }));
+    }
+
+    /** The PNG {@code typed} names inside {@code folder}; empty when it leaves the folder or is not a .png. */
+    static Optional<Path> skinFile(Path folder, String typed) {
+        String name = typed.strip().replace('\\', '/');
+        if (!name.toLowerCase(Locale.ROOT).endsWith(".png") || name.startsWith("/") || name.contains("..")) return Optional.empty();
+        Path root = folder.toAbsolutePath().normalize(), file = root.resolve(name).normalize();
+        return file.startsWith(root) && Files.isRegularFile(file, java.nio.file.LinkOption.NOFOLLOW_LINKS) ? Optional.of(file) : Optional.empty();
     }
 
     /** Why the skin cannot be set: no such NPC, a body that shows no skin, or a word that is not a Minecraft name. */

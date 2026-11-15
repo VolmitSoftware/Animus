@@ -29,7 +29,7 @@ final class ModuleScreen<P, S> extends ValueScreen<P, S> {
             Map.entry("animus:shop", "emerald"), Map.entry("animus:gui", "item_frame"), Map.entry("animus:hire", "gold_ingot"), Map.entry("animus:mount", "minecart"),
             Map.entry("animus:riding", "saddle"), Map.entry("animus:look-close", "ender_eye"), Map.entry("animus:schedule", "clock"),
             Map.entry("animus:modelengine", "armor_stand"), Map.entry("mythic:mob", "wither_skeleton_skull"), Map.entry("animus:home", "red_bed"),
-            Map.entry("animus:mirror", "glass"));
+            Map.entry("animus:mirror", "glass"), Map.entry("animus:skin", "player_head"));
 
     /**
      * One module as the screens show it: its key, name and icon, its schema, and the field that switches it, if any. An

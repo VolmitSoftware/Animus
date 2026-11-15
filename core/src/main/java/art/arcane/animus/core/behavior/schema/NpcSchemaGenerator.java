@@ -151,6 +151,7 @@ public final class NpcSchemaGenerator {
         known.add(art.arcane.animus.core.integration.MythicBinding.MODULE, mythic());
         known.add(HomeSettings.MODULE, home());
         known.add(art.arcane.animus.core.presentation.MirrorSettings.MODULE, mirror());
+        known.add(art.arcane.animus.core.skin.SkinOptions.MODULE, skinOptions());
         modules.add("properties", known);
         properties.add("modules", modules);
         root.add("properties", properties);
@@ -860,6 +861,16 @@ public final class NpcSchemaGenerator {
         properties.add("equipment", described(type("boolean"), "What the viewer holds and wears when the NPC comes into view."));
         mirror.add("properties", properties);
         return mirror;
+    }
+
+    private static JsonObject skinOptions() {
+        JsonObject options = described(closed(), "Where a player body's skin comes from beyond its skin file.");
+        JsonObject properties = new JsonObject();
+        properties.add("enabled", described(type("boolean"), "True when the object is present."));
+        properties.add("refresh", described(type("boolean"), "Looks the player the skin came from up again on [skins] refreshMinutes and wears their new skin."));
+        properties.add("fromName", described(type("boolean"), "With no skin set, wears the skin of the Minecraft account named like the NPC."));
+        options.add("properties", properties);
+        return options;
     }
 
     private static JsonObject home() {

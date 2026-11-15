@@ -126,7 +126,8 @@ final class CommandCompletions {
             case "format" -> List.of("folder", "bundle");
             case "copy" -> List.of("copy");
             case "entity", "vehicle", "riders" -> services.proof().bodies(actor).stream().map(String::valueOf).toList();
-            case "file" -> CompletionFiles.inboxFiles(data());
+            case "file" -> given.containsKey("npc") ? CompletionFiles.skinImages(data()) : CompletionFiles.inboxFiles(data());
+            case "follow", "from-name" -> List.of("true", "false");
             case "source" -> CompletionFiles.inbox(data());
             case "saves" -> CompletionFiles.inboxFiles(data()).stream().filter((String name) -> name.endsWith(".yml")).toList();
             case "preview" -> CompletionFiles.previews(data());

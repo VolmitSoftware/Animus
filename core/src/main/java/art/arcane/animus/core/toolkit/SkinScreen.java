@@ -5,6 +5,9 @@ import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.presentation.BodySkin;
+import art.arcane.animus.core.skin.SkinOptions;
+import art.arcane.animus.core.skin.SkinSigner;
+import com.google.gson.JsonObject;
 import art.arcane.animus.core.text.ChatLine;
 import com.google.gson.JsonElement;
 import java.io.IOException;
@@ -21,7 +24,7 @@ import java.util.Optional;
  * skipped shows only when one of them is selected, or nothing is.
  */
 final class SkinScreen<P, S> extends ToolScreen<P, S> {
-    static final int HEADER = 4, MINE = ACTIONS, NAMED = ACTIONS + 1, DEFAULT = ACTIONS + 2, NOTE = ACTIONS + 8;
+    static final int HEADER = 4, MINE = ACTIONS, NAMED = ACTIONS + 1, DEFAULT = ACTIONS + 2, ADDRESS = ACTIONS + 3, FOLLOW = ACTIONS + 5, FROM_NAME = ACTIONS + 6, NOTE = ACTIONS + 8;
     private final SkinLookup lookup;
     private final Optional<CreateFlow> creating;
     private List<SkinFiles.Entry> skins;
@@ -59,6 +62,16 @@ final class SkinScreen<P, S> extends ToolScreen<P, S> {
         head(MINE, title("My skin"), lore(List.of("&7Your own skin"), any(verb)), viewer.host().name(viewer.player()), (GuiModel.Click click) -> mine());
         button(NAMED, "minecraft:name_tag", title("Player name"), lore(List.of("&7Any Minecraft account's skin"), any("type a name")), (GuiModel.Click click) -> prompt("Player name", "", this::named));
         button(DEFAULT, HEAD, title("Default"), lore(List.of("&7The look without a skin"), any(verb)), (GuiModel.Click click) -> plain());
+        button(ADDRESS, "minecraft:paper", title("Skin address"), lore(List.of("&7A skin PNG on the web, signed through MineSkin"), any("paste the address")),
+                (GuiModel.Click click) -> prompt("Skin PNG address", "", "https://...", this::address));
+        if (creating.isEmpty() && !ids.isEmpty()) {
+            List<JsonObject> players = ids.stream().map((String id) -> NpcScreen.stored(toolkit, id)).filter((JsonObject npc) -> ToolkitFiles.PLAYER.equals(ShopFiles.type(npc))).toList();
+            if (!players.isEmpty()) {
+                option(FOLLOW, SkinFiles.FOLLOW, "Wears the player's new skin when they change it", players, SkinOptions::refresh, (Boolean on) -> (SkinFiles files) -> files.follow(on, toolkit.selected(viewer.id())));
+                option(FROM_NAME, SkinFiles.FROM_NAME, "Wears the skin of the account named like it", players, SkinOptions::fromName,
+                        (Boolean on) -> (SkinFiles files) -> files.fromName(on, toolkit.selected(viewer.id())));
+            }
+        }
         if (creating.isPresent()) {
             icon(HEADER, "minecraft:name_tag", title(creating.get().name), List.of("&7New NPC"), Optional.empty());
             help("Pick the skin your new NPC wears. Default is the plain look; change it later from its menu.", "21-in-game-toolkit", "skins");
@@ -78,9 +91,42 @@ final class SkinScreen<P, S> extends ToolScreen<P, S> {
         return skins == null ? "a saved skin" : skins.stream().filter((SkinFiles.Entry entry) -> entry.hash().equals(hash)).map(SkinFiles.Entry::title).findFirst().orElse("a saved skin");
     }
 
+    /** An on/off control over the selected player bodies: on for all turns it off, anything less turns it on for all. */
+    private void option(int slot, String name, String what, List<JsonObject> players, java.util.function.Predicate<SkinOptions> set, java.util.function.Function<Boolean, SkinWork> work) {
+        long on = players.stream().filter((JsonObject npc) -> {
+            try { return SkinOptions.parse(npc).filter(set).isPresent(); }
+            catch (IllegalArgumentException invalid) { return false; }
+        }).count();
+        boolean all = on == players.size();
+        String now = on == 0 ? "off" : all ? "on" : "on for " + on + " of " + players.size();
+        button(slot, all ? "minecraft:lime_dye" : "minecraft:gray_dye", title(name), lore(List.of("&7" + what, "&fNow: " + now), any(all ? "turn off" : "turn on")),
+                (GuiModel.Click click) -> files(work.apply(!all)));
+    }
+
+    /** Signs the PNG at the address through MineSkin, then saves it and puts it on the selection or the new NPC. */
+    private void address(String typed) {
+        String url = typed.strip();
+        if (!url.matches("https?://\\S{1,248}")) { refuse("A skin address is an http or https link to a 64x64 PNG"); return; }
+        toolkit.say(viewer.player(), ChatLine.reply("Signing the skin through MineSkin"));
+        String label = SkinSigner.label(url);
+        toolkit.skinSigner().sign(new SkinSigner.Request(new SkinSigner.Address(url), false, label)).whenComplete((SkinSigner.Signed signed, Throwable failure) ->
+                toolkit.living().players().deliver(viewer.id(), (P online) -> {
+                    if (!viewer.open() || creating.isPresent() && !creating.get().shows(this)) return;
+                    if (failure != null) { toolkit.refuse(online, SkinSigner.message(failure)); return; }
+                    if (creating.isPresent()) {
+                        try { creating.get().make(this, ToolkitFiles.PLAYER, Optional.of(SkinFiles.skin(signed.skin(), label, Optional.empty()))); }
+                        catch (IOException invalid) { refuse(invalid.getMessage()); }
+                        return;
+                    }
+                    List<String> ids = toolkit.selected(viewer.id());
+                    files((SkinFiles files) -> files.wear(signed.skin(), label, Optional.empty(), ids));
+                }));
+    }
+
     private void entry(int slot, SkinFiles.Entry skin, List<String> ids) {
         NpcItem head = skin.head().orElse(new NpcItem(HEAD, 1, Optional.empty(), Optional.empty()));
         List<String> lines = new ArrayList<>(List.of("&7" + worn(toolkit, skin)));
+        if (!skin.signed()) lines.add("&cUnsigned: players see the default skin");
         if (creating.isEmpty() && !ids.isEmpty() && wears(ids.getFirst(), skin.hash())) lines.add("&fNow: worn");
         if (advanced()) lines.add("&8" + skin.shortHash());
         if (creating.isPresent()) {
@@ -111,7 +157,8 @@ final class SkinScreen<P, S> extends ToolScreen<P, S> {
         if (creating.isEmpty()) { chosen().ifPresent((List<String> ids) -> { toolkit.mySkin(viewer, ids); reload(); }); return; }
         Optional<BodySkin> skin = toolkit.skin(viewer.player());
         if (skin.isEmpty()) { refuse("Your skin has no signature; offline-mode servers cannot copy it"); return; }
-        make(skin.get(), viewer.host().name(viewer.player()));
+        String name = viewer.host().name(viewer.player());
+        make(skin.get(), name);
     }
 
     private void plain() {
@@ -119,9 +166,9 @@ final class SkinScreen<P, S> extends ToolScreen<P, S> {
         else chosen().ifPresent((List<String> ids) -> wear(Optional.empty(), ids));
     }
 
-    /** The guided create's last step with a skin that is saved along with the NPC. */
-    private void make(BodySkin skin, String label) {
-        try { creating.orElseThrow().make(this, ToolkitFiles.PLAYER, Optional.of(SkinFiles.skin(skin, label))); }
+    /** The guided create's last step with the skin of the account {@code player}, saved along with the NPC. */
+    private void make(BodySkin skin, String player) {
+        try { creating.orElseThrow().make(this, ToolkitFiles.PLAYER, Optional.of(SkinFiles.skin(skin, player, Optional.of(player)))); }
         catch (IOException invalid) { refuse(invalid.getMessage()); }
     }
 
@@ -136,7 +183,7 @@ final class SkinScreen<P, S> extends ToolScreen<P, S> {
             String label = found.name().orElse(name);
             if (creating.isPresent()) { make(found.skin().get(), label); return; }
             List<String> ids = toolkit.selected(viewer.id());
-            files((SkinFiles files) -> files.wear(found.skin().get(), label, ids));
+            files((SkinFiles files) -> files.wear(found.skin().get(), label, Optional.of(label), ids));
         }));
     }
 

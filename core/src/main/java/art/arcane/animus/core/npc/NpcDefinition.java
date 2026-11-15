@@ -171,6 +171,8 @@ public final class NpcDefinition {
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
             try { art.arcane.animus.core.presentation.MirrorSettings.parse(object); }
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
+            try { art.arcane.animus.core.skin.SkinOptions.parse(object); }
+            catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
             try { art.arcane.animus.core.navigation.HomeSettings.parse(object); }
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
             try { art.arcane.animus.core.navigation.RoutePause.parse(object); }

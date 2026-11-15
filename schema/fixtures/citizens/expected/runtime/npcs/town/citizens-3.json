@@ -25,6 +25,9 @@
     "citizens:commands-3"
   ],
   "modules": {
+    "animus:skin": {
+      "fromName": true
+    },
     "citizens:review": {
       "type": "PLAYER",
       "location": {

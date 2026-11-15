@@ -292,9 +292,7 @@ extension _NewDocumentFields on _NewDocumentPageState {
       if (fromPng) Field(label: 'Arms', child: ArcaneToggleSwitch(value: _slim, label: 'Slim arms', onChanged: (bool value) => _set(() => _slim = value), size: ComponentSize.sm)),
       if (fromPng && _skin != null)
         Text(
-          _skinSource == _SkinSource.url && isMojangSkinUrl(_skinUrl)
-              ? 'Unsigned texture. A server may need a signed one to show it.'
-              : 'Servers show the default skin until this skin has a signed texture.',
+          component.sign != null ? 'Signed on the server when you create it.' : 'Not paired: signed when applied on a server.',
           size: FontSize.sm,
           color: TextColor.muted,
           element: 'p',

@@ -1,0 +1,12 @@
+{
+  "job": "0123456789abcdef0123456789abcdef",
+  "state": "signed",
+  "skin": {
+    "id": "4f6ad0a7a3b0e1c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c",
+    "source": {
+      "textureRaw": "e30=",
+      "signature": "c2ln",
+      "label": "Guard"
+    }
+  }
+}

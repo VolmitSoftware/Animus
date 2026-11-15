@@ -14,6 +14,7 @@ import '../../mc/npc/npc_skin.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../../state/editor_store.dart';
+import '../../state/skin_signing.dart' show SignedSkin, SkinSigner;
 import '../gui/gui_json.dart';
 import '../offline/new_documents.dart';
 import 'group_model.dart';
@@ -36,10 +37,14 @@ typedef SkinCommit = Future<void> Function(SkinChange change);
 /// What skin editors need beyond one document: the workspace's kept PNGs and
 /// a commit for several documents and resources at once.
 class SkinEditing {
-  const SkinEditing({required this.resources, required this.commit});
+  const SkinEditing({required this.resources, required this.commit, this.sign});
 
   final Map<String, Uint8List> resources;
   final SkinCommit commit;
+
+  /// Signs a PNG through the paired server; null when no server is paired,
+  /// and a new skin is signed once it is applied on one.
+  final SkinSigner? sign;
 }
 
 /// The NPC or group whose skin an edit sets.
@@ -289,6 +294,45 @@ SkinChange skinFromPng({
     skin: made.id,
   );
 }
+
+/// The signed skin document [signed] (made by the paired server from [png]),
+/// worn by [target], with the PNG kept beside the workspace for the preview.
+SkinChange skinFromSigned({required List<AnimusDocument> documents, required SignedSkin signed, required Uint8List png, required SkinTarget target}) => SkinChange(
+      documents: <DocumentChange>[
+        if (_find(documents, DocumentKind.skin, signed.id) == null) DocumentChange(DocumentKind.skin, signed.id, signed.source, path: newDocumentPath(DocumentKind.skin, signed.id)),
+        DocumentChange.update(target.kind, target.id, (Object? latest) => _setSkin(target.kind, latest, signed.id)),
+      ],
+      resources: <String, Uint8List?>{skinImagePath(signed.id): png},
+      label: 'signed skin ${signed.id.substring(0, 8)} for ${target.id}',
+      skin: signed.id,
+    );
+
+/// Skin [hash] replaced by its signed version [signed]: every wearer moves to
+/// it in one step, the kept PNG follows and the unsigned document goes.
+SkinChange? signedInPlace({required List<AnimusDocument> documents, required Map<String, Uint8List> resources, required String hash, required SignedSkin signed}) {
+  if (_find(documents, DocumentKind.skin, hash) == null || signed.id == hash) return null;
+  final Uint8List? png = resources[skinImagePath(hash)];
+  return SkinChange(
+    documents: <DocumentChange>[
+      if (_find(documents, DocumentKind.skin, signed.id) == null) DocumentChange(DocumentKind.skin, signed.id, signed.source, path: newDocumentPath(DocumentKind.skin, signed.id)),
+      for (final AnimusDocument wearer in skinWearers(documents, hash))
+        DocumentChange.update(wearer.kind, wearer.id, (Object? latest) => _retarget(wearer.kind, latest, hash, signed.id)),
+      DocumentChange(DocumentKind.skin, hash, null),
+    ],
+    resources: <String, Uint8List?>{
+      skinImagePath(signed.id): ?png,
+      if (png != null) skinImagePath(hash): null,
+    },
+    label: 'signed skin ${signed.id.substring(0, 8)}',
+    skin: signed.id,
+  );
+}
+
+/// Whether a skin document is unsigned, which players see as the default skin.
+bool skinUnsigned(Object? skin) => asMap(skin)['signature'] is! String;
+
+/// The PNG an unsigned skin document keeps for the server to sign, if any.
+bool skinKeepsImage(Object? skin) => asMap(skin)['image'] is String;
 
 /// The delete confirmation's detail for skin [hash]: who would be left
 /// naming a missing skin.

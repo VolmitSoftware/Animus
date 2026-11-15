@@ -180,7 +180,7 @@ class ToolkitPrefsTest {
         ScreenManager<Player, Stack> manager = new ScreenManager<>(host, (UUID npc) -> true, (String warning) -> { throw new AssertionError(warning); });
         NpcRepository npcs = new NpcRepository(store);
         FakeNpcRuntime<Player> living = new FakeNpcRuntime<>((UUID id) -> id.equals(alex.id) ? Optional.of(alex) : Optional.empty());
-        Toolkit<Player, Stack> toolkit = Toolkit.install(new Toolkit.Parts<>(() -> npcs, () -> store, manager, living, queue::add, (Player player) -> Optional.empty(), Optional.empty(), () -> 0L));
+        Toolkit<Player, Stack> toolkit = Toolkit.install(new Toolkit.Parts<>(() -> npcs, () -> store, manager, living, queue::add, (Player player) -> Optional.empty(), Optional.empty(), () -> 0L, () -> art.arcane.animus.core.skin.SkinSigner.off("off")));
         try {
             save(alex.id, "{\"schemaVersion\":1,\"mode\":\"advanced\"}");
             List<ToolkitMode> drawn = new ArrayList<>();

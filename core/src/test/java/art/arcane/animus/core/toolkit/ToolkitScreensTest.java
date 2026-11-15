@@ -397,7 +397,7 @@ class ToolkitScreensTest extends ToolkitHarness {
 
     @Test void theWandOpensNothingBeforeTheCommandTreeHooksInAndThenUsesItsCommands() {
         toolkit.close();
-        toolkit = Toolkit.install(new Toolkit.Parts<>(() -> npcs, () -> store, manager, living, queue::add, (MockScreenHost.Player player) -> Optional.empty(), Optional.empty(), () -> now));
+        toolkit = Toolkit.install(new Toolkit.Parts<>(() -> npcs, () -> store, manager, living, queue::add, (MockScreenHost.Player player) -> Optional.empty(), Optional.empty(), () -> now, () -> art.arcane.animus.core.skin.SkinSigner.off("off")));
         assertTrue(toolkit.interacted(alex, GUARD, false, false));
         drain();
         assertNull(alex.window, "no menu runs on commands that are not there");

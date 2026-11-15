@@ -53,8 +53,8 @@
     "2": "0a1b2c3d-0000-4000-8000-000000000302"
   },
   "documents": {
-    "npcs/world/citizens-0.json": "abef19d1b312bf26741c7cdcf28a008b079c3d7fade635e55a065d790e3a594d",
-    "npcs/world/citizens-1.json": "70e493b6866353af7307512f0e059495c7f4173470125f48987f7933cc014050",
-    "npcs/world/citizens-2.json": "b7dda29675c5e566cebf62b4d5d8d08e2fc1595c1e222252522e3d37ca630366"
+    "npcs/world/citizens-0.json": "e577828c26ff06b62ea72eaa205dfb7cf014d7bb107c3f0209847656213d47fa",
+    "npcs/world/citizens-1.json": "c903599e07b80a7cd4ef0505e8d5984a88927a7fb753813f012cbad50deeb90c",
+    "npcs/world/citizens-2.json": "d4122c3d46acbe0b3c8239b1ee24dfdae89d1fd777e085eca1548edde7f5f110"
   }
 }

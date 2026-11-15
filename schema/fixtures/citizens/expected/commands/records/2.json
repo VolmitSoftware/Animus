@@ -9,6 +9,9 @@
       "y": 80.0,
       "z": 0.5
     },
+    "skintrait": {
+      "skinName": "<p>"
+    },
     "commandtrait": {
       "temporaryPermissions": {
         "0": "essentials.fly"

@@ -21,15 +21,19 @@ import java.util.concurrent.CompletionException;
 @FunctionalInterface public interface SkinLookup {
     String NAME = "[A-Za-z0-9_]{1,16}";
 
-    /** What a lookup found: the account's own spelling and its skin, or why there is none. */
-    record Found(Optional<String> name, Optional<BodySkin> skin, String problem) {
-        public static Found skin(String name, BodySkin skin) { return new Found(Optional.of(name), Optional.of(skin), ""); }
-        public static Found missing(String problem) { return new Found(Optional.empty(), Optional.empty(), problem); }
+    /**
+     * What a lookup found: the account's own spelling and its skin, or why there is none. {@code unreachable}: Mojang
+     * could not be asked or refused for now, so asking again later may find it.
+     */
+    record Found(Optional<String> name, Optional<BodySkin> skin, String problem, boolean unreachable) {
+        public static Found skin(String name, BodySkin skin) { return new Found(Optional.of(name), Optional.of(skin), "", false); }
+        public static Found missing(String problem) { return new Found(Optional.empty(), Optional.empty(), problem, false); }
+        public static Found unreachable(String problem) { return new Found(Optional.empty(), Optional.empty(), problem, true); }
     }
 
     CompletableFuture<Found> find(String name);
 
-    /** The one Mojang lookup the Skins screen and {@code /animus npc skin} share, made on first use. */
+    /** The one Mojang lookup the Skins screen, {@code /animus npc skin} and skin refreshes share, made on first use. */
     static SkinLookup shared() { return Shared.LOOKUP; }
 
     /** Holds the shared lookup, so its HTTP client is made only when a skin is first looked up. */
@@ -50,7 +54,9 @@ import java.util.concurrent.CompletionException;
                         .thenApply((Optional<JsonObject> profile) -> profile.map((JsonObject found) -> textures(spelled, found)).orElse(Found.missing(spelled + " has no profile on Mojang's session server")));
             }).exceptionally((Throwable failure) -> {
                 Throwable cause = failure instanceof CompletionException wrapped && wrapped.getCause() != null ? wrapped.getCause() : failure;
-                return Found.missing("Could not reach Mojang to look up " + name + " (" + cause.getClass().getSimpleName() + "); the server needs internet access");
+                if (cause instanceof IOException refused && refused.getMessage() != null && refused.getMessage().startsWith("HTTP 429"))
+                    return Found.unreachable("Mojang is rate limiting this server's skin lookups; try " + name + " again in a minute");
+                return Found.unreachable("Could not reach Mojang to look up " + name + " (" + cause.getClass().getSimpleName() + "); the server needs internet access");
             });
         };
     }

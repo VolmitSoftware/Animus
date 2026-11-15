@@ -40,6 +40,9 @@
         ]
       }
     },
+    "animus:skin": {
+      "fromName": true
+    },
     "citizens:review": {
       "type": "PLAYER",
       "builder": {

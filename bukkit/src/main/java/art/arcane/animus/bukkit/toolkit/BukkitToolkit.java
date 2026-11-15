@@ -35,7 +35,7 @@ public final class BukkitToolkit implements Listener, AutoCloseable {
     /** {@code ownerTicks} runs a task every tick on the global owner. */
     public BukkitToolkit(Plugin plugin, AnimusRuntime runtime, ScreenManager<Player, ItemStack> screens, NpcRuntime<Player, ItemStack> living, Executor files,
                          Function<Player, Optional<BodySkin>> skins, Toolkit.Relocator relocator, Function<Runnable, AutoCloseable> ownerTicks) {
-        toolkit = Toolkit.install(new Toolkit.Parts<>(runtime::npcs, runtime::documents, screens, living, files, skins, Optional.of(relocator), System::nanoTime));
+        toolkit = Toolkit.install(new Toolkit.Parts<>(runtime::npcs, runtime::documents, screens, living, files, skins, Optional.of(relocator), System::nanoTime, runtime::skinSigner));
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
         for (Player online : plugin.getServer().getOnlinePlayers()) toolkit.joined(online.getUniqueId());
         ticks = ownerTicks.apply(() -> { for (UUID player : toolkit.watching()) living.players().deliver(player, toolkit::tick); });

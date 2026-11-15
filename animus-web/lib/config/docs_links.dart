@@ -29,6 +29,7 @@ abstract final class Docs {
   static const DocLink npc = DocLink('04-npc-definitions', 'definition-file');
   static const DocLink npcActivation = DocLink('04-npc-definitions', 'activation-and-editing');
   static const DocLink npcAppearance = DocLink('04-npc-definitions', 'appearance-text-and-inventory');
+  static const DocLink npcSkins = DocLink('04-npc-definitions', 'skins');
   static const DocLink npcText = DocLink('04-npc-definitions', 'names-and-text-lines');
   static const DocLink npcFlags = DocLink('04-npc-definitions', 'other-presentation-flags');
   static const DocLink npcPoses = DocLink('04-npc-definitions', 'poses');

@@ -20,6 +20,9 @@ public final class CachedPlaceholders implements Placeholders {
     public interface Source {
         boolean available();
         String fill(UUID viewer, String text);
+
+        /** The text filled for no viewer, or null when the source cannot fill without one. */
+        default String fillServer(String text) { return null; }
     }
 
     private record Key(UUID viewer, String text) {}
@@ -38,6 +41,7 @@ public final class CachedPlaceholders implements Placeholders {
     }
 
     @Override public boolean active() { return source.available(); }
+    @Override public java.util.Optional<String> fillServer(String text) { return source.available() && Placeholders.marked(text) ? java.util.Optional.ofNullable(source.fillServer(text)) : java.util.Optional.empty(); }
     @Override public int refreshTicks() { return refreshTicks; }
     /** Follows {@code [placeholders] refreshTicks}, at startup and on each hotload of {@code config.toml}. */
     public void refreshTicks(int ticks) { refreshTicks = Math.max(0, ticks); }

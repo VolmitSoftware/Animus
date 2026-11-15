@@ -22,6 +22,12 @@ public interface Placeholders {
     /** Whether a placeholder plugin is installed now. */
     boolean active();
 
+    /**
+     * The text filled for no viewer, as a skin source such as {@code %top_player%} is: only placeholders that read the
+     * server answer. Empty without a placeholder plugin. Call on the server's main thread (the global region on Folia).
+     */
+    default java.util.Optional<String> fillServer(String text) { return java.util.Optional.empty(); }
+
     /** {@code [placeholders] refreshTicks}: how often shown nameplates are filled again; 0 only when shown or changed. */
     default int refreshTicks() { return 0; }
 

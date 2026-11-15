@@ -110,6 +110,7 @@ public final class AnimusModRuntime {
         volatile EditorService editor;
         final DebugWatch watch = new DebugWatch();
         art.arcane.animus.core.hotload.HotloadService hotload;
+        art.arcane.animus.core.skin.SkinService skins;
         volatile boolean stopping;
     }
 
@@ -219,6 +220,7 @@ public final class AnimusModRuntime {
             next.hotload = new art.arcane.animus.core.hotload.HotloadService(new art.arcane.animus.core.hotload.HotloadService.Parts(next.runtime, files, server::execute, next.living,
                     new ModOperators(server), screenService::refreshOpen, LOGGER::info, LOGGER::warn));
             next.hotload.start();
+            next.skins = art.arcane.animus.core.skin.SkinService.start(next.runtime, files, next.living::refresh, art.arcane.animus.core.skin.SkinService::unfilled, LOGGER::info);
             TriggerDispatcher triggers = next.behaviors.triggers();
             ServerTriggerDispatcher servers = next.behaviors.servers();
             if (triggers != null) next.ticks.every(new art.arcane.animus.core.behavior.trigger.TriggerLink(triggers, servers, next.living, LOGGER::info));
@@ -295,6 +297,7 @@ public final class AnimusModRuntime {
         active.stopping = true;
         active.watch.clear();
         if (active.hotload != null) active.hotload.close();
+        if (active.skins != null) active.skins.close();
         EditorService editor = active.editor;
         active.editor = null;
         if (editor != null) editor.close();

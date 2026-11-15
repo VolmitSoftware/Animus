@@ -47,6 +47,9 @@
   },
   "clickRedirect": "0a1b2c3d-0000-4000-8000-000000000606",
   "modules": {
+    "animus:skin": {
+      "fromName": true
+    },
     "citizens:review": {
       "type": "PLAYER",
       "location": {

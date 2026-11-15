@@ -387,6 +387,41 @@
         "documents": {"type": "array", "items": {"$ref": "#/$defs/documentDiagnostics"}}
       }
     },
+    "skin-sign-request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "image": {"type": "string", "pattern": "^[A-Za-z0-9+/=]{1,40000}$", "description": "A 64x64 (or 64x32) skin PNG, base64, at most 20000 bytes."},
+        "url": {"type": "string", "pattern": "^https?://\\S{1,248}$", "description": "The address of a skin PNG for MineSkin to fetch."},
+        "slim": {"type": "boolean", "description": "Slim (Alex) arms; classic when absent."},
+        "label": {"type": "string", "maxLength": 64, "description": "The skin document's label."}
+      },
+      "oneOf": [{"required": ["image"]}, {"required": ["url"]}]
+    },
+    "skin-sign-job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job", "state"],
+      "properties": {
+        "job": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+        "state": {"enum": ["signing", "signed", "failed"]},
+        "skin": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "source"],
+          "description": "When signed: the skin document to apply, named by the SHA-256 of its written source.",
+          "properties": {
+            "id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "source": {
+              "type": "object",
+              "required": ["textureRaw", "signature"],
+              "properties": {"textureRaw": {"type": "string"}, "signature": {"type": "string"}, "label": {"type": "string", "maxLength": 64}}
+            }
+          }
+        },
+        "message": {"type": "string", "maxLength": 512, "description": "When failed: why, one line for a person."}
+      }
+    },
     "preview-request": {
       "type": "object",
       "additionalProperties": false,

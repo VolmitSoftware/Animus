@@ -49,6 +49,24 @@ class NpcCommandsTest {
         }
     }
 
+    @Test void skinFileStaysInsideTheSkinsFolderAndNamesAPng() throws Exception {
+        Path skins = java.nio.file.Files.createDirectories(root.resolve("skins/town"));
+        java.nio.file.Files.write(skins.resolve("guard.png"), new byte[]{1});
+        java.nio.file.Files.write(root.resolve("secret.png"), new byte[]{1});
+        java.nio.file.Files.write(skins.resolve("notes.txt"), new byte[]{1});
+        assertEquals(java.util.Optional.of(skins.resolve("guard.png").toAbsolutePath().normalize()), NpcCommands.skinFile(root.resolve("skins"), "town/guard.png"));
+        assertTrue(NpcCommands.skinFile(root.resolve("skins"), "../secret.png").isEmpty(), "never outside skins/");
+        assertTrue(NpcCommands.skinFile(root.resolve("skins"), "town/notes.txt").isEmpty(), "only a .png");
+        assertTrue(NpcCommands.skinFile(root.resolve("skins"), "town/missing.png").isEmpty());
+    }
+
+    @Test void skinOptionsTakeTrueOrFalse() {
+        assertEquals(java.util.Optional.of(true), NpcCommands.flag("true"));
+        assertEquals(java.util.Optional.of(false), NpcCommands.flag(" OFF "));
+        assertTrue(NpcCommands.flag("maybe").isEmpty());
+        assertTrue(NpcCommands.flag("").isEmpty());
+    }
+
     @Test void lookCloseTurnsOffAndOnKeepingItsSettings() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             store.commit(List.of(new DocumentStore.Change("npcs/town/guard.json", "missing",
@@ -106,7 +124,7 @@ class NpcCommandsTest {
             assertEquals(java.util.Optional.empty(), NpcCommands.skinProblem(repository, "guard", "reset"));
             String texture = java.util.Base64.getEncoder().encodeToString("{\"textures\":{}}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
             art.arcane.animus.core.toolkit.SkinFiles skins = new art.arcane.animus.core.toolkit.SkinFiles(repository, store);
-            String worn = skins.wear(new art.arcane.animus.core.presentation.BodySkin(texture, "c2ln"), "Notch", List.of("guard"));
+            String worn = skins.wear(new art.arcane.animus.core.presentation.BodySkin(texture, "c2ln"), "Notch", java.util.Optional.of("Notch"), List.of("guard"));
             String hash = repository.find("guard").orElseThrow().json().get("skin").getAsString();
             assertTrue(worn.startsWith("Skin Notch on N; tx "), worn);
             assertTrue(skins.remove(List.of("guard")).startsWith("Skin removed on N; tx "));

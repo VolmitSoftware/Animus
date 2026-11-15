@@ -14,6 +14,7 @@ import '../data_folder_export.dart';
 import '../npc/npc_paths.dart' show npcSchemaVersion;
 import 'citizens_stacks.dart';
 import 'citizens_looks.dart';
+import 'citizens_skins.dart';
 import 'citizens_traits.dart';
 import 'definition_validation.dart';
 import 'destinations.dart';
@@ -237,9 +238,12 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
       definition.add(field.key, field.value);
     }
     // A skin is only drawn on a player body; any other body keeps it under citizens:review.
-    final bool skinApplied = traits.has('skintrait') && definition.get('type')!.asPrimitive.asString == 'minecraft:player';
+    final bool playerBody = definition.get('type')!.asPrimitive.asString == 'minecraft:player';
+    final bool skinReadable = !traits.has('skintrait') || traits.get('skintrait') is JObject;
+    final bool skinApplied = traits.has('skintrait') && playerBody && skinReadable;
+    final SkinsResult? skin = playerBody && skinReadable ? mapCitizensSkin(traits.get('skintrait'), definition.get('name')!.asPrimitive.asString) : null;
     final List<String> presentationWarnings = List<String>.of(presentation.warnings);
-    if (traits.has('skintrait') && !skinApplied) _increment(conversions, 'skinsKept');
+    if (traits.has('skintrait') && !playerBody) _increment(conversions, 'skinsKept');
     for (final String warning in presentationWarnings) {
       migrationWarnings.addString('citizens-$key: $warning');
     }
@@ -358,6 +362,12 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     if (home != null) modules.add('animus:home', home);
     final JObject? mirror = citizensMirror(reviewed);
     if (mirror != null) modules.add('animus:mirror', mirror);
+    if (skin != null) {
+      if (skin.mirror && !modules.has('animus:mirror')) modules.add('animus:mirror', JObject()..addBool('skin', true));
+      final JObject options = skin.options;
+      if (modules.has('animus:mirror')) options.remove('fromName');
+      if (options.members.isNotEmpty) modules.add('animus:skin', options);
+    }
     final TraitsResult state = mapTraits(definition.get('type')!.asPrimitive.asString, record, reviewed, modules.has('animus:combat'),
         modules.has('animus:navigation'), runtime.navigation != null, references);
     if (runtime.navigation != null) patrols++;
@@ -387,8 +397,8 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     }
     if (listed.isNotEmpty) definition.add('behaviors', JArray(<JElement>[for (final String id in listed) JString(id)]));
     definition.add('modules', modules);
-    if (skinApplied) {
-      final String serialized = writeJson(traits.get('skintrait')!);
+    if (skin != null && skin.file != null) {
+      final String serialized = skin.file!;
       final String hash = sha256Hex(serialized);
       definition.addString('skin', hash);
       skins.add(hash);
@@ -397,9 +407,11 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     final JObject report = JObject();
     report.addInt('citizensId', numeric);
     final JObject fields = JObject();
-    final Map<String, FieldNote> notes = <String, FieldNote>{...presentation.notes, ...runtime.notes, ...state.notes, ...?schedule?.notes, ...?model?.notes, ...looks.notes};
-    if (traits.has('skintrait') && !skinApplied) {
+    final Map<String, FieldNote> notes = <String, FieldNote>{...presentation.notes, ...runtime.notes, ...state.notes, ...?schedule?.notes, ...?model?.notes, ...looks.notes, ...?skin?.notes};
+    if (traits.has('skintrait') && !playerBody) {
       notes['/traits/skintrait'] = FieldNote(unsupportedPreserved, unusedSkin(definition.get('type')!.asPrimitive.asString));
+    } else if (traits.has('skintrait') && !skinReadable) {
+      notes['/traits/skintrait'] = const FieldNote(unsupportedPreserved, unreadableSkin);
     }
     final JObject reasons = JObject();
     _classify(record, '', fields, <String>{...presentation.converted, ...runtime.converted, ...state.converted, ...?schedule?.converted, ...economyConverted, ...looks.converted}, notes, reasons);
@@ -456,6 +468,9 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
   files['report.json'] = writeJson(summary);
   return CitizensPreview(id, files, summary, original);
 }
+
+/// Why a skin trait that is not a map is kept: there is no texture to read from it.
+const String unreadableSkin = 'the skin trait is not a map Citizens writes; kept in citizens:review';
 
 /// Why a skin on a body that is not a player is kept: Citizens never drew it either.
 String unusedSkin(String type) {

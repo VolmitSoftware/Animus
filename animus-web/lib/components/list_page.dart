@@ -10,6 +10,7 @@ import 'package:jaspr/dom.dart' as dom;
 import '../model/document_kind.dart';
 import '../services/browser.dart';
 import '../state/editor_store.dart';
+import '../state/skin_signing.dart' show SkinSigner;
 import '../state/library.dart';
 import '../state/workspace_repository.dart';
 import '../state/workspace_route.dart';
@@ -63,12 +64,15 @@ class SubKindTabs extends StatelessWidget {
 }
 
 class ListPage extends StatefulWidget {
-  const ListPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, super.key});
+  const ListPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, this.sign, super.key});
 
   final EditorStore store;
   final WorkspaceSnapshot workspace;
   final DocumentKind kind;
   final void Function(EditorRoute route) onNavigate;
+
+  /// Signs a new skin through the paired server; null when none is paired.
+  final SkinSigner? sign;
 
   @override
   State<ListPage> createState() => _ListPageState();
@@ -158,6 +162,7 @@ class _ListPageState extends State<ListPage> with LibraryWatch<ListPage> {
           workspace: workspace,
           kind: kind,
           onNavigate: onNavigate,
+          sign: component.sign,
           onClose: () => setState(() => _newOpen = false),
         ),
     ]);

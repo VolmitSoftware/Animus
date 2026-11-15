@@ -22,7 +22,7 @@ public final class ModToolkit implements AutoCloseable {
     /** {@code every} runs a task every server tick until closed. */
     public ModToolkit(MinecraftServer server, AnimusRuntime runtime, ScreenManager<ServerPlayer, ItemStack> screens, PersistedNpcService<ServerPlayer, ItemStack> living,
                       Executor files, Function<ServerPlayer, Optional<BodySkin>> skins, Function<Runnable, AutoCloseable> every) {
-        toolkit = Toolkit.install(new Toolkit.Parts<>(runtime::npcs, runtime::documents, screens, living, files, skins, Optional.of(living::relocate), System::nanoTime));
+        toolkit = Toolkit.install(new Toolkit.Parts<>(runtime::npcs, runtime::documents, screens, living, files, skins, Optional.of(living::relocate), System::nanoTime, runtime::skinSigner));
         ticks = every.apply(() -> {
             for (UUID id : toolkit.watching()) {
                 ServerPlayer player = server.getPlayerList().getPlayer(id);

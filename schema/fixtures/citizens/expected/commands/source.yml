@@ -1,5 +1,6 @@
 # Synthetic Citizens saves.yml for click commands that Citizens rewrites before running: say lines, npc and
-# waypoint subcommands, PlaceholderAPI placeholders and temporary permissions. Every name, UUID and world is invented.
+# waypoint subcommands, PlaceholderAPI placeholders and temporary permissions, beside Sentinel and skin traits on the same NPCs.
+# Every name, UUID and world is invented.
 npc:
   '0':
     name: Harbor Herald
@@ -47,6 +48,7 @@ npc:
     traits:
       type: PLAYER
       location: {world: old_harbor, x: 0.5, y: 80.0, z: 0.5}
+      skintrait: {skinName: '<p>'}
       commandtrait:
         temporaryPermissions:
           '0': essentials.fly
@@ -59,6 +61,7 @@ npc:
     traits:
       type: PLAYER
       location: {world: old_harbor, x: 6.5, y: 64.0, z: 9.5}
+      skintrait: {skinName: '%vault_top_1%', updateSkins: true, signature: c2lnLWQ=, textureRaw: dGV4LWQ=}
       equipment:
         hand: {type: splash_potion, amount: 1, meta: rO0ABXNyABpvcmcuYnVra2l0LnV0aWwuaW8uV3JhcHBlcvJQR+zxEm8FAgABTAADbWFwdAAPTGphdmEvdXRpbC9NYXA7eHBzcgA1Y29tLmdvb2dsZS5jb21tb24uY29sbGVjdC5JbW11dGFibGVNYXAkU2VyaWFsaXplZEZvcm0AAAAAAAAAAAIAAkwABGtleXN0ABJMamF2YS9sYW5nL09iamVjdDtMAAZ2YWx1ZXNxAH4ABHhwdXIAE1tMamF2YS5sYW5nLk9iamVjdDuQzlifEHMpbAIAAHhwAAAAA3QAAj09dAAJbWV0YS10eXBldAALcG90aW9uLXR5cGV1cQB+AAYAAAADdAAISXRlbU1ldGF0AAZQT1RJT050ABhtaW5lY3JhZnQ6c3Ryb25nX2hhcm1pbmc=}
         off_hand: {type: STICK}

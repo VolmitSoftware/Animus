@@ -25,6 +25,9 @@
     "citizens:text-19"
   ],
   "modules": {
+    "animus:skin": {
+      "fromName": true
+    },
     "citizens:review": {
       "type": "PLAYER",
       "location": {

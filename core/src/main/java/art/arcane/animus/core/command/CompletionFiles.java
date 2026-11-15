@@ -63,6 +63,11 @@ final class CompletionFiles {
         return ids.stream().map((String id) -> shared.get(ChatLine.shortId(id)) == 1 ? ChatLine.shortId(id) : id).toList();
     }
 
+    /** Skin PNGs in {@code skins/}, for {@code /animus npc skin file=}. */
+    static List<String> skinImages(Path data) {
+        return names(data.resolve("skins"), (Path entry) -> Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS) && entry.getFileName().toString().toLowerCase(java.util.Locale.ROOT).endsWith(".png"), false, "");
+    }
+
     /** Stored skin hashes, {@code skins/<sha256>.json}. */
     static List<String> skins(Path data) { return names(data.resolve("skins"), (Path entry) -> HASH.matcher(stem(entry)).matches(), true, ".json"); }
 

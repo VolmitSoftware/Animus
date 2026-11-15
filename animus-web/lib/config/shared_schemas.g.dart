@@ -98,6 +98,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {"method": "GET", "path": "/v1/documents/{kind}/{id}", "scope": "read", "request": null, "responses": {"200": "document-response", "404": "error-response"}},
     {"method": "POST", "path": "/v1/documents/read", "scope": "read", "counter": false, "request": "documents-read-request", "responses": {"200": "documents-read-response", "400": "error-response"}},
     {"method": "GET", "path": "/v1/skins/{hash}/texture.png", "scope": "read", "request": null, "responses": {"200": "image/png", "404": "error-response"}},
+    {"method": "POST", "path": "/v1/skins/sign", "scope": "apply:npcs", "description": "The server signs a skin PNG or a PNG address through MineSkin. It answers at once with a job; poll the job about once a second.", "request": "skin-sign-request", "responses": {"202": "skin-sign-job", "400": "error-response", "429": "error-response"}},
+    {"method": "GET", "path": "/v1/skins/sign/{job}", "scope": "apply:npcs", "description": "A signing job: signing, then signed with the skin document to apply (not saved by the server), or failed with why. Jobs are kept ten minutes after they end.", "request": null, "responses": {"200": "skin-sign-job", "404": "error-response"}},
     {"method": "POST", "path": "/v1/validate", "scope": "validate", "request": "validate-request", "responses": {"200": "validate-response"}},
     {"method": "POST", "path": "/v1/previews", "scope": "preview", "request": "preview-request", "responses": {"200": "preview-response", "409": "error-response", "422": "error-response"}},
     {"method": "DELETE", "path": "/v1/previews/{previewId}", "scope": "preview", "request": null, "responses": {"204": null, "404": "error-response"}},
@@ -581,6 +583,41 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "valid": {"type": "boolean", "description": "True when no document has an error diagnostic."},
         "documents": {"type": "array", "items": {"$ref": "#/$defs/documentDiagnostics"}}
+      }
+    },
+    "skin-sign-request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "image": {"type": "string", "pattern": "^[A-Za-z0-9+/=]{1,40000}$", "description": "A 64x64 (or 64x32) skin PNG, base64, at most 20000 bytes."},
+        "url": {"type": "string", "pattern": "^https?://\\S{1,248}$", "description": "The address of a skin PNG for MineSkin to fetch."},
+        "slim": {"type": "boolean", "description": "Slim (Alex) arms; classic when absent."},
+        "label": {"type": "string", "maxLength": 64, "description": "The skin document's label."}
+      },
+      "oneOf": [{"required": ["image"]}, {"required": ["url"]}]
+    },
+    "skin-sign-job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job", "state"],
+      "properties": {
+        "job": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+        "state": {"enum": ["signing", "signed", "failed"]},
+        "skin": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "source"],
+          "description": "When signed: the skin document to apply, named by the SHA-256 of its written source.",
+          "properties": {
+            "id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "source": {
+              "type": "object",
+              "required": ["textureRaw", "signature"],
+              "properties": {"textureRaw": {"type": "string"}, "signature": {"type": "string"}, "label": {"type": "string", "maxLength": 64}}
+            }
+          }
+        },
+        "message": {"type": "string", "maxLength": 512, "description": "When failed: why, one line for a person."}
       }
     },
     "preview-request": {
@@ -24002,6 +24039,25 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "equipment": {
               "type": "boolean",
               "description": "What the viewer holds and wears when the NPC comes into view."
+            }
+          }
+        },
+        "animus:skin": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Where a player body's skin comes from beyond its skin file.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "True when the object is present."
+            },
+            "refresh": {
+              "type": "boolean",
+              "description": "Looks the player the skin came from up again on [skins] refreshMinutes and wears their new skin."
+            },
+            "fromName": {
+              "type": "boolean",
+              "description": "With no skin set, wears the skin of the Minecraft account named like the NPC."
             }
           }
         }

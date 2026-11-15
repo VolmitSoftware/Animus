@@ -10372,6 +10372,25 @@
               "description": "What the viewer holds and wears when the NPC comes into view."
             }
           }
+        },
+        "animus:skin": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Where a player body's skin comes from beyond its skin file.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "True when the object is present."
+            },
+            "refresh": {
+              "type": "boolean",
+              "description": "Looks the player the skin came from up again on [skins] refreshMinutes and wears their new skin."
+            },
+            "fromName": {
+              "type": "boolean",
+              "description": "With no skin set, wears the skin of the Minecraft account named like the NPC."
+            }
+          }
         }
       }
     }

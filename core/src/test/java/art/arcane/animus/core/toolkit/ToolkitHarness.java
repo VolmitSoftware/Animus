@@ -55,6 +55,8 @@ abstract class ToolkitHarness {
     /** NPCs the runtime made glow for Alex. */
     final List<String> glows = new ArrayList<>();
     long now = 1_000_000_000L;
+    /** What the toolkit signs skin addresses with; tests that sign set their own. */
+    art.arcane.animus.core.skin.SkinSigner signer = art.arcane.animus.core.skin.SkinSigner.off("Skin signing is off in this test");
     String primary;
     boolean recording;
     Toolkit<Player, Stack> toolkit;
@@ -93,7 +95,7 @@ abstract class ToolkitHarness {
                 (Player player) -> Optional.empty(), Optional.of((String id, art.arcane.animus.core.virtual.WorldPosition destination) -> {
                     calls.add("relocate " + id + " " + destination.world() + " " + destination.point().x() + " " + destination.point().y() + " " + destination.point().z());
                     return true;
-                }), () -> now));
+                }), () -> now, () -> signer));
         toolkit.hook(commands);
         toolkit.joined(alex.id);
         drain();

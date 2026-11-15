@@ -876,6 +876,55 @@ class EditorApiTest {
     }
 
     @Test
+    void skinSign_queuesAJobThatAnswersTheSignedDocument() throws Exception {
+        String texture = java.util.Base64.getEncoder().encodeToString("{\"textures\":{\"SKIN\":{\"url\":\"http://textures.minecraft.net/texture/abc\"}}}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        CompletableFuture<art.arcane.animus.core.skin.SkinSigner.Signed> pending = new CompletableFuture<>();
+        List<art.arcane.animus.core.skin.SkinSigner.Request> asked = new java.util.concurrent.CopyOnWriteArrayList<>();
+        harness.host.signer = new art.arcane.animus.core.skin.SkinSigner() {
+            @Override public java.util.Optional<String> unavailable() { return java.util.Optional.empty(); }
+            @Override public CompletableFuture<Signed> sign(Request request) { asked.add(request); return pending; }
+        };
+        String token = harness.token();
+        JsonObject capabilities = valid("capabilities-response", harness.send("GET", "/v1/capabilities", token, null));
+        assertTrue(capabilities.getAsJsonObject("features").getAsJsonObject("skins.sign").get("available").getAsBoolean());
+        byte[] png = java.nio.ByteBuffer.allocate(64).put(new byte[]{(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 13, 'I', 'H', 'D', 'R'}).putInt(64).putInt(64).array();
+        JsonObject body = new JsonObject();
+        body.addProperty("image", java.util.Base64.getEncoder().encodeToString(png));
+        body.addProperty("slim", true);
+        body.addProperty("label", "Guard");
+        EditorResponse queued = harness.send("POST", "/v1/skins/sign", token, body);
+        assertEquals(202, queued.status());
+        String job = valid("skin-sign-job", queued).get("job").getAsString();
+        assertTrue(asked.getFirst().slim());
+        assertEquals("Guard", asked.getFirst().name());
+        assertEquals("signing", valid("skin-sign-job", harness.send("GET", "/v1/skins/sign/" + job, token, null)).get("state").getAsString());
+        pending.complete(new art.arcane.animus.core.skin.SkinSigner.Signed(new art.arcane.animus.core.presentation.BodySkin(texture, "c2ln"), "https://textures.minecraft.net/texture/abc", true));
+        JsonObject signed = valid("skin-sign-job", harness.send("GET", "/v1/skins/sign/" + job, token, null));
+        assertEquals("signed", signed.get("state").getAsString());
+        JsonObject skin = signed.getAsJsonObject("skin");
+        assertEquals(art.arcane.animus.core.storage.JsonDocuments.hash(art.arcane.animus.core.storage.JsonDocuments.write(skin.getAsJsonObject("source"))), skin.get("id").getAsString(),
+                "the id is the hash of the source as written, so applying it passes the skin-hash check");
+        assertEquals("Guard", skin.getAsJsonObject("source").get("label").getAsString());
+        JsonObject bad = new JsonObject();
+        bad.addProperty("image", java.util.Base64.getEncoder().encodeToString(new byte[30]));
+        error("invalid-request", 400, harness.send("POST", "/v1/skins/sign", token, bad));
+        error("not-found", 404, harness.send("GET", "/v1/skins/sign/0123456789abcdef0123456789abcdef", token, null));
+        error("scope-missing", 403, harness.send("POST", "/v1/skins/sign", harness.token(EditorHarness.grant(List.of(EditorScope.READ))), body));
+    }
+
+    @Test
+    void skinSign_refusedByMineSkin_answersFailedWithWhy() throws Exception {
+        harness.host.signer = art.arcane.animus.core.skin.SkinSigner.off("MineSkin is rate limiting this server; try again in a minute");
+        String token = harness.token();
+        JsonObject body = new JsonObject();
+        body.addProperty("url", "https://example.com/guard.png");
+        String job = valid("skin-sign-job", harness.send("POST", "/v1/skins/sign", token, body)).get("job").getAsString();
+        JsonObject failed = valid("skin-sign-job", harness.send("GET", "/v1/skins/sign/" + job, token, null));
+        assertEquals("failed", failed.get("state").getAsString());
+        assertEquals("MineSkin is rate limiting this server; try again in a minute", failed.get("message").getAsString());
+    }
+
+    @Test
     void unknownProtocolAndEndpoint() throws Exception {
         error("not-found", 404, harness.send("GET", "/v1/nothing", harness.token(), null));
     }
