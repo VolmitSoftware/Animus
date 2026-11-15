@@ -12,6 +12,8 @@ import art.arcane.animus.core.navigation.WaypointSettings;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.npc.NpcRepository;
+import art.arcane.animus.core.owner.ActingPlayer;
+import art.arcane.animus.core.owner.NpcOwnership;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.SelectionPick;
@@ -100,10 +102,11 @@ public final class Toolkit<P, S> implements AutoCloseable {
     /** {@code skins} reads a player's signed textures; {@code clock} is nanoseconds. */
     public record Parts<P, S>(Supplier<NpcRepository> npcs, Supplier<DocumentStore> documents, ScreenManager<P, S> screens, NpcRuntime<P, ?> living,
                               Executor files, Function<P, Optional<BodySkin>> skins, Optional<Relocator> relocator, LongSupplier clock,
-                              Supplier<art.arcane.animus.core.skin.SkinSigner> signer) {
+                              Supplier<art.arcane.animus.core.skin.SkinSigner> signer, Supplier<art.arcane.animus.core.config.OwnerSettings> owners) {
         public Parts {
             Objects.requireNonNull(npcs); Objects.requireNonNull(documents); Objects.requireNonNull(screens); Objects.requireNonNull(living);
             Objects.requireNonNull(files); Objects.requireNonNull(skins); Objects.requireNonNull(relocator); Objects.requireNonNull(clock); Objects.requireNonNull(signer);
+            Objects.requireNonNull(owners);
         }
     }
 
@@ -115,6 +118,8 @@ public final class Toolkit<P, S> implements AutoCloseable {
         long ticks, clicked, missed;
         UUID last;
         boolean sneaking, warned;
+        /** Whether the player held animus.admin or animus.npc.others when last read, on each menu click, window and wand use; null before. */
+        volatile Boolean others;
         Miss miss;
         int waited;
     }
@@ -187,7 +192,9 @@ public final class Toolkit<P, S> implements AutoCloseable {
     /** The selected NPCs that still exist, in the order picked. */
     public List<String> selected(UUID player) {
         NpcRepository npcs = npcs();
-        selection.retain(player, (String id) -> npcs.find(id).isPresent());
+        PlayerState state = players.get(player);
+        boolean known = state != null && state.others != null;
+        selection.retain(player, (String id) -> npcs.find(id).map((NpcDefinition npc) -> !known || mayAct(player, npc)).orElse(false));
         return selection.of(player);
     }
 
@@ -274,6 +281,7 @@ public final class Toolkit<P, S> implements AutoCloseable {
         if (!host.holdsWand(player) || !host.permitted(player, PermissionNodes.TOOLS)) return false;
         Optional<NpcRuntime.ActiveNpc> active = living().active(npc);
         if (active.isEmpty()) return false;
+        ranks(player);
         UUID id = host.id(player);
         PlayerState state = state(id);
         long now = parts.clock().getAsLong();
@@ -283,6 +291,8 @@ public final class Toolkit<P, S> implements AutoCloseable {
         state.clicked = now;
         boolean sneak = attack ? host.pose(player).map(ScreenHost.Pose::sneaking).orElse(false) : sneaking;
         String target = active.get().id();
+        Optional<NpcDefinition> clicked = npcs().find(target);
+        if (clicked.isPresent() && !mayAct(id, clicked.get())) { bar(player, "&c" + NpcOwnership.refusal(clicked.get())); return true; }
         Picker picker = pickers.remove(id);
         if (picker != null) { picker.chosen().accept(target); return true; }
         if (!sneak) {
@@ -358,6 +368,8 @@ public final class Toolkit<P, S> implements AutoCloseable {
     /** Selects only this NPC, which also becomes the primary selection. */
     void only(P player, String id) {
         UUID uuid = host().id(player);
+        Optional<NpcDefinition> npc = npcs().find(id);
+        if (npc.isPresent() && !mayAct(uuid, npc.get())) { refuse(player, NpcOwnership.refusal(npc.get())); return; }
         selection.only(uuid, id);
         primary(uuid, id);
         glow(uuid, id);
@@ -447,6 +459,7 @@ public final class Toolkit<P, S> implements AutoCloseable {
     boolean show(P player, ScreenFactory<P, S> factory) {
         Commands commands = hooks;
         if (commands == null) { refuse(player, "The Animus menu is still starting; try again in a moment"); return false; }
+        ranks(player);
         notices.remove(host().id(player));
         return parts.screens().open(player, Optional.empty(), (ScreenManager<P, S>.Viewer viewer) -> {
             ToolScreen<P, S> screen = factory.create(this, viewer, commands);
@@ -643,12 +656,21 @@ public final class Toolkit<P, S> implements AutoCloseable {
         if (pose.isEmpty()) { refuse(player, "Your position cannot be read right now; try again"); return; }
         String world = worldName(pose.get());
         Landing.Spot spot = Landing.ahead(pose.get());
-        background(player, (ToolkitFiles ignored) -> CreateFlow.draft(npcs(), documents(), plan, world, spot, viewer.id()), (P drafted, CreateFlow.Draft draft) -> {
+        java.util.OptionalInt limit = limit(player);
+        background(player, (ToolkitFiles ignored) -> {
+            Optional<String> full = NpcOwnership.full(npcs().all(), viewer.id(), limit);
+            if (full.isPresent()) throw new IOException(full.get());
+            return CreateFlow.draft(npcs(), documents(), plan, world, spot, viewer.id());
+        }, (P drafted, CreateFlow.Draft draft) -> {
             if (plan.spawn()) {
                 List<String> errors = living().validateActivation(draft.definition());
                 if (!errors.isEmpty()) { refuse(drafted, "Cannot spawn " + plan.name() + ": " + errors.getFirst() + "; nothing was saved"); return; }
             }
-            background(drafted, (ToolkitFiles ignored) -> CreateFlow.commit(npcs(), documents(), draft), (P online, String tx) -> {
+            background(drafted, (ToolkitFiles ignored) -> {
+                Optional<String> full = NpcOwnership.full(npcs().all(), viewer.id(), limit);
+                if (full.isPresent()) throw new IOException(full.get());
+                return CreateFlow.commit(npcs(), documents(), draft);
+            }, (P online, String tx) -> {
                 living().refresh();
                 only(online, plan.id());
                 viewer.close();
@@ -689,12 +711,13 @@ public final class Toolkit<P, S> implements AutoCloseable {
     /** {@link #write} for work that builds its own chat line. */
     private void line(ScreenManager<P, S>.Viewer viewer, LineWork work, Runnable after) {
         UUID id = viewer.id();
+        Optional<ActingPlayer.Actor> acting = acting(viewer.player());
         try {
             parts.files().execute(() -> {
                 ChatLine line;
                 String failed = null;
                 try {
-                    line = work.run(files());
+                    line = ActingPlayer.call(acting, () -> work.run(files()));
                     if (!line.transactions().isEmpty()) living().refresh();
                 } catch (IOException | RuntimeException failure) { line = null; failed = String.valueOf(failure.getMessage()); }
                 ChatLine reply = line;
@@ -711,10 +734,11 @@ public final class Toolkit<P, S> implements AutoCloseable {
     /** File work started without a window, such as from a chat chip: {@code done} gets the result on the player's owner; a failure is refused. */
     <T> void background(P player, Load<T> work, BiConsumer<P, T> done) {
         UUID id = host().id(player);
+        Optional<ActingPlayer.Actor> acting = acting(player);
         try {
             parts.files().execute(() -> {
                 T value;
-                try { value = work.run(files()); }
+                try { value = ActingPlayer.call(acting, () -> work.run(files())); }
                 catch (IOException | RuntimeException failure) {
                     living().players().deliver(id, (P online) -> refuse(online, String.valueOf(failure.getMessage())));
                     return;
@@ -730,10 +754,11 @@ public final class Toolkit<P, S> implements AutoCloseable {
     /** As {@link #later(ScreenManager.Viewer, Load, Consumer)}; after a refusal {@code failed} gets the reason, while the window is open. */
     <T> void later(ScreenManager<P, S>.Viewer viewer, Load<T> load, Consumer<T> done, Consumer<String> failed) {
         UUID id = viewer.id();
+        Optional<ActingPlayer.Actor> acting = acting(viewer.player());
         try {
             parts.files().execute(() -> {
                 T value;
-                try { value = load.run(files()); }
+                try { value = ActingPlayer.call(acting, () -> load.run(files())); }
                 catch (IOException | RuntimeException failure) {
                     String reason = String.valueOf(failure.getMessage());
                     living().players().deliver(id, (P online) -> {
@@ -751,6 +776,31 @@ public final class Toolkit<P, S> implements AutoCloseable {
     }
 
     private ToolkitFiles files() { return new ToolkitFiles(npcs(), parts.documents().get()); }
+
+    /**
+     * The player a menu click acts for, read on their owner, so every write the file work makes is held to the NPCs they
+     * may change. Also remembers whether they are an admin, for {@link #mayAct}.
+     */
+    Optional<ActingPlayer.Actor> acting(P player) {
+        UUID id = host().id(player);
+        boolean admin = host().permitted(player, PermissionNodes.ADMIN), others = admin || host().permitted(player, PermissionNodes.NPC_OTHERS);
+        state(id).others = others;
+        return Optional.of(new ActingPlayer.Actor(id, admin, others));
+    }
+
+    /** How many NPCs the player may own; empty for an admin. On the player's owner. */
+    java.util.OptionalInt limit(P player) {
+        return NpcOwnership.limit(Optional.of(host().id(player)), (String node) -> host().permitted(player, node), parts.owners().get());
+    }
+
+    /** Refreshes whether the player may act on NPCs they do not own, on their owner; the menu asks it before it lists or selects NPCs. */
+    void ranks(P player) { state(host().id(player)).others = host().permitted(player, PermissionNodes.ADMIN) || host().permitted(player, PermissionNodes.NPC_OTHERS); }
+
+    /** Whether the player may act on the NPC: an admin or animus.npc.others as last seen, or its owner. Before the player is read, only its owner. */
+    public boolean mayAct(UUID player, NpcDefinition npc) {
+        PlayerState state = players.get(player);
+        return state != null && Boolean.TRUE.equals(state.others) || npc.owner().equals(Optional.of(player));
+    }
 
     /** Every menu chat line, refusals too, answers as a command reply does: see the player's actor below. */
     void say(P player, ChatLine line) { actor(host().id(player), () -> Optional.of(player)).rich(line); }

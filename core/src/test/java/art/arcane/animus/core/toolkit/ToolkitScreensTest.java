@@ -163,7 +163,8 @@ class ToolkitScreensTest extends ToolkitHarness {
         assertEquals("NPCs", title());
     }
 
-    @Test void aRefusalShowsOnTheWindowUntilTheNextClick() {
+    @Test void aRefusalShowsOnTheWindowUntilTheNextClick() throws IOException {
+        own("guard");
         alex.permissions.clear();
         alex.permissions.add(PermissionNodes.TOOLS);
         toolkit.selectOnly(alex.id, "guard");
@@ -397,7 +398,7 @@ class ToolkitScreensTest extends ToolkitHarness {
 
     @Test void theWandOpensNothingBeforeTheCommandTreeHooksInAndThenUsesItsCommands() {
         toolkit.close();
-        toolkit = Toolkit.install(new Toolkit.Parts<>(() -> npcs, () -> store, manager, living, queue::add, (MockScreenHost.Player player) -> Optional.empty(), Optional.empty(), () -> now, () -> art.arcane.animus.core.skin.SkinSigner.off("off")));
+        toolkit = Toolkit.install(new Toolkit.Parts<>(() -> npcs, () -> store, manager, living, queue::add, (MockScreenHost.Player player) -> Optional.empty(), Optional.empty(), () -> now, () -> art.arcane.animus.core.skin.SkinSigner.off("off"), () -> art.arcane.animus.core.config.OwnerSettings.DEFAULT));
         assertTrue(toolkit.interacted(alex, GUARD, false, false));
         drain();
         assertNull(alex.window, "no menu runs on commands that are not there");
@@ -463,7 +464,7 @@ class ToolkitScreensTest extends ToolkitHarness {
         toolkit.selectOnly(alex.id, "baker");
         String deleted = new ToolkitFiles(npcs, store).delete(List.of("guard"));
         String tx = deleted.substring(deleted.indexOf("; tx ") + 5);
-        String renamed = new ToolkitFiles(npcs, store).copies(List.of("baker"));
+        String renamed = new ToolkitFiles(npcs, store).copies(List.of("baker"), Optional.empty());
         store.rollback(tx);
         npcs.reload();
         toolkit.undone(alex.id, tx.substring(0, 8));

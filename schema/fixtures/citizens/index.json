@@ -1,5 +1,5 @@
 {
-  "description": "Synthetic Citizens saves.yml fixtures shared by core's CitizensGoldenTest and animus-web's citizens_converter_test. Each case converts source with worldMap; expected/<name>/ is the exact staged imports/<importId>/ tree. Every file under invalid/ must be rejected.",
+  "description": "Synthetic Citizens saves.yml fixtures shared by core's CitizensGoldenTest and animus-web's citizens_converter_test. Each case converts source with worldMap and, when given, the players the server knows by name; expected/<name>/ is the exact staged imports/<importId>/ tree. Every file under invalid/ must be rejected.",
   "cases": [
     {
       "name": "traits",
@@ -84,6 +84,14 @@
       "source": "commands.yml",
       "worldMap": {
         "old_harbor": "harbor"
+      }
+    },
+    {
+      "name": "owners",
+      "source": "owners.yml",
+      "worldMap": {},
+      "players": {
+        "Alex": "0000000a-0000-4000-8000-0000000000a1"
       }
     }
   ],

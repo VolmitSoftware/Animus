@@ -191,6 +191,13 @@ class CitizensCommandsTest {
         assertTrue(result.warnings().contains("/addons/commandnpc/2: BungeeCord server switches are not supported; not converted"), result.warnings().toString());
     }
 
+    @Test void aCommandNpcOperatorLineRunsAsThePlayerMadeOperator() {
+        CitizensBehaviors.Result result = map("{}", new CitizensCommands.Addons(Optional.empty(), List.of("1~~~time set day~~~~~~RIGHT~~~~~~false~~~true~~~false~~~0.0~~~0~~~0")));
+        JsonObject behavior = accepted(result);
+        assertEquals(json("{\"command\":\"time set day\",\"as\":\"player\",\"asOperator\":true}"), routine(behavior, "right").getAsJsonObject("arguments"));
+        assertTrue(result.warnings().stream().noneMatch((String warning) -> warning.contains("operator")), result.warnings().toString());
+    }
+
     /** Runs one routine of a generated behavior, with every command allowed or every command refused by the allow-list; returns the actions it reached. */
     private static List<String> run(JsonObject behavior, String routine, boolean allowed) {
         JsonObject document = behavior.deepCopy();

@@ -547,15 +547,34 @@ final class CitizensPresentation {
         warnings.add("/traits/poses: default pose " + wanted + " is not in the list; kept for review");
     }
 
+    /**
+     * Citizens' owner trait: {@code uuid} names the player; older saves name them in {@code owner} instead, where
+     * {@code SERVER} means no player owns the NPC. A name becomes a UUID only when the import knew it (see
+     * {@link CitizensImporter#players}); otherwise it is kept for review.
+     */
     private void owner() {
         JsonObject owner = object(traits.get("owner"));
-        if (owner == null || !owner.has("uuid")) return;
-        String uuid = text(owner.get("uuid"));
-        try {
-            if (uuid == null || !UUID.fromString(uuid).toString().equals(uuid)) throw new IllegalArgumentException();
-            fields.addProperty("owner", uuid);
-            converted.add("/traits/owner/uuid");
-        } catch (IllegalArgumentException invalid) { warnings.add("/traits/owner: no player UUID; kept for review"); }
+        if (owner == null) return;
+        String uuid = text(owner.get("uuid")), named = text(owner.get("owner"));
+        if (canonical(uuid) || named != null && named.equalsIgnoreCase("server") || canonical(named)) {
+            if (canonical(uuid)) fields.addProperty("owner", uuid);
+            else if (canonical(named)) fields.addProperty("owner", named);
+            if (owner.has("uuid") && canonical(uuid)) converted.add("/traits/owner/uuid");
+            if (named != null) converted.add("/traits/owner/owner");
+            if (owner.has("uuid") && !canonical(uuid)) warnings.add("/traits/owner: no player UUID; kept for review");
+            return;
+        }
+        if (named != null && named.matches(PLAYER_NAME)) warnings.add("/traits/owner: player " + named + " is not known on this server; kept for review");
+        else if (owner.has("uuid") || named != null) warnings.add("/traits/owner: no player UUID; kept for review");
+    }
+
+    /** A Minecraft account name, as Citizens' owner trait saved it before it saved UUIDs. */
+    static final String PLAYER_NAME = "[A-Za-z0-9_]{1,16}";
+
+    static boolean canonical(String uuid) {
+        if (uuid == null) return false;
+        try { return UUID.fromString(uuid).toString().equals(uuid); }
+        catch (IllegalArgumentException invalid) { return false; }
     }
 
     private void nameplate() {

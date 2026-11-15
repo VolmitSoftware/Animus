@@ -67,7 +67,7 @@ class ToolkitCommandsTest {
             ScreenManager<MockScreenHost.Player, Stack> screens = new ScreenManager<>(new MockScreenHost(), (UUID npc) -> true, (String warning) -> {});
             FakeNpcRuntime<MockScreenHost.Player> living = new FakeNpcRuntime<>((UUID id) -> Optional.empty());
             Toolkit<MockScreenHost.Player, Stack> toolkit = Toolkit.install(new Toolkit.Parts<>(() -> npcs, () -> store, screens, living, Runnable::run,
-                    (MockScreenHost.Player player) -> Optional.empty(), Optional.empty(), () -> 0L, () -> art.arcane.animus.core.skin.SkinSigner.off("off")));
+                    (MockScreenHost.Player player) -> Optional.empty(), Optional.empty(), () -> 0L, () -> art.arcane.animus.core.skin.SkinSigner.off("off"), () -> art.arcane.animus.core.config.OwnerSettings.DEFAULT));
             try {
                 AnimusDirectorTest.Actor player = new AnimusDirectorTest.Actor(true, PermissionNodes.TOOLS);
                 UUID id = player.player().orElseThrow();

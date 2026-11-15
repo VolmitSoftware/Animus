@@ -36,7 +36,7 @@ permissions:
     description: Switch /animus debug mode, which logs every per-NPC route, spawn and packet diagnostic until restart.
     default: op
   animus.admin:
-    description: Everything below, plus reload, rollback and the packet previews. Grants every animus management node.
+    description: Everything below, plus reload, rollback and the packet previews, any number of NPCs, and every NPC whoever owns it. Grants every animus management node.
     default: op
     children:
       animus.npc.view: true
@@ -45,6 +45,7 @@ permissions:
       animus.npc.delete: true
       animus.npc.skin: true
       animus.npc.move: true
+      animus.npc.others: true
       animus.npc.speak: true
       animus.tools: true
       animus.behaviors: true
@@ -58,11 +59,16 @@ permissions:
       animus.record: true
       animus.rigs: true
       animus.quests: true
+      animus.owned.commands: true
+      animus.owned.operator: true
+      animus.owned.server: true
+      animus.owned.players: true
+      animus.owned.items: true
   animus.npc.view:
     description: List, inspect, select and validate NPCs.
     default: op
   animus.npc.create:
-    description: Create and clone NPCs.
+    description: Create and clone NPCs. Without animus.admin, the player owns what they make, up to their animus.npc.limit.<n>, and every node acts only on NPCs they own.
     default: op
   animus.npc.edit:
     description: Edit, spawn and despawn NPCs, their settings and trait groups.
@@ -75,6 +81,9 @@ permissions:
     default: op
   animus.npc.move:
     description: Move NPCs to you, teleport to them, send them along routes, and end NPC rides.
+    default: op
+  animus.npc.others:
+    description: Act on NPCs you do not own, server NPCs and other players' alike; your other nodes still decide what you may do.
     default: op
   animus.npc.speak:
     description: Make NPCs say a line with /animus speak.
@@ -114,6 +123,21 @@ permissions:
     default: op
   animus.quests:
     description: List and reload quests, and start, move, complete and reset a player's quests.
+    default: op
+  animus.owned.commands:
+    description: NPCs this player owns may run commands, from behaviors, schedules, shops and menus.
+    default: op
+  animus.owned.operator:
+    description: NPCs this player owns may run a command as the clicking player made operator for that one command.
+    default: op
+  animus.owned.server:
+    description: NPCs this player owns may use server behaviors, pass clicks to other NPCs, build, teleport players and carry other plugins' modules.
+    default: op
+  animus.owned.players:
+    description: NPCs this player owns may reach players other than the one who clicked, such as by name or with server-wide messages.
+    default: op
+  animus.owned.items:
+    description: NPCs this player owns may create items or money, such as gifts, quest rewards, free shop goods and death drops.
     default: op
   animus.quests.use:
     description: Take quests from NPCs and open the quest journal with /quests or /questlog.

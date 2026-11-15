@@ -1,6 +1,10 @@
 package art.arcane.animus.bukkit;
 
+import art.arcane.animus.core.behavior.builtin.TemporaryOperators;
 import java.lang.reflect.Proxy;
+import java.nio.file.Path;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -9,7 +13,9 @@ import java.util.UUID;
 import org.bukkit.entity.Player;
 import org.bukkit.permissions.PermissionAttachment;
 import org.bukkit.plugin.Plugin;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CommandGrantsTest {
@@ -46,12 +52,34 @@ class CommandGrantsTest {
     private final List<Runnable> scheduled = new ArrayList<>();
     private final Map<Runnable, Long> delays = new HashMap<>();
     private boolean accepting = true;
-    private final CommandGrants grants = new CommandGrants(PLUGIN, (Player player, Runnable work, long ticks) -> {
-        if (!accepting) return false;
-        scheduled.add(work);
-        delays.put(work, ticks);
-        return true;
-    });
+    @TempDir Path root;
+    /** The server's operator list. */
+    private final Set<UUID> ops = new HashSet<>();
+    private CommandGrants grants;
+
+    @BeforeEach void setUp() {
+        TemporaryOperators operators = new TemporaryOperators(root.resolve("state/temporary-operators.json"), new TemporaryOperators.Operators() {
+            @Override public boolean operator(UUID player) { return ops.contains(player); }
+            @Override public void operator(UUID player, boolean operator) { if (operator) ops.add(player); else ops.remove(player); }
+        });
+        grants = new CommandGrants(PLUGIN, (Player player, Runnable work, long ticks) -> {
+            if (!accepting) return false;
+            scheduled.add(work);
+            delays.put(work, ticks);
+            return true;
+        }, operators);
+    }
+
+    @Test void anOperatorCommandRunsWithThePlayerAnOperatorAndLeavesThemNone() {
+        Held alex = new Held();
+        List<Boolean> during = new ArrayList<>();
+        assertTrue(grants.perform(alex.player, List.of(), 0, true, (Player player) -> { during.add(ops.contains(player.getUniqueId())); return true; }));
+        assertEquals(List.of(true), during);
+        assertTrue(ops.isEmpty(), "not an operator once it returned");
+        grants.perform(alex.player, List.of(), 0, true, (Player player) -> { grants.quit(player); during.add(ops.contains(player.getUniqueId())); return true; });
+        assertEquals(List.of(true, false), during, "a quit during the command takes it at once");
+        assertTrue(grants.perform(alex.player, List.of(), 0, false, (Player player) -> !ops.contains(player.getUniqueId())), "a plain player command makes no operator");
+    }
 
     @Test void theCommandRunsHoldingTheNodesAndLosesThemRightAfter() {
         Held alex = new Held();

@@ -1,5 +1,6 @@
 package art.arcane.animus.core.command;
 
+import art.arcane.animus.core.owner.NpcOwnership;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.volmlib.util.director.annotations.Director;
 import art.arcane.volmlib.util.director.annotations.Param;
@@ -76,7 +77,10 @@ final class BehaviorTree {
 
         @Director(description = "Cancel a running execution")
         void cancel(@Param(name = "execution", description = "The execution UUID") UUID execution) {
-            with(services, (BehaviorCommands behaviors) -> behaviors.cancel(actor(), execution));
+            CommandActor actor = actor();
+            with(services, (BehaviorCommands behaviors) -> {
+                if (owned(actor, behaviors.executionNpc(execution).flatMap((String id) -> runtime().npcs().find(id)))) behaviors.cancel(actor, execution);
+            });
         }
 
         @Director(description = "List trigger bindings and how often they fired")
@@ -111,23 +115,27 @@ final class BehaviorTree {
 
         @Director(description = "Delete one behavior's variables, or a namespace's flags or quests")
         void behavior(@Param(name = "state", description = "A behavior id, animus:flags/<namespace> or animus:quests/<namespace>") String state) {
-            with(services, (BehaviorCommands behaviors) -> behaviors.purgeBehavior(actor(), state));
+            CommandActor actor = actor();
+            if (shared(actor)) with(services, (BehaviorCommands behaviors) -> behaviors.purgeBehavior(actor, state));
         }
 
         @Director(description = "Delete what behaviors stored on an NPC")
         void npc(@Param(name = "npc", description = "The NPC id or UUID") String npc) {
-            with(services, (BehaviorCommands behaviors) -> behaviors.purgeNpc(actor(), npc));
+            CommandActor actor = actor();
+            with(services, (BehaviorCommands behaviors) -> { if (owned(actor, behaviors.definition(npc))) behaviors.purgeNpc(actor, npc); });
         }
 
         @Director(description = "Delete what behaviors stored on a player")
         void player(@Param(name = "uuid", description = "The player's UUID") UUID player) {
-            with(services, (BehaviorCommands behaviors) -> behaviors.purgePlayer(actor(), player));
+            CommandActor actor = actor();
+            if (shared(actor)) with(services, (BehaviorCommands behaviors) -> behaviors.purgePlayer(actor, player));
         }
 
         @Director(description = "Delete what behaviors stored between an NPC and a player")
         void relationship(@Param(name = "npc", description = "The NPC id or UUID") String npc,
                           @Param(name = "uuid", description = "The player's UUID") UUID player) {
-            with(services, (BehaviorCommands behaviors) -> behaviors.purgeRelationship(actor(), npc, player));
+            CommandActor actor = actor();
+            with(services, (BehaviorCommands behaviors) -> { if (owned(actor, behaviors.definition(npc))) behaviors.purgeRelationship(actor, npc, player); });
         }
     }
 
@@ -136,6 +144,16 @@ final class BehaviorTree {
         Everything(CommandServices services) { super(services); }
 
         @Director(description = "Confirm deleting every stored behavior variable")
-        void confirm() { with(services, (BehaviorCommands behaviors) -> behaviors.purgeAll(actor())); }
+        void confirm() {
+            CommandActor actor = actor();
+            if (shared(actor)) with(services, (BehaviorCommands behaviors) -> behaviors.purgeAll(actor));
+        }
+    }
+
+    /** State that is not one NPC's reaches every NPC's behaviors, so it takes acting on every NPC to delete it. */
+    static boolean shared(CommandActor actor) {
+        if (NpcOwnership.others(actor.player(), actor::permitted)) return true;
+        actor.tell(Palette.error("Behavior state that is not one NPC's needs " + PermissionNodes.NPC_OTHERS + " to delete"));
+        return false;
     }
 }

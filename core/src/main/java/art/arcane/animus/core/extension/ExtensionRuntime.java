@@ -197,6 +197,13 @@ public final class ExtensionRuntime implements AutoCloseable {
      */
     public void follow(AnimusRuntime runtime) {
         AutoCloseable listener = runtime.onSettings((PluginSettings next) -> settings(next.modules()));
+        art.arcane.animus.core.owner.OwnerGate owners = new art.arcane.animus.core.owner.OwnerGate(runtime.npcs(), runtime::ownerPermissions);
+        host.connectGate((NpcHandle npc, Capabilities.Key key, String arguments, boolean privileged) -> owners.refused(npc, key.toString(), arguments, privileged));
+        runtime.privilegedCapabilities(() -> {
+            Set<String> keys = new java.util.TreeSet<>();
+            for (Capabilities.Availability availability : capabilities()) if (availability.descriptor().privileged()) keys.add(availability.descriptor().key().toString());
+            return keys;
+        });
         synchronized (this) {
             settingsListener = listener;
             behaviorReload = () -> runtime.catalogs().reload(new CatalogChange(Set.of(DocumentKind.BEHAVIOR), Set.of(), false));

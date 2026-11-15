@@ -52,7 +52,7 @@ class AdministrationTest {
             assertEquals("Captain", runtime.npcs().find("guard").orElseThrow().name());
             admin.rollback(result.substring(result.lastIndexOf(' ') + 1));
             assertEquals("Town Guard", runtime.npcs().find("guard").orElseThrow().name());
-            List.of(admin.duplicate("guard", "deputy"));
+            List.of(admin.duplicate("guard", "deputy", Optional.empty()));
             assertEquals(2, runtime.npcs().all().size());
             assertNotEquals(runtime.npcs().find("guard").orElseThrow().uuid(), runtime.npcs().find("deputy").orElseThrow().uuid());
             assertThrows(IOException.class, () -> List.of(admin.edit("guard", "{\"spawned\":\"true\"}")));
@@ -77,6 +77,11 @@ class AdministrationTest {
             assertEquals(Optional.of(player), runtime.npcs().find("smith").orElseThrow().owner());
             List.of(admin.create("console", "minecraft:player", "world", 1, 64, 2, "", "Console"));
             assertEquals(Optional.empty(), runtime.npcs().find("console").orElseThrow().owner(), "the console leaves the owner unset");
+            List.of(admin.duplicate("smith", "smithy", Optional.empty()));
+            assertEquals(Optional.of(player), runtime.npcs().find("smithy").orElseThrow().owner(), "an admin's copy keeps the owner");
+            java.util.UUID copier = java.util.UUID.fromString("0000000a-0000-4000-8000-0000000000c3");
+            List.of(admin.duplicate("console", "mine", Optional.of(copier)));
+            assertEquals(Optional.of(copier), runtime.npcs().find("mine").orElseThrow().owner(), "a player's copy is theirs");
             List.of(admin.edit("smith", "{\"owner\":null}"));
             assertEquals(Optional.empty(), runtime.npcs().find("smith").orElseThrow().owner(), "the owner stays editable");
         }
@@ -129,7 +134,7 @@ class AdministrationTest {
             String exists = "An NPC named bob already exists; /animus inspect bob shows it, or pick another id";
             assertEquals(exists, assertThrows(IOException.class, () -> admin.create("bob", "minecraft:player", "world", 1, 64, 2, "", "Bob")).getMessage());
             assertEquals(exists, assertThrows(IOException.class, () -> admin.create("bob", "minecraft:player", "world", 1, 64, 2, "elsewhere", "Bob")).getMessage());
-            assertEquals(exists, assertThrows(IOException.class, () -> admin.duplicate("smith", "bob")).getMessage());
+            assertEquals(exists, assertThrows(IOException.class, () -> admin.duplicate("smith", "bob", Optional.empty())).getMessage());
         }
     }
     @Test void aNewNpcCanSpawnFacingTheCreatorsWay() throws Exception {
@@ -232,7 +237,7 @@ class AdministrationTest {
             assertFalse(runtime.npcs().find("guard").orElseThrow().json().get("spawned").getAsBoolean());
             List.of(admin.spawned("guard", true));
             assertTrue(runtime.npcs().find("guard").orElseThrow().json().get("spawned").getAsBoolean());
-            List.of(admin.duplicate("guard", "copy"));
+            List.of(admin.duplicate("guard", "copy", Optional.empty()));
             assertFalse(runtime.npcs().find("copy").orElseThrow().json().get("spawned").getAsBoolean());
         }
         try (AnimusRuntime runtime = new AnimusRuntime(environment)) {

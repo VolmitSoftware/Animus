@@ -32,7 +32,11 @@ void main() {
         final Map<String, String> worlds = <String, String>{
           for (final MapEntry<String, Object?> world in (definition['worldMap']! as Map<String, Object?>).entries) world.key: world.value! as String,
         };
-        final CitizensPreview preview = convertCitizens(_source(definition['source']! as String), worlds);
+        final Map<String, String> players = <String, String>{
+          for (final MapEntry<String, Object?> player in ((definition['players'] as Map<String, Object?>?) ?? const <String, Object?>{}).entries)
+            player.key: player.value! as String,
+        };
+        final CitizensPreview preview = convertCitizens(_source(definition['source']! as String), worlds, players: players);
         final Map<String, Uint8List> expected = fixtureFiles('$_root/expected/$name');
         final Map<String, Uint8List> actual = <String, Uint8List>{
           for (final MapEntry<String, String> file in preview.files.entries) file.key: javaUtf8(file.value),

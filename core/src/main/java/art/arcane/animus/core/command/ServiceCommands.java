@@ -7,6 +7,8 @@ import art.arcane.animus.core.gui.GuiDrafts;
 import art.arcane.animus.core.gui.HoloService;
 import art.arcane.animus.core.gui.exchange.GlossExchange;
 import art.arcane.animus.core.gui.exchange.GlossIds;
+import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.owner.NpcOwnership;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.virtual.WorldPosition;
 import art.arcane.volmlib.util.director.DirectorOrigin;
@@ -298,16 +300,16 @@ final class ServiceCommands {
         }
 
         @Director(description = "Pause a build")
-        void pause(@Param(name = "build", description = "A build id or its NPC") String build) { builds().pause(actor(), build); }
+        void pause(@Param(name = "build", description = "A build id or its NPC") String build) { if (mine(this, actor(), build)) builds().pause(actor(), build); }
 
         @Director(description = "Resume a paused build")
-        void resume(@Param(name = "build", description = "A build id or its NPC") String build) { builds().resume(actor(), build); }
+        void resume(@Param(name = "build", description = "A build id or its NPC") String build) { if (mine(this, actor(), build)) builds().resume(actor(), build); }
 
         @Director(description = "Cancel a build; placed blocks stay")
-        void cancel(@Param(name = "build", description = "A build id or its NPC") String build) { builds().cancel(actor(), build); }
+        void cancel(@Param(name = "build", description = "A build id or its NPC") String build) { if (mine(this, actor(), build)) builds().cancel(actor(), build); }
 
         @Director(description = "Remove the blocks a build placed")
-        void rollback(@Param(name = "build", description = "A build id or its NPC") String build) { builds().undo(actor(), build); }
+        void rollback(@Param(name = "build", description = "A build id or its NPC") String build) { if (mine(this, actor(), build)) builds().undo(actor(), build); }
 
         @Director(description = "List what a build still needs")
         void survey(@Param(name = "build", description = "A build id or its NPC") String build) { builds().survey(actor(), build); }
@@ -317,17 +319,34 @@ final class ServiceCommands {
         void donate(@Param(name = "build", description = "A build id or its NPC") String build) { builds().donate(actor(), build); }
     }
 
+    /**
+     * Whether the actor may change the build {@code reference} names: the console, an admin or {@code animus.npc.others}
+     * any build, anyone else only a build they name by the id of an NPC they own.
+     */
+    static boolean mine(CommandGroup group, CommandActor actor, String reference) {
+        if (NpcOwnership.others(actor.player(), actor::permitted)) return true;
+        Optional<NpcDefinition> npc = group.runtime().npcs().find(reference);
+        if (npc.isEmpty()) { actor.tell(Palette.error("Name the build by the id of your NPC that works on it")); return false; }
+        return CommandGroup.owned(actor, npc);
+    }
+
     @Director(name = "team", description = "Assign or unassign helper NPCs on a build")
     static final class Team extends CommandGroup {
         Team(CommandServices services) { super(services); }
 
         @Director(description = "Assign a helper NPC to a build")
         void assign(@Param(name = "build", description = "A build id or its NPC") String build,
-                 @Param(name = "npc", description = "The helper NPC id") String npc) { services.builds().team(actor(), build, true, npc); }
+                 @Param(name = "npc", description = "The helper NPC id") String npc) {
+            CommandActor actor = actor();
+            if (mine(this, actor, build) && npc(actor, npc).isPresent()) services.builds().team(actor, build, true, npc);
+        }
 
         @Director(description = "Unassign a helper NPC from a build")
         void unassign(@Param(name = "build", description = "A build id or its NPC") String build,
-                    @Param(name = "npc", description = "The helper NPC id") String npc) { services.builds().team(actor(), build, false, npc); }
+                    @Param(name = "npc", description = "The helper NPC id") String npc) {
+            CommandActor actor = actor();
+            if (mine(this, actor, build) && npc(actor, npc).isPresent()) services.builds().team(actor, build, false, npc);
+        }
     }
 
     @Director(name = "editor", description = "Pair and manage the web editor")

@@ -219,12 +219,13 @@ class CitizensBehaviorsTest {
         assertEquals(3, left.size(), "the costed command converts too");
         assertEquals("animus:commands-allowed", left.get(1).getAsJsonObject().get("capability").getAsString());
         assertEquals("animus:can-afford", left.get(1).getAsJsonObject().getAsJsonObject("then").get("capability").getAsString());
-        assertEquals("console", left.get(2).getAsJsonObject().getAsJsonObject("arguments").get("as").getAsString(), "operator commands run from the console");
+        assertEquals(json("{\"command\":\"heal\",\"as\":\"player\",\"asOperator\":true}"), left.get(2).getAsJsonObject().getAsJsonObject("arguments"),
+                "an operator command runs as the player made operator for it, as Citizens ran it");
         List<String> warnings = result.warnings();
         assertEquals(json("{\"id\":\"sneak-right\",\"event\":\"interaction\",\"action\":\"sneak_interact\",\"routine\":\"sneak-right\"}"), triggers.get(2));
         assertEquals("spawn", behavior.getAsJsonObject("routines").getAsJsonObject("sneak-right").getAsJsonObject("arguments").get("command").getAsString());
         assertTrue(warnings.contains("/traits/commandtrait: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones"), warnings.toString());
-        assertTrue(warnings.contains("/traits/commandtrait/commands/4/op: the command ran as an operator player; it now runs from the console"));
+        assertTrue(warnings.stream().noneMatch((String warning) -> warning.contains("operator")), "nothing to warn about: " + warnings);
         assertTrue(warnings.contains("/traits/commandtrait: commands stay denied until citizens:commands-7 is on the [behaviors.actions] commandBehaviors list in config.toml"));
         assertTrue(warnings.stream().noneMatch((String warning) -> warning.contains("cannot charge")), warnings.toString());
     }

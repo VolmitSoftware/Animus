@@ -32,6 +32,7 @@ import 'npc_parts.dart';
 import 'skin_field.dart';
 import 'npc_layout.dart';
 import '../suggest/autocomplete_input.dart';
+import '../suggest/suggest_scope.dart';
 import '../../ui/number_input.dart';
 import '../gui/gui_stack.dart';
 
@@ -356,9 +357,12 @@ class _Owner extends StatelessWidget {
   Widget build(BuildContext context) {
     final String? owner = asString(form.doc['owner']);
     final List<Diagnostic> found = diagnosticsAt(form.diagnostics, r'$.owner');
+    final String? name = owner == null ? null : SuggestScope.sourcesOf(context).owners[owner];
     return Field(
       label: 'Owner',
-      tip: 'The player who owns this NPC, as a lowercase UUID. Modules may use it for their own permission rules.',
+      hint: name,
+      tip: 'The player who owns this NPC, as a lowercase UUID; none for a server NPC. Its owner can change it in game, and it can only do what their animus.owned nodes allow.',
+      docs: Docs.npcOwner,
       problems: <Diagnostic>[
         ...found,
         if (owner != null && owner.isNotEmpty && !validOwner(owner) && found.isEmpty) const Diagnostic(DiagnosticSeverity.error, r'$.owner', 'Expected a lowercase UUID.'),

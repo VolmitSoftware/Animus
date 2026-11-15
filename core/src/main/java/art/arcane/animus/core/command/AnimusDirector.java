@@ -1,5 +1,6 @@
 package art.arcane.animus.core.command;
 
+import art.arcane.animus.core.owner.NpcOwnership;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.DocsLink;
 import art.arcane.animus.core.text.Palette;
@@ -169,7 +170,7 @@ public final class AnimusDirector {
                         : "Players only; run it in game"));
                 return false;
             }
-        if (!allowed(actor, node)) { actor.tell(Palette.error(refused(node))); return false; }
+        if (!allowed(actor, node)) { actor.tell(Palette.error(refused(actor, node))); return false; }
         boolean hidden = hidden(node);
         Optional<String> stray = stray(node, words.subList(words.size() - route.remainingArgs().size(), words.size()));
         if (stray.isPresent()) {
@@ -595,7 +596,15 @@ public final class AnimusDirector {
     /** Whether the actor may run the node: its own {@link AnimusPermission}, else the nearest group's, else {@link #ADMIN}. */
     public static boolean allowed(CommandActor actor, DirectorRuntimeNode node) {
         String permission = permission(node);
+        if (PermissionNodes.EVERY_NPC.contains(permission) && !NpcOwnership.admin(actor.player(), actor::permitted)) return false;
         return permission.isEmpty() || actor.permitted(permission);
+    }
+
+    /** The refusal for {@code node}: the node to ask for, or that only an admin may, for a node that reaches every NPC. */
+    static String refused(CommandActor actor, DirectorRuntimeNode node) {
+        String permission = permission(node);
+        if (PermissionNodes.EVERY_NPC.contains(permission) && actor.permitted(permission)) return "Only an admin can do that; it changes NPCs whoever owns them";
+        return refused(node);
     }
 
     /**

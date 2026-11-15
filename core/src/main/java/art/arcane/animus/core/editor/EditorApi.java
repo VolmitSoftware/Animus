@@ -363,6 +363,11 @@ public final class EditorApi implements EditorRequestHandler {
         body.add("registries", registries);
         body.add("commands", sortedArray(lookups.commands()));
         body.add("papi", sortedArray(lookups.papi()));
+        JsonObject owners = new JsonObject();
+        Set<UUID> owning = new TreeSet<>();
+        for (NpcDefinition definition : parts.npcs().get().stored()) definition.owner().ifPresent(owning::add);
+        for (UUID owner : owning) parts.host().playerName(owner).ifPresent((String name) -> owners.addProperty(owner.toString(), name));
+        body.add("owners", owners);
         return done(EditorResponse.json(200, body));
     }
 

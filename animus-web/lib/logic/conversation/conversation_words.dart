@@ -59,7 +59,7 @@ String actionLabel(String capability, JsonMap arguments, {DocumentNames names = 
     'animus:set-flag' => arguments['clear'] == true ? 'Clears flag ${arg('name')}' : 'Sets flag ${arg('name')}${arguments.containsKey('value') ? ' to ${_shown(arguments['value'])}' : ''}',
     'animus:give-item' => 'Gives ${arguments['amount'] ?? 1} ${itemName(arg('item')).toLowerCase()}',
     'animus:take-item' => 'Takes ${arguments['amount'] ?? 1} ${itemName(arg('item')).toLowerCase()}',
-    'animus:command' => 'Runs /${arg('command')}',
+    'animus:command' => 'Runs /${arg('command')}${arguments['asOperator'] == true ? ' as operator' : ''}',
     'animus:open-shop' => 'Opens shop ${document(DocumentKind.shop, 'shop')}',
     'animus:open-gui' => 'Opens ${document(DocumentKind.inventory, 'gui')}',
     'animus:play-animation' => 'Plays ${document(DocumentKind.animation, 'animation')}',

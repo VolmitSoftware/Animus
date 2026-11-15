@@ -60,7 +60,7 @@ class PluginSettingsTest {
             PluginSettings.load(store);
             String toml = Files.readString(root.resolve("config.toml"));
             assertTrue(toml.startsWith("# Animus plugin settings. NPC and behavior documents use JSON. Every key: https://docs.volmitsoftware.com/animus/03-configuration\n"), toml);
-            for (String table : java.util.List.of("npcs", "files", "modules", "behaviors", "combat", "builds", "shops", "editor", "rigs", "navigation", "hotload", "recordings", "seats"))
+            for (String table : java.util.List.of("npcs", "files", "modules", "behaviors", "combat", "builds", "shops", "editor", "rigs", "navigation", "hotload", "recordings", "seats", "owners"))
                 assertTrue(toml.matches("(?s).*\n# [^\n]+: https://docs\\.volmitsoftware\\.com/animus/03-configuration#" + table + "\n\\[" + table + "]\n.*"), table + " in " + toml);
             assertEquals(PluginSettings.load(store), PluginSettings.parse(toml, root.resolve("config.toml")));
         }
@@ -180,6 +180,17 @@ class PluginSettingsTest {
             Files.writeString(root.resolve("config.toml"), "[seats]\nmaximum = 0\n");
             IOException error = assertThrows(IOException.class, () -> PluginSettings.load(store));
             assertTrue(error.getMessage().contains("seats: maximum must be within 1..256"), error.getMessage());
+        }
+    }
+    @Test void playersOwnThreeNpcsUnlessALimitNodeSaysOtherwise() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            assertEquals(new OwnerSettings(3), PluginSettings.load(store).owners());
+            assertTrue(Files.readString(root.resolve("config.toml")).contains("[owners]\ndefaultLimit = 3"));
+            Files.writeString(root.resolve("config.toml"), "[owners]\ndefaultLimit = 0\n");
+            assertEquals(new OwnerSettings(0), PluginSettings.load(store).owners(), "0 lets only limit nodes and admins create");
+            Files.writeString(root.resolve("config.toml"), "[owners]\ndefaultLimit = 1001\n");
+            IOException error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("owners: defaultLimit must be within 0..1000"), error.getMessage());
         }
     }
     @Test void navigationBudgetsAreReadFromTomlAndBounded() throws Exception {

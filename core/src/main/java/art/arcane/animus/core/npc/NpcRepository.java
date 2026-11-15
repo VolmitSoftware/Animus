@@ -21,6 +21,13 @@ public final class NpcRepository {
     @FunctionalInterface public interface ModuleRules {
         ModuleRules NONE = (Optional<JsonObject> previous, JsonObject next) -> List.of();
         List<String> problems(Optional<JsonObject> previous, JsonObject next);
+        /** The module keys these rules cover. */
+        default Set<String> keys() { return Set.of(); }
+    }
+    /** Refuses a temporary definition before it is published; {@code previous} is what the NPC held, absent for a new one. */
+    @FunctionalInterface public interface TemporaryCheck {
+        TemporaryCheck NONE = (String id, Optional<JsonObject> previous, JsonObject next) -> {};
+        void check(String id, Optional<JsonObject> previous, JsonObject next) throws IOException;
     }
     public record Draft(String path, String expectedHash, long expectedRevision, JsonObject document) {
         public Draft { document = document.deepCopy(); }
@@ -52,6 +59,7 @@ public final class NpcRepository {
     private volatile Map<String, NpcDefinition> active = Map.of(), stored = Map.of(), published = Map.of();
     private volatile Map<String, Temporary> temporaries = Map.of();
     private volatile ModuleRules moduleRules = ModuleRules.NONE;
+    private volatile TemporaryCheck temporaryCheck = TemporaryCheck.NONE;
     private volatile Map<String, Map<String, String>> provenance = Map.of();
     private volatile Map<String, String> problems = Map.of(), groupProblems = Map.of();
     private volatile GroupCatalog groups = GroupCatalog.EMPTY;
@@ -74,8 +82,12 @@ public final class NpcRepository {
     public Map<String, Temporary> temporaries() { return temporaries; }
     /** The check {@link #apply}, {@link #applyAll} and the temporary methods run on module data that changed. */
     public void moduleRules(ModuleRules rules) { moduleRules = Objects.requireNonNull(rules); }
+    /** The check a temporary NPC passes before it is published, as the store's commit check holds saved ones. */
+    public void temporaryCheck(TemporaryCheck check) { temporaryCheck = Objects.requireNonNull(check); }
     /** Why the module data of {@code next} may not be saved over {@code previous}; empty when it may. */
     public List<String> moduleProblems(Optional<JsonObject> previous, JsonObject next) { return moduleRules.problems(previous, next); }
+    /** The definition module keys plugins registered. */
+    public Set<String> moduleKeys() { return moduleRules.keys(); }
     /** The definitions as their files store them, without group values. Writers that patch a definition start from these. */
     public Collection<NpcDefinition> stored() { return stored.values(); }
     /** The trait groups of the last reload. */
@@ -439,6 +451,7 @@ public final class NpcRepository {
                 || stored.values().stream().anyMatch((NpcDefinition existing) -> existing.uuid().equals(definition.uuid())))
             throw new IOException("Another NPC has the UUID " + definition.uuid());
         refuseModules(Optional.empty(), definition.json());
+        temporaryCheck.check(definition.id(), Optional.empty(), definition.json());
         putTemporary(new Temporary(definition, effectiveTemporary(definition, groups), owner));
         return definition;
     }
@@ -458,6 +471,7 @@ public final class NpcRepository {
         NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(json));
         if (!definition.id().equals(id) || !definition.uuid().equals(current.definition().uuid())) throw new IOException("A temporary NPC keeps its id and UUID");
         refuseModules(Optional.of(current.definition().json()), definition.json());
+        temporaryCheck.check(id, Optional.of(current.definition().json()), definition.json());
         putTemporary(new Temporary(definition, effectiveTemporary(definition, groups), current.owner()));
         return definition;
     }

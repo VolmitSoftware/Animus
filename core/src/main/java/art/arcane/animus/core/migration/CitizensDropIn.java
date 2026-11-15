@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.UUID;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -40,8 +41,15 @@ import java.util.function.BooleanSupplier;
  */
 public final class CitizensDropIn {
     /** What the platform knows: its plugins folder, if it has one, and whether Citizens, Shopkeepers and Denizen are running. */
-    public record Host(Optional<Path> pluginsDirectory, BooleanSupplier citizensEnabled, BooleanSupplier shopkeepersEnabled, BooleanSupplier denizenEnabled) {
+    /** {@code players}: the players the server knows, by name, so an owner trait that names its player finds them. */
+    public record Host(Optional<Path> pluginsDirectory, BooleanSupplier citizensEnabled, BooleanSupplier shopkeepersEnabled, BooleanSupplier denizenEnabled,
+                       java.util.function.Supplier<Map<String, UUID>> players) {
         public static final Host NONE = new Host(Optional.empty(), () -> false, () -> false, () -> false);
+
+        /** A host that knows no players. */
+        public Host(Optional<Path> pluginsDirectory, BooleanSupplier citizensEnabled, BooleanSupplier shopkeepersEnabled, BooleanSupplier denizenEnabled) {
+            this(pluginsDirectory, citizensEnabled, shopkeepersEnabled, denizenEnabled, Map::of);
+        }
     }
     /** A file or folder the flow found. {@code label} is how it is shown to the operator. */
     public record Found(Path path, String label) {}
@@ -310,7 +318,8 @@ public final class CitizensDropIn {
         }
         Found save = sources.saves().get();
         StableSource.Read source = StableSource.read(save.path(), save.label());
-        CitizensImporter.Preview preview = new CitizensImporter().disguises(LibsDisguisesSaves.read(store, host.pluginsDirectory())).preview(save.path(), store, worlds, factorGroups);
+        CitizensImporter.Preview preview = new CitizensImporter().disguises(LibsDisguisesSaves.read(store, host.pluginsDirectory())).players(host.players().get())
+                .preview(save.path(), store, worlds, factorGroups);
         if (!preview.summary().get("sourceSha256").getAsString().equals(source.sha256()))
             throw new IOException(save.label() + " changed while the preview read it; if Citizens is saving it, wait and run preview again");
         if (preview.valid() != preview.records())

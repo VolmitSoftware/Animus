@@ -39,7 +39,8 @@ final class NpcsScreen<P, S> extends ToolScreen<P, S> {
     }
 
     @Override void begin() {
-        entries = entries(toolkit, viewer.host().pose(viewer.player()));
+        toolkit.ranks(viewer.player());
+        entries = entries(toolkit, viewer.host().pose(viewer.player())).stream().filter((Entry entry) -> toolkit.mayAct(viewer.id(), entry.definition())).toList();
         List<NpcDefinition> shown = entries.stream().map(Entry::definition).toList();
         toolkit.later(viewer, (ToolkitFiles ignored) -> new SkinFiles(toolkit.npcs(), toolkit.documents()).worn(shown),
                 (Map<String, NpcItem> worn) -> { skins = worn; viewer.refresh(); });
@@ -128,6 +129,7 @@ final class NpcsScreen<P, S> extends ToolScreen<P, S> {
     }
 
     private void toggle(String id) {
+        if (actable(List.of(id)).isEmpty()) return;
         try { toolkit.selection().toggle(viewer.id(), id); }
         catch (IllegalStateException full) { refuse(String.valueOf(full.getMessage())); }
     }
@@ -143,7 +145,8 @@ final class NpcsScreen<P, S> extends ToolScreen<P, S> {
 
     static String where(String folder) { return FolderFiles.shown(folder); }
 
-    private void replace(List<String> ids, String what) {
+    private void replace(List<String> found, String what) {
+        List<String> ids = actable(found);
         int kept = toolkit.selection().set(viewer.id(), ids);
         toolkit.say(viewer.player(), ChatLine.reply("Selected " + ToolkitFiles.count(kept) + " " + what + capped(kept, ids.size())));
     }
@@ -153,8 +156,14 @@ final class NpcsScreen<P, S> extends ToolScreen<P, S> {
         List<String> next = new ArrayList<>(), current = toolkit.selected(viewer.id());
         for (String id : current) if (!inside.contains(id)) next.add(id);
         for (String id : in(folder)) if (!current.contains(id)) next.add(id);
+        next = actable(next);
         int kept = toolkit.selection().set(viewer.id(), next);
         toolkit.say(viewer.player(), ChatLine.reply("Inverted " + where(folder) + ", " + ToolkitFiles.count(kept) + " selected" + capped(kept, next.size())));
+    }
+
+    /** The NPCs this player may act on, in the order given. */
+    private List<String> actable(List<String> ids) {
+        return ids.stream().filter((String id) -> toolkit.npcs().find(id).map((NpcDefinition npc) -> toolkit.mayAct(viewer.id(), npc)).orElse(false)).toList();
     }
 
     /** The stored NPCs directly in the folder. */

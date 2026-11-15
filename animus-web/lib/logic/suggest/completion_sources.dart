@@ -39,6 +39,7 @@ class CompletionSources {
     this.quests = const <String>[],
     this.commands = const <String>[],
     this.papi = const <String>[],
+    this.owners = const <String, String>{},
     this.catalog,
     this.paired = false,
   });
@@ -62,6 +63,9 @@ class CompletionSources {
 
   /// The paired server's PlaceholderAPI identifiers (`player`, `vault`).
   final List<String> papi;
+
+  /// The last known name of each player who owns an NPC, by UUID, from the paired server.
+  final Map<String, String> owners;
   final CompletionCatalog? catalog;
 
   /// Whether the lists come from a paired server.
@@ -79,6 +83,7 @@ class CompletionSources {
     List<String>? quests,
     List<String>? commands,
     List<String>? papi,
+    Map<String, String>? owners,
     CompletionCatalog? catalog,
     bool? paired,
   }) =>
@@ -90,6 +95,7 @@ class CompletionSources {
         quests: quests ?? this.quests,
         commands: commands ?? this.commands,
         papi: papi ?? this.papi,
+        owners: owners ?? this.owners,
         catalog: catalog ?? this.catalog,
         paired: paired ?? this.paired,
       );
@@ -112,19 +118,24 @@ Map<RegistryKind, List<String>> parseRegistries(Object? json) {
 }
 
 /// What a paired server's `GET /v1/lookups` lists: its registries, command
-/// names and PlaceholderAPI identifiers.
+/// names, PlaceholderAPI identifiers and the names of players who own NPCs.
 class ServerLookups {
-  const ServerLookups({required this.registries, required this.commands, required this.papi});
+  const ServerLookups({required this.registries, required this.commands, required this.papi, this.owners = const <String, String>{}});
 
   factory ServerLookups.fromJson(Object? json) {
     final JsonMap root = asMap(json);
     List<String> strings(Object? value) => <String>{for (final Object? item in asList(value)) if (item is String && item.isNotEmpty) item}.toList()..sort();
-    return ServerLookups(registries: parseRegistries(root['registries']), commands: strings(root['commands']), papi: strings(root['papi']));
+    final Map<String, String> owners = <String, String>{
+      for (final MapEntry<String, Object?> owner in asMap(root['owners']).entries)
+        if (_uuid.hasMatch(owner.key) && owner.value is String) owner.key: owner.value! as String,
+    };
+    return ServerLookups(registries: parseRegistries(root['registries']), commands: strings(root['commands']), papi: strings(root['papi']), owners: owners);
   }
 
   final Map<RegistryKind, List<String>> registries;
   final List<String> commands;
   final List<String> papi;
+  final Map<String, String> owners;
 
   /// [base] with these lists over the bundled ones; every registry the
   /// server sent is complete.
@@ -133,9 +144,12 @@ class ServerLookups {
         complete: <RegistryKind>{...base.complete, ...registries.keys},
         commands: commands,
         papi: papi,
+        owners: owners,
         paired: true,
       );
 }
+
+final RegExp _uuid = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
 
 String stripMinecraft(String id) => id.startsWith('minecraft:') ? id.substring('minecraft:'.length) : id;
 

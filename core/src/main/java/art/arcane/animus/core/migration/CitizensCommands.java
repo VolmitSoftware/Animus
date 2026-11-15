@@ -220,12 +220,12 @@ final class CitizensCommands {
                 mapped.note().ifPresent((String note) -> warnings.add(at + "/command: " + note));
             }
             case CitizensCommandLines.Plain plain -> {
-                if (op) warnings.add(at + "/op: the command ran as an operator player; it now runs from the console");
                 if (npc && player) warnings.add(at + "/npc: the NPC's own player body ran the command; it now runs from the console, with the NPC's name for the player");
-                boolean asPlayer = player && !op && !npc;
+                boolean asPlayer = (player || op) && !npc;
                 JsonObject arguments = arguments("command", text);
                 arguments.addProperty("as", asPlayer ? "player" : "console");
-                if (asPlayer && !lent.isEmpty()) {
+                if (asPlayer && op) arguments.addProperty("asOperator", true);
+                if (asPlayer && !op && !lent.isEmpty()) {
                     JsonArray nodes = new JsonArray();
                     lent.forEach(nodes::add);
                     arguments.add("permissions", nodes);
@@ -472,9 +472,9 @@ final class CitizensCommands {
             command = command.replace("%name", "{player_name}");
             if (command.startsWith("/")) command = command.substring(1);
             if (command.isEmpty() || command.length() > MAX_TEXT) { warnings.add(at + ": empty or longer than 1024 characters; not converted"); continue; }
-            if (op && !console) warnings.add(at + ": the command ran as an operator player; it now runs from the console");
             JsonObject arguments = arguments("command", command);
-            arguments.addProperty("as", console || op ? "console" : "player");
+            arguments.addProperty("as", console ? "console" : "player");
+            if (op && !console) arguments.addProperty("asOperator", true);
             String flag = "commandnpc-" + key + "-" + fields[0].replaceAll("[^0-9]", "") + "-cooldown";
             List<JsonObject> body = new ArrayList<>();
             JsonObject money = new JsonObject();

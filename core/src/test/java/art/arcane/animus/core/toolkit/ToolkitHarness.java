@@ -57,6 +57,8 @@ abstract class ToolkitHarness {
     long now = 1_000_000_000L;
     /** What the toolkit signs skin addresses with; tests that sign set their own. */
     art.arcane.animus.core.skin.SkinSigner signer = art.arcane.animus.core.skin.SkinSigner.off("Skin signing is off in this test");
+    /** The [owners] table the menu reads its limits from. */
+    art.arcane.animus.core.config.OwnerSettings owners = art.arcane.animus.core.config.OwnerSettings.DEFAULT;
     String primary;
     boolean recording;
     Toolkit<Player, Stack> toolkit;
@@ -95,7 +97,7 @@ abstract class ToolkitHarness {
                 (Player player) -> Optional.empty(), Optional.of((String id, art.arcane.animus.core.virtual.WorldPosition destination) -> {
                     calls.add("relocate " + id + " " + destination.world() + " " + destination.point().x() + " " + destination.point().y() + " " + destination.point().z());
                     return true;
-                }), () -> now, () -> signer));
+                }), () -> now, () -> signer, () -> owners));
         toolkit.hook(commands);
         toolkit.joined(alex.id);
         drain();
@@ -113,6 +115,16 @@ abstract class ToolkitHarness {
     }
 
     /** {@code npcs/town/<id>.json} holding {@link #npc}. */
+    /** Makes Alex own the NPC, as a player who made it would; without animus.admin Alex acts only on NPCs Alex owns. */
+    void own(String... ids) throws IOException {
+        for (String id : ids) {
+            NpcRepository.Draft draft = npcs.draft(id);
+            com.google.gson.JsonObject document = draft.document();
+            document.addProperty("owner", alex.id.toString());
+            npcs.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
+        }
+    }
+
     static DocumentStore.Change npcFile(String id, UUID uuid, String extra) { return new DocumentStore.Change("npcs/town/" + id + ".json", "missing", npc(id, uuid, extra)); }
 
     static DocumentStore.Change file(String path, String text) { return new DocumentStore.Change(path, "missing", text); }

@@ -78,9 +78,11 @@ public interface BehaviorPlatform {
      * One {@code animus:command}. {@code player} runs it for {@link CommandSource#PLAYER}. {@code filledFor} is the player
      * whose placeholders fill its {@code %tokens%}, through {@link CommandPlaceholders#fill} on that player's owner, with
      * {@code rawText} for a behavior on {@code rawTextBehaviors}; empty fills nothing. {@code permissions} are granted to
-     * the player while the command runs and taken back at once, or {@code permissionTicks} later.
+     * the player while the command runs and taken back at once, or {@code permissionTicks} later. {@code operator} makes a
+     * player who is not an operator one for this command only, and never leaves them one.
      */
-    record CommandRun(CommandSource source, Optional<UUID> player, String command, Optional<UUID> filledFor, boolean rawText, List<String> permissions, int permissionTicks) {
+    record CommandRun(CommandSource source, Optional<UUID> player, String command, Optional<UUID> filledFor, boolean rawText, List<String> permissions, int permissionTicks,
+                      boolean operator) {
         public CommandRun {
             Objects.requireNonNull(source); Objects.requireNonNull(player); Objects.requireNonNull(command); Objects.requireNonNull(filledFor);
             permissions = List.copyOf(permissions);

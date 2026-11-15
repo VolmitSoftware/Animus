@@ -129,6 +129,7 @@ abstract class ToolScreen<P, S> implements Screen {
         armed = null;
         Handler handler = waiting != null && waiting.slot() == slot ? (GuiModel.Click any) -> waiting.run().run() : handlers.get(slot);
         if (handler == null || !toolkit.allows(viewer.player(), node())) return;
+        toolkit.ranks(viewer.player());
         toolkit.clicked(viewer.player());
         handler.click(click);
     }

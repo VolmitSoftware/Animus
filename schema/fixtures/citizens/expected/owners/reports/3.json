@@ -1,0 +1,24 @@
+{
+  "citizensId": 3,
+  "presentationWarnings": [
+    "/traits/owner: player Sam is not known on this server; kept for review"
+  ],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/owner/owner": "REQUIRES_REVIEW"
+  },
+  "reasons": {
+    "/traits/owner/owner": "not converted; check it in citizens:review"
+  },
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": []
+}

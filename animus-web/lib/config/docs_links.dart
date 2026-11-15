@@ -33,7 +33,8 @@ abstract final class Docs {
   static const DocLink npcText = DocLink('04-npc-definitions', 'names-and-text-lines');
   static const DocLink npcFlags = DocLink('04-npc-definitions', 'other-presentation-flags');
   static const DocLink npcPoses = DocLink('04-npc-definitions', 'poses');
-  static const DocLink npcInventory = DocLink('04-npc-definitions', 'inventory-and-owner');
+  static const DocLink npcInventory = DocLink('04-npc-definitions', 'inventory');
+  static const DocLink npcOwner = DocLink('04-npc-definitions', 'owner');
   static const DocLink npcInteractions = DocLink('04-npc-definitions', 'interactions');
   static const DocLink npcLimits = DocLink('04-npc-definitions', 'work-and-visibility-limits');
 

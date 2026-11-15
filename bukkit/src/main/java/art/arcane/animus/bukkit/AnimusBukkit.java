@@ -59,6 +59,7 @@ import art.arcane.animus.core.building.BuildCommands;
 import art.arcane.animus.core.building.BuildProtection;
 import art.arcane.animus.core.building.BuildService;
 import art.arcane.animus.core.behavior.builtin.DialogueTriggers;
+import art.arcane.animus.core.behavior.builtin.TemporaryOperators;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerSink;
 import art.arcane.animus.core.behavior.SnapshotFacts;
@@ -99,6 +100,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -163,6 +165,13 @@ final class AnimusBukkit {
         this.host = host;
     }
 
+    /** Every player this server has seen, by name, for imports that name owners by name. */
+    private static java.util.Map<String, UUID> knownPlayers(org.bukkit.Server server) {
+        java.util.Map<String, UUID> known = new java.util.HashMap<>();
+        for (org.bukkit.OfflinePlayer player : server.getOfflinePlayers()) if (player.getName() != null) known.put(player.getName(), player.getUniqueId());
+        return known;
+    }
+
     void enable() {
         long started = System.nanoTime();
         startupFailure = null;
@@ -195,7 +204,12 @@ final class AnimusBukkit {
                 org.bukkit.plugin.Plugin plugin = host.getServer().getPluginManager().getPlugin("Denizen");
                 return plugin != null && plugin.isEnabled();
             };
-            runtime.importHost(new CitizensDropIn.Host(Optional.ofNullable(host.getDataFolder().getAbsoluteFile().getParentFile()).map(java.io.File::toPath), citizens, shopkeepers, denizen));
+            runtime.importHost(new CitizensDropIn.Host(Optional.ofNullable(host.getDataFolder().getAbsoluteFile().getParentFile()).map(java.io.File::toPath), citizens, shopkeepers, denizen,
+                    () -> knownPlayers(host.getServer())));
+            runtime.ownerPermissions(new art.arcane.animus.core.owner.SeenOwnerPermissions(
+                    (UUID player) -> Optional.ofNullable(host.getServer().getPlayer(player)).map((Player online) -> (java.util.function.Predicate<String>) online::hasPermission),
+                    (UUID player, String node) -> BukkitOfflinePermission.check(host.getServer(), player, node), ForkJoinPool.commonPool()));
+            runtime.playerNames((UUID player) -> Optional.ofNullable(host.getServer().getOfflinePlayer(player).getName()));
             CitizensGuard.install(citizens);
             replies = new ReplyScheduler(host);
             LibsDisguisesIntegration.serverThread((Runnable task) -> {
@@ -259,7 +273,13 @@ final class AnimusBukkit {
             quests.start(ownerTicks);
             startBuilds(mainThread, living instanceof RegionNpcRuntime regionized ? regionized : null, regions);
             BukkitOwners scheduling = new BukkitOwners(host, regions);
-            commandGrants = new CommandGrants(host, scheduling::later);
+            TemporaryOperators operators = new TemporaryOperators(data.resolve("state/temporary-operators.json"), new TemporaryOperators.Operators() {
+                @Override public boolean operator(UUID player) { return host.getServer().getOfflinePlayer(player).isOp(); }
+                @Override public void operator(UUID player, boolean operator) { host.getServer().getOfflinePlayer(player).setOp(operator); }
+            });
+            int recovered = operators.recover();
+            if (recovered > 0) host.getLogger().warning("Took operator back from " + (recovered == 1 ? "1 player" : recovered + " players") + " made operator for a command when the server last stopped");
+            commandGrants = new CommandGrants(host, scheduling::later, operators);
             host.getServer().getPluginManager().registerEvents(commandGrants, host);
             BukkitBehaviorPlatform behaviorPlatform = new BukkitBehaviorPlatform(host, living, combat, builds, this::buildsRefusal,
                     (Runnable tick) -> ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, tick)), () -> guis, scheduling, mainThread, runtime.placeholders(),

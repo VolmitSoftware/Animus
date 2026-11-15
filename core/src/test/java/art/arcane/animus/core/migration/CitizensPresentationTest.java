@@ -130,6 +130,17 @@ class CitizensPresentationTest {
         assertEquals("00000000-0000-0000-0000-00000000000a", map("player", "{\"owner\":{\"uuid\":\"00000000-0000-0000-0000-00000000000a\"}}").fields().get("owner").getAsString());
         assertFalse(map("player", "{\"owner\":{\"owner\":\"SERVER\"}}").fields().has("owner"));
         assertEquals(List.of("/traits/owner: no player UUID; kept for review"), map("player", "{\"owner\":{\"uuid\":\"nope\"}}").warnings());
+        CitizensPresentation.Result server = map("player", "{\"owner\":{\"owner\":\"server\"}}");
+        assertFalse(server.fields().has("owner"), "SERVER in any case means no player owns it");
+        assertTrue(server.converted().contains("/traits/owner/owner"), "and nothing is left to review");
+        assertEquals("0000000b-0000-4000-8000-0000000000b2", map("player", "{\"owner\":{\"owner\":\"0000000b-0000-4000-8000-0000000000b2\"}}").fields().get("owner").getAsString(),
+                "an owner saved as a UUID string");
+        CitizensPresentation.Result named = map("player", "{\"owner\":{\"owner\":\"Sam\"}}");
+        assertFalse(named.fields().has("owner"));
+        assertEquals(List.of("/traits/owner: player Sam is not known on this server; kept for review"), named.warnings());
+        com.google.gson.JsonObject traits = com.google.gson.JsonParser.parseString("{\"owner\":{\"owner\":\"Alex\"}}").getAsJsonObject();
+        CitizensImporter.resolveOwner(traits, java.util.Map.of("alex", java.util.UUID.fromString("0000000a-0000-4000-8000-0000000000a1")));
+        assertEquals("0000000a-0000-4000-8000-0000000000a1", map("player", traits.toString()).fields().get("owner").getAsString(), "a name the server knows finds its UUID");
         assertEquals("{\"visible\":false}", map("player", "{}", "{\"metadata\":{\"nameplate-visible\":false}}").fields().get("nameplate").toString());
         assertEquals("{\"visible\":false}", map("player", "{}", "{\"metadata\":{\"nameplate-visible\":\"false\"}}").fields().get("nameplate").toString());
         assertEquals(List.of("/metadata/nameplate-visible: hover-only nameplates show always"), map("player", "{}", "{\"metadata\":{\"nameplate-visible\":\"hover\"}}").warnings());
@@ -171,7 +182,7 @@ class CitizensPresentationTest {
         assertEquals("CONVERTED", fields.get("/traits/hologramtrait/lines/0").getAsString());
         assertEquals("CONVERTED", fields.get("/traits/sneak/sneaking").getAsString());
         assertEquals(CitizensImporter.CONVERTER_VERSION, preview.converterVersion());
-        assertEquals(22, CitizensImporter.CONVERTER_VERSION);
+        assertEquals(23, CitizensImporter.CONVERTER_VERSION);
     }
 
     @Test void hologramRendererSettingsMarginsAndListInventoriesMap() {

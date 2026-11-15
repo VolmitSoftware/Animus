@@ -12,6 +12,8 @@ import static java.nio.file.StandardOpenOption.*;
 /** Journaled file transactions. A committed journal is rolled forward before the runtime loads definitions. */
 public final class DocumentStore implements AutoCloseable {
     public record Change(String path, String expectedHash, String content) {}
+    /** Looks at every commit before anything is written; throwing refuses the whole commit. Rollbacks are not checked. */
+    @FunctionalInterface public interface CommitCheck { void check(List<Change> changes) throws IOException; }
     /** Where the last-valid recovery copy of each NPC file is kept, mirroring its path under {@code npcs/}. */
     public static final String DEFINITION_POINTERS = "state/npc-definitions/last-valid/";
     /** A whole replacement of generated data, where null deletes it. Generated data has no editor, so nothing can conflict. */
@@ -30,6 +32,7 @@ public final class DocumentStore implements AutoCloseable {
     private final FileLock lock;
     private final boolean readOnly;
     private boolean closed;
+    private volatile CommitCheck check = (List<Change> changes) -> {};
 
     public DocumentStore(Path directory) throws IOException {
         this(directory, false);
@@ -107,6 +110,9 @@ public final class DocumentStore implements AutoCloseable {
         return content;
     }
 
+    /** Replaces the check every later commit passes first. */
+    public void check(CommitCheck next) { check = java.util.Objects.requireNonNull(next); }
+
     public synchronized String commit(List<Change> changes) throws IOException { return commit(UUID.randomUUID().toString(), changes); }
 
     /** A commit under a caller-chosen transaction ID, so a record written in the same journal can name its own rollback receipt. */
@@ -115,6 +121,7 @@ public final class DocumentStore implements AutoCloseable {
         if (!transaction.matches("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")) throw new IOException("Invalid transaction ID");
         if (Files.exists(resolve("backups/" + transaction + ".json"), LinkOption.NOFOLLOW_LINKS)) throw new IOException("Transaction ID already used: " + transaction);
         recover();
+        check.check(changes);
         return publish(transaction, invalidateDefinitionCheckpoints(changes), true);
     }
 

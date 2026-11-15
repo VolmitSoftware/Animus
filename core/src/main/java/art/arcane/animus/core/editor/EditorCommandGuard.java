@@ -1,6 +1,7 @@
 package art.arcane.animus.core.editor;
 
 import art.arcane.animus.api.Capabilities;
+import art.arcane.animus.core.behavior.BehaviorNodes;
 import art.arcane.animus.core.combat.HealthSettings;
 import art.arcane.animus.core.npc.GroupDocument;
 import art.arcane.animus.core.npc.GroupMerge;
@@ -12,7 +13,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import java.io.IOException;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -103,7 +103,7 @@ final class EditorCommandGuard {
     static Optional<String> needsCommands(DocumentKind kind, String id, JsonElement source, Rules rules) throws IOException {
         return switch (kind) {
             case BEHAVIOR -> behavior(id, source, rules);
-            case INVENTORY, MENU, HOLOGRAM -> any(source, (JsonObject object) -> text(object, "type").map(GUI_TYPES::contains).orElse(false))
+            case INVENTORY, MENU, HOLOGRAM -> BehaviorNodes.any(source, (JsonObject object) -> BehaviorNodes.text(object, "type").map(GUI_TYPES::contains).orElse(false))
                     ? Optional.of("runs commands or creates items or money") : Optional.empty();
             case SHOP -> shop(id, source);
             case QUEST -> {
@@ -171,41 +171,9 @@ final class EditorCommandGuard {
 
     private static Optional<String> behavior(String id, JsonElement source, Rules rules) {
         if (rules.rawTextNamespace(id)) return Optional.of(RAW_TEXT_SHARED);
-        if (any(source, (JsonObject object) -> text(object, "capability").map(rules.privileged()::contains).orElse(false))) return Optional.of("runs commands");
-        if (any(source, (JsonObject object) -> text(object, "capability").map(VALUE_CAPABILITIES::contains).orElse(false))) return Optional.of("creates items");
-        return any(source, EditorCommandGuard::paysQuest) ? Optional.of("pays a quest's rewards") : Optional.empty();
-    }
-
-    /** A node that can pay a quest's rewards: advancing past the last stage completes it, and a forced start repeats it. */
-    private static boolean paysQuest(JsonObject node) {
-        return switch (text(node, "capability").orElse("")) {
-            case "animus:advance-quest" -> true;
-            case "animus:complete-quest" -> !off(node, "rewards", false);
-            case "animus:start-quest" -> !off(node, "force", true);
-            default -> false;
-        };
-    }
-
-    /**
-     * Whether a boolean argument is surely false: written as {@code false}, or left out when {@code absent} says that means
-     * false, and filled by no binding, expression or template.
-     */
-    private static boolean off(JsonObject node, String argument, boolean absent) {
-        if (bound(node, argument)) return false;
-        JsonElement literal = node.get("arguments") instanceof JsonObject arguments ? arguments.get(argument) : null;
-        if (literal == null) return absent;
-        return literal.isJsonPrimitive() && literal.getAsJsonPrimitive().isBoolean() && !literal.getAsBoolean();
-    }
-
-    /** Whether a binding, expression or template fills the argument; slot keys are JSON Pointers into the arguments. */
-    private static boolean bound(JsonObject node, String argument) {
-        for (String slots : List.of("bindings", "expressions", "templates")) {
-            JsonElement value = node.get(slots);
-            if (value == null) continue;
-            if (!value.isJsonObject()) return true;
-            for (String pointer : value.getAsJsonObject().keySet()) if (pointer.equals("/" + argument) || pointer.startsWith("/" + argument + "/")) return true;
-        }
-        return false;
+        if (BehaviorNodes.any(source, (JsonObject object) -> BehaviorNodes.text(object, "capability").map(rules.privileged()::contains).orElse(false))) return Optional.of("runs commands");
+        if (BehaviorNodes.any(source, (JsonObject object) -> BehaviorNodes.text(object, "capability").map(VALUE_CAPABILITIES::contains).orElse(false))) return Optional.of("creates items");
+        return BehaviorNodes.any(source, BehaviorNodes::paysQuest) ? Optional.of("pays a quest's rewards") : Optional.empty();
     }
 
     /** The NPC as the registry runs it: its stored groups merged under its own fields. A group that is missing or invalid adds nothing. */
@@ -223,21 +191,12 @@ final class EditorCommandGuard {
     /** An NPC definition or a group's values: what its schedule, death and behaviors do. */
     private static Optional<String> definition(JsonObject definition, Rules rules) {
         if (ScheduleSettings.runsCommands(definition)) return Optional.of("runs schedule arrival commands");
-        if (definition.get("modules") instanceof JsonObject modules && modules.get(HealthSettings.MODULE) instanceof JsonObject health
-                && health.get("death") instanceof JsonObject death && drops(death)) return Optional.of("drops items or experience when it dies");
+        if (HealthSettings.drops(definition)) return Optional.of("drops items or experience when it dies");
         if (definition.get("behaviors") instanceof JsonArray behaviors)
             for (JsonElement behavior : behaviors)
                 if (behavior.isJsonPrimitive() && rules.rawTextBehaviors().contains(behavior.getAsString()))
                     return Optional.of("runs " + behavior.getAsString() + ", whose raw command text can read the NPC");
         return Optional.empty();
-    }
-
-    /** {@code death} drops something: items, experience above 0 or its equipment. Anything malformed counts. */
-    private static boolean drops(JsonObject death) {
-        JsonElement items = death.get("drops"), experience = death.get("experience"), equipment = death.get("dropEquipment");
-        return items != null && !(items.isJsonArray() && items.getAsJsonArray().isEmpty())
-                || experience != null && !(experience.isJsonPrimitive() && experience.getAsJsonPrimitive().isNumber() && experience.getAsDouble() == 0)
-                || equipment != null && !(equipment.isJsonPrimitive() && equipment.getAsJsonPrimitive().isBoolean() && !equipment.getAsBoolean());
     }
 
     /** The list enables what its behaviors do, so it needs the scope while it names a stored behavior that does. */
@@ -265,22 +224,11 @@ final class EditorCommandGuard {
         if (!source.isJsonObject()) return Optional.empty();
         Optional<ShopDocument> parsed = ShopDocument.parse(id, source.getAsJsonObject()).shop();
         if (parsed.isEmpty()) return unreadShop(source.getAsJsonObject());
-        for (ShopDocument.Page page : parsed.get().pages())
-            for (Map<Integer, ShopDocument.Entry> grid : page.grids().values())
-                for (ShopDocument.Entry entry : grid.values()) {
-                    if (entry.type() == ShopDocument.Type.COMMAND || !entry.commands().isEmpty()) return Optional.of("runs commands");
-                    if (free(entry)) return Optional.of("hands out goods for nothing");
-                }
+        for (ShopDocument.Entry entry : parsed.get().entries()) {
+            if (entry.runsCommands()) return Optional.of("runs commands");
+            if (entry.free()) return Optional.of("hands out goods for nothing");
+        }
         return Optional.empty();
-    }
-
-    /** A buy entry at no price and no levels, now or during a discount, or a trade that asks for nothing. */
-    private static boolean free(ShopDocument.Entry entry) {
-        return switch (entry.type()) {
-            case BUY -> entry.levels() == 0 && (entry.price().signum() == 0 || entry.discount().map((ShopDocument.Discount discount) -> discount.price().signum() == 0).orElse(false));
-            case TRADE -> entry.needs().isEmpty();
-            default -> false;
-        };
     }
 
     private static Optional<String> unreadShop(JsonObject shop) {
@@ -302,27 +250,5 @@ final class EditorCommandGuard {
             }
         }
         return Optional.empty();
-    }
-
-    @FunctionalInterface private interface Test { boolean matches(JsonObject object); }
-
-    private static boolean any(JsonElement root, Test test) {
-        ArrayDeque<JsonElement> pending = new ArrayDeque<>();
-        pending.add(root);
-        while (!pending.isEmpty()) {
-            JsonElement element = pending.removeFirst();
-            if (element.isJsonArray()) element.getAsJsonArray().forEach(pending::add);
-            else if (element.isJsonObject()) {
-                JsonObject object = element.getAsJsonObject();
-                if (test.matches(object)) return true;
-                for (Map.Entry<String, JsonElement> entry : object.entrySet()) pending.add(entry.getValue());
-            }
-        }
-        return false;
-    }
-
-    private static Optional<String> text(JsonObject object, String key) {
-        JsonElement value = object.get(key);
-        return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString() ? Optional.of(value.getAsString()) : Optional.empty();
     }
 }

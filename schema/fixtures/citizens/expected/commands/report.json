@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 22,
+  "converterVersion": 23,
   "fieldPathFormat": "json-pointer",
-  "importId": "5698989f65a807f4d0a9baad129ffb0958b6a32b9e3dcc43cdb2d4262b0b0dba",
+  "importId": "7ca825331f9c449b68a6ad8b2921a278b46cfa3b8e1bb2114f1663690af2d0f7",
   "sourceSha256": "64da1c1d2b7145613449df7c7d486d8cb88ddd523baf6fcbddf96a1c75924517",
   "worldMap": {
     "old_harbor": "harbor"
@@ -82,13 +82,13 @@
   },
   "documents": {
     "behaviors/citizens/commands-0.json": "0006e7c3e75ce3364487bb91d3f70d565356c0a18d9703ef0800b4a6afa4fc32",
-    "npcs/harbor/citizens-0.json": "3e6feb2276c8ff36a4c8526f259746c17175513dd46e8a52b0762d7a17b32005",
+    "npcs/harbor/citizens-0.json": "69967972ee5f77cef2204bbc88aaa0e327e4a11dcc19c17109a7a8627bc990bc",
     "behaviors/citizens/commands-1.json": "1e511b645287fff671d5036f0d058596999538468735f1567c685177567df267",
-    "npcs/harbor/citizens-1.json": "7721b4fd14074f46d3e0093b82b1aa8184951a8e9b015c3f72d4c87eef58592e",
+    "npcs/harbor/citizens-1.json": "822f9a32e8c30393af8438339a0fe095d2dc10b216c055cca89cb4f97293c521",
     "behaviors/citizens/commands-2.json": "fda3eabd7bad88d8c617b091d982f54b7c6c91a540d2f50b9ac7cbb3f0e80f47",
-    "npcs/harbor/citizens-2.json": "101d0df528c50f3b440a3f336aded834631153aefd8b20f01cc19c9d0460bda5",
+    "npcs/harbor/citizens-2.json": "58be1af7d77cc87d143ca3a8f736962c9cb46d73fda4556c807b60009bbfcfda",
     "behaviors/citizens/commands-3.json": "bc3d32da811070466ba5b62b73c2b80ac31cf3394c84cbf9393a11d34d581d71",
     "skins/05f18834916c6590edc8fc596c532623084f39c4d47e331ce3a0a41a4f161d7a.json": "05f18834916c6590edc8fc596c532623084f39c4d47e331ce3a0a41a4f161d7a",
-    "npcs/harbor/citizens-3.json": "401da839c3d5bfc6b69185b5fa5a5b42633fd095fbb0920d7de0c09a2d9d52ea"
+    "npcs/harbor/citizens-3.json": "fdd90502d79320d7b34996b1bac425503082118bcfebeebdd44b3739bc198427"
   }
 }

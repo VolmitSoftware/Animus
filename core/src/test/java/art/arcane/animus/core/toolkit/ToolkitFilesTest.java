@@ -107,9 +107,9 @@ class ToolkitFilesTest {
     }
 
     @Test void deleteAndCloneHandleTheWholeSelection() throws IOException {
-        String cloned = files.copies(List.of("guard"));
+        String cloned = files.copies(List.of("guard"), Optional.empty());
         assertTrue(cloned.startsWith("Copied N, despawned; tx "), cloned);
-        String again = files.copies(List.of("guard", "baker"));
+        String again = files.copies(List.of("guard", "baker"), Optional.empty());
         assertTrue(again.startsWith("Copied 2 NPCs, despawned; tx "), again);
         NpcDefinition copy = npcs.find("guard-copy").orElseThrow();
         assertEquals("town", copy.group());

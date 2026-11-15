@@ -46,8 +46,11 @@ class CitizensGoldenTest {
     private void check(String name, JsonObject definition) throws IOException {
         Map<String, String> worlds = new TreeMap<>();
         definition.getAsJsonObject("worldMap").entrySet().forEach(e -> worlds.put(e.getKey(), e.getValue().getAsString()));
+        Map<String, java.util.UUID> players = new TreeMap<>();
+        if (definition.get("players") instanceof JsonObject known)
+            known.entrySet().forEach(e -> players.put(e.getKey(), java.util.UUID.fromString(e.getValue().getAsString())));
         Path data = Files.createDirectories(temporary.resolve(name));
-        CitizensImporter.Preview preview = new CitizensImporter().preview(fixtures().resolve(definition.get("source").getAsString()), data, worlds);
+        CitizensImporter.Preview preview = new CitizensImporter().players(players).preview(fixtures().resolve(definition.get("source").getAsString()), data, worlds);
         Path expected = fixtures().resolve("expected/" + name);
         if (Boolean.getBoolean("animus.regenerateGolden")) {
             delete(expected);

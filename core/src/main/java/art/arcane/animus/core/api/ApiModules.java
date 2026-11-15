@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiPredicate;
@@ -77,6 +78,8 @@ final class ApiModules implements NpcRepository.ModuleRules {
 
 
     /** The registered module validators, for every key whose data changed. */
+    @Override public Set<String> keys() { return Set.copyOf(byKey.keySet()); }
+
     @Override public List<String> problems(Optional<JsonObject> previous, JsonObject next) {
         if (byKey.isEmpty()) return List.of();
         JsonObject after = modules(next), before = previous.map(ApiModules::modules).orElse(new JsonObject());

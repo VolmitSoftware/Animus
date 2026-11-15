@@ -40,7 +40,8 @@ final class BehaviorScreen<P, S> extends ToolScreen<P, S> {
     @Override void draw() {
         List<String> selected = toolkit.selected(viewer.id());
         if (behaviors == null) icon(22, "minecraft:clock", "&7Reading behaviors", List.of(), Optional.empty());
-        else list(behaviors, BehaviorFiles.Behavior::id, "None yet. Make one with New conversation", (Integer slot, BehaviorFiles.Behavior behavior) -> entry(slot, behavior, selected));
+        else list(behaviors.stream().filter((BehaviorFiles.Behavior behavior) -> behavior.needs().stream().allMatch(this::holds)).toList(), BehaviorFiles.Behavior::id,
+                "None yet. Make one with New conversation", (Integer slot, BehaviorFiles.Behavior behavior) -> entry(slot, behavior, selected));
         button(CREATE, "minecraft:writable_book", title("New conversation"), lore(List.of("&7Says Hello on a right click"), any("name it")), (GuiModel.Click click) -> create());
         button(RELOAD, "minecraft:repeater", title("Reload"), lore(List.of("&7Reads changed behavior files"), any("reload")), (GuiModel.Click click) -> {
             command(RELOAD_COMMAND);

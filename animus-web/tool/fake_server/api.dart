@@ -421,8 +421,8 @@ class FakeApi {
     });
   }
 
-  /// A small Paper server with PlaceholderAPI: a few ids of each registry.
-  FakeResponse _lookups(FakeRequest request, FakeToken token, List<String> segments) => const FakeResponse(200, body: <String, Object?>{
+  /// A small Paper server with PlaceholderAPI: a few ids of each registry, and the paired viewer, Alex, as the one owner it knows.
+  FakeResponse _lookups(FakeRequest request, FakeToken token, List<String> segments) => FakeResponse(200, body: <String, Object?>{
         'registries': <String, Object?>{
           'items': <String>['minecraft:bread', 'minecraft:diamond', 'minecraft:diamond_sword', 'minecraft:emerald'],
           'sounds': <String>['minecraft:entity.villager.ambient', 'minecraft:entity.villager.yes'],
@@ -431,6 +431,7 @@ class FakeApi {
         },
         'commands': <String>['animus', 'give', 'spawn', 'tp'],
         'papi': <String>['player', 'server'],
+        'owners': <String, Object?>{settings.viewer: 'Alex'},
       });
 
   FakeResponse _capabilities(FakeRequest request, FakeToken token, List<String> segments) {

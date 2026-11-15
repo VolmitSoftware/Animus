@@ -72,6 +72,16 @@ class PermissionNodesTest {
         assertTrue(AnimusDirector.allowed(admin, node("combat", "attack")), "existing admin grants keep working");
     }
 
+    @Test void importsAndTheEditorStayWithAdminsBecauseTheyReachEveryNpc() {
+        AnimusDirectorTest.Actor importer = new AnimusDirectorTest.Actor(true, PermissionNodes.IMPORT, PermissionNodes.EDITOR_PAIR);
+        assertFalse(AnimusDirector.allowed(importer, node("import", "citizens", "apply")));
+        assertFalse(AnimusDirector.allowed(importer, node("editor", "pair")));
+        director.execute(importer, new String[]{"import", "citizens", "apply"});
+        assertTrue(importer.text().contains("Only an admin can do that; it changes NPCs whoever owns them"), importer.text());
+        assertTrue(AnimusDirector.allowed(new AnimusDirectorTest.Actor(false, PermissionNodes.IMPORT), node("import", "citizens", "apply")), "the console imports");
+        assertTrue(AnimusDirector.allowed(new AnimusDirectorTest.Actor(true, PermissionNodes.ADMIN), node("editor", "pair")));
+    }
+
     @Test void everyManagementNodeIsUsedAndEveryCommandNodeIsKnown() {
         List<DirectorRuntimeNode> commands = new ArrayList<>();
         collect(director.engine().getRoot(), commands);
@@ -82,7 +92,9 @@ class PermissionNodesTest {
         assertTrue(known.containsAll(used), "unknown nodes: " + used);
         Set<String> unused = new TreeSet<>(PermissionNodes.CHILDREN);
         unused.removeAll(used);
-        assertTrue(Set.of(PermissionNodes.NPC_SKIN).containsAll(unused), "only the skin node may be the toolkit's alone: " + unused);
+        assertTrue(Set.of(PermissionNodes.NPC_SKIN, PermissionNodes.NPC_OTHERS, PermissionNodes.OWNED_COMMANDS, PermissionNodes.OWNED_OPERATOR, PermissionNodes.OWNED_SERVER,
+                PermissionNodes.OWNED_PLAYERS, PermissionNodes.OWNED_ITEMS).containsAll(unused),
+                "only the skin node may be the toolkit's alone, and the ownership nodes no command names: " + unused);
     }
 
     private static void collect(DirectorRuntimeNode node, List<DirectorRuntimeNode> out) {

@@ -55,16 +55,16 @@ public final class Administration {
         return List.of(headline, settingsInEffect(editorListener), runtime.status());
     }
 
-    /** Every definition as {@code id | name | revision}, in repository order. */
-    public List<String> rows() {
-        return runtime.npcs().all().stream().map((NpcDefinition definition) -> definition.id() + " | " + definition.name() + " | revision " + definition.revision()).toList();
+    /** Every definition {@code shown} keeps, as {@code id | name | revision}, in repository order. */
+    public List<String> rows(java.util.function.Predicate<NpcDefinition> shown) {
+        return runtime.npcs().all().stream().filter(shown).map((NpcDefinition definition) -> definition.id() + " | " + definition.name() + " | revision " + definition.revision()).toList();
     }
 
     /**
      * What {@code /animus inspect} shows: the effective definition, its stored and effective JSON, where each field came
      * from when trait groups apply, and the group problem, if any.
      */
-    public record Inspection(NpcDefinition effective, String stored, String merged, List<String> provenance, Optional<String> problem) {
+    public record Inspection(NpcDefinition effective, String stored, String merged, List<String> provenance, Optional<String> problem, Optional<String> ownerName) {
         /**
          * The NPC's fight totals for a combat or health NPC: its imported Sentinel {@code historicalStatistics} plus what
          * this server counted. Empty for an NPC that never fights.
@@ -78,11 +78,12 @@ public final class Administration {
                     && combat.get("historicalStatistics") instanceof JsonObject imported) historical = imported;
             return Optional.of(art.arcane.animus.core.combat.CombatStatistics.describe(statistics.totals(effective.uuid(), historical)));
         }
-        /** {@code id | name | type | revision | spawned or despawned | trait groups} for the head line. */
+        /** {@code id | name | type | revision | spawned or despawned | trait groups | owner} for the head line; the owner's name, else UUID. */
         public String summary() {
             JsonObject data = effective.json();
             return effective.qualifiedId() + " | " + effective.name() + " | " + text(data, "type") + " | rev " + effective.revision()
-                    + " | " + (effective.spawned() ? "spawned" : "despawned") + (effective.groups().isEmpty() ? "" : " | trait groups " + String.join(", ", effective.groups()));
+                    + " | " + (effective.spawned() ? "spawned" : "despawned") + (effective.groups().isEmpty() ? "" : " | trait groups " + String.join(", ", effective.groups()))
+                    + effective.owner().map((UUID owner) -> " | owner " + ownerName.orElse(owner.toString())).orElse("");
         }
 
         /** {@code world x y z} of the definition's position, or empty when it has none. */
@@ -108,7 +109,7 @@ public final class Administration {
         List<String> provenance = effective.groups().isEmpty() ? List.of() : runtime.npcs().provenance(id).entrySet().stream()
                 .map((Map.Entry<String, String> entry) -> entry.getKey() + " from " + entry.getValue()).toList();
         return new Inspection(effective, draft.document().toString(), effective.json().toString(), provenance,
-                Optional.ofNullable(runtime.npcs().groupProblems().get(draft.path())));
+                Optional.ofNullable(runtime.npcs().groupProblems().get(draft.path())), effective.owner().flatMap(runtime::playerName));
     }
 
     /** {@link #create(String, String, String, double, double, double, String, String, Optional)} with no owner, as from the console. */
@@ -333,9 +334,11 @@ public final class Administration {
         return (spawn ? "Spawn requested for " : "Despawned ") + id + "; tx " + tx;
     }
 
-    public String duplicate(String id, String copy) throws IOException {
+    /** {@code owner} becomes the copy's owner, as when a player copies an NPC for themselves; empty keeps the original's. */
+    public String duplicate(String id, String copy, Optional<UUID> owner) throws IOException {
         taken(copy);
         JsonObject object = runtime.npcs().draft(id).document();
+        owner.ifPresent((UUID player) -> object.addProperty("owner", player.toString()));
         object.addProperty("id", copy); object.addProperty("uuid", UUID.randomUUID().toString());
         object.addProperty("revision", 1); object.addProperty("spawned", false); object.remove("migration");
         NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(object));
@@ -394,7 +397,7 @@ public final class Administration {
      */
     public List<String> preview(String file, Optional<String> converter, Map<String, String> worlds) throws IOException {
         if (!file.matches("[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]{1,8}")) throw new IOException("Give a plain file name under imports/inbox/, such as saves.yml; tab completion lists them");
-        CitizensImporter importer = new CitizensImporter();
+        CitizensImporter importer = new CitizensImporter().players(runtime.importHost().players().get());
         Path path = runtime.documents().resolve("imports/inbox/" + file);
         CitizensImporter.Preview preview;
         if (converter.isEmpty() && file.endsWith(".yml") && CitizensImporter.recognizes(JsonDocuments.read(path)))

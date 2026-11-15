@@ -56,6 +56,7 @@ class PermissionAuditTest extends ToolkitHarness {
                 file("routes/market.json", ToolkitRoutesTest.MARKET), file("recordings/wave.json", ToolkitRoutesTest.recording("wave"))), true);
         active.put(GUARD, 3.0);
         active.put(BAKER, 6.0);
+        own("guard", "baker");
         alex.permissions.clear();
         alex.permissions.add(PermissionNodes.TOOLS);
         runs = (String npc) -> { asked.add(npc); return CompletableFuture.completedFuture(List.of()); };

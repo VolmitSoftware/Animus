@@ -1,0 +1,53 @@
+# Synthetic: each way Citizens' owner trait names an owner, and an operator command.
+npc:
+  '0':
+    name: Stall
+    uuid: 0a1b2c3d-0000-4000-8000-000000000400
+    traits:
+      type: PLAYER
+      location: {world: world, x: 0, y: 64, z: 0}
+      owner: {owner: Alex, uuid: 0000000a-0000-4000-8000-0000000000a1}
+  '1':
+    name: Mayor
+    uuid: 0a1b2c3d-0000-4000-8000-000000000401
+    traits:
+      type: PLAYER
+      location: {world: world, x: 1, y: 64, z: 0}
+      owner: {owner: SERVER}
+  '2':
+    name: Booth
+    uuid: 0a1b2c3d-0000-4000-8000-000000000402
+    traits:
+      type: PLAYER
+      location: {world: world, x: 2, y: 64, z: 0}
+      owner: {owner: alex}
+  '3':
+    name: Kiosk
+    uuid: 0a1b2c3d-0000-4000-8000-000000000403
+    traits:
+      type: PLAYER
+      location: {world: world, x: 3, y: 64, z: 0}
+      owner: {owner: Sam}
+  '4':
+    name: Gate
+    uuid: 0a1b2c3d-0000-4000-8000-000000000404
+    traits:
+      type: PLAYER
+      location: {world: world, x: 4, y: 64, z: 0}
+      owner: {owner: server}
+  '5':
+    name: Cart
+    uuid: 0a1b2c3d-0000-4000-8000-000000000405
+    traits:
+      type: PLAYER
+      location: {world: world, x: 5, y: 64, z: 0}
+      owner: {owner: 0000000b-0000-4000-8000-0000000000b2}
+  '6':
+    name: Clock
+    uuid: 0a1b2c3d-0000-4000-8000-000000000406
+    traits:
+      type: PLAYER
+      location: {world: world, x: 6, y: 64, z: 0}
+      commandtrait:
+        commands:
+          '0': {command: 'time set day', hand: RIGHT, player: true, op: true}

@@ -102,6 +102,19 @@ public record HealthSettings(boolean killable, Defense defense, Death death, Res
         return Optional.of(value.getAsJsonObject());
     }
 
+    /**
+     * Whether the definition's death drops something: items, experience above 0 or its equipment. Anything malformed
+     * counts, so a check that asks before a write errs toward a drop.
+     */
+    public static boolean drops(JsonObject definition) {
+        if (!(definition.get("modules") instanceof JsonObject modules) || !(modules.get(MODULE) instanceof JsonObject health) || !(health.get("death") instanceof JsonObject death))
+            return false;
+        JsonElement items = death.get("drops"), experience = death.get("experience"), equipment = death.get("dropEquipment");
+        return items != null && !(items.isJsonArray() && items.getAsJsonArray().isEmpty())
+                || experience != null && !(experience.isJsonPrimitive() && experience.getAsJsonPrimitive().isNumber() && experience.getAsDouble() == 0)
+                || equipment != null && !(equipment.isJsonPrimitive() && equipment.getAsJsonPrimitive().isBoolean() && !equipment.getAsBoolean());
+    }
+
     /** Whether the definition marks the NPC dead for good. Malformed modules read as alive; validation reports them. */
     public static boolean dead(JsonObject definition) {
         JsonElement modules = definition.get("modules");

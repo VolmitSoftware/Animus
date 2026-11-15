@@ -461,7 +461,13 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "additionalProperties": {"type": "array", "items": {"type": "string"}}
         },
         "commands": {"type": "array", "items": {"type": "string"}, "description": "Command labels the server knows, without /."},
-        "papi": {"type": "array", "items": {"type": "string"}, "description": "PlaceholderAPI expansion identifiers, when it is installed."}
+        "papi": {"type": "array", "items": {"type": "string"}, "description": "PlaceholderAPI expansion identifiers, when it is installed."},
+        "owners": {
+          "type": "object",
+          "description": "The last known name of each player who owns an NPC, by UUID; players the server never saw are left out.",
+          "propertyNames": {"pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+          "additionalProperties": {"type": "string"}
+        }
       }
     },
     "schemas-response": {
@@ -1181,7 +1187,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:command",
-          "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name, and placeholders are filled for that player. A player command may hold permissions while it runs, and for permissionTicks after. Allowed only for behaviors on the TOML allow-list, and never in a preview."
+          "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name, and placeholders are filled for that player. A player command may hold permissions while it runs, and for permissionTicks after, or with asOperator run with the player made an operator for that one command. Allowed only for behaviors on the TOML allow-list, and never in a preview."
         },
         {
           "const": "animus:complete-quest",
@@ -2791,6 +2797,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         "player"
                       ]
                     },
+                    "asOperator": {
+                      "type": "boolean"
+                    },
                     "player": {
                       "type": "string",
                       "minLength": 1,
@@ -2814,7 +2823,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   "required": [
                     "command"
                   ],
-                  "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name, and placeholders are filled for that player. A player command may hold permissions while it runs, and for permissionTicks after. Allowed only for behaviors on the TOML allow-list, and never in a preview."
+                  "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name, and placeholders are filled for that player. A player command may hold permissions while it runs, and for permissionTicks after, or with asOperator run with the player made an operator for that one command. Allowed only for behaviors on the TOML allow-list, and never in a preview."
                 }
               },
               "required": [
@@ -9633,7 +9642,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:command",
       "kind": "action",
-      "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name, and placeholders are filled for that player. A player command may hold permissions while it runs, and for permissionTicks after. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
+      "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name, and placeholders are filled for that player. A player command may hold permissions while it runs, and for permissionTicks after, or with asOperator run with the player made an operator for that one command. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
       "privileged": true,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -9652,6 +9661,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "console",
             "player"
           ]
+        },
+        "asOperator": {
+          "type": "boolean",
+          "required": false
         },
         "player": {
           "type": "string",

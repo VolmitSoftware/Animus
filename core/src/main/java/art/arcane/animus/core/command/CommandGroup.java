@@ -2,6 +2,8 @@ package art.arcane.animus.core.command;
 
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.owner.ActingPlayer;
+import art.arcane.animus.core.owner.NpcOwnership;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.storage.NpcPaths;
 import art.arcane.animus.core.text.ChatLine;
@@ -42,6 +44,10 @@ abstract class CommandGroup {
      * here, the same way for every command. Empty after telling the actor why.
      */
     Optional<String> npc(CommandActor actor, String id) {
+        return named(actor, id).filter((String found) -> owned(actor, runtime().npcs().find(found)));
+    }
+
+    private Optional<String> named(CommandActor actor, String id) {
         if (id.indexOf('/') >= 0) return qualified(actor, id);
         if (!id.equalsIgnoreCase(SELECTED)) {
             if (runtime().npcs().find(id).isPresent()) return Optional.of(id);
@@ -50,6 +56,16 @@ abstract class CommandGroup {
         }
         if (actor.player().isEmpty()) { actor.tell(Palette.error("The console has no selection; give the NPC id")); return Optional.empty(); }
         return selected(actor, selection(actor.player().get()));
+    }
+
+    /**
+     * Whether the actor may act on the NPC: the console, {@code animus.admin}, {@code animus.npc.others}, or its owner.
+     * Anyone else is told so in one line. A missing NPC passes, so the caller's own lookup reports it.
+     */
+    static boolean owned(CommandActor actor, Optional<NpcDefinition> npc) {
+        if (npc.isEmpty() || NpcOwnership.mayAct(actor.player(), actor::permitted, npc.get())) return true;
+        actor.tell(Palette.error(NpcOwnership.refusal(npc.get())));
+        return false;
     }
 
     /**
@@ -92,10 +108,11 @@ abstract class CommandGroup {
 
     /** Runs file work off the owner, then answers its lines on the actor's owner; a long reply goes behind [Details] for a player. */
     void files(CommandActor actor, Work work, Runnable after) {
+        Optional<ActingPlayer.Actor> acting = acting(actor);
         try {
             services.files().execute(() -> {
                 List<String> lines;
-                try { lines = work.run(); }
+                try { lines = ActingPlayer.call(acting, work::run); }
                 catch (IOException | RuntimeException failure) { lines = List.of(Palette.error(reason(failure))); }
                 List<String> result = lines;
                 if (!stopping()) actor.reply(() -> {
@@ -108,6 +125,13 @@ abstract class CommandGroup {
     }
 
     void files(CommandActor actor, Work work) { files(actor, work, () -> {}); }
+
+    /** The player a command acts for, with whether they are an admin and may act on others' NPCs, read on the actor's owner; empty for the console. */
+    static Optional<ActingPlayer.Actor> acting(CommandActor actor) {
+        return actor.player().map((UUID player) -> new ActingPlayer.Actor(player, NpcOwnership.admin(actor.player(), actor::permitted), NpcOwnership.others(actor.player(), actor::permitted)));
+    }
+
+
 
     /**
      * A reply of several lines. The console gets every line. A player gets up to {@link #PLAYER_LINES}; a longer reply

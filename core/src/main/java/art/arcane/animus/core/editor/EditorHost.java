@@ -63,6 +63,9 @@ public interface EditorHost {
     /** The lists for {@code GET /v1/lookups}, on any thread; a platform without them answers {@link Lookups#NONE}. */
     default Lookups lookups() { return Lookups.NONE; }
 
+    /** A player's last known name, online or not, for the owners {@code GET /v1/lookups} names; any thread. */
+    default Optional<String> playerName(UUID player) { return Optional.empty(); }
+
     /** The live capability registry the generated behavior schema describes. */
     List<Capabilities.Availability> capabilities();
 

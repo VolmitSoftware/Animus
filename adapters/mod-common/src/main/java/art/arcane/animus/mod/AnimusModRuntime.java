@@ -132,6 +132,11 @@ public final class AnimusModRuntime {
             environment = new RuntimeEnvironment(platform, MinecraftVersion.current(), data);
             next.runtime = new AnimusRuntime(environment, (Throwable failure) -> LOGGER.error("File cleanup failed", failure));
             next.runtime.start();
+            next.runtime.ownerPermissions(new art.arcane.animus.core.owner.SeenOwnerPermissions(
+                    (UUID player) -> Optional.ofNullable(server.getPlayerList().getPlayer(player)).map((net.minecraft.server.level.ServerPlayer online) ->
+                            (java.util.function.Predicate<String>) (String node) -> VanillaRuntimeHost.permitted(online.permissions(), node)),
+                    (UUID player, String node) -> ModOfflineAdmin.check(server, player, node), java.util.concurrent.ForkJoinPool.commonPool()));
+            next.runtime.playerNames((UUID player) -> Optional.ofNullable(server.getPlayerList().getPlayer(player)).map((net.minecraft.server.level.ServerPlayer online) -> online.getGameProfile().name()));
             next.ticks = new ModTicks(LOGGER::warn);
             Executor files = next.runtime.fileExecutor((Runnable task, MutationLane.EngineTaskEvent event, Throwable failure) -> {
                 if (event == MutationLane.EngineTaskEvent.FAILED) LOGGER.warn("File task failed", failure);

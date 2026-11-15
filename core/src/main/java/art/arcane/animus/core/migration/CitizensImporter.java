@@ -25,7 +25,7 @@ import java.util.*;
 
 /** Local, loss-preserving conversion. Conversion status describes data, never gameplay parity. */
 public final class CitizensImporter {
-    public static final int CONVERTER_VERSION = 22;
+    public static final int CONVERTER_VERSION = 23;
     /**
      * A staged or installed imported definition path: {@code <source prefix>-<source number>}. Citizens uses the
      * {@code citizens} prefix; module converters use theirs. The folder is the NPC group, empty for {@code npcs/} itself.
@@ -78,6 +78,28 @@ public final class CitizensImporter {
 
     /** The LibsDisguises disguises Citizens NPCs wore, which the preview gives the NPCs they belong to. */
     public CitizensImporter disguises(LibsDisguisesSaves.Result found) { disguises = Objects.requireNonNull(found); return this; }
+
+    private Map<String, UUID> players = Map.of();
+
+    /**
+     * The players this server knows, by name in any case, so an owner trait that names its player by name finds their
+     * UUID. Without them such an owner is kept for review.
+     */
+    public CitizensImporter players(Map<String, UUID> known) {
+        Map<String, UUID> lowered = new HashMap<>();
+        for (Map.Entry<String, UUID> player : known.entrySet()) lowered.put(player.getKey().toLowerCase(Locale.ROOT), player.getValue());
+        players = Map.copyOf(lowered);
+        return this;
+    }
+
+    /** Gives an owner trait that names its player the UUID {@code players} knows for that name. */
+    static void resolveOwner(JsonObject traits, Map<String, UUID> players) {
+        if (players.isEmpty() || !(traits.get("owner") instanceof JsonObject owner)) return;
+        if (owner.get("uuid") instanceof JsonElement uuid && uuid.isJsonPrimitive() && CitizensPresentation.canonical(uuid.getAsString())) return;
+        if (!(owner.get("owner") instanceof JsonElement named) || !named.isJsonPrimitive() || !named.getAsString().matches(CitizensPresentation.PLAYER_NAME)) return;
+        UUID found = players.get(named.getAsString().toLowerCase(Locale.ROOT));
+        if (found != null) owner.addProperty("uuid", found.toString());
+    }
 
     public Preview preview(Path source, Path destination, Map<String, String> worldMap) throws IOException { return preview(source, destination, worldMap, false); }
 
@@ -183,6 +205,7 @@ public final class CitizensImporter {
                     JsonArray worldRemaps = new JsonArray();
                     JsonObject reviewed = traits.deepCopy();
                     remapKnownLocations(reviewed, worldMap, worldRemaps);
+                    resolveOwner(reviewed, players);
                     JsonArray references = references(traits, mapping, reverseIds);
                     migration.add("references", references.deepCopy());
                     for (JsonElement reference : references) {

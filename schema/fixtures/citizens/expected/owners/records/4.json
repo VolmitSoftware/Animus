@@ -1,0 +1,16 @@
+{
+  "name": "Gate",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000404",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "world",
+      "x": 4,
+      "y": 64,
+      "z": 0
+    },
+    "owner": {
+      "owner": "server"
+    }
+  }
+}

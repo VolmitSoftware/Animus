@@ -4,6 +4,7 @@ import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.npc.GroupDocument;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
+import art.arcane.animus.core.owner.NpcOwnership;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.volmlib.util.director.annotations.Director;
 import art.arcane.volmlib.util.director.annotations.Param;
@@ -15,6 +16,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Predicate;
 
@@ -95,7 +97,9 @@ final class TraitGroupCommands extends CommandGroup {
         }
         if (!ids.isEmpty() && named.isEmpty()) { actor.tell(Palette.error(SELECTORS)); return; }
         NpcRepository repository = runtime().npcs();
-        Predicate<NpcDefinition> matches = selector(repository, folder, tag, named);
+        Optional<UUID> player = actor.player();
+        boolean others = NpcOwnership.others(player, actor::permitted);
+        Predicate<NpcDefinition> matches = selector(repository, folder, tag, named).and((NpcDefinition definition) -> others || definition.owner().equals(player));
         files(actor, () -> {
             String line = change(repository, group, matches, assign);
             if (!line.contains("; tx ")) return List.of(line);
@@ -104,7 +108,10 @@ final class TraitGroupCommands extends CommandGroup {
         });
     }
 
-    /** NPCs in exactly {@code folder}, with {@code tag} among their effective tags, or named in {@code ids}; one of them is set. */
+    /**
+     * NPCs in exactly {@code folder}, with {@code tag} among their effective tags, or named in {@code ids}; one of them is
+     * set. Without {@code animus.npc.others}, a player reaches only their own NPCs with {@code folder=} and {@code tag=}.
+     */
     static Predicate<NpcDefinition> selector(NpcRepository repository, String folder, String tag, Set<String> ids) {
         if (!folder.isEmpty()) return (NpcDefinition definition) -> definition.group().equals(folder);
         if (!tag.isEmpty()) return (NpcDefinition definition) -> repository.find(definition.id()).map((NpcDefinition effective) -> effective.tags().contains(tag)).orElse(false);

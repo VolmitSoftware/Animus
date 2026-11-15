@@ -799,6 +799,19 @@ class BuiltinCapabilitiesTest {
         assertEquals(Optional.empty(), platform.command.filledFor(), "no player, nothing to fill");
     }
 
+    @Test void anOperatorCommandRunsAsThePlayerMadeOperator() throws Exception {
+        start(Platform.PAPER, 5000, grants(List.of("town:greeter"), List.of()));
+        assertEquals("operator-needs-player", builtins.validate(key("command"), "{\"command\":\"time set day\",\"asOperator\":true}").getFirst().code(),
+                "an operator command is a player command");
+        assertTrue(builtins.validate(key("command"), "{\"command\":\"time set day\",\"as\":\"player\",\"asOperator\":true}").isEmpty());
+        Outcome<String> ran = action("command", "{\"command\":\"time set day\",\"as\":\"player\",\"asOperator\":true}", Optional.of(PLAYER), false, true, Optional.of("town:greeter"));
+        assertEquals(Outcome.Status.OK, ran.status(), ran.diagnostics().toString());
+        assertTrue(platform.command.operator(), "the platform is told to make the player an operator for it");
+        assertEquals(Optional.of(PLAYER), platform.command.player());
+        action("command", "{\"command\":\"warp docks\",\"as\":\"player\"}", Optional.of(PLAYER), false, true, Optional.of("town:greeter"));
+        assertFalse(platform.command.operator());
+    }
+
     @Test void rawTextGrantReachesThePlaceholderRule() throws Exception {
         BuiltinActionSettings defaults = BuiltinActionSettings.DEFAULT;
         start(Platform.PAPER, 5000, new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(),

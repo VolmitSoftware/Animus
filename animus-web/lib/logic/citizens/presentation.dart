@@ -88,6 +88,22 @@ JObject? _object(JElement? value) => value is JObject ? value : null;
 final RegExp _id = RegExp(r'^([a-z0-9_.-]+:)?[a-z0-9_./-]+$');
 String? _text(JElement? value) => value is JPrimitive ? value.asString : null;
 
+/// A Minecraft account name, as Citizens' owner trait saved it before it saved UUIDs.
+final RegExp citizensPlayerName = RegExp(r'^[A-Za-z0-9_]{1,16}$');
+
+/// `CitizensImporter.resolveOwner`: gives an owner trait that names its player the UUID [players] knows for that name.
+/// [players] is keyed by lowercase name.
+void resolveCitizensOwner(JObject traits, Map<String, String> players) {
+  final JElement? found = traits.get('owner');
+  if (players.isEmpty || found is! JObject) return;
+  final JElement? uuid = found.get('uuid');
+  if (uuid is JPrimitive && canonicalUuid(uuid.asString)) return;
+  final JElement? named = found.get('owner');
+  if (named is! JPrimitive || !citizensPlayerName.hasMatch(named.asString)) return;
+  final String? known = players[javaLower(named.asString)];
+  if (known != null) found.addString('uuid', known);
+}
+
 bool? _bool(JElement? value) {
   if (value is! JPrimitive) return null;
   if (value is JBool) return value.value;
@@ -742,14 +758,28 @@ class _Presentation {
     warnings.add('/traits/poses: default pose $wanted is not in the list; kept for review');
   }
 
+  /// Citizens' owner trait: `uuid` names the player; older saves name them in `owner` instead, where `SERVER` means no
+  /// player owns the NPC. A name becomes a UUID only when the import knew it ([resolveCitizensOwner]); otherwise it is
+  /// kept for review.
   void owner() {
     final JObject? owner = _object(traits.get('owner'));
-    if (owner == null || !owner.has('uuid')) return;
+    if (owner == null) return;
     final String? uuid = _text(owner.get('uuid'));
-    if (canonicalUuid(uuid)) {
-      fields.addString('owner', uuid!);
-      converted.add('/traits/owner/uuid');
-    } else {
+    final String? named = _text(owner.get('owner'));
+    if (canonicalUuid(uuid) || named != null && javaLower(named) == 'server' || canonicalUuid(named)) {
+      if (canonicalUuid(uuid)) {
+        fields.addString('owner', uuid!);
+      } else if (canonicalUuid(named)) {
+        fields.addString('owner', named!);
+      }
+      if (owner.has('uuid') && canonicalUuid(uuid)) converted.add('/traits/owner/uuid');
+      if (named != null) converted.add('/traits/owner/owner');
+      if (owner.has('uuid') && !canonicalUuid(uuid)) warnings.add('/traits/owner: no player UUID; kept for review');
+      return;
+    }
+    if (named != null && citizensPlayerName.hasMatch(named)) {
+      warnings.add('/traits/owner: player $named is not known on this server; kept for review');
+    } else if (owner.has('uuid') || named != null) {
       warnings.add('/traits/owner: no player UUID; kept for review');
     }
   }

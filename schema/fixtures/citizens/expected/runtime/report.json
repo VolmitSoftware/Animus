@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 22,
+  "converterVersion": 23,
   "fieldPathFormat": "json-pointer",
-  "importId": "82cf92aa50a79cc3bdd166f5f37dff82db9f9a4592b3900317a37a2a036c08f4",
+  "importId": "e6303ed6200e0877c5f6dc6eb7640bf07347585f1dc6bb3edd8317c5c18035b0",
   "sourceSha256": "b0f736e8596bac6f209b6870af200dbf3b3c407aa3546d8b8488937f280c5ad8",
   "worldMap": {
     "old_town": "town"
@@ -54,7 +54,6 @@
     "lookclose/enabled: this save only ever writes false, so NPCs without the field are converted with true (the server default that wrote the save); if that default was false, set enabled in animus:look-close on those NPCs",
     "citizens-0: /traits/waypoints/linear: 1 points in another world or without usable coordinates were left out",
     "citizens-2: /traits/lookclose/range: look ranges above 64 blocks became 64; lower it in animus:look-close if that is too far",
-    "citizens-3: /traits/commandtrait/commands/4/op: the command ran as an operator player; it now runs from the console",
     "citizens-3: /traits/commandtrait: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones",
     "citizens-3: /traits/commandtrait: commands stay denied until citizens:commands-3 is on the [behaviors.actions] commandBehaviors list in config.toml",
     "citizens-4: /traits/waypoints/provider: waypoint provider spiral is not supported; kept in citizens:review",
@@ -75,14 +74,14 @@
   },
   "documents": {
     "behaviors/citizens/waypoints-0.json": "7856c54667350b3805cb75906ac24c683cf59630d3017953e834aa97475cfb2a",
-    "npcs/town/citizens-0.json": "5d67c2f45b6854c751dc7ea66a0df03d1e61bf4c0d677001f2a21bb051527072",
-    "npcs/town/citizens-1.json": "d352ea9d84b43ac33a2fcc7a2eebd8121da343c323919416fbbbe3dc0788d2a1",
+    "npcs/town/citizens-0.json": "943a21f4dd94c9595d4f7a94fa607e05ae4401655a02503a6cc0c03d1a1cd4a7",
+    "npcs/town/citizens-1.json": "1f422407ca0199e99d59a3ed0f57d8bea6c046be97dfc075cc64b38d04a34154",
     "behaviors/citizens/text-2.json": "e553bc526b446cfb3332c9d0aa12e27327e75f75810417af3d636aed88b0afe0",
-    "npcs/town/citizens-2.json": "00cb499b634d562905f977ffbeef251fe121d5bc0137410118154adc263735a0",
+    "npcs/town/citizens-2.json": "65576a9b87fde47e818bb5c5eb2d4edbda48b2218ac8e4ecc582436bd81b02d8",
     "behaviors/citizens/text-3.json": "2a24f87b93f57b35abc321fc1cbe4c2787e403eda69a3e345b11667660b05b55",
-    "behaviors/citizens/commands-3.json": "3b733eb1d0e65517c2183b1357b5a7c17d645be249b23d7726c98396be275e5d",
-    "npcs/town/citizens-3.json": "8918d51257ba016faba82af9aa6c6cca60adc5efe3954240e4e4ffb8a8a0292e",
-    "npcs/town/citizens-4.json": "d2a902215caccb44851b01a681c3ab5a5ef77c2d23870a5f076bc3db84735a05",
-    "npcs/town/citizens-5.json": "20d50c517a60d1f9c49b4fe0b14fc19e39c1342a258658e33b4e143ce468271a"
+    "behaviors/citizens/commands-3.json": "bd2af4e10a39a225824a150ae80705161b8e0001752bdef4e90946f1f0f9075d",
+    "npcs/town/citizens-3.json": "34004af65f6ce222f0e71f6395145a81bbe0612d74d5923a30743dad419eed7a",
+    "npcs/town/citizens-4.json": "407a70fc851b5cb728ee8efd8018f243cde2d98672a8a6ce20d6b35da2b6ca2b",
+    "npcs/town/citizens-5.json": "96ae90c2cc74aa2f70cda87c7818b0d19f7ac5e5ce137b391d32ad60ae3d1d31"
   }
 }

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 22,
+  "converterVersion": 23,
   "fieldPathFormat": "json-pointer",
-  "importId": "f1de8d812683c11a05611c69d9a85d85ed50b682b726e0725ff736c85d8cdd13",
+  "importId": "81723c68c9d215e4ba4340d4c4bdfa9f96c21bf7a3c5077e3bcdd51f60a9c53c",
   "sourceSha256": "7de769520c087e1d1d2c3afb83635390ae59b8f998c228ba04b021bee21eaed9",
   "worldMap": {
     "old_town": "town"
@@ -65,8 +65,8 @@
   },
   "documents": {
     "skins/4a1b0632b36e16fe1428e667be6a90d0450a994aa86e24090d45e0ec81fd90fd.json": "4a1b0632b36e16fe1428e667be6a90d0450a994aa86e24090d45e0ec81fd90fd",
-    "npcs/town/citizens-3.json": "281bb70bf77492d00fb143e590af661244ff1a58245037785dabfff175b07b2a",
-    "npcs/town/citizens-4.json": "4fce3e51b6f2d566f88d7820e9f3e078f0987cfb8225f25b3b23ef5889a4eda5",
-    "npcs/town/citizens-5.json": "04b5c9d888c7cffddf2cd446bbcb438116641e82d0dc880536fb0079c8d14192"
+    "npcs/town/citizens-3.json": "41237ec9796d663368e5f278c8ca7a464f0ce75e3023f92648d1154b3eda0d45",
+    "npcs/town/citizens-4.json": "75e7f0956efb33e048e4b9e15dae2d9acad2237b3786be4741ce7a373298ec11",
+    "npcs/town/citizens-5.json": "6bb8cb0a19cd4b11cc327a3b5f3755979bffa67180aa1d15e1a3a490c89d5ee6"
   }
 }

@@ -128,6 +128,18 @@ public final class ModuleHost implements AutoCloseable {
     private <T> CompletionStage<Outcome<T>> valueCall(Entry entry,ValueWork<T> work){
         return invoke(entry,null,token->CompletableFuture.completedFuture(work.run(token)),Payload.VALUE);
     }
+    /** Refuses a call before it runs, with the reason for the log; for the rules of NPCs players own. */
+    @FunctionalInterface public interface CallGate{Optional<String> refused(NpcHandle npc,Key key,String argumentsJson,boolean privileged);}
+    private volatile CallGate gate=(npc,key,arguments,privileged)->Optional.empty();
+    private final Set<String> gateReported=java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+    public void connectGate(CallGate next){gate=Objects.requireNonNull(next);}
+    /** The gate's refusal as an unavailable outcome; each reason is logged once until 256 have been. */
+    private <T> Optional<InvocationHandle<T>> gated(NpcHandle npc,Key key,String argumentsJson,boolean privileged){
+        Optional<String> refused=gate.refused(npc,key,argumentsJson,privileged);
+        if(refused.isEmpty())return Optional.empty();
+        if(gateReported.size()<256&&gateReported.add(refused.get()))reports.accept(refused.get());
+        return Optional.of(completedHandle(Outcome.Status.UNAVAILABLE,art.arcane.animus.core.owner.OwnerGate.REFUSED));
+    }
     private volatile Consumer<String> reports=line->System.getLogger("Animus").log(System.Logger.Level.WARNING,line);
     /** Console lines about suspensions and resumes. Quick and nonblocking; it may run while the host is locked. */
     public void connectReports(Consumer<String> sink){reports=Objects.requireNonNull(sink);}
@@ -303,6 +315,8 @@ public final class ModuleHost implements AutoCloseable {
         if(registration.descriptor.privileged() && (preview || !privilegedGranted))return completedHandle(Outcome.Status.UNAVAILABLE,"privileged-capability-not-granted");
         Optional<String> refused=builtinRefusal(registration);
         if(refused.isPresent())return completedHandle(Outcome.Status.UNAVAILABLE,refused.get());
+        Optional<InvocationHandle<String>> owned=gated(npc,key,argumentsJson,registration.descriptor.privileged());
+        if(owned.isPresent())return owned.get();
         long configured=limits.deadlineNanos();
         long deadline=registration.owner.policy==null?configured:registration.owner.policy.deadlineMillis(key,argumentsJson).stream().map(millis->TimeUnit.MILLISECONDS.toNanos(millis)).findFirst().orElse(configured);
         return invokeHandle(registration.owner,registration.descriptor,token->registration.action.run(invocation(registration,npc,player,argumentsJson,preview,token,behavior)),Payload.JSON_OBJECT,sourceCurrent,deadline);
@@ -325,6 +339,8 @@ public final class ModuleHost implements AutoCloseable {
         if(registration.descriptor.privileged())return completedHandle(Outcome.Status.UNAVAILABLE,"privileged-condition-not-granted");
         Optional<String> refused=builtinRefusal(registration);
         if(refused.isPresent())return completedHandle(Outcome.Status.UNAVAILABLE,refused.get());
+        Optional<InvocationHandle<Boolean>> owned=gated(npc,key,argumentsJson,false);
+        if(owned.isPresent())return owned.get();
         return invokeHandle(registration.owner,registration.descriptor,token->registration.condition.test(invocation(registration,npc,player,argumentsJson,preview,token,behavior)),Payload.BOOLEAN,sourceCurrent);
     }
     private Invocation invocation(Registration registration,NpcHandle npc,Optional<UUID> player,String json,boolean preview,Cancellation token,Optional<String> behavior){

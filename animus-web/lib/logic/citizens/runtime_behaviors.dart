@@ -1061,11 +1061,11 @@ class _Runtime {
           run = node;
           if (note != null) warnings.add('$at/command: $note');
         case PlainLine():
-          if (op) warnings.add('$at/op: the command ran as an operator player; it now runs from the console');
           if (npc && player) warnings.add("$at/npc: the NPC's own player body ran the command; it now runs from the console, with the NPC's name for the player");
-          final bool asPlayer = player && !op && !npc;
+          final bool asPlayer = (player || op) && !npc;
           final JObject arguments = _arguments('command', text)..addString('as', asPlayer ? 'player' : 'console');
-          if (asPlayer && _lent.isNotEmpty) {
+          if (asPlayer && op) arguments.addBool('asOperator', true);
+          if (asPlayer && !op && _lent.isNotEmpty) {
             arguments.add('permissions', JArray(<JElement>[for (final String node in _lent) JString(node)]));
             if (_lentTicks > 0) arguments.addInt('permissionTicks', _lentTicks);
             _lentUsed = true;

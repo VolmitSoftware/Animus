@@ -288,6 +288,7 @@ void main() {
     expect(lookups.registries[RegistryKind.item], contains('diamond_sword'));
     expect(lookups.commands, contains('spawn'));
     expect(lookups.papi, contains('player'));
+    expect(lookups.owners, <String, String>{'00000000-0000-4000-8000-000000000001': 'Alex'});
   });
 
   test('terrain in a world the server has not loaded answers world-unloaded', () async {

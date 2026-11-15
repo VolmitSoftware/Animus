@@ -118,7 +118,10 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         ServerPlayer online = server.getPlayerList().getPlayer(player);
         return online == null ? Optional.empty() : Optional.of(online.getGameProfile().name());
     }
-    /** Mod servers have no placeholder plugin, so nothing is filled, and no permission system to lend nodes from. */
+    /**
+     * Mod servers have no placeholder plugin, so nothing is filled, and no permission system to lend nodes from. An
+     * operator command runs with the server's operator level for that one command.
+     */
     @Override public void runCommand(CommandRun run) {
         if (!run.permissions().isEmpty())
             throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "permissions-unsupported", "Mod servers cannot lend permissions to a command; only Paper, Spigot and Folia can");
@@ -127,6 +130,8 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         else {
             UUID target = run.player().filter(living.players()::online).orElseThrow(PlatformRefusals::offline);
             stack = living.players().owned(target).orElseThrow(PlatformRefusals::offline).createCommandSourceStack();
+            // The operator level lives only in this command's source; the operator list is never touched, so nothing can be left behind.
+            if (run.operator()) stack = stack.withPermission(stack.permissions().union(server.operatorUserPermissions()));
         }
         Commands commands = server.getCommands();
         String text = run.command().startsWith("/") ? run.command().substring(1) : run.command();

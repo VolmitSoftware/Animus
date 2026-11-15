@@ -13,6 +13,8 @@ import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
+import art.arcane.animus.core.owner.ActingPlayer;
+import art.arcane.animus.core.owner.NpcOwnership;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.SelectionPick;
 import art.arcane.animus.core.storage.DocumentStore;
@@ -36,10 +38,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /**
  * The {@code /animus} root: saved NPCs and selection, plus every command group. The same
@@ -165,9 +169,10 @@ public final class AnimusCommandTree extends CommandGroup {
     void list(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
         CommandActor actor = actor();
         Administration administration = administration();
+        boolean others = NpcOwnership.others(actor.player(), actor::permitted);
         try {
             services.files().execute(() -> {
-                List<String> rows = administration.rows();
+                List<String> rows = administration.rows((NpcDefinition definition) -> others || definition.owner().equals(actor.player()));
                 if (!stopping()) actor.reply(() -> listing(actor, "NPCs (" + rows.size() + ")", "/" + BuildIdentity.ID + " list", rows, page,
                         "No NPCs yet; /animus create <id> adds one where you stand", CommandGroup::inspectCommand));
             });
@@ -216,8 +221,12 @@ public final class AnimusCommandTree extends CommandGroup {
         String shown = name.isEmpty() ? id : name;
         float yaw = actor.facing().map(Coordinates.Facing::yaw).orElse(0f);
         Administration administration = administration();
+        OptionalInt limit = NpcOwnership.limit(actor.player(), actor::permitted, runtime().ownerSettings());
+        Supplier<Optional<String>> atLimit = () -> actor.player().flatMap((UUID player) -> NpcOwnership.full(runtime().npcs().all(), player, limit));
         try {
             services.files().execute(() -> {
+                Optional<String> refused = atLimit.get();
+                if (refused.isPresent()) { reply(actor, Palette.error(refused.get())); return; }
                 Administration.Creation creation;
                 try {
                     Administration.Creation plain = administration.creation(id, body, placement.world(), placement.point(), yaw, folder, shown, actor.player(), spawned);
@@ -226,7 +235,7 @@ public final class AnimusCommandTree extends CommandGroup {
                 catch (IOException | RuntimeException failure) { reply(actor, Palette.error(reason(failure))); return; }
                 String notes = look.map((NpcTemplates.Template chosen) -> chosen.notes().isEmpty() ? "" : "; " + String.join("; ", chosen.notes())).orElse("");
                 String extra = (look.isPresent() ? " from Mythic mob " + mythic : "") + notes;
-                if (!stopping()) actor.reply(() -> commit(actor, creation.definition(), creation.draft(), PermissionNodes.NPC_CREATE, "create", (String tx) -> {
+                if (!stopping()) actor.reply(() -> commit(actor, creation.definition(), creation.draft(), PermissionNodes.NPC_CREATE, "create", atLimit, (String tx) -> {
                     actor.player().ifPresent((UUID player) -> toolkit().ifPresent((Toolkit<?, ?> found) -> found.selectOnly(player, id)));
                     return made(actor.player().isPresent(), id, id, extra, spawned, tx);
                 }));
@@ -313,7 +322,14 @@ public final class AnimusCommandTree extends CommandGroup {
     void edit(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
               @Param(name = "patch", description = "A JSON merge patch: objects merge field by field, null removes; write patch={...} if it contains =") String patch) {
         CommandActor actor = actor();
+        if (namesOwner(patch) && !NpcOwnership.admin(actor.player(), actor::permitted)) { actor.tell(Palette.error(NpcOwnership.OWNER_REFUSAL)); return; }
         npc(actor, npc).ifPresent((String id) -> change(actor, id, Optional.of(patch)));
+    }
+
+    /** Whether a patch sets or removes {@code owner}; text that is not a patch is left to the edit to refuse. */
+    static boolean namesOwner(String patch) {
+        try { return Administration.patch(patch).has("owner"); }
+        catch (IOException notAPatch) { return false; }
     }
 
     @Director(description = "Copy an NPC under a new id, despawned")
@@ -321,8 +337,12 @@ public final class AnimusCommandTree extends CommandGroup {
     void clone(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
                @Param(name = "id", description = "The copy's id") String id) {
         CommandActor actor = actor();
+        OptionalInt limit = NpcOwnership.limit(actor.player(), actor::permitted, runtime().ownerSettings());
+        Optional<UUID> owner = limit.isPresent() ? actor.player() : Optional.empty();
         npc(actor, npc).ifPresent((String source) -> files(actor, () -> {
-            String line = administration().duplicate(source, id);
+            Optional<String> full = owner.flatMap((UUID player) -> NpcOwnership.full(runtime().npcs().all(), player, limit));
+            if (full.isPresent()) return List.of(Palette.error(full.get()));
+            String line = administration().duplicate(source, id, owner);
             living().refresh();
             return List.of(Palette.success(line + "; Next: /" + BuildIdentity.ID + " spawn " + id));
         }));
@@ -490,7 +510,7 @@ public final class AnimusCommandTree extends CommandGroup {
         UUID player = actor.player().orElseThrow();
         Optional<Toolkit<?, ?>> toolkit = toolkit();
         select(actor, living(), npc, (String typed) -> npc(actor, typed), (String id) -> runtime().npcs().find(id).isPresent(),
-                (String id) -> toolkit.ifPresent((Toolkit<?, ?> found) -> found.selectOnly(player, id)),
+                (String id) -> owned(actor, runtime().npcs().find(id)), (String id) -> toolkit.ifPresent((Toolkit<?, ?> found) -> found.selectOnly(player, id)),
                 () -> toolkit.ifPresent((Toolkit<?, ?> found) -> found.clear(player)));
     }
 
@@ -498,14 +518,14 @@ public final class AnimusCommandTree extends CommandGroup {
      * Selects {@code npc}, read by {@code named} as every command reads an NPC, or with none the NPC the player looks at or
      * stands nearest, and makes it glow for that player briefly. {@code chosen} makes it the toolkit's whole selection
      * too, so the wand and {@code @selected} agree; {@link #NONE} runs {@code cleared} instead, unless {@code saved} says
-     * an NPC has that id.
+     * an NPC has that id. {@code owned} refuses a looked-at NPC the player may not act on, as {@code named} does.
      */
     static void select(CommandActor actor, NpcRuntime<?, ?> living, String npc, java.util.function.Function<String, Optional<String>> named,
-                       Predicate<String> saved, java.util.function.Consumer<String> chosen, Runnable cleared) {
+                       Predicate<String> saved, Predicate<String> owned, java.util.function.Consumer<String> chosen, Runnable cleared) {
         if (npc.equalsIgnoreCase(NONE) && !saved.test(npc)) { cleared.run(); actor.tell(Palette.success("Selection cleared")); return; }
         UUID viewer = actor.player().orElseThrow();
-        Optional<String> picked = npc.isEmpty() ? living.pick(viewer) : named.apply(npc);
-        if (picked.isEmpty()) { if (npc.isEmpty()) actor.tell(Palette.error(NOTHING_IN_VIEW)); return; }
+        Optional<String> picked = npc.isEmpty() ? living.pick(viewer).filter(owned) : named.apply(npc);
+        if (picked.isEmpty()) { if (npc.isEmpty() && living.pick(viewer).isEmpty()) actor.tell(Palette.error(NOTHING_IN_VIEW)); return; }
         try { living.select(viewer, picked.get()); }
         catch (RuntimeException refused) { actor.tell(Palette.error(reason(refused) + "; /animus list shows ids")); return; }
         chosen.accept(picked.get());
@@ -596,6 +616,12 @@ public final class AnimusCommandTree extends CommandGroup {
      * lane once the draft is saved and words the reply.
      */
     private void commit(CommandActor actor, NpcDefinition candidate, NpcRepository.Draft draft, String node, String verb, java.util.function.Function<String, ChatLine> done) {
+        commit(actor, candidate, draft, node, verb, Optional::empty, done);
+    }
+
+    /** {@code refused} is asked on the file lane just before the write, for a rule that a write in between may break. */
+    private void commit(CommandActor actor, NpcDefinition candidate, NpcRepository.Draft draft, String node, String verb, Supplier<Optional<String>> refused,
+                        java.util.function.Function<String, ChatLine> done) {
         if (stopping() || !actor.permitted(node)) return;
         JsonElement spawned = draft.document().get("spawned");
         List<String> errors = spawned != null && spawned.isJsonPrimitive() && spawned.getAsBoolean() ? living().validateActivation(candidate) : List.of();
@@ -605,10 +631,13 @@ public final class AnimusCommandTree extends CommandGroup {
                     .details("All", errors).docs(DocsLink.ACTIVATION));
             return;
         }
+        Optional<ActingPlayer.Actor> acting = acting(actor);
         try {
             services.files().execute(() -> {
                 try {
-                    String tx = runtime().npcs().apply(draft);
+                    Optional<String> refusal = refused.get();
+                    if (refusal.isPresent()) { reply(actor, Palette.error(refusal.get())); return; }
+                    String tx = ActingPlayer.call(acting, () -> runtime().npcs().apply(draft));
                     living().refresh();
                     ChatLine line = done.apply(tx);
                     if (!stopping()) actor.reply(() -> { if (!stopping()) actor.rich(line); });

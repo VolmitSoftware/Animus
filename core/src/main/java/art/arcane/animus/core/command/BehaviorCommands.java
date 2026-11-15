@@ -231,6 +231,15 @@ public final class BehaviorCommands implements AutoCloseable {
     /** Ids for completion: loaded behaviors, NPC definitions and the executions running now. */
     public List<String> behaviorIds(){return catalogSnapshot().byId().keySet().stream().sorted().toList();}
     public List<String> executionIds(){BehaviorRuntime runtime=coordinator;return runtime==null?List.of():runtime.snapshot().executions().keySet().stream().map(UUID::toString).sorted().toList();}
+    /** The NPC an execution runs on, by id; empty when it is not running or this is not ready. */
+    public Optional<String> executionNpc(UUID execution){BehaviorRuntime runtime=coordinator;return runtime==null?Optional.empty():runtime.inspect(execution).map(BehaviorRuntime.Execution::npcId);}
+    /** The definition an id or UUID names, as the state commands read it; empty for a deleted NPC. */
+    public Optional<NpcDefinition> definition(String npc){
+        NpcDefinition named=repository.snapshot().get(npc);
+        if(named!=null)return Optional.of(named);
+        try{UUID uuid=UUID.fromString(npc);return repository.snapshot().values().stream().filter(definition->definition.uuid().equals(uuid)).findFirst();}
+        catch(IllegalArgumentException notAUuid){return Optional.empty();}
+    }
     /** A deleted NPC has no definition left; its stored state stays reachable through the UUID. */
     private UUID npcIdentity(String npc){
         NpcDefinition definition=repository.snapshot().get(npc);

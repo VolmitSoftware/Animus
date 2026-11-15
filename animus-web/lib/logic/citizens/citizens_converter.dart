@@ -31,7 +31,7 @@ import 'trader_builder.dart';
 export 'snake_yaml.dart' show CitizensImportException;
 
 /// Must equal `CitizensImporter.CONVERTER_VERSION`; the shared golden fixtures fail when they drift.
-const int citizensConverterVersion = 22;
+const int citizensConverterVersion = 23;
 const String _healthModule = 'animus:health';
 const String _scheduleModule = 'animus:schedule';
 
@@ -105,7 +105,10 @@ String decodeSaves(Uint8List bytes) {
 }
 
 /// `CitizensImporter.preview` without the file system. Throws [CitizensImportException] where Java throws `IOException`.
-CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
+/// [players] are the players the server knows, name to UUID, as `CitizensImporter.players` takes them; an owner trait
+/// that names an unknown player is kept for review.
+CitizensPreview convertCitizens(String original, Map<String, String> worldMap, {Map<String, String> players = const <String, String>{}}) {
+  final Map<String, String> known = <String, String>{for (final MapEntry<String, String> player in players.entries) javaLower(player.key): player.value};
   final List<String> worldKeys = worldMap.keys.toList()..sort();
   final JObject options = JObject();
   for (final String key in worldKeys) {
@@ -203,6 +206,7 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     final JArray worldRemaps = JArray();
     final JObject reviewed = traits.deepCopy();
     _remapKnownLocations(reviewed, worldMap, worldRemaps);
+    resolveCitizensOwner(reviewed, known);
     final JArray references = _references(traits, mapping, reverseIds);
     migration.add('references', references.deepCopy());
     for (final JElement reference in references.elements) {

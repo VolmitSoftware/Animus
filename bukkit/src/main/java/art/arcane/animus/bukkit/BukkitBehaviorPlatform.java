@@ -189,7 +189,7 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     }
 
     private boolean perform(Player player, CommandRun run, String command) {
-        return grants.perform(player, run.permissions(), run.permissionTicks(), (Player sender) -> sender.performCommand(command));
+        return grants.perform(player, run.permissions(), run.permissionTicks(), run.operator(), (Player sender) -> sender.performCommand(command));
     }
 
     @Override public String navigate(NpcHandle npc, Vec3 destination, MovementProfile.Mode mode, double speed) {

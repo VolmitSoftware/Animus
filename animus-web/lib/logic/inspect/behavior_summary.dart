@@ -99,7 +99,7 @@ String _action(JsonMap node, DocumentNames names) {
     'animus:advance-quest-state' => 'Advance quest ${_flagName(node)} by ${arguments.containsKey('by') ? argument('by') : '1'}',
     'animus:choices' => 'Ask: ${shown('prompt')}',
     'animus:navigate' => arguments['route'] != null ? 'Walk route ${document(DocumentKind.route, 'route')}' : 'Walk to ${argument('x')}, ${argument('y')}, ${argument('z')}',
-    'animus:command' => 'Run command /${argument('command')}',
+    'animus:command' => 'Run command /${argument('command')}${arguments['asOperator'] == true ? ' as operator' : ''}',
     'animus:give-item' => 'Give ${arguments.containsKey('amount') ? '${argument('amount')} ' : ''}${item('item')}',
     'animus:take-item' => 'Take ${arguments.containsKey('amount') ? '${argument('amount')} ' : ''}${item('item')}',
     'animus:open-gui' => 'Open GUI ${document(DocumentKind.inventory, 'gui')}',

@@ -103,7 +103,14 @@ final class NpcScreen<P, S> extends ToolScreen<P, S> {
                 lore(List.of("&7Despawned NPCs stay saved"), any(spawned ? "despawn" : "spawn")),
                 (GuiModel.Click click) -> ask(SPAWNED, (spawned ? "Despawns " : "Spawns ") + named(ids), count, false, () -> toolkit.spawned(viewer, ids, !spawned)));
         gated(COPY, PermissionNodes.NPC_CREATE, "minecraft:paper", "Copy", lore(List.of("&7Saves a despawned copy"), any("copy")), (GuiModel.Click click) -> ask(COPY, "Copies " + named(ids), count, false, () -> {
-            if (allows(PermissionNodes.NPC_CREATE)) toolkit.write(viewer, (ToolkitFiles files) -> files.copies(ids));
+            if (!allows(PermissionNodes.NPC_CREATE)) return;
+            java.util.OptionalInt limit = toolkit.limit(viewer.player());
+            Optional<java.util.UUID> owner = limit.isPresent() ? Optional.of(viewer.id()) : Optional.empty();
+            toolkit.write(viewer, (ToolkitFiles files) -> {
+                Optional<String> full = owner.flatMap((java.util.UUID player) -> art.arcane.animus.core.owner.NpcOwnership.full(toolkit.npcs().all(), player, limit, ids.size()));
+                if (full.isPresent()) throw new java.io.IOException(full.get());
+                return files.copies(ids, owner);
+            });
         }));
         if (!holds(PermissionNodes.NPC_DELETE)) denied(DELETE, "Delete", PermissionNodes.NPC_DELETE);
         else confirm(DELETE, "minecraft:lava_bucket", "Delete", "Deletes " + named(ids) + "; Undo in chat brings it back", count, true, () -> {

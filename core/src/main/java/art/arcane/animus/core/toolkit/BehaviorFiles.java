@@ -7,6 +7,9 @@ import art.arcane.animus.core.editor.EditorDocuments;
 import art.arcane.animus.core.npc.DefinitionBatch;
 import art.arcane.animus.core.npc.GroupDocument;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.owner.OwnerNeed;
+import art.arcane.animus.core.owner.OwnerNeeds;
+import art.arcane.animus.core.owner.OwnerWrites;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
@@ -38,7 +41,8 @@ final class BehaviorFiles {
      * One behavior file. {@code listed} counts the selected NPCs whose {@code behaviors} name it, {@code grouped} the
      * others that get it from a trait group; {@code misfit} says why it is no conversation, empty when it is one.
      */
-    record Behavior(String id, String path, Optional<String> pack, String triggers, int listed, int grouped, Optional<String> misfit) {}
+    /** {@code needs}: the nodes the behavior would need on an NPC a player owns (see {@link OwnerNeeds}). */
+    record Behavior(String id, String path, Optional<String> pack, String triggers, int listed, int grouped, Optional<String> misfit, Set<String> needs) {}
 
     /** A conversation as read, with the file's hash so the save refuses a file changed meanwhile. */
     record Loaded(String id, String path, String hash, JsonObject behavior, ConversationDocument conversation) {}
@@ -62,6 +66,7 @@ final class BehaviorFiles {
             }
         }
         List<Behavior> found = new ArrayList<>();
+        OwnerNeeds.Sources sources = OwnerWrites.sources(store, npcs, Set.of());
         for (EditorDocuments.Location location : new EditorDocuments(store, () -> 0).list(Set.of(DocumentKind.BEHAVIOR))) {
             JsonObject behavior;
             try { behavior = JsonDocuments.object(store.read(location.path())); }
@@ -70,8 +75,10 @@ final class BehaviorFiles {
                 case ConversationDocument.Fits fits -> Optional.empty();
                 case ConversationDocument.Misfit unfit -> Optional.of(unfit.reason());
             };
+            Set<String> needs = new java.util.TreeSet<>();
+            for (OwnerNeed need : OwnerNeeds.behavior(location.id(), behavior, Optional.empty(), sources)) needs.add(need.node());
             found.add(new Behavior(location.id(), location.path(), BehaviorPath.pack(location.path()), triggers(behavior),
-                    direct.getOrDefault(location.id(), List.of()).size(), (int) inherited.getOrDefault(location.id(), List.of()).stream().distinct().count(), misfit));
+                    direct.getOrDefault(location.id(), List.of()).size(), (int) inherited.getOrDefault(location.id(), List.of()).stream().distinct().count(), misfit, Set.copyOf(needs)));
         }
         found.sort((Behavior a, Behavior b) -> a.id().compareTo(b.id()));
         return found;

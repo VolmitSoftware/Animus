@@ -391,7 +391,7 @@
     {
       "id": "animus:command",
       "kind": "action",
-      "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name, and placeholders are filled for that player. A player command may hold permissions while it runs, and for permissionTicks after. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
+      "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name, and placeholders are filled for that player. A player command may hold permissions while it runs, and for permissionTicks after, or with asOperator run with the player made an operator for that one command. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
       "privileged": true,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -410,6 +410,10 @@
             "console",
             "player"
           ]
+        },
+        "asOperator": {
+          "type": "boolean",
+          "required": false
         },
         "player": {
           "type": "string",

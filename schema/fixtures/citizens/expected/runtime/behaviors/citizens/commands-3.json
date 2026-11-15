@@ -215,7 +215,8 @@
             "capability": "animus:command",
             "arguments": {
               "command": "heal {player_name}",
-              "as": "console"
+              "as": "player",
+              "asOperator": true
             }
           }
         },

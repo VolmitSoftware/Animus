@@ -111,6 +111,22 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
                         Optional<Discount> discount, Optional<MatchRule> match) {
         public Entry { needs = List.copyOf(needs); gives = List.copyOf(gives); commands = List.copyOf(commands); }
         public BigDecimal price(Instant now) { return discount.filter((Discount active) -> active.active(now)).map(Discount::price).orElse(price); }
+        /** A command entry, or any entry with a {@code commands} list. */
+        public boolean runsCommands() { return type == Type.COMMAND || !commands.isEmpty(); }
+        /** A buy at no price and no levels, now or during a discount, or a trade that asks for nothing. */
+        public boolean free() {
+            return switch (type) {
+                case BUY -> levels == 0 && (price.signum() == 0 || discount.map((Discount cut) -> cut.price().signum() == 0).orElse(false));
+                case TRADE -> needs.isEmpty();
+                default -> false;
+            };
+        }
+    }
+    /** Every entry of every page and grid. */
+    public List<Entry> entries() {
+        List<Entry> all = new java.util.ArrayList<>();
+        for (Page page : pages) for (Map<Integer, Entry> grid : page.grids().values()) all.addAll(grid.values());
+        return List.copyOf(all);
     }
     public record Page(String name, int rows, Optional<String> permission, Map<Mode, Map<Integer, Entry>> grids) {
         public Page {

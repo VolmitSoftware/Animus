@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000406",
+  "id": "citizens-6",
+  "group": "world",
+  "name": "Clock",
+  "type": "minecraft:player",
+  "spawned": true,
+  "migration": {
+    "importId": "617f6fe924b07ab1d3687756aa80382d3e7c2b9a8933e3e5801437e742fc2333",
+    "citizensId": 6,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 6,
+    "y": 64,
+    "z": 0,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "behaviors": [
+    "citizens:commands-6"
+  ],
+  "modules": {
+    "animus:skin": {
+      "fromName": true
+    },
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 6,
+        "y": 64,
+        "z": 0
+      },
+      "commandtrait": {
+        "commands": {
+          "0": {
+            "command": "time set day",
+            "hand": "RIGHT",
+            "player": true,
+            "op": true
+          }
+        }
+      }
+    }
+  }
+}

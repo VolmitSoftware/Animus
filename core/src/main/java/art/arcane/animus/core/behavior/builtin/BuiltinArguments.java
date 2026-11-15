@@ -103,7 +103,10 @@ final class BuiltinArguments {
         if (granted) for (JsonElement node : arguments.getAsJsonArray("permissions"))
             if (!node.getAsString().matches(art.arcane.animus.core.behavior.trigger.TriggerCompiler.PERMISSION))
                 problems.add(problem("$.permissions", "argument-syntax", "permissions are permission nodes such as essentials.warp"));
-        if ((granted || arguments.has("permissionTicks")) && !text(arguments, "as").orElse("console").equals("player"))
+        boolean player = text(arguments, "as").orElse("console").equals("player");
+        if (flag(arguments, "asOperator", false) && !player)
+            problems.add(problem("$.asOperator", "operator-needs-player", "asOperator makes the player an operator for the command; set as to player"));
+        if ((granted || arguments.has("permissionTicks")) && !player)
             problems.add(problem("$.permissions", "permissions-need-player", "permissions and permissionTicks are granted to the player; set as to player"));
         else if (arguments.has("permissionTicks") && !granted)
             problems.add(problem("$.permissionTicks", "permission-ticks-without-permissions", "permissionTicks applies only with permissions"));

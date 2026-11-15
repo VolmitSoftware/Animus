@@ -60,6 +60,9 @@ public final class AnimusRuntime implements AutoCloseable {
     private volatile art.arcane.animus.core.text.Placeholders placeholders = art.arcane.animus.core.text.Placeholders.NONE;
     private volatile art.arcane.animus.core.skin.SkinSigner skinSigner = art.arcane.animus.core.skin.SkinSigner.off("Skin signing is not running on this server");
     private final java.util.List<Consumer<PluginSettings>> settingsListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private volatile art.arcane.animus.core.owner.OwnerPermissions ownerPermissions = art.arcane.animus.core.owner.OwnerPermissions.NONE;
+    private volatile java.util.function.Supplier<Set<String>> privilegedCapabilities = Set::of;
+    private volatile java.util.function.Function<java.util.UUID, java.util.Optional<String>> playerNames = (java.util.UUID player) -> java.util.Optional.empty();
 
     public AnimusRuntime(RuntimeEnvironment environment) {
         this(environment, failure -> System.getLogger("Animus").log(System.Logger.Level.ERROR,
@@ -91,6 +94,9 @@ public final class AnimusRuntime implements AutoCloseable {
             sweepPreviews(opened);
             NpcRepository repository = new NpcRepository(opened);
             repository.loadForStartup();
+            art.arcane.animus.core.owner.OwnerWrites owned = new art.arcane.animus.core.owner.OwnerWrites(opened, repository, this::ownerPermissions, () -> privilegedCapabilities.get());
+            opened.check(owned);
+            repository.temporaryCheck(owned::temporary);
             BehaviorStateStore state = BehaviorStateStore.open(opened, loaded.behaviors().state());
             MutationLane lane = new MutationLane(loaded.files().maximumOperations(),
                     Duration.ofMillis(loaded.files().deliveryBudgetMillis()), this::closeStorage,
@@ -334,6 +340,20 @@ public final class AnimusRuntime implements AutoCloseable {
     public synchronized art.arcane.animus.core.config.PlaceholderSettings placeholderSettings() { return settings().placeholders(); }
     public synchronized art.arcane.animus.core.config.SkinSettings skinSettings() { return settings().skins(); }
     public synchronized art.arcane.animus.core.config.SeatSettings seatSettings() { return settings().seats(); }
+    public synchronized art.arcane.animus.core.config.OwnerSettings ownerSettings() { return settings().owners(); }
+
+    /** The permissions of the players who own NPCs, which every write of an owned NPC is checked against; none until the platform sets them. */
+    public art.arcane.animus.core.owner.OwnerPermissions ownerPermissions() { return ownerPermissions; }
+
+    public void ownerPermissions(art.arcane.animus.core.owner.OwnerPermissions permissions) { ownerPermissions = Objects.requireNonNull(permissions); }
+
+    /** A player's last known name, online or not, from the platform; empty when the server never saw them. Any thread. */
+    public java.util.Optional<String> playerName(java.util.UUID player) { return playerNames.apply(player); }
+
+    public void playerNames(java.util.function.Function<java.util.UUID, java.util.Optional<String>> names) { playerNames = Objects.requireNonNull(names); }
+
+    /** The capability keys the module registry marks privileged, for the owner check of NPC writes. */
+    public void privilegedCapabilities(java.util.function.Supplier<Set<String>> keys) { privilegedCapabilities = Objects.requireNonNull(keys); }
 
     /**
      * Replaces the running settings after a hotload of {@code config.toml}: the file lane takes its new limits here, then

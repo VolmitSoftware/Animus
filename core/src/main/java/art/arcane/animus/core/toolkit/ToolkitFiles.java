@@ -200,8 +200,11 @@ final class ToolkitFiles {
         return "Deleted " + gone + "; tx " + tx;
     }
 
-    /** Copies every listed NPC as a despawned {@code <id>-copy}, numbered when that id is taken. */
-    String copies(List<String> ids) throws IOException {
+    /**
+     * Copies every listed NPC as a despawned {@code <id>-copy}, numbered when that id is taken. {@code owner} owns the
+     * copies, as when a player copies for themselves; empty keeps each original's owner.
+     */
+    String copies(List<String> ids, Optional<UUID> owner) throws IOException {
         Set<String> taken = new HashSet<>();
         for (NpcDefinition definition : npcs.stored()) taken.add(definition.id());
         List<NpcDefinition> copies = new ArrayList<>();
@@ -213,6 +216,7 @@ final class ToolkitFiles {
             taken.add(copy);
             document.addProperty("id", copy);
             document.addProperty("uuid", UUID.randomUUID().toString());
+            owner.ifPresent((UUID player) -> document.addProperty("owner", player.toString()));
             document.addProperty("revision", 1);
             document.addProperty("spawned", false);
             document.remove("migration");

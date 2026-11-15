@@ -105,7 +105,7 @@ final class PropertyScreen<P, S> extends ToolScreen<P, S> {
                     (GuiModel.Click click) -> push(new NpcsScreen<>(toolkit, viewer, commands)));
             return;
         }
-        JsonObject document = document();
+        JsonObject document = document(), schema = offered(SCHEMA, this::holds);
         String first = ids.getFirst(), named = ToolkitFiles.named(toolkit.npcs(), List.of(first));
         boolean several = ids.size() > 1;
         List<String> header = new ArrayList<>(List.of("&7Changes " + (several ? "all " + ToolkitFiles.count(ids.size()) : first)));
@@ -118,12 +118,12 @@ final class PropertyScreen<P, S> extends ToolScreen<P, S> {
             List<String> lines = new ArrayList<>(List.of("&7" + section.detail()));
             if (several && PropertyFiles.identity(section.path())) lines.add("&eFirst only");
             button(section.slot(), section.icon(), title(section.name()), lore(lines, any("open")),
-                    (GuiModel.Click click) -> push(new FieldScreen<>(toolkit, viewer, commands, section.name() + " of " + named, section(SCHEMA, section, Optional.of(type(document()))), scope(), section.path())));
+                    (GuiModel.Click click) -> push(new FieldScreen<>(toolkit, viewer, commands, section.name() + " of " + named, section(schema, section, Optional.of(type(document()))), scope(), section.path())));
         }
         button(ATTRIBUTES, "minecraft:golden_apple", title("Attributes"), lore(List.of("&7Health, speed and other vanilla values"), any("open")),
                 (GuiModel.Click click) -> push(new AttributeScreen<>(toolkit, viewer, commands, "Attributes of " + named, scope())));
         button(MODULES, "minecraft:redstone", title("Modules"), lore(List.of("&7Turn features on or off, change them"), any("open")),
-                (GuiModel.Click click) -> push(new ModuleScreen<>(toolkit, viewer, commands, "Modules of " + named, modules(SCHEMA), scope())));
+                (GuiModel.Click click) -> push(new ModuleScreen<>(toolkit, viewer, commands, "Modules of " + named, modules(schema), scope())));
         List<String> id = new ArrayList<>(List.of("&7Names its file: a-z, 0-9, _ and -", FieldScreen.now(first, false)));
         if (several) id.add("&eFirst only");
         button(ID, "minecraft:name_tag", title("Id"), keyed(id, any("type a new id"), "id"), (GuiModel.Click click) -> rename(first));
@@ -165,6 +165,36 @@ final class PropertyScreen<P, S> extends ToolScreen<P, S> {
     }
 
     static JsonObject modules(JsonObject schema) { return schema.getAsJsonObject("properties").getAsJsonObject("modules"); }
+
+    /**
+     * The fields a player is offered. Only an admin changes who owns an NPC; the rest of what an owned NPC may do only
+     * with an {@code animus.owned.*} node shows only to a player holding that node. An admin holds every one.
+     */
+    static JsonObject offered(JsonObject schema, java.util.function.Predicate<String> holds) {
+        JsonObject copy = schema.deepCopy();
+        JsonObject properties = copy.getAsJsonObject("properties");
+        if (!holds.test(PermissionNodes.ADMIN)) properties.remove("owner");
+        if (!holds.test(PermissionNodes.OWNED_SERVER)) properties.remove(art.arcane.animus.core.npc.NpcDefinition.CLICK_REDIRECT);
+        JsonObject modules = properties.getAsJsonObject("modules").getAsJsonObject("properties");
+        if (!holds.test(PermissionNodes.OWNED_COMMANDS)) {
+            modules.remove(art.arcane.animus.core.integration.MythicBinding.MODULE);
+            child(modules, art.arcane.animus.core.schedule.ScheduleSettings.MODULE, "locations").map((JsonObject locations) -> locations.getAsJsonObject("items"))
+                    .ifPresent((JsonObject location) -> location.getAsJsonObject("properties").remove("commands"));
+        }
+        if (!holds.test(PermissionNodes.OWNED_ITEMS))
+            child(modules, art.arcane.animus.core.combat.HealthSettings.MODULE, "death").ifPresent((JsonObject death) -> {
+                JsonObject fields = death.getAsJsonObject("properties");
+                for (String drop : List.of("drops", "experience", "dropEquipment")) fields.remove(drop);
+            });
+        return copy;
+    }
+
+    /** {@code modules[module].properties[field]}, when the schema has it. */
+    private static Optional<JsonObject> child(JsonObject modules, String module, String field) {
+        if (!(modules.get(module) instanceof JsonObject found) || !(found.get("properties") instanceof JsonObject fields) || !(fields.get(field) instanceof JsonObject child))
+            return Optional.empty();
+        return Optional.of(child);
+    }
 
     /**
      * Every leaf field path of {@code schema} these screens reach, in the parity test's notation: {@code a.b} for fields,

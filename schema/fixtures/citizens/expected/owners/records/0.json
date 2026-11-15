@@ -1,0 +1,17 @@
+{
+  "name": "Stall",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000400",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "world",
+      "x": 0,
+      "y": 64,
+      "z": 0
+    },
+    "owner": {
+      "owner": "Alex",
+      "uuid": "0000000a-0000-4000-8000-0000000000a1"
+    }
+  }
+}

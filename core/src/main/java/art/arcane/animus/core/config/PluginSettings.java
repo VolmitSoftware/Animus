@@ -22,7 +22,7 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
                              FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat, BuildSettings builds,
                              ShopSettings shops, EditorRelaySettings relay, EditorSettings editor, RigSettings rigs,
                              NavigationSettings navigation, HotloadSettings hotload, RecordingSettings recordings,
-                             PlaceholderSettings placeholders, SkinSettings skins, SeatSettings seats) {
+                             PlaceholderSettings placeholders, SkinSettings skins, SeatSettings seats, OwnerSettings owners) {
     /** As {@link #load(DocumentStore, Consumer)}, dropping the warnings; for tools and tests. */
     public static PluginSettings load(DocumentStore store) throws IOException { return load(store, (String ignored) -> {}); }
 
@@ -74,6 +74,7 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
         document.add("placeholders", gson.toJsonTree(PlaceholderSettings.DEFAULT));
         document.add("skins", gson.toJsonTree(SkinSettings.DEFAULT));
         document.add("seats", gson.toJsonTree(SeatSettings.DEFAULT));
+        document.add("owners", gson.toJsonTree(OwnerSettings.DEFAULT));
         return document;
     }
 
@@ -86,7 +87,7 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
             Map.entry("editor", "Web editor listener, relay and notices"), Map.entry("rigs", "Rigs and animations"), Map.entry("navigation", "Route planning"),
             Map.entry("hotload", "Live reload of hand edits"), Map.entry("recordings", "Recordings and ghost replays"),
             Map.entry("placeholders", "PlaceholderAPI refresh"), Map.entry("skins", "Skin signing through MineSkin and skins that follow a player"),
-            Map.entry("seats", "Players sitting on NPCs"));
+            Map.entry("seats", "Players sitting on NPCs"), Map.entry("owners", "NPCs players make and own"));
     /** Notes above single keys and sub-tables that a table note does not explain. */
     private static final Map<String, String> NOTES = Map.ofEntries(
             Map.entry("files.backupsKept", "Rollback receipts kept regardless of age. Each edit keeps about two small files until both limits pass"),
@@ -191,8 +192,9 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
             SeatSettings d = SeatSettings.DEFAULT;
             return new SeatSettings(bool(seats, "defaultEnabled", d.defaultEnabled()), integer(seats, "maximum", d.maximum()), bool(seats, "followGSit", d.followGSit()));
         });
+        OwnerSettings ownerSettings = section(path, lines, "owners", () -> new OwnerSettings(integer(table(root, "owners"), "defaultLimit", OwnerSettings.DEFAULT.defaultLimit())));
         return new PluginSettings(proof, splash, metrics, npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings,
-                relaySettings, editorSettings, rigSettings, navigationSettings, hotloadSettings, recordingSettings, placeholderSettings, skinSettings, seatSettings);
+                relaySettings, editorSettings, rigSettings, navigationSettings, hotloadSettings, recordingSettings, placeholderSettings, skinSettings, seatSettings, ownerSettings);
     }
 
     /** One table's reader; its range and type errors become one line naming the file, the line, the table and the key. */

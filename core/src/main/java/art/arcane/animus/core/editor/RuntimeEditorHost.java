@@ -59,6 +59,7 @@ public final class RuntimeEditorHost<P> implements EditorHost {
     @Override public art.arcane.animus.core.skin.SkinSigner skinSigner() { return parts.runtime().skinSigner(); }
 
     @Override public Lookups lookups() { return parts.lookups().get(); }
+    @Override public Optional<String> playerName(UUID player) { return parts.runtime().playerName(player); }
 
     @Override public List<Map.Entry<String, String>> modules() {
         if (parts.extensions() == null) return List.of();

@@ -45,8 +45,25 @@ class SelectCommandTest {
         return Optional.empty();
     }
 
+    /** The NPCs the player may not act on; the check tells them so, as {@link CommandGroup#owned} does. */
+    private final List<String> foreign = new ArrayList<>();
+
     private void select(Player player, Picking living, String npc) {
-        AnimusCommandTree.select(player, living, npc, (String typed) -> named(player, typed), saved::contains, toolkit::add, () -> cleared++);
+        AnimusCommandTree.select(player, living, npc, (String typed) -> named(player, typed), saved::contains, (String id) -> {
+            if (!foreign.contains(id)) return true;
+            player.tell(art.arcane.animus.core.text.Palette.error(id + " is not yours; you can change only NPCs you own"));
+            return false;
+        }, toolkit::add, () -> cleared++);
+    }
+
+    @Test void aLookedAtNpcThePlayerDoesNotOwnIsNotSelected() {
+        Picking living = new Picking(Optional.of("guard"));
+        Player player = new Player();
+        foreign.add("guard");
+        select(player, living, "");
+        assertEquals(List.of(), living.selected);
+        assertEquals(List.of(), toolkit);
+        assertEquals("[Animus]: guard is not yours; you can change only NPCs you own", player.lines.getLast(), "one plain line, not 'nothing in view'");
     }
 
     @Test void withoutAnIdThePickedNpcIsSelectedAndGlows() {

@@ -384,8 +384,8 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                                 + "," + choice("style", "bold", "italic", "underlined", "plain"), required("id", "text")) + "}",
                         required("id", "prompt", "options")),
                 BuiltinArguments::checkChoices, this::presentChoices);
-        action("command", Effect.PRIVILEGED, "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name, and placeholders are filled for that player. A player command may hold permissions while it runs, and for permissionTicks after. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
-                schema(string("command", 1024) + "," + choice("as", "console", "player") + "," + PLAYER + "," + texts("permissions", 1, MAXIMUM_COMMAND_PERMISSIONS, 128)
+        action("command", Effect.PRIVILEGED, "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name, and placeholders are filled for that player. A player command may hold permissions while it runs, and for permissionTicks after, or with asOperator run with the player made an operator for that one command. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
+                schema(string("command", 1024) + "," + choice("as", "console", "player") + "," + bool("asOperator") + "," + PLAYER + "," + texts("permissions", 1, MAXIMUM_COMMAND_PERMISSIONS, 128)
                         + "," + integer("permissionTicks", 0, MAXIMUM_PERMISSION_TICKS), required("command")),
                 BuiltinArguments::checkCommand, this::runCommand);
         action("navigate", Effect.WORLD, "Starts a route to a position in the NPC's world, or follows a reusable route. Completes when requested, or on arrival with wait.",
@@ -819,10 +819,11 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         Optional<UUID> named = identified.contains(PLAYER_NAME_TOKEN) ? Optional.of(target(call)) : Optional.empty();
         Supplier<String> work = () -> {
             String command = withPlayerName(identified, named.map(this::commandSafeName));
-            log.accept("Behavior command: behavior=" + behavior.get() + " npc=" + call.npc().uuid() + " as=" + source.name().toLowerCase(Locale.ROOT)
+            boolean operator = flag(call.arguments, "asOperator", false);
+            log.accept("Behavior command: behavior=" + behavior.get() + " npc=" + call.npc().uuid() + " as=" + (operator ? "operator" : source.name().toLowerCase(Locale.ROOT))
                     + player.map(id -> " player=" + id).orElse("") + (permissions.isEmpty() ? "" : " permissions=" + String.join(",", permissions))
                     + " command=" + command.substring(0, Math.min(command.length(), MAXIMUM_LOGGED_COMMAND)));
-            platform.runCommand(new BehaviorPlatform.CommandRun(source, player, command, filledFor, rawText, permissions, permissionTicks));
+            platform.runCommand(new BehaviorPlatform.CommandRun(source, player, command, filledFor, rawText, permissions, permissionTicks, operator));
             return "{}";
         };
         if (!server(call)) return onOwner(call, work);
