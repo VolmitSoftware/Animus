@@ -6,9 +6,10 @@ public record TriggerSettings(boolean enabled, int eventQueue, int eventsPerTick
                               int concurrentPerNpc, int concurrentPerTrigger, int defaultCooldownTicks, int npcCooldownTicks,
                               int maximumBindings, int maximumTimers, int minimumTimerTicks, int maximumProximityRadius,
                               int proximityIntervalTicks, int proximityViewersPerTick, int proximityCandidates,
-                              int proximityTrackedPerViewer, int playerCooldownTicks) {
+                              int proximityTrackedPerViewer, int playerCooldownTicks, int entityIntervalTicks, int entityScansPerTick,
+                              int entityCandidates, int maximumEntityRadius, int entityTrackedPerNpc, int projectilesFollowed) {
     public static final TriggerSettings DEFAULT = new TriggerSettings(true, 256, 32, 8, 128, 4, 2, 100, 32, 2, 1, 20, 0,
-            4096, 1024, 20, 32, 5, 16, 32, 64, 20);
+            4096, 1024, 20, 32, 5, 16, 32, 64, 20, 5, 16, 32, 16, 64, 256);
 
     public TriggerSettings {
         bound("eventQueue", eventQueue, 1, 4096);
@@ -32,6 +33,12 @@ public record TriggerSettings(boolean enabled, int eventQueue, int eventsPerTick
         bound("proximityCandidates", proximityCandidates, 1, 1024);
         bound("proximityTrackedPerViewer", proximityTrackedPerViewer, 1, 1024);
         bound("playerCooldownTicks", playerCooldownTicks, 0, 72000);
+        bound("entityIntervalTicks", entityIntervalTicks, 1, 200);
+        bound("entityScansPerTick", entityScansPerTick, 1, 256);
+        bound("entityCandidates", entityCandidates, 1, 256);
+        bound("maximumEntityRadius", maximumEntityRadius, 1, 32);
+        bound("entityTrackedPerNpc", entityTrackedPerNpc, 1, 1024);
+        bound("projectilesFollowed", projectilesFollowed, 1, 2048);
     }
     private static void bound(String field, int value, int minimum, int maximum) {
         if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum + ", not " + value);

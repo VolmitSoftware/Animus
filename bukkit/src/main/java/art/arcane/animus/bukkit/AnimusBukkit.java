@@ -123,10 +123,12 @@ final class AnimusBukkit {
     private FoliaStationaryProofService foliaProof;
     private NpcRuntime<Player, ItemStack> living;
     private RuntimeCombatService combat;
+    private art.arcane.animus.bukkit.sensing.NpcSensing sensing;
     private BuildService<Player, ItemStack> builds;
     private ExtensionRuntime extensions;
     private volatile BehaviorCommands behaviors;
     private BuiltinCapabilities builtins;
+    private CommandGrants commandGrants;
     private volatile AnimusDirector director;
     private BukkitScreens screens;
     private BukkitToolkit toolkit;
@@ -255,8 +257,11 @@ final class AnimusBukkit {
             quests.start(ownerTicks);
             startBuilds(mainThread, living instanceof RegionNpcRuntime regionized ? regionized : null, regions);
             BukkitOwners scheduling = new BukkitOwners(host, regions);
+            commandGrants = new CommandGrants(host, scheduling::later);
+            host.getServer().getPluginManager().registerEvents(commandGrants, host);
             builtins = new BuiltinCapabilities(new BukkitBehaviorPlatform(host, living, combat, builds, this::buildsRefusal,
-                    (Runnable tick) -> ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, tick)), () -> guis, scheduling, mainThread, runtime.placeholders(), () -> ShopService.economy(runtime.shopSettings(), vault)),
+                    (Runnable tick) -> ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, tick)), () -> guis, scheduling, mainThread, runtime.placeholders(),
+                    () -> ShopService.economy(runtime.shopSettings(), vault), commandGrants),
                     runtime.behaviorState(), this::publishChoice,
                     runtime.behaviorSettings().actions(), message -> host.getLogger().info(message));
             builtins.quests(questService);
@@ -297,6 +302,19 @@ final class AnimusBukkit {
             TriggerDispatcher triggers = behaviors.triggers();
             ServerTriggerDispatcher servers = behaviors.servers();
             if (triggers != null) triggerTicks = ownerTicks.apply(new art.arcane.animus.core.behavior.trigger.TriggerLink(triggers, servers, living, (String message) -> host.getLogger().info(message)));
+            Supplier<TriggerDispatcher> sensed = () -> { BehaviorCommands current = behaviors; return current == null ? null : current.triggers(); };
+            AnimusRuntime npcs = runtime;
+            RuntimeCombatService projectiles = combat;
+            sensing = new art.arcane.animus.bukkit.sensing.NpcSensing(host, living, sensed, () -> npcs.npcs().snapshot(), ownerTicks, regions, projectiles::stops, projectiles::standIn);
+            sensing.start();
+            projectiles.strikes(sensing::struck);
+            NpcRuntime<Player, ItemStack> speakers = living;
+            builtins.speech((NpcHandle speaker, String plain) -> {
+                TriggerDispatcher current = sensed.get();
+                if (current == null) return;
+                speakers.active(speaker.uuid()).ifPresent((NpcRuntime.ActiveNpc active) -> current.spoke(speaker.uuid(), active.id(), active.state().position(), plain,
+                        (UUID listener) -> speakers.state(listener).map(VirtualNpcState.Snapshot::position)));
+            });
             Function<UUID, Optional<VirtualNpcState.Snapshot>> states = owners::state;
             AnimusRuntime definitions = runtime;
             SnapshotFacts facts = new SnapshotFacts(SnapshotFacts.npcs(() -> definitions.npcs().snapshot(), states));
@@ -379,8 +397,10 @@ final class AnimusBukkit {
         }
         if (questPlugins != null) { questPlugins.close(); questPlugins = null; }
         if (serverBehaviors != null) { serverBehaviors.close(); serverBehaviors = null; }
+        if (sensing != null) { sensing.close(); sensing = null; }
         if (behaviors != null) behaviors.close();
         if (builtins != null) builtins.close();
+        if (commandGrants != null) { commandGrants.close(); commandGrants = null; }
         for (AutoCloseable ticks : java.util.Arrays.asList(hireTicks, scheduleTicks, screenTicks, triggerTicks, metricsTicks, bossBarTicks)) {
             if (ticks == null) continue;
             try { ticks.close(); }

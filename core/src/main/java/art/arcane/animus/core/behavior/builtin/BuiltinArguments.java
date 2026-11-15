@@ -99,6 +99,22 @@ final class BuiltinArguments {
         checkPlayer(arguments, problems);
         if (arguments.get("command").getAsString().startsWith("/"))
             problems.add(problem("$.command", "command-leading-slash", "Write the command without a leading slash"));
+        boolean granted = arguments.has("permissions");
+        if (granted) for (JsonElement node : arguments.getAsJsonArray("permissions"))
+            if (!node.getAsString().matches(art.arcane.animus.core.behavior.trigger.TriggerCompiler.PERMISSION))
+                problems.add(problem("$.permissions", "argument-syntax", "permissions are permission nodes such as essentials.warp"));
+        if ((granted || arguments.has("permissionTicks")) && !text(arguments, "as").orElse("console").equals("player"))
+            problems.add(problem("$.permissions", "permissions-need-player", "permissions and permissionTicks are granted to the player; set as to player"));
+        else if (arguments.has("permissionTicks") && !granted)
+            problems.add(problem("$.permissionTicks", "permission-ticks-without-permissions", "permissionTicks applies only with permissions"));
+    }
+
+    /** The permission nodes an {@code animus:command} grants its player, empty without any. */
+    static List<String> permissions(JsonObject arguments) {
+        if (!arguments.has("permissions")) return List.of();
+        List<String> nodes = new java.util.ArrayList<>();
+        for (JsonElement node : arguments.getAsJsonArray("permissions")) nodes.add(node.getAsString());
+        return List.copyOf(nodes);
     }
 
     static void checkNavigate(JsonObject arguments, List<Diagnostic> problems) {

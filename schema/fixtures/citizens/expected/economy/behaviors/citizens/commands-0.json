@@ -145,67 +145,61 @@
                 },
                 {
                   "type": "condition",
-                  "capability": "animus:commands-allowed",
-                  "arguments": {},
+                  "capability": "animus:flag-state",
+                  "arguments": {
+                    "name": "commands-0-1-global-cooldown",
+                    "scope": "npc"
+                  },
                   "then": {
-                    "type": "condition",
-                    "capability": "animus:flag-state",
+                    "type": "action",
+                    "capability": "animus:message",
                     "arguments": {
-                      "name": "commands-0-1-global-cooldown",
-                      "scope": "npc"
+                      "text": "Please wait before using this again."
+                    }
+                  },
+                  "else": {
+                    "type": "condition",
+                    "capability": "animus:quest-state",
+                    "arguments": {
+                      "name": "commands-0-1-global-uses",
+                      "scope": "npc",
+                      "atLeast": 100
                     },
                     "then": {
                       "type": "action",
                       "capability": "animus:message",
                       "arguments": {
-                        "text": "Please wait before using this again."
+                        "text": "You have reached the maximum number of uses (100)."
                       }
                     },
                     "else": {
-                      "type": "condition",
-                      "capability": "animus:quest-state",
-                      "arguments": {
-                        "name": "commands-0-1-global-uses",
-                        "scope": "npc",
-                        "atLeast": 100
-                      },
-                      "then": {
-                        "type": "action",
-                        "capability": "animus:message",
-                        "arguments": {
-                          "text": "You have reached the maximum number of uses (100)."
-                        }
-                      },
-                      "else": {
-                        "type": "sequence",
-                        "steps": [
-                          {
-                            "type": "action",
-                            "capability": "animus:set-flag",
-                            "arguments": {
-                              "name": "commands-0-1-global-cooldown",
-                              "scope": "npc",
-                              "expireSeconds": 600
-                            }
-                          },
-                          {
-                            "type": "action",
-                            "capability": "animus:advance-quest-state",
-                            "arguments": {
-                              "name": "commands-0-1-global-uses",
-                              "scope": "npc"
-                            }
-                          },
-                          {
-                            "type": "action",
-                            "capability": "animus:command",
-                            "arguments": {
-                              "command": "say Toll Keeper paid the toll",
-                              "as": "console"
-                            }
+                      "type": "sequence",
+                      "steps": [
+                        {
+                          "type": "action",
+                          "capability": "animus:set-flag",
+                          "arguments": {
+                            "name": "commands-0-1-global-cooldown",
+                            "scope": "npc",
+                            "expireSeconds": 600
                           }
-                        ]
-                      }
+                        },
+                        {
+                          "type": "action",
+                          "capability": "animus:advance-quest-state",
+                          "arguments": {
+                            "name": "commands-0-1-global-uses",
+                            "scope": "npc"
+                          }
+                        },
+                        {
+                          "type": "action",
+                          "capability": "animus:say",
+                          "arguments": {
+                            "text": "Toll Keeper paid the toll"
+                          }
+                        }
+                      ]
                     }
                   }
                 }
@@ -224,98 +218,87 @@
     },
     "left": {
       "type": "condition",
-      "capability": "animus:commands-allowed",
-      "arguments": {},
+      "capability": "animus:can-afford",
+      "arguments": {
+        "levels": 2
+      },
       "then": {
-        "type": "condition",
-        "capability": "animus:can-afford",
-        "arguments": {
-          "levels": 2
-        },
-        "then": {
-          "type": "sequence",
-          "steps": [
-            {
+        "type": "sequence",
+        "steps": [
+          {
+            "type": "action",
+            "capability": "animus:charge",
+            "arguments": {
+              "levels": 2
+            }
+          },
+          {
+            "type": "condition",
+            "capability": "animus:flag-state",
+            "arguments": {
+              "name": "commands-0-1-global-cooldown",
+              "scope": "npc"
+            },
+            "then": {
               "type": "action",
-              "capability": "animus:charge",
+              "capability": "animus:message",
               "arguments": {
-                "levels": 2
+                "text": "Please wait before using this again."
               }
             },
-            {
+            "else": {
               "type": "condition",
-              "capability": "animus:commands-allowed",
-              "arguments": {},
+              "capability": "animus:quest-state",
+              "arguments": {
+                "name": "commands-0-1-global-uses",
+                "scope": "npc",
+                "atLeast": 100
+              },
               "then": {
-                "type": "condition",
-                "capability": "animus:flag-state",
+                "type": "action",
+                "capability": "animus:message",
                 "arguments": {
-                  "name": "commands-0-1-global-cooldown",
-                  "scope": "npc"
-                },
-                "then": {
-                  "type": "action",
-                  "capability": "animus:message",
-                  "arguments": {
-                    "text": "Please wait before using this again."
-                  }
-                },
-                "else": {
-                  "type": "condition",
-                  "capability": "animus:quest-state",
-                  "arguments": {
-                    "name": "commands-0-1-global-uses",
-                    "scope": "npc",
-                    "atLeast": 100
-                  },
-                  "then": {
+                  "text": "You have reached the maximum number of uses (100)."
+                }
+              },
+              "else": {
+                "type": "sequence",
+                "steps": [
+                  {
                     "type": "action",
-                    "capability": "animus:message",
+                    "capability": "animus:set-flag",
                     "arguments": {
-                      "text": "You have reached the maximum number of uses (100)."
+                      "name": "commands-0-1-global-cooldown",
+                      "scope": "npc",
+                      "expireSeconds": 600
                     }
                   },
-                  "else": {
-                    "type": "sequence",
-                    "steps": [
-                      {
-                        "type": "action",
-                        "capability": "animus:set-flag",
-                        "arguments": {
-                          "name": "commands-0-1-global-cooldown",
-                          "scope": "npc",
-                          "expireSeconds": 600
-                        }
-                      },
-                      {
-                        "type": "action",
-                        "capability": "animus:advance-quest-state",
-                        "arguments": {
-                          "name": "commands-0-1-global-uses",
-                          "scope": "npc"
-                        }
-                      },
-                      {
-                        "type": "action",
-                        "capability": "animus:command",
-                        "arguments": {
-                          "command": "say Toll Keeper paid the toll",
-                          "as": "console"
-                        }
-                      }
-                    ]
+                  {
+                    "type": "action",
+                    "capability": "animus:advance-quest-state",
+                    "arguments": {
+                      "name": "commands-0-1-global-uses",
+                      "scope": "npc"
+                    }
+                  },
+                  {
+                    "type": "action",
+                    "capability": "animus:say",
+                    "arguments": {
+                      "text": "Toll Keeper paid the toll"
+                    }
                   }
-                }
+                ]
               }
             }
-          ]
-        },
-        "else": {
-          "type": "action",
-          "capability": "animus:message",
-          "arguments": {
-            "text": "You need at least 2 experience."
           }
+        ]
+      },
+      "else": {
+        "type": "action",
+        "capability": "animus:message",
+        "arguments": {
+          "text": "You need at least 2 experience."
         }
       }
     }

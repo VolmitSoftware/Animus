@@ -52,7 +52,7 @@ class ExtensionRuntimeBuiltinsTest {
         @Override public int say(NpcHandle npc, Audience audience, String text) { throw new AssertionError(); }
         @Override public int presentChoices(NpcHandle npc, UUID player, String prompt, String token, List<ChoiceOption> options) { throw new AssertionError(); }
         @Override public Optional<String> playerName(UUID player) { throw new AssertionError(); }
-        @Override public void runCommand(CommandSource source, Optional<UUID> player, String command) { throw new AssertionError(); }
+        @Override public void runCommand(CommandRun run) { throw new AssertionError(); }
         @Override public String navigate(NpcHandle npc, Vec3 destination, MovementProfile.Mode mode, double speed) { throw new AssertionError(); }
         @Override public void followRoute(NpcHandle npc, String route) { throw new AssertionError(); }
         @Override public CompletionStage<Void> routeFinished(NpcHandle npc) { throw new AssertionError(); }

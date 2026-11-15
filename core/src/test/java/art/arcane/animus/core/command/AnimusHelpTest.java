@@ -39,7 +39,7 @@ class AnimusHelpTest {
         assertTrue(first.contains("setup") && first.contains("gui") && first.contains("tools"), "setup, gui and tools are on the first page");
         assertTrue(first.contains("Open the Animus menu; "), "gui says first that it opens the menu");
         List<String> npcs = page.sections().get(1).entries().stream().map((DirectorRuntimeNode node) -> node.getDescriptor().getName()).toList();
-        assertEquals(List.of("status", "list", "create", "mythic", "inspect", "edit", "clone", "delete", "spawn", "despawn", "undo", "select", "selection", "validate", "reload",
+        assertEquals(List.of("status", "list", "create", "mythic", "inspect", "edit", "clone", "delete", "spawn", "despawn", "speak", "undo", "select", "selection", "validate", "reload",
                 "rollback", "npc"), npcs);
         assertFalse(page.entries().stream().anyMatch((DirectorRuntimeNode node) -> node.getDescriptor().getName().equals("choice")), "the hidden click target stays out");
     }

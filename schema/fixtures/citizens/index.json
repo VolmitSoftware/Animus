@@ -78,6 +78,13 @@
       "name": "potions",
       "source": "potions.yml",
       "worldMap": {}
+    },
+    {
+      "name": "commands",
+      "source": "commands.yml",
+      "worldMap": {
+        "old_harbor": "harbor"
+      }
     }
   ],
   "invalid": "invalid"

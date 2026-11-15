@@ -529,6 +529,16 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (!host.worldLoaded(center.world())) return new SpatialNpcIndex.Scan(List.of(), Optional.empty(), 0, 0);
         return index.scan(new SpatialNpcIndex.Query(center, radius), cursor, budget, (ChunkPosition chunk) -> host.chunkLoaded(center.world(), chunk.x(), chunk.z()));
     }
+    /** The index is synchronized, so any thread may read it; chunks are not checked, since only active bodies are held. */
+    @Override public SpatialNpcIndex.Scan nearbyNpcs(WorldPosition center, double radius, SpatialNpcIndex.Budget budget) {
+        return index.scan(new SpatialNpcIndex.Query(center, radius), null, budget, (ChunkPosition chunk) -> true);
+    }
+    /** Owner only. */
+    @Override public boolean watched(UUID npc) {
+        owner();
+        Optional<VirtualNpcState.Snapshot> body = index.find(npc);
+        return body.isPresent() && !players.ownedNear(body.get().position(), settings.viewDistance(), 1).isEmpty();
+    }
     /** Brings a dead NPC back at the given point. Fires its spawn trigger again. */
     public boolean revive(UUID npc, WorldPosition at) {
         if (!available()) return false;

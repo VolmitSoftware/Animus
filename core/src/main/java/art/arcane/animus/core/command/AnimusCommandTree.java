@@ -1,5 +1,8 @@
 package art.arcane.animus.core.command;
 
+import art.arcane.animus.api.Capabilities;
+import art.arcane.animus.api.NpcHandle;
+import art.arcane.animus.api.Outcome;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.admin.Administration;
 import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
@@ -344,6 +347,32 @@ public final class AnimusCommandTree extends CommandGroup {
             living().refresh();
             return List.of(Palette.success(line + "; Next: /" + BuildIdentity.ID + " spawn " + id));
         }));
+    }
+
+    @Director(description = "Make an NPC say a line: to one player, to everyone within a range, or to the players near it")
+    @AnimusPermission(PermissionNodes.NPC_SPEAK)
+    void speak(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
+               @Param(name = "text", description = "What it says; quote it to use spaces") String text,
+               @Param(name = "target", defaultValue = "", description = "The one player who hears it: a name, @me or a UUID") String target,
+               @Param(name = "range", defaultValue = "", description = "Blocks around the NPC within which everyone hears it, 1 to 64") String range,
+               @Param(name = "bubble", defaultValue = "", description = "Ticks it also shows over the NPC, 1 to 1200") String bubble) {
+        CommandActor actor = actor();
+        Optional<UUID> heard = Optional.empty();
+        if (!target.isEmpty()) {
+            heard = new WorldCommands.Targets(actor.player(), services.shops()::playerNamed, (String id) -> Optional.empty()).resolve(target);
+            if (heard.isEmpty()) { actor.tell(Palette.error("Speak: no online player named " + target)); return; }
+        }
+        JsonObject arguments;
+        try { arguments = SpeakCommand.arguments(text, heard, range, bubble); }
+        catch (IllegalArgumentException refused) { actor.tell(Palette.error("Speak: " + refused.getMessage())); return; }
+        if (services.extensions() == null) { actor.tell(Palette.error("Speak: behaviors are not running; the startup log names why")); return; }
+        Optional<String> id = npc(actor, npc);
+        if (id.isEmpty()) return;
+        Optional<NpcDefinition> definition = runtime().npcs().find(id.get());
+        if (definition.isEmpty()) { actor.tell(Palette.error(unknownNpc(id.get()))); return; }
+        services.extensions().action(new Capabilities.Key(BuiltinCapabilities.NAMESPACE, "say"), new NpcHandle(definition.get().uuid()), actor.player(), arguments.toString())
+                .whenComplete((Outcome<String> outcome, Throwable failure) -> reply(actor, failure != null ? Palette.error("Speak: the line could not be said; the server log has the cause")
+                        : outcome.status() == Outcome.Status.OK ? Palette.success(SpeakCommand.reply(id.get(), outcome)) : Palette.error(SpeakCommand.reply(id.get(), outcome))));
     }
 
     @Director(description = "Check every definition file without loading it")

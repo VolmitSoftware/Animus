@@ -37,7 +37,7 @@ class TriggerRuntimeTest {
         definitions.set(Map.of("test",NpcDefinition.parse("{\"schemaVersion\":2,\"revision\":"+version+",\"uuid\":\""+npc+"\",\"id\":\"test\",\"group\":\"test\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":"+spawned+",\"behaviors\":[\""+BEHAVIOR+"\"],\"position\":{\"world\":\"world\",\"x\":0,\"y\":61,\"z\":0,\"yaw\":0,\"pitch\":0}}")));
     }
     private void start(int perTrigger){
-        TriggerSettings settings=new TriggerSettings(true,16,32,8,64,4,4,1000,32,4,perTrigger,0,0,4096,1024,1,32,5,16,32,64,0);
+        TriggerSettings settings=new TriggerSettings(true,16,32,8,64,4,4,1000,32,4,perTrigger,0,0,4096,1024,1,32,5,16,32,64,0,5,16,32,16,64,256);
         dispatcher=new TriggerDispatcher(settings,definitions::get,catalog::get);dispatcher.connect();
         BehaviorInvoker invoker=new BehaviorInvoker(){
             public boolean available(Capabilities.Key key,Capabilities.Kind kind){return true;}

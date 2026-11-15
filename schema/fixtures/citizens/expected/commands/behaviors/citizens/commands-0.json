@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "citizens:commands-0",
+  "entry": "right",
+  "routines": {
+    "right": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Welcome to the docks, {player_name}!"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Tide comes in at dusk",
+            "audience": "nearby",
+            "radius": 12.0
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Mind the gap",
+            "bubbleTicks": 60,
+            "chat": false
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:commands-allowed",
+          "arguments": {},
+          "then": {
+            "type": "condition",
+            "capability": "animus:flag-state",
+            "arguments": {
+              "name": "commands-0-3-cooldown",
+              "scope": "relationship"
+            },
+            "then": {
+              "type": "action",
+              "capability": "animus:message",
+              "arguments": {
+                "text": "Please wait before using this again."
+              }
+            },
+            "else": {
+              "type": "sequence",
+              "steps": [
+                {
+                  "type": "action",
+                  "capability": "animus:set-flag",
+                  "arguments": {
+                    "name": "commands-0-3-cooldown",
+                    "scope": "relationship",
+                    "expireSeconds": 30
+                  }
+                },
+                {
+                  "type": "action",
+                  "capability": "animus:command",
+                  "arguments": {
+                    "command": "warp docks",
+                    "as": "player",
+                    "permissions": [
+                      "essentials.warp",
+                      "essentials.warps.docks"
+                    ],
+                    "permissionTicks": 100
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "left": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "eco give {player_name} %vault_eco_balance%",
+            "as": "console"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:teleport",
+          "arguments": {
+            "target": "npc",
+            "to": "player"
+          }
+        }
+      ]
+    },
+    "sneak-right": {
+      "type": "action",
+      "capability": "animus:animate",
+      "arguments": {
+        "animation": "swing"
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "right",
+      "event": "interaction",
+      "action": "interact",
+      "routine": "right"
+    },
+    {
+      "id": "left",
+      "event": "interaction",
+      "action": "attack",
+      "routine": "left"
+    },
+    {
+      "id": "sneak-right",
+      "event": "interaction",
+      "action": "sneak_interact",
+      "routine": "sneak-right"
+    }
+  ]
+}

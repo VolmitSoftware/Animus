@@ -483,6 +483,7 @@ class BehaviorEditor extends StatelessWidget {
               InspectField(
                 key: ValueKey<String>('$path.${raw.key}'),
                 field: behavior.server && event == 'timer' && raw.key == 'intervalTicks' ? _serverInterval(raw) : raw,
+                label: triggerFieldLabel(raw.key),
                 profile: triggerFieldProfile(raw.key, type: fieldType(raw)),
                 value: trigger[raw.key],
                 path: childPath(path, raw.key),

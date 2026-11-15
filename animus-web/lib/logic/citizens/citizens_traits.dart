@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import '../inspect/inspect_schemas.dart';
 import '../npc/npc_attributes.dart';
+import 'citizens_command_lines.dart';
 import 'field_notes.dart';
 import 'java_json.dart';
 import 'java_lang.dart';
@@ -699,8 +700,7 @@ class _Traits {
         kept(path, 'not a name;yaw;pitch pose');
         continue;
       }
-      String name = javaLower(parts[0]).replaceAll(RegExp(r'[^a-z0-9_-]+'), '-').replaceFirst(RegExp(r'^[^a-z0-9]+'), '');
-      if (name.length > 32) name = name.substring(0, 32);
+      final String name = citizensPoseName(parts[0]);
       if (name.isEmpty) {
         kept(path, 'the pose name has no letters or digits to keep');
         continue;

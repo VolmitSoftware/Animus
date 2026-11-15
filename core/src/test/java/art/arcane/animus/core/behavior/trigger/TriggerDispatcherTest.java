@@ -35,7 +35,7 @@ class TriggerDispatcherTest {
     }
     private void npc(boolean spawned)throws Exception{definitions.set(Map.of("test",definition("test",npc,spawned,"[\""+BEHAVIOR+"\"]")));}
     private static TriggerSettings settings(int queuePerNpc,int queuePerTrigger,int concurrentPerNpc,int concurrentPerTrigger,int cooldown,int inbox){
-        return new TriggerSettings(true,inbox,32,8,64,queuePerNpc,queuePerTrigger,100,32,concurrentPerNpc,concurrentPerTrigger,cooldown,0,4096,1024,1,32,5,16,32,64,0);
+        return new TriggerSettings(true,inbox,32,8,64,queuePerNpc,queuePerTrigger,100,32,concurrentPerNpc,concurrentPerTrigger,cooldown,0,4096,1024,1,32,5,16,32,64,0,5,16,32,16,64,256);
     }
     private void dispatcher(TriggerSettings settings){dispatcher=new TriggerDispatcher(settings,definitions::get,catalog::get);dispatcher.connect();}
     private Outcome<UUID> start(TriggerDispatcher.Request request){started.add(request);return startResult!=null?startResult:Outcome.ok(UUID.randomUUID());}
@@ -82,7 +82,7 @@ class TriggerDispatcherTest {
         pump(5);dispatcher.publish(new TriggerEvent.Waypoint(npc,1));pump();assertEquals(2,started.size());
     }
     private TriggerDispatcher players(int playerCooldown){
-        TriggerDispatcher made=new TriggerDispatcher(new TriggerSettings(true,64,32,8,64,16,16,100,32,16,16,20,0,4096,1024,1,32,5,16,32,64,playerCooldown),definitions::get,catalog::get);
+        TriggerDispatcher made=new TriggerDispatcher(new TriggerSettings(true,64,32,8,64,16,16,100,32,16,16,20,0,4096,1024,1,32,5,16,32,64,playerCooldown,5,16,32,16,64,256),definitions::get,catalog::get);
         made.connect();return made;
     }
     private TriggerEvent.Interaction sneakClick(UUID who){return new TriggerEvent.Interaction(npc,who,TriggerEvent.Action.INTERACT,true,TriggerEvent.Hand.MAIN_HAND);}
@@ -117,7 +117,7 @@ class TriggerDispatcherTest {
         dispatcher.publish(click());pump();pump(10);dispatcher.publish(click());pump();assertEquals(1,started.size());
     }
     @Test void npcCooldownAppliesAcrossBindingsOfOneNpc()throws Exception{
-        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,4,4,0,10,4096,1024,1,32,5,16,32,64,0));
+        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,4,4,0,10,4096,1024,1,32,5,16,32,64,0,5,16,32,16,64,256));
         behavior("[{\"id\":\"a\",\"event\":\"interaction\"},{\"id\":\"b\",\"event\":\"interaction\"},{\"id\":\"c\",\"event\":\"waypoint\"}]");npc(true);dispatcher.activated(npc);pump();
         dispatcher.publish(click());pump();assertEquals(2,started.size());
         dispatcher.publish(new TriggerEvent.Waypoint(npc,1));pump();assertEquals(2,started.size());assertEquals(1,dispatcher.snapshot().suppressed());
@@ -139,7 +139,7 @@ class TriggerDispatcherTest {
         assertEquals(1,started.size(),"the NPC limit holds across its triggers");assertEquals(1,dispatcher.snapshot().queued());
     }
     @Test void totalQueueIsBoundedAcrossNpcs()throws Exception{
-        dispatcher(new TriggerSettings(true,64,32,8,1,4,4,100,32,1,1,0,0,4096,1024,1,32,5,16,32,64,0));
+        dispatcher(new TriggerSettings(true,64,32,8,1,4,4,100,32,1,1,0,0,4096,1024,1,32,5,16,32,64,0,5,16,32,16,64,256));
         behavior("[{\"id\":\"a\",\"event\":\"interaction\"},{\"id\":\"b\",\"event\":\"interaction\"},{\"id\":\"c\",\"event\":\"interaction\"}]");npc(true);dispatcher.activated(npc);pump();
         dispatcher.publish(click());pump();
         assertEquals(1,started.size());assertEquals(2,dropped(TriggerDispatcher.DropReason.TOTAL_QUEUE));
@@ -152,11 +152,11 @@ class TriggerDispatcherTest {
         assertEquals(1,dropped(TriggerDispatcher.DropReason.EVENT_QUEUE));
     }
     @Test void eventsPerTickBudgetLeavesTheRestForLaterTicks()throws Exception{
-        dispatcher(new TriggerSettings(true,16,1,8,64,8,8,100,32,8,8,0,0,4096,1024,1,32,5,16,32,64,0));behavior("[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]");npc(true);dispatcher.activated(npc);pump();
+        dispatcher(new TriggerSettings(true,16,1,8,64,8,8,100,32,8,8,0,0,4096,1024,1,32,5,16,32,64,0,5,16,32,16,64,256));behavior("[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]");npc(true);dispatcher.activated(npc);pump();
         dispatcher.publish(click());dispatcher.publish(click());pump();assertEquals(1,started.size());pump();assertEquals(2,started.size());
     }
     @Test void startsPerTickBudgetIsHonored()throws Exception{
-        dispatcher(new TriggerSettings(true,16,32,1,64,8,8,100,32,8,8,0,0,4096,1024,1,32,5,16,32,64,0));behavior("[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]");npc(true);dispatcher.activated(npc);pump();
+        dispatcher(new TriggerSettings(true,16,32,1,64,8,8,100,32,8,8,0,0,4096,1024,1,32,5,16,32,64,0,5,16,32,16,64,256));behavior("[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]");npc(true);dispatcher.activated(npc);pump();
         dispatcher.publish(click());dispatcher.publish(click());pump();assertEquals(1,started.size());pump();assertEquals(2,started.size());
     }
     @Test void engineCapacityLeavesWorkQueued()throws Exception{
@@ -170,7 +170,7 @@ class TriggerDispatcherTest {
         assertEquals(0,dispatcher.snapshot().queued());assertEquals(0,dispatcher.snapshot().active());assertEquals(1,dropped(TriggerDispatcher.DropReason.START_FAILED));assertEquals(0,dispatcher.rows(0,1).getFirst().fired());
     }
     @Test void queuedWorkExpiresAtItsLifetime()throws Exception{
-        dispatcher(new TriggerSettings(true,16,32,8,64,4,4,3,32,4,1,0,0,4096,1024,1,32,5,16,32,64,0));behavior("[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]");npc(true);dispatcher.activated(npc);pump();
+        dispatcher(new TriggerSettings(true,16,32,8,64,4,4,3,32,4,1,0,0,4096,1024,1,32,5,16,32,64,0,5,16,32,16,64,256));behavior("[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]");npc(true);dispatcher.activated(npc);pump();
         dispatcher.publish(click());dispatcher.publish(click());pump();assertEquals(1,started.size());assertEquals(1,dispatcher.snapshot().queued());
         pump(4);assertEquals(0,dispatcher.snapshot().queued());assertEquals(1,dropped(TriggerDispatcher.DropReason.EXPIRED));
         dispatcher.finished(started.getFirst());pump();assertEquals(1,started.size());
@@ -192,13 +192,13 @@ class TriggerDispatcherTest {
         behavior("[{\"id\":\"click\",\"event\":\"interaction\"}]");npc(true);dispatcher.activated(npc);pump();assertEquals(0,dispatcher.snapshot().timers());
     }
     @Test void timerIntervalBelowTheConfiguredMinimumIsDiagnosedAndNotScheduled()throws Exception{
-        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,2,1,0,0,4096,1024,20,32,5,16,32,64,0));
+        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,2,1,0,0,4096,1024,20,32,5,16,32,64,0,5,16,32,16,64,256));
         behavior("[{\"id\":\"clock\",\"event\":\"timer\",\"intervalTicks\":3}]");npc(true);dispatcher.activated(npc);pump(5);
         assertEquals(0,started.size());assertEquals(0,dispatcher.snapshot().timers());
         Diagnostic diagnostic=dispatcher.snapshot().diagnostics().getFirst();assertEquals("trigger-timer-budget",diagnostic.code());assertTrue(diagnostic.field().contains("example:greeter#clock"));
     }
     @Test void timerCapacityIsBoundedAndDiagnosed()throws Exception{
-        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,2,1,0,0,4096,1,1,32,5,16,32,64,0));
+        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,2,1,0,0,4096,1,1,32,5,16,32,64,0,5,16,32,16,64,256));
         behavior("[{\"id\":\"a\",\"event\":\"timer\",\"intervalTicks\":3},{\"id\":\"b\",\"event\":\"timer\",\"intervalTicks\":3}]");npc(true);dispatcher.activated(npc);pump();
         assertEquals(1,dispatcher.snapshot().timers());assertTrue(dispatcher.snapshot().diagnostics().stream().anyMatch(item->item.code().equals("trigger-timer-capacity")));
     }
@@ -268,7 +268,7 @@ class TriggerDispatcherTest {
         on.set(false);link.run();link.run();assertFalse(fresh.available());assertEquals(2,log.size());
     }
     @Test void disabledSettingsCannotConnect(){
-        TriggerSettings disabled=new TriggerSettings(false,16,32,8,64,4,2,100,32,2,1,0,0,4096,1024,1,32,5,16,32,64,0);
+        TriggerSettings disabled=new TriggerSettings(false,16,32,8,64,4,2,100,32,2,1,0,0,4096,1024,1,32,5,16,32,64,0,5,16,32,16,64,256);
         TriggerDispatcher fresh=new TriggerDispatcher(disabled,definitions::get,catalog::get);fresh.connect();
         assertFalse(fresh.available());assertTrue(fresh.snapshot().reason().contains("config.toml"));
     }
@@ -280,7 +280,7 @@ class TriggerDispatcherTest {
         assertEquals("trigger-behavior-unavailable",dispatcher.snapshot().diagnostics().getFirst().code());assertEquals(0,dispatcher.snapshot().bindings());
     }
     @Test void bindingCapacityIsBoundedAndDiagnosed()throws Exception{
-        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,2,1,0,0,1,1024,1,32,5,16,32,64,0));
+        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,2,1,0,0,1,1024,1,32,5,16,32,64,0,5,16,32,16,64,256));
         behavior("[{\"id\":\"a\",\"event\":\"interaction\"},{\"id\":\"b\",\"event\":\"interaction\"}]");npc(true);dispatcher.activated(npc);pump();
         assertEquals(1,dispatcher.snapshot().bindings());assertTrue(dispatcher.snapshot().diagnostics().stream().anyMatch(item->item.code().equals("trigger-binding-capacity")));
     }
@@ -295,7 +295,7 @@ class TriggerDispatcherTest {
         dispatcher.dead(npc);pump();assertTrue(dispatcher.proximityPlan().npcs().isEmpty());
     }
     @Test void proximityRadiusAboveTheBudgetIsDiagnosedAndUnbound()throws Exception{
-        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,2,1,0,0,4096,1024,1,4,5,16,32,64,0));
+        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,2,1,0,0,4096,1024,1,4,5,16,32,64,0,5,16,32,16,64,256));
         behavior("[{\"id\":\"near\",\"event\":\"proximity\",\"phase\":\"enter\",\"radius\":8}]");npc(true);dispatcher.activated(npc);pump();
         assertTrue(dispatcher.proximityPlan().npcs().isEmpty());assertEquals("trigger-proximity-budget",dispatcher.snapshot().diagnostics().getFirst().code());
     }

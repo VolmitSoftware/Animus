@@ -204,7 +204,8 @@ class CitizensBehaviorsTest {
         JsonArray right = behavior.getAsJsonObject("routines").getAsJsonObject("right").getAsJsonArray("steps");
         JsonObject delayed = right.get(0).getAsJsonObject();
         assertEquals("wait", delayed.getAsJsonArray("steps").get(0).getAsJsonObject().get("type").getAsString());
-        assertEquals(json("{\"command\":\"say Guard greets you\",\"as\":\"player\"}"), delayed.getAsJsonArray("steps").get(1).getAsJsonObject().getAsJsonObject("arguments"));
+        assertEquals(json("{\"type\":\"action\",\"capability\":\"animus:say\",\"arguments\":{\"text\":\"Guard greets you\"}}"), delayed.getAsJsonArray("steps").get(1),
+                "Citizens turns a say line into the NPC speaking to the clicker");
         JsonObject gated = right.get(1).getAsJsonObject();
         assertEquals("animus:has-permission", gated.get("capability").getAsString());
         JsonObject allowed = gated.getAsJsonObject("then");

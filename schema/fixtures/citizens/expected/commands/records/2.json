@@ -1,0 +1,25 @@
+{
+  "name": "Sky Warden",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000602",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "old_harbor",
+      "x": 0.5,
+      "y": 80.0,
+      "z": 0.5
+    },
+    "commandtrait": {
+      "temporaryPermissions": {
+        "0": "essentials.fly"
+      },
+      "temporaryPermissionsDuration": 6000,
+      "commands": {
+        "0": {
+          "command": "tell <p> You may fly for five minutes",
+          "hand": "BOTH"
+        }
+      }
+    }
+  }
+}

@@ -117,6 +117,7 @@ public final class TriggerCompiler {
             case PLAYER_INVENTORY_OPEN, PLAYER_INVENTORY_CLOSE, PLAYER_INVENTORY_CLICK, PLAYER_ITEM_DROP, PLAYER_ITEM_PICKUP, PLAYER_ITEM_CONSUME,
                  PLAYER_BLOCK_CLICK, PLAYER_BLOCK_PLACE, PLAYER_BLOCK_BREAK, PLAYER_DAMAGED, PLAYER_DAMAGE_ENTITY, PLAYER_KILL,
                  PROJECTILE_LAUNCH, PROJECTILE_HIT, ENTITY_SHOOT_BOW, QUEST_STARTED, QUEST_STAGE, QUEST_COMPLETED -> worldEvent(kind, object, path);
+            case ENTITY_PROXIMITY, ENTITY_COLLIDE, HIT_BY_PROJECTILE, ITEM_DROPPED, VEHICLE_BUMP, LEASH_TIE, LEASH_PASS, NPC_PROXIMITY, NPC_SPEECH -> sensed(kind, object, path);
             case DIALOGUE_CHOICE -> new TriggerBinding.DialogueChoice(identifier(object, "dialogue", path),
                     object.has("choice") ? Optional.of(identifier(object, "choice", path)) : Optional.empty());
             case MODULE -> new TriggerBinding.ModuleEvent(key(text(object, "key", path), path + ".key"));
@@ -138,8 +139,60 @@ public final class TriggerCompiler {
         catch (BehaviorExpression.Invalid invalid) { throw new Invalid(path + "." + key, invalid.getMessage()); }
     }
 
-    /** Filter patterns: namespaced keys or bare names such as {@code stone}, lowercase types and actions, with {@code *} wildcards. */
-    public static final String FILTER = "[a-z0-9_.*:/-]{1,128}";
+    /**
+     * Filter patterns: namespaced keys or bare names such as {@code stone}, lowercase types and actions, with {@code *}
+     * wildcards; up to eight separated by commas match any of them.
+     */
+    public static final String FILTER = "[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}";
+    /** A scoreboard tag, as {@code /tag} accepts one. */
+    public static final String TAG = "[A-Za-z0-9_.+-]{1,64}";
+    public static final int MAX_NAME_PATTERN = 64;
+
+    /** A sensed event: its own fields, then the entity filters it declares. */
+    private static TriggerBinding.EntityEvent sensed(TriggerKind kind, JsonObject object, String path) {
+        List<String> fields = kind.fields();
+        Optional<TriggerBinding.Phase> phase = Optional.empty();
+        if (fields.contains("phase")) {
+            if (!object.has("phase")) throw new Invalid(path + ".phase", "expected enter or leave");
+            phase = Optional.of(named(TriggerBinding.Phase.class, text(object, "phase", path), path + ".phase", "enter or leave"));
+        }
+        double radius = fields.contains("radius") ? radius(object, path) : 0;
+        TriggerBinding.Contact contact = object.has("contact")
+                ? named(TriggerBinding.Contact.class, text(object, "contact", path), path + ".contact", "any, top or side") : TriggerBinding.Contact.ANY;
+        java.util.TreeMap<String, String> patterns = new java.util.TreeMap<>();
+        for (String field : List.of("projectile", "item", "npc")) {
+            if (!fields.contains(field) || !object.has(field)) continue;
+            String value = text(object, field, path);
+            if (!value.matches(FILTER)) throw new Invalid(path + "." + field, "expected a lowercase name or namespaced key such as minecraft:arrow, with * matching any text and commas between alternatives");
+            patterns.put(field, value);
+        }
+        if (fields.contains("pattern") && object.has("pattern")) patterns.put("pattern", bounded(object, "pattern", path, MAX_PATTERN));
+        boolean thrown = fields.contains("thrown") && object.has("thrown") && bool(object, "thrown", path);
+        return new TriggerBinding.EntityEvent(kind, entityFilter(object, path), phase, radius, contact, patterns, thrown);
+    }
+    private static TriggerBinding.EntityFilter entityFilter(JsonObject object, String path) {
+        Optional<String> entity = Optional.empty(), named = Optional.empty(), tag = Optional.empty(), permission = Optional.empty();
+        if (object.has("entity")) {
+            String value = text(object, "entity", path);
+            if (!value.matches(FILTER)) throw new Invalid(path + ".entity", "expected an entity type such as minecraft:sheep or *_minecart, with commas between alternatives");
+            entity = Optional.of(value);
+        }
+        if (object.has("named")) named = Optional.of(bounded(object, "named", path, MAX_NAME_PATTERN));
+        if (object.has("tag")) {
+            String value = text(object, "tag", path);
+            if (!value.matches(TAG)) throw new Invalid(path + ".tag", "expected a scoreboard tag of letters, digits and _ . + -");
+            tag = Optional.of(value);
+        }
+        Optional<Boolean> players = object.has("players") ? Optional.of(bool(object, "players", path)) : Optional.empty();
+        if (object.has("permission")) {
+            String value = bounded(object, "permission", path, 128);
+            if (!value.matches(PERMISSION)) throw new Invalid(path + ".permission", "expected a permission node such as town.feed");
+            if (players.isPresent() && !players.get()) throw new Invalid(path + ".permission", "a permission needs a player, but players is false");
+            permission = Optional.of(value);
+        }
+        OptionalInt cooldown = object.has("entityCooldownTicks") ? OptionalInt.of(integer(object, "entityCooldownTicks", path, 0, MAX_COOLDOWN_TICKS)) : OptionalInt.empty();
+        return new TriggerBinding.EntityFilter(entity, named, tag, players, permission, cooldown);
+    }
     /** An event's filters and its cancel condition, checked as the event happens over flags, facts and the event's context. */
     private static TriggerBinding.WorldEvent worldEvent(TriggerKind kind, JsonObject object, String path) {
         java.util.TreeMap<String, String> filters = new java.util.TreeMap<>();

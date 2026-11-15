@@ -83,8 +83,10 @@ public final class BehaviorCommands implements AutoCloseable {
         // Both exist while disabled too, so a hotload can enable behaviors and the platform bridge is already bound.
         triggers=new TriggerDispatcher(settings.triggers(),repository::snapshot,this::catalogSnapshot);
         triggers.behaviorsEnabled(settings.enabled());
+        triggers.log(report);
         servers=new ServerTriggerDispatcher(settings.server(),this::catalogSnapshot,()->serverBehaviors);
         servers.behaviorsEnabled(settings.enabled());
+        servers.log(report);
         extensions.connectTriggers(new ModuleTriggers(triggers,servers));
         coordinator=new BehaviorRuntime(runtimeLimits(settings),settings.engine(),repository::snapshot,this::catalogSnapshot,extensions.behaviorInvoker(),triggers,servers,behaviorState);
         triggers.consumption(behaviorState,coordinator.facts());

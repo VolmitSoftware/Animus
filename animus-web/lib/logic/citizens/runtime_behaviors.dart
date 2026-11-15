@@ -5,6 +5,7 @@ library;
 import 'dart:math' as math;
 
 import 'destinations.dart' show destinationsProvider;
+import 'citizens_command_lines.dart';
 import 'citizens_stacks.dart';
 import 'field_notes.dart';
 import 'java_json.dart';
@@ -29,13 +30,6 @@ const int _defaultWanderWait = 60;
 
 /// Lookclose booleans Citizens writes only when they differ from the server default, with Citizens' own defaults.
 const Map<String, bool> lookDefaults = <String, bool>{'enabled': false, 'realisticlooking': false, 'disablewhilenavigating': true};
-/// Citizens' player animations as `animus:animate`; elytra flight has no Animus animation.
-const Map<String, String> _animations = <String, String>{
-  'ARM_SWING': 'swing', 'ARM_SWING_OFFHAND': 'swing_offhand', 'HURT': 'hurt', 'CRIT': 'crit', 'MAGIC_CRIT': 'magic_crit', //
-  'LEAVE_BED': 'wake', 'STOP_SLEEPING': 'wake', 'SLEEP': 'sleep', 'SIT': 'sit', 'STOP_SITTING': 'stand', 'SNEAK': 'sneak', //
-  'STOP_SNEAKING': 'stand', 'EAT_FOOD': 'use_item', 'START_USE_MAINHAND_ITEM': 'use_item', 'START_USE_OFFHAND_ITEM': 'use_item', //
-  'STOP_USE_ITEM': 'stop_using_item',
-};
 
 /// Citizens' rotation defaults: 40 degrees of yaw and 10 of pitch a tick.
 const double _rotationYaw = 40;
@@ -160,6 +154,14 @@ class _Charge {
 
 const String _commandBase = '/traits/commandtrait';
 const int _maxExpiry = 31536000;
+/// At most this many temporary permissions, for at most this many ticks, as `animus:command` lends them.
+const int _maxLent = 16;
+const int _maxLentTicks = 72000;
+/// `TriggerCompiler.PERMISSION`.
+final RegExp _permissionNode = RegExp(r'^[A-Za-z0-9_-]+(\.[A-Za-z0-9_*-]+)*$');
+final RegExp _placeholderApi = RegExp(r'%[^%\s]+%');
+const String _filled =
+    'PlaceholderAPI placeholders are filled for the clicking player; a value with characters other than letters, digits and _ . : + - stops the command unless the behavior is on rawTextBehaviors';
 /// Citizens' default error messages, by its error name.
 const Map<String, String> _commandMessages = <String, String>{
   'NO_PERMISSION': "You don't have permission to do that.",
@@ -188,18 +190,24 @@ JObject _otherwise(JObject condition, JObject? otherwise) {
 JObject _allowed(JObject node) => _condition('animus:commands-allowed', JObject(), node);
 
 /// Whether `node` or a step inside it runs `animus:command`.
-bool _runsCommand(JElement? node) {
+bool _runsCommand(JElement? node) => _runs(node, const <String>{'animus:command'});
+
+/// Capabilities that run only for behaviors on the command allow-list.
+const Set<String> _privileged = <String>{'animus:command', 'mythic:cast-skill'};
+
+/// Whether `node` or a step inside it uses one of [capabilities].
+bool _runs(JElement? node, Set<String> capabilities) {
   if (node is JArray) {
     for (final JElement step in node.elements) {
-      if (_runsCommand(step)) return true;
+      if (_runs(step, capabilities)) return true;
     }
     return false;
   }
   if (node is! JObject) return false;
   final JElement? capability = node.get('capability');
-  if (capability is JPrimitive && capability.asString == 'animus:command') return true;
+  if (capability is JPrimitive && capabilities.contains(capability.asString)) return true;
   for (final String field in const <String>['steps', 'then', 'else']) {
-    if (_runsCommand(node.get(field))) return true;
+    if (_runs(node.get(field), capabilities)) return true;
   }
   return false;
 }
@@ -487,7 +495,7 @@ class _Runtime {
     final int before = steps.length;
     for (final MapEntry<String, JElement> line in listEntries(data.get('animations'))) {
       final String name = line.value is JPrimitive ? line.value.asPrimitive.asString.toUpperCase() : '';
-      final String? animation = _animations[name];
+      final String? animation = citizensAnimations[name];
       if (animation == null) {
         warnings.add('$path/animations/${line.key}: the $name animation has no Animus animation; left out');
         continue;
@@ -873,6 +881,10 @@ class _Runtime {
 
   bool _hide = false;
   final Map<String, String> _custom = <String, String>{};
+  /// The trait's temporary permissions, lent to each command the clicking player runs.
+  List<String> _lent = const <String>[];
+  int _lentTicks = 0;
+  bool _lentUsed = false;
 
   void commands() {
     final Map<String, List<JObject>> clicks = <String, List<JObject>>{
@@ -893,7 +905,9 @@ class _Runtime {
     _commandRoutine('sneak-right', 'sneak_interact', clicks['sneak_interact']!, routines, triggers);
     _commandRoutine('sneak-left', 'sneak_attack', clicks['sneak_attack']!, routines, triggers);
     if (routines.isEmpty) return;
-    warnings.add('$_commandBase: commands stay denied until $_namespace:commands-$key is on the [behaviors.actions] commandBehaviors list in config.toml');
+    if (routines.entries.any((MapEntry<String, JElement> routine) => _runs(routine.value, _privileged))) {
+      warnings.add('$_commandBase: commands stay denied until $_namespace:commands-$key is on the [behaviors.actions] commandBehaviors list in config.toml');
+    }
     _behavior('commands-$key', routines.keys.first, routines, triggers);
   }
 
@@ -919,18 +933,26 @@ class _Runtime {
         }
       }
     }
-    if (listEntries(trait.get('temporaryPermissions')).isNotEmpty) {
-      warnings.add('$_commandBase/temporaryPermissions: temporary permissions are not granted; player commands run with the player\'s own permissions');
-    }
     final (bool, _Charge?) clickCost = _cost(trait.get('cost'), trait.get('experienceCost'), trait.get('itemRequirements'), _commandBase, 'itemRequirements');
     if (!clickCost.$1) {
       warnings.add('$_commandBase: the click cost has items that cannot be matched exactly, so no commands were converted');
       return;
     }
+    final List<String> lentPaths = _lend(trait);
     final List<_Command> commands = <_Command>[];
     for (final MapEntry<String, JElement> entry in listEntries(trait.get('commands'))) {
       final _Command? command = _command(entry.key, _object(entry.value));
       if (command != null) commands.add(command);
+    }
+    if (_lent.isNotEmpty && _lentUsed) {
+      converted.addAll(lentPaths);
+      if (trait.has('temporaryPermissionsDuration')) converted.add('$_commandBase/temporaryPermissionsDuration');
+    } else if (_lent.isNotEmpty) {
+      const String reason = 'Animus lends permissions only to commands the clicking player runs, and this NPC has none';
+      warnings.add('$_commandBase/temporaryPermissions: $reason, so they are not granted');
+      for (final String field in const <String>['temporaryPermissions', 'temporaryPermissionsDuration']) {
+        notes['$_commandBase/$field'] = const FieldNote(requiresReview, reason);
+      }
     }
     if (commands.isEmpty) return;
     commands.sort((_Command a, _Command b) => a.id.compareTo(b.id));
@@ -958,6 +980,34 @@ class _Runtime {
     if ((hands['sneak_interact']!.isNotEmpty || hands['sneak_attack']!.isNotEmpty) && commands.any((_Command command) => !command.hand.startsWith('SHIFT_'))) {
       warnings.add('$_commandBase: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones');
     }
+  }
+
+  /// Reads the temporary permissions and their duration; returns the paths of the nodes it keeps.
+  List<String> _lend(JObject trait) {
+    final List<String> nodes = <String>[];
+    final List<String> paths = <String>[];
+    for (final MapEntry<String, JElement> entry in listEntries(trait.get('temporaryPermissions'))) {
+      if (entry.value is! JPrimitive) continue;
+      final String node = javaTrim(entry.value.asPrimitive.asString);
+      final String at = '$_commandBase/temporaryPermissions/${entry.key}';
+      if (!_permissionNode.hasMatch(node)) {
+        warnings.add('$at: $node is not a permission node; not granted');
+        notes[at] = const FieldNote(requiresReview, 'not a permission node');
+        continue;
+      }
+      if (nodes.length == _maxLent) {
+        warnings.add('$_commandBase/temporaryPermissions: only the first $_maxLent permissions are granted');
+        break;
+      }
+      nodes.add(node);
+      paths.add(at);
+    }
+    _lent = List<String>.unmodifiable(nodes);
+    final JElement? duration = trait.get('temporaryPermissionsDuration');
+    final int ticks = _number(duration) ? _floorClamp(duration!.asPrimitive.asDouble, -1, _maxLentTicks + 1) : 0;
+    if (ticks > _maxLentTicks) warnings.add('$_commandBase/temporaryPermissionsDuration: temporary permissions last at most $_maxLentTicks ticks');
+    _lentTicks = ticks < 0 ? 0 : ticks > _maxLentTicks ? _maxLentTicks : ticks;
+    return paths;
   }
 
   JObject _mode(List<_Command> commands, String mode, String quest) {
@@ -991,7 +1041,7 @@ class _Runtime {
     final bool op = _bool(data.get('op'), false);
     String text = data.get('command')!.asPrimitive.asString;
     if (text.startsWith('/')) text = text.substring(1);
-    text = _placeholders(text, '$at/command', npc: npc);
+    text = _commandPlaceholders(text, '$at/command', npc: npc);
     if (text.isEmpty || text.length > _maxText) {
       warnings.add('$at/command: empty or longer than 1024 characters; not converted');
       return null;
@@ -1002,9 +1052,27 @@ class _Runtime {
       run = _action('mythic:cast-skill', _arguments('skill', mythic.group(1)!)..addString('caster', 'player'));
       warnings.add('$at/command: the MythicMobs skill cast became mythic:cast-skill, which needs MythicMobs on the server');
     } else {
-      if (op) warnings.add('$at/op: the command ran as an operator player; it now runs from the console');
-      if (npc && player) warnings.add("$at/npc: the NPC's own player body ran the command; it now runs from the console, with the NPC's name for the player");
-      run = _action('animus:command', _arguments('command', text)..addString('as', player && !op && !npc ? 'player' : 'console'));
+      switch (readCitizensLine(text, (player || op) && !npc, key)) {
+        case ReviewLine(:final String reason):
+          warnings.add('$at/command: $reason; not converted');
+          notes[at] = FieldNote(requiresReview, '$reason; kept in citizens:review');
+          return null;
+        case MappedLine(:final JObject node, :final String? note):
+          run = node;
+          if (note != null) warnings.add('$at/command: $note');
+        case PlainLine():
+          if (op) warnings.add('$at/op: the command ran as an operator player; it now runs from the console');
+          if (npc && player) warnings.add("$at/npc: the NPC's own player body ran the command; it now runs from the console, with the NPC's name for the player");
+          final bool asPlayer = player && !op && !npc;
+          final JObject arguments = _arguments('command', text)..addString('as', asPlayer ? 'player' : 'console');
+          if (asPlayer && _lent.isNotEmpty) {
+            arguments.add('permissions', JArray(<JElement>[for (final String node in _lent) JString(node)]));
+            if (_lentTicks > 0) arguments.addInt('permissionTicks', _lentTicks);
+            _lentUsed = true;
+          }
+          if (_placeholderApi.hasMatch(text)) warnings.add('$at/command: $_filled');
+          run = _action('animus:command', arguments);
+      }
     }
     final String flag = 'commands-$key-$id';
     final int cooldown = _seconds(data.get('cooldown'), '$at/cooldown');
@@ -1093,7 +1161,7 @@ class _Runtime {
     if (_hide) return null;
     final String text = (_custom[error] ?? _commandMessages[error]!).replaceAll('{0}', first).replaceAll('{1}', second);
     if (javaIsBlank(text)) return null;
-    return _plain(_placeholders(text, '$_commandBase/customErrorMessages/$error', npc: false));
+    return _plain(_commandPlaceholders(text, '$_commandBase/customErrorMessages/$error', npc: false));
   }
 
   /// Runs the message when the check holds and `node` otherwise.
@@ -1116,9 +1184,18 @@ class _Runtime {
     documents.add(BehaviorDocument('behaviors/$_namespace/$path.json', writeJson(document)));
   }
 
-  String _placeholders(String text, String path, {bool npc = false}) {
+  /// Core's `CitizensCommands.placeholders`: Citizens' own placeholders written in, PlaceholderAPI's kept for Animus to fill.
+  String _commandPlaceholders(String text, String path, {required bool npc}) {
     final String player = npc ? name : '{player_name}';
-    final String result = text.replaceAll('<player>', player).replaceAll('<p>', player).replaceAll('<npc>', name).replaceAll('<id>', key);
+    final String result =
+        text.replaceAll('<player>', player).replaceAll('<p>', player).replaceAll('%player%', player).replaceAll('<npc>', name).replaceAll('<id>', key);
+    if (_citizensPlaceholder.hasMatch(result)) warnings.add('$path: placeholders other than <p>, <player>, <npc> and <id> are not filled in');
+    return result;
+  }
+
+  /// Core's `CitizensBehaviors.placeholders`: the clicking player becomes {player_name}; the NPC's own name and id are written in.
+  String _placeholders(String text, String path) {
+    final String result = text.replaceAll('<player>', '{player_name}').replaceAll('<p>', '{player_name}').replaceAll('<npc>', name).replaceAll('<id>', key);
     if (_untranslated.hasMatch(result)) warnings.add('$path: placeholders other than <p>, <player>, <npc> and <id> are not filled in');
     return result;
   }
@@ -1126,6 +1203,7 @@ class _Runtime {
 
 final RegExp _newline = RegExp('<br>|\\n');
 final RegExp _untranslated = RegExp(r'<[a-z_]+>|%[a-z_]+%');
+final RegExp _citizensPlaceholder = RegExp(r'<[a-z_]+>');
 final RegExp _listKey = RegExp(r'^(?:0|[1-9][0-9]{0,8})$');
 
 /// A player casting a MythicMobs skill, `mm test cast <skill>`, which `mythic:cast-skill` does without the command permission.

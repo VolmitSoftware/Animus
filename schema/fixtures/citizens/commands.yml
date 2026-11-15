@@ -1,0 +1,80 @@
+# Synthetic Citizens saves.yml for click commands that Citizens rewrites before running: say lines, npc and
+# waypoint subcommands, PlaceholderAPI placeholders and temporary permissions. Every name, UUID and world is invented.
+npc:
+  '0':
+    name: Harbor Herald
+    uuid: 0a1b2c3d-0000-4000-8000-000000000600
+    traits:
+      type: PLAYER
+      location: {world: old_harbor, x: 10.5, y: 64.0, z: -3.5}
+      commandtrait:
+        executionMode: LINEAR
+        temporaryPermissions:
+          '0': essentials.warp
+          '1': essentials.warps.docks
+          '2': not a node
+        temporaryPermissionsDuration: 100
+        commands:
+          '0': {command: 'say Welcome to the docks, <p>!', hand: RIGHT, player: true}
+          '1': {command: 'npc speak Tide comes in at dusk --range 12', hand: RIGHT}
+          '2': {command: 'npc speak "Mind the gap" --bubble 3s', hand: RIGHT}
+          '3': {command: 'warp docks', hand: RIGHT, player: true, cooldown: 30}
+          '4': {command: 'eco give <p> %vault_eco_balance%', hand: LEFT}
+          '5': {command: 'npc tphere', hand: LEFT, player: true}
+          '6': {command: 'npc glowing --color red', hand: LEFT}
+          '7': {command: 'npc panimate ARM_SWING', hand: SHIFT_RIGHT}
+          '8': {command: 'wp provider wander', hand: SHIFT_RIGHT}
+          '9': {command: 'npc speak Over here --id 12', hand: SHIFT_RIGHT}
+  '1':
+    name: Ferryman
+    uuid: 0a1b2c3d-0000-4000-8000-000000000601
+    traits:
+      type: PLAYER
+      location: {world: old_harbor, x: 20.5, y: 63.0, z: 4.5}
+      commandtrait:
+        temporaryPermissions:
+          '0': kits.starter
+        temporaryPermissionsDuration: -1
+        commands:
+          '0': {command: 'kit starter', hand: BOTH, player: true}
+          '1': {command: 'npc pathto 30 63 4', hand: BOTH}
+          '2': {command: 'npc rename "Old Tom"', hand: BOTH}
+          '3': {command: 'npc moveto 1:70:2:old_nether', hand: BOTH}
+          '4': {command: 'npc tp', hand: BOTH}
+  '2':
+    name: Sky Warden
+    uuid: 0a1b2c3d-0000-4000-8000-000000000602
+    traits:
+      type: PLAYER
+      location: {world: old_harbor, x: 0.5, y: 80.0, z: 0.5}
+      commandtrait:
+        temporaryPermissions:
+          '0': essentials.fly
+        temporaryPermissionsDuration: 6000
+        commands:
+          '0': {command: 'tell <p> You may fly for five minutes', hand: BOTH}
+  '3':
+    name: Dock Guard
+    uuid: 0a1b2c3d-0000-4000-8000-000000000603
+    traits:
+      type: PLAYER
+      location: {world: old_harbor, x: 6.5, y: 64.0, z: 9.5}
+      equipment:
+        hand: {type: splash_potion, amount: 1, meta: rO0ABXNyABpvcmcuYnVra2l0LnV0aWwuaW8uV3JhcHBlcvJQR+zxEm8FAgABTAADbWFwdAAPTGphdmEvdXRpbC9NYXA7eHBzcgA1Y29tLmdvb2dsZS5jb21tb24uY29sbGVjdC5JbW11dGFibGVNYXAkU2VyaWFsaXplZEZvcm0AAAAAAAAAAAIAAkwABGtleXN0ABJMamF2YS9sYW5nL09iamVjdDtMAAZ2YWx1ZXNxAH4ABHhwdXIAE1tMamF2YS5sYW5nLk9iamVjdDuQzlifEHMpbAIAAHhwAAAAA3QAAj09dAAJbWV0YS10eXBldAALcG90aW9uLXR5cGV1cQB+AAYAAAADdAAISXRlbU1ldGF0AAZQT1RJT050ABhtaW5lY3JhZnQ6c3Ryb25nX2hhcm1pbmc=}
+        off_hand: {type: STICK}
+      sentinel:
+        autoswitch: true
+        weapon_redirect_map: {STICK: BOW}
+        allTargets:
+          targets: [MONSTERS]
+          byOther: ['towny:Rivals', 'sbteam:pirates']
+        squad: harbor
+        stats_potionsThrown: 3
+      commandtrait:
+        temporaryPermissions:
+          '0': essentials.warp
+        temporaryPermissionsDuration: 200
+        commands:
+          '0': {command: 'say Halt, <p>! Docks close at %server_time_HH%.', hand: RIGHT}
+          '1': {command: 'npc speak Stand back --range 8', hand: LEFT}
+          '2': {command: 'warp docks', hand: SHIFT_RIGHT, player: true}

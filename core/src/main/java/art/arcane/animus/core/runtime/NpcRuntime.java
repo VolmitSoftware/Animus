@@ -92,6 +92,15 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     Optional<ActiveNpc> active(UUID npc);
     /** The NPC's last published state, from any thread, for behavior facts. Empty when it is not active. */
     default Optional<VirtualNpcState.Snapshot> state(UUID npc) { return active(npc).map(ActiveNpc::state); }
+    /** Active NPC bodies near a point, from any thread, visiting only the chunks around it. Empty where the runtime keeps no spatial index. */
+    default art.arcane.animus.core.virtual.SpatialNpcIndex.Scan nearbyNpcs(WorldPosition center, double radius, art.arcane.animus.core.virtual.SpatialNpcIndex.Budget budget) {
+        return new art.arcane.animus.core.virtual.SpatialNpcIndex.Scan(List.of(), Optional.empty(), 0, 0);
+    }
+    /**
+     * A player is within view distance of the active NPC, so its sensed triggers look around; an NPC nobody is near
+     * senses nothing. On the NPC's owner, or from any thread where the runtime says so.
+     */
+    default boolean watched(UUID npc) { return false; }
     /** Also finds a combat NPC that has died while its definition stays spawned; without combat it is {@link #active}. */
     default Optional<ActiveNpc> combatant(UUID npc) { return active(npc); }
     /** Who may still speak, sound and show particles: an active NPC, or a combat NPC whose death routine is running. */

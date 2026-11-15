@@ -24,7 +24,7 @@ import java.util.random.RandomGenerator;
  * queued and running triggers alone.
  */
 public final class TriggerDispatcher implements TriggerSink {
-    public enum DropReason { EVENT_QUEUE, INACTIVE, NPC_QUEUE, TRIGGER_QUEUE, TOTAL_QUEUE, EXPIRED, STALE, START_FAILED, UNAVAILABLE, ACTIVE_CAPACITY, PLAYER_BUSY }
+    public enum DropReason { EVENT_QUEUE, INACTIVE, NPC_QUEUE, TRIGGER_QUEUE, TOTAL_QUEUE, EXPIRED, STALE, START_FAILED, UNAVAILABLE, ACTIVE_CAPACITY, PLAYER_BUSY, FAULT }
     @FunctionalInterface public interface Starter { Outcome<UUID> start(Request request); }
     /** {@code event} is what the run reads as {@code context.*}: the click's sneaking and hand for an interaction, nothing for other events. */
     public record Request(Binding binding, NpcDefinition definition, BehaviorCatalog.Accepted accepted, BehaviorProgram program, Optional<UUID> player, Map<String, Object> event) {}
@@ -40,7 +40,26 @@ public final class TriggerDispatcher implements TriggerSink {
         /** Pump thread only: each player's queued and running runs of an interaction trigger, and when one was last admitted. */
         final Map<UUID, Integer> busy = new HashMap<>();
         final Map<UUID, Long> playerAdmitted = new HashMap<>();
+        /** Pump thread only: when each entity last fired a sensed trigger. */
+        final Map<UUID, Long> entityAdmitted = new HashMap<>();
     }
+    /**
+     * The sensed bindings of presented NPCs, for the platform's sensors; any thread. {@code radius} is the farthest any of an
+     * NPC's scanned watches reaches, which bounds its look around.
+     */
+    public record EntityPlan(Map<UUID, List<EntitySensor.Watch>> npcs, Map<UUID, Double> radius, Set<TriggerKind> kinds) {
+        public static final EntityPlan EMPTY = new EntityPlan(Map.of(), Map.of(), Set.of());
+        public EntityPlan { npcs = Map.copyOf(npcs); radius = Map.copyOf(radius); kinds = Set.copyOf(kinds); }
+        public List<EntitySensor.Watch> watches(UUID npc) { return npcs.getOrDefault(npc, List.of()); }
+        /** Whether one of the NPC's watches needs a look around, rather than only a projectile, a click or speech. */
+        public boolean scans(UUID npc) { return radius.containsKey(npc); }
+        public boolean wants(UUID npc, TriggerKind kind) {
+            for (EntitySensor.Watch watch : watches(npc)) if (watch.spec().kind() == kind) return true;
+            return false;
+        }
+    }
+    /** Sensed events found by looking around; those that only need an event of their own are not looked for. */
+    static boolean scanned(TriggerKind kind) { return kind.sensed() && kind != TriggerKind.HIT_BY_PROJECTILE && kind != TriggerKind.LEASH_TIE && kind != TriggerKind.NPC_SPEECH; }
     /** An immutable NPC, accepted program and trigger combination. A source change produces a new one. */
     public static final class Binding {
         private final NpcDefinition definition; private final String behavior; private final BehaviorCatalog.Accepted accepted;
@@ -72,7 +91,9 @@ public final class TriggerDispatcher implements TriggerSink {
     private final Supplier<Map<String, NpcDefinition>> definitions;
     private final Supplier<BehaviorCatalog.Snapshot> catalog;
     private final Object lock = new Object();
-    private final ArrayDeque<TriggerEvent> inbox = new ArrayDeque<>(); // lock
+    /** An event waiting for the next pump, and whether its NPC was presented when it happened. */
+    private record Queued(TriggerEvent event, boolean presented) {}
+    private final ArrayDeque<Queued> inbox = new ArrayDeque<>(); // lock
     private final Set<UUID> active = new HashSet<>(), despawning = new HashSet<>(); // lock
     private final LinkedHashSet<UUID> spawning = new LinkedHashSet<>(); // lock
     private long activityGeneration; // lock
@@ -86,6 +107,9 @@ public final class TriggerDispatcher implements TriggerSink {
     private volatile HiddenNpcs hidden = HiddenNpcs.NONE;
     private volatile Consumption consumption;
     private volatile ProximityTracker.Plan plan = ProximityTracker.Plan.EMPTY;
+    private volatile EntityPlan entityPlan = EntityPlan.EMPTY;
+    /** Presented NPCs with an npc_speech watch. */
+    private volatile List<UUID> listeners = List.of();
     private volatile List<Diagnostic> activityDiagnostics = List.of();
     private volatile Diagnostic lastStartFailure;
     private volatile long tick;
@@ -110,6 +134,9 @@ public final class TriggerDispatcher implements TriggerSink {
         for (DropReason reason : DropReason.values()) drops.put(reason, new LongAdder());
     }
 
+    private final TriggerFaults faults = new TriggerFaults();
+    /** Where a failing trigger is reported once per behavior and event. Connect during startup. */
+    public void log(java.util.function.Consumer<String> sink) { faults.sink(sink); }
     /** The platform proved it can run NPCs on their owner. Disabled settings stay unavailable. */
     public void connect() { blocked = null; }
     public void unavailable(String reason) { blocked = Objects.requireNonNull(reason); }
@@ -128,6 +155,28 @@ public final class TriggerDispatcher implements TriggerSink {
     /** The current proximity budgets; trackers read them once per tick. */
     public ProximityTracker.Limits proximityLimits() { return proximityLimits; }
     public ProximityTracker.Plan proximityPlan() { return available() ? plan : ProximityTracker.Plan.EMPTY; }
+    /** What presented NPCs sense; empty while triggers cannot run. Any thread. */
+    public EntityPlan entityPlan() { return available() ? entityPlan : EntityPlan.EMPTY; }
+
+    /**
+     * An NPC said {@code text} at {@code at}: every NPC with an npc_speech watch within its radius hears it. {@code positions}
+     * reads published NPC positions from any thread. Thread-safe; returns how many listeners heard it.
+     */
+    public int spoke(UUID speaker, String speakerId, art.arcane.animus.core.virtual.WorldPosition at, String text,
+                     java.util.function.Function<UUID, Optional<art.arcane.animus.core.virtual.WorldPosition>> positions) {
+        if (!available()) return 0;
+        EntityPlan current = entityPlan;
+        int heard = 0;
+        for (UUID listener : listeners) {
+            if (listener.equals(speaker)) continue;
+            Optional<art.arcane.animus.core.virtual.WorldPosition> where = positions.apply(listener);
+            if (where.isEmpty() || !where.get().world().equals(at.world())) continue;
+            List<TriggerEvent.Entity> events = EntitySensor.speech(listener, current.watches(listener), speaker, speakerId, text, where.get().point().distance(at.point()));
+            for (TriggerEvent.Entity event : events) publish(event);
+            if (!events.isEmpty()) heard++;
+        }
+        return heard;
+    }
     /** Connect with the runtime's previews: a viewer fires no trigger of a live NPC hidden from them. A later call replaces it. */
     public void hide(HiddenNpcs hidden) { this.hidden = Objects.requireNonNull(hidden); }
     /** The bound NPC is hidden from the viewer, so their proximity, interaction and choice events are dropped. Thread-safe. */
@@ -204,7 +253,7 @@ public final class TriggerDispatcher implements TriggerSink {
                 drops.get(DropReason.EVENT_QUEUE).increment();
                 return Outcome.rejected(Outcome.Status.BUSY, "trigger-event-capacity", "Trigger event queue is full; the event was dropped");
             }
-            inbox.addLast(event);
+            inbox.addLast(new Queued(event, active.contains(event.npc())));
         }
         events.increment();
         return Outcome.ok(true);
@@ -226,7 +275,7 @@ public final class TriggerDispatcher implements TriggerSink {
             if (spawning.remove(npc)) return;
             if (inbox.size() >= settings.eventQueue()) { drops.get(DropReason.EVENT_QUEUE).increment(); return; }
             despawning.add(npc);
-            inbox.addLast(new TriggerEvent.Despawn(npc));
+            inbox.addLast(new Queued(new TriggerEvent.Despawn(npc), true));
         }
         events.increment();
     }
@@ -276,6 +325,7 @@ public final class TriggerDispatcher implements TriggerSink {
         queue.clear(); npcQueued.clear(); queuedCount = 0;
         timers.clear(); timerDue.clear(); timerCount = 0;
         plan = ProximityTracker.Plan.EMPTY;
+        entityPlan = EntityPlan.EMPTY; listeners = List.of();
         observedActivity = -1;
         synchronized (lock) { inbox.clear(); spawning.clear(); despawning.clear(); }
     }
@@ -330,6 +380,9 @@ public final class TriggerDispatcher implements TriggerSink {
                     if (trigger.spec() instanceof TriggerBinding.Proximity proximity && proximity.radius() > settings.maximumProximityRadius()) {
                         problems.add("trigger-proximity-budget", triggerField, "Radius exceeds behaviors.triggers.maximumProximityRadius"); continue;
                     }
+                    if (trigger.spec() instanceof TriggerBinding.EntityEvent sensed && scanned(sensed.kind()) && sensed.radius() > settings.maximumEntityRadius()) {
+                        problems.add("trigger-entity-budget", triggerField, "Radius exceeds behaviors.triggers.maximumEntityRadius"); continue;
+                    }
                     if (trigger.spec() instanceof TriggerBinding.Timer timer && timer.intervalTicks() < settings.minimumTimerTicks()) {
                         problems.add("trigger-timer-budget", triggerField, "Interval is below behaviors.triggers.minimumTimerTicks"); continue;
                     }
@@ -356,12 +409,20 @@ public final class TriggerDispatcher implements TriggerSink {
         Map<String, Long> previous = new HashMap<>(timerDue);
         timers.clear(); timerDue.clear();
         Map<UUID, List<ProximityTracker.Binding>> proximity = new HashMap<>();
+        Map<UUID, List<EntitySensor.Watch>> sensed = new HashMap<>();
+        Map<UUID, Double> reach = new HashMap<>();
+        List<UUID> hearing = new ArrayList<>();
         double maximum = 0;
         Problems problems = new Problems();
         for (Binding binding : index.ordered()) {
             UUID npc = binding.definition.uuid();
             if (!binding.definition.spawned() || !activeView.contains(npc)) continue;
             switch (binding.trigger.spec()) {
+                case TriggerBinding.EntityEvent event -> {
+                    sensed.computeIfAbsent(npc, ignored -> new ArrayList<>()).add(new EntitySensor.Watch(binding.key(), event));
+                    if (scanned(event.kind())) reach.merge(npc, event.radius(), Math::max);
+                    if (event.kind() == TriggerKind.NPC_SPEECH && !hearing.contains(npc)) hearing.add(npc);
+                }
                 case TriggerBinding.Timer timer -> {
                     String timerKey = npc + "|" + binding.key();
                     if (timers.size() >= settings.maximumTimers()) {
@@ -381,6 +442,12 @@ public final class TriggerDispatcher implements TriggerSink {
         timerCount = timers.size();
         activityDiagnostics = problems.list();
         plan = proximity.isEmpty() ? ProximityTracker.Plan.EMPTY : new ProximityTracker.Plan(copyLists(proximity), maximum);
+        Map<UUID, List<EntitySensor.Watch>> watches = new HashMap<>();
+        sensed.forEach((UUID npc, List<EntitySensor.Watch> each) -> watches.put(npc, List.copyOf(each)));
+        Set<TriggerKind> kinds = EnumSet.noneOf(TriggerKind.class);
+        for (List<EntitySensor.Watch> each : watches.values()) for (EntitySensor.Watch watch : each) kinds.add(watch.spec().kind());
+        entityPlan = sensed.isEmpty() ? EntityPlan.EMPTY : new EntityPlan(watches, reach, kinds);
+        listeners = List.copyOf(hearing);
     }
     private static Map<UUID, List<ProximityTracker.Binding>> copyLists(Map<UUID, List<ProximityTracker.Binding>> source) {
         Map<UUID, List<ProximityTracker.Binding>> copy = new HashMap<>();
@@ -395,25 +462,37 @@ public final class TriggerDispatcher implements TriggerSink {
             Iterator<UUID> iterator = spawning.iterator();
             while (iterator.hasNext() && ready.size() < settings.eventsPerTick()) { ready.add(iterator.next()); iterator.remove(); }
         }
-        for (UUID npc : ready) admit(new TriggerEvent.Spawn(npc));
+        for (UUID npc : ready) guarded(new TriggerEvent.Spawn(npc), false);
     }
     private void drainEvents() {
         for (int count = 0; count < settings.eventsPerTick(); count++) {
-            TriggerEvent event;
-            synchronized (lock) { event = inbox.pollFirst(); }
-            if (event == null) return;
-            admit(event);
+            Queued next;
+            synchronized (lock) { next = inbox.pollFirst(); }
+            if (next == null) return;
+            guarded(next.event(), next.presented());
         }
     }
-    private void admit(TriggerEvent event) {
+    /** An event that cannot be admitted is dropped alone; the dispatch goes on with the next one. */
+    private void guarded(TriggerEvent event, boolean presented) {
+        try { admit(event, presented); }
+        catch (RuntimeException fault) {
+            drops.get(DropReason.FAULT).increment();
+            List<Binding> bound = index.byNpc().get(event.npc());
+            String behavior = bound == null || bound.isEmpty() ? "on NPC " + event.npc() : bound.getFirst().behavior;
+            faults.report(behavior, event.kind().jsonName(), "", fault);
+        }
+    }
+    private void admit(TriggerEvent event, boolean presentedThen) {
         if (event instanceof TriggerEvent.Despawn) {
             synchronized (lock) { despawning.remove(event.npc()); }
             indexDirty = true;
         }
         List<Binding> bound = index.byNpc().get(event.npc());
         if (bound == null) return;
-        // Terminal facts already happened to a presented NPC; they outrun the activity change they cause.
-        boolean presented = activeView.contains(event.npc()) || event instanceof TriggerEvent.Despawn || event instanceof TriggerEvent.Death || event instanceof TriggerEvent.Damage;
+        // Terminal facts, and anything that happened to the NPC while it was presented, such as the arrow that kills it,
+        // outrun the activity change they cause.
+        boolean presented = presentedThen || activeView.contains(event.npc()) || event instanceof TriggerEvent.Despawn || event instanceof TriggerEvent.Death
+                || event instanceof TriggerEvent.Damage;
         Long lastAdmitted = npcAdmitted.get(event.npc());
         boolean cooling = settings.npcCooldownTicks() > 0 && lastAdmitted != null && tick - lastAdmitted < settings.npcCooldownTicks();
         boolean admitted = false;
@@ -421,7 +500,8 @@ public final class TriggerDispatcher implements TriggerSink {
             if (!binding.trigger.matches(event, binding.key())) continue;
             if (!presented) { drop(binding, DropReason.INACTIVE); continue; }
             if (cooling) { suppress(binding); continue; }
-            admitted |= enqueue(binding, event.player(), event.context());
+            Optional<UUID> entity = event instanceof TriggerEvent.Entity sensed ? sensed.subject().map(TriggerEvent.Subject::id) : Optional.empty();
+            admitted |= enqueue(binding, event.player(), event.context(), entity);
         }
         if (admitted && settings.npcCooldownTicks() > 0) npcAdmitted.put(event.npc(), tick);
     }
@@ -431,17 +511,24 @@ public final class TriggerDispatcher implements TriggerSink {
             long next = tick + timer.interval();
             timers.add(new Timer(next, timer.binding(), timer.interval()));
             timerDue.put(timer.binding().definition.uuid() + "|" + timer.binding().key(), next);
-            enqueue(timer.binding(), Optional.empty(), Map.of());
+            enqueue(timer.binding(), Optional.empty(), Map.of(), Optional.empty());
         }
     }
-    private boolean enqueue(Binding binding, Optional<UUID> player, Map<String, Object> event) {
+    /** {@code entity} is the subject of a sensed event, which keeps its own cooldown. */
+    private boolean enqueue(Binding binding, Optional<UUID> player, Map<String, Object> event, Optional<UUID> entity) {
         Stats stat = binding.stats;
         TriggerBinding.Interaction click = binding.trigger.spec() instanceof TriggerBinding.Interaction interaction && player.isPresent() ? interaction : null;
         // A proximity trigger with its own player cooldown keeps one per player instead of one for the trigger.
         OptionalInt nearby = binding.trigger.spec() instanceof TriggerBinding.Proximity proximity && player.isPresent() ? proximity.playerCooldownTicks() : OptionalInt.empty();
-        // An interaction trigger's default cooldown is each player's own, so one player's clicks never hold back another's.
-        int cooldown = binding.trigger.cooldownTicks().orElse(click != null || nearby.isPresent() || binding.trigger.spec() instanceof TriggerBinding.Timer ? 0 : settings.defaultCooldownTicks());
+        TriggerBinding.EntityEvent sensed = binding.trigger.spec() instanceof TriggerBinding.EntityEvent each && entity.isPresent() ? each : null;
+        // An interaction or sensed trigger's default cooldown is each player's or entity's own, so one never holds back another.
+        int cooldown = binding.trigger.cooldownTicks().orElse(click != null || nearby.isPresent() || sensed != null || binding.trigger.spec() instanceof TriggerBinding.Timer ? 0 : settings.defaultCooldownTicks());
         if (stat.lastAdmitted >= 0 && tick - stat.lastAdmitted < cooldown) { suppress(binding); return false; }
+        if (sensed != null) {
+            int own = sensed.filter().entityCooldownTicks().orElse(binding.trigger.cooldownTicks().isPresent() ? 0 : settings.defaultCooldownTicks());
+            Long last = stat.entityAdmitted.get(entity.get());
+            if (last != null && tick - last < own) { suppress(binding); return false; }
+        }
         if (click != null || nearby.isPresent()) {
             int own = click != null ? click.playerCooldownTicks().orElse(binding.trigger.cooldownTicks().isPresent() ? 0 : settings.playerCooldownTicks()) : nearby.getAsInt();
             Long last = stat.playerAdmitted.get(player.get());
@@ -459,6 +546,10 @@ public final class TriggerDispatcher implements TriggerSink {
         if (click != null || nearby.isPresent()) {
             if (stat.playerAdmitted.size() >= MAX_TRACKED_PLAYERS) stat.playerAdmitted.values().removeIf((Long admitted) -> tick - admitted >= MAX_COOLDOWN_TICKS);
             stat.playerAdmitted.put(player.get(), tick);
+        }
+        if (sensed != null) {
+            if (stat.entityAdmitted.size() >= MAX_TRACKED_PLAYERS) stat.entityAdmitted.values().removeIf((Long admitted) -> tick - admitted >= MAX_COOLDOWN_TICKS);
+            stat.entityAdmitted.put(entity.get(), tick);
         }
         return true;
     }
@@ -480,7 +571,13 @@ public final class TriggerDispatcher implements TriggerSink {
             if (!current(binding)) { release(iterator, pending); idle(binding, pending.player()); drop(binding, DropReason.STALE); continue; }
             if (starts >= settings.startsPerTick() || activeCount >= settings.concurrentTotal()) continue;
             if (npcActive.getOrDefault(npc, 0) >= settings.concurrentPerNpc() || binding.stats.active >= settings.concurrentPerTrigger()) continue;
-            Outcome<UUID> result = starter.start(new Request(binding, binding.definition, binding.accepted, binding.program, pending.player(), pending.event()));
+            Outcome<UUID> result;
+            try { result = starter.start(new Request(binding, binding.definition, binding.accepted, binding.program, pending.player(), pending.event())); }
+            catch (RuntimeException fault) {
+                release(iterator, pending); idle(binding, pending.player()); drop(binding, DropReason.FAULT);
+                faults.report(binding.behavior, binding.trigger.spec().kind().jsonName(), " on NPC " + binding.definition.id(), fault);
+                continue;
+            }
             if (result.status() == Outcome.Status.BUSY) { starts = settings.startsPerTick(); continue; }
             release(iterator, pending);
             if (result.status() != Outcome.Status.OK) {

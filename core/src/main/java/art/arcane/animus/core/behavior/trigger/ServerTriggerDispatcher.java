@@ -8,6 +8,7 @@ import art.arcane.animus.core.behavior.catalog.ServerBehaviorList;
 import java.util.*;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -17,7 +18,7 @@ import java.util.function.Supplier;
  * {@link #finished} belong to the behavior owner. Overflow is dropped and counted, never queued without limit.
  */
 public final class ServerTriggerDispatcher {
-    public enum DropReason { EVENT_QUEUE, TRIGGER_QUEUE, EXPIRED, STALE, START_FAILED, UNAVAILABLE }
+    public enum DropReason { EVENT_QUEUE, TRIGGER_QUEUE, EXPIRED, STALE, START_FAILED, UNAVAILABLE, FAULT }
     @FunctionalInterface public interface Starter { Outcome<UUID> start(Request request); }
     /**
      * One admitted firing. {@code event} is the event context the run sees as {@code context.*}; {@code current} stays
@@ -111,6 +112,9 @@ public final class ServerTriggerDispatcher {
     /** Follows a hotload of {@code [behaviors] enabled}: disabled behaviors refuse server events while running executions finish. */
     public void behaviorsEnabled(boolean enabled) { behaviorsEnabled = enabled; }
     private String reason() { return behaviorsEnabled ? unavailable : "behaviors are disabled in config.toml"; }
+    private final TriggerFaults faults = new TriggerFaults();
+    /** Where a failing trigger is reported once per behavior and event. Connect during startup. */
+    public void log(Consumer<String> sink) { faults.sink(sink); }
     public boolean available() { return reason() == null; }
     public String availability() { String reason = reason(); return reason == null ? "available" : reason; }
     public ServerTriggerSettings settings() { return settings; }
@@ -383,7 +387,8 @@ public final class ServerTriggerDispatcher {
             ServerEvent event;
             synchronized (lock) { event = inbox.pollFirst(); }
             if (event == null) return;
-            admit(event);
+            try { admit(event); }
+            catch (RuntimeException fault) { drops.get(DropReason.FAULT).increment(); faults.report("server behaviors", event.kind().jsonName(), "", fault); }
         }
     }
     private void admit(ServerEvent event) {
@@ -441,7 +446,13 @@ public final class ServerTriggerDispatcher {
             if (tick - pending.admitted() > QUEUE_LIFETIME_TICKS) { release(iterator, pending); drop(binding, DropReason.EXPIRED); continue; }
             if (!current(binding)) { release(iterator, pending); drop(binding, DropReason.STALE); continue; }
             if (starts >= settings.startsPerTick() || activeCount >= settings.concurrentTotal() || binding.stats.active >= settings.concurrentPerTrigger()) continue;
-            Outcome<UUID> result = starter.start(new Request(binding, binding.accepted, binding.program, pending.player(), pending.event(), () -> current(binding)));
+            Outcome<UUID> result;
+            try { result = starter.start(new Request(binding, binding.accepted, binding.program, pending.player(), pending.event(), () -> current(binding))); }
+            catch (RuntimeException fault) {
+                release(iterator, pending); drop(binding, DropReason.FAULT);
+                faults.report(binding.behavior, binding.trigger.spec().kind().jsonName(), "", fault);
+                continue;
+            }
             if (result.status() == Outcome.Status.BUSY) { starts = settings.startsPerTick(); continue; }
             release(iterator, pending);
             if (result.status() != Outcome.Status.OK) {

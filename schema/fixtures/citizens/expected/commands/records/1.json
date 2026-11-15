@@ -1,0 +1,42 @@
+{
+  "name": "Ferryman",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000601",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "old_harbor",
+      "x": 20.5,
+      "y": 63.0,
+      "z": 4.5
+    },
+    "commandtrait": {
+      "temporaryPermissions": {
+        "0": "kits.starter"
+      },
+      "temporaryPermissionsDuration": -1,
+      "commands": {
+        "0": {
+          "command": "kit starter",
+          "hand": "BOTH",
+          "player": true
+        },
+        "1": {
+          "command": "npc pathto 30 63 4",
+          "hand": "BOTH"
+        },
+        "2": {
+          "command": "npc rename \"Old Tom\"",
+          "hand": "BOTH"
+        },
+        "3": {
+          "command": "npc moveto 1:70:2:old_nether",
+          "hand": "BOTH"
+        },
+        "4": {
+          "command": "npc tp",
+          "hand": "BOTH"
+        }
+      }
+    }
+  }
+}

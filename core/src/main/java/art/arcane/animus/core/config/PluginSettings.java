@@ -95,6 +95,8 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
             Map.entry("editor.relayConcurrentRequests", "Editor requests the relay runs at once"),
             Map.entry("shops.messages", "Shop texts with & colour codes; {name} is a placeholder. Delete a line to use the built-in text"),
             Map.entry("behaviors.triggers.playerCooldownTicks", "Spacing of one player's runs of an interaction trigger that sets no cooldownTicks; 0 turns it off"),
+            Map.entry("behaviors.triggers.entityIntervalTicks", "How often an NPC with entity triggers looks around while a player is near; the next four bound that work"),
+            Map.entry("behaviors.triggers.projectilesFollowed", "Real projectiles followed at once for hit_by_projectile triggers"),
             Map.entry("behaviors.server.maximumAreas", "Areas tracked for player_area triggers"));
 
     private static String commented(String encoded) {
@@ -374,7 +376,13 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
                 budget(trigger, "proximityViewersPerTick", triggers.proximityViewersPerTick(), 1, 256, "triggers"),
                 budget(trigger, "proximityCandidates", triggers.proximityCandidates(), 1, 1024, "triggers"),
                 budget(trigger, "proximityTrackedPerViewer", triggers.proximityTrackedPerViewer(), 1, 1024, "triggers"),
-                budget(trigger, "playerCooldownTicks", triggers.playerCooldownTicks(), 0, 72000, "triggers"));
+                budget(trigger, "playerCooldownTicks", triggers.playerCooldownTicks(), 0, 72000, "triggers"),
+                budget(trigger, "entityIntervalTicks", triggers.entityIntervalTicks(), 1, 200, "triggers"),
+                budget(trigger, "entityScansPerTick", triggers.entityScansPerTick(), 1, 256, "triggers"),
+                budget(trigger, "entityCandidates", triggers.entityCandidates(), 1, 256, "triggers"),
+                budget(trigger, "maximumEntityRadius", triggers.maximumEntityRadius(), 1, 32, "triggers"),
+                budget(trigger, "entityTrackedPerNpc", triggers.entityTrackedPerNpc(), 1, 1024, "triggers"),
+                budget(trigger, "projectilesFollowed", triggers.projectilesFollowed(), 1, 2048, "triggers"));
         BehaviorStateStore.Limits stored = defaults.state();
         BehaviorStateStore.Limits stateLimits = new BehaviorStateStore.Limits(
                 budget(state, "maximumKeys", stored.maximumKeys(), 1, 1_048_576, "state"),

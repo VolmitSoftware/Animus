@@ -22,6 +22,12 @@ final class CitizensCommands {
     private static final Pattern MYTHIC_CAST = Pattern.compile("(?i)(?:mythicmobs:)?(?:mm|mythicmobs)\\s+(?:test|t)\\s+(?:cast|c)\\s+([A-Za-z0-9_.-]{1,128})(?:\\s+-s)?\\s*");
     private static final Set<String> HANDS = Set.of("LEFT", "RIGHT", "BOTH", "SHIFT_LEFT", "SHIFT_RIGHT", "SHIFT_BOTH");
     private static final long MAX_EXPIRY = 31_536_000L;
+    /** At most this many temporary permissions, for at most this many ticks, as {@code animus:command} lends them. */
+    private static final int MAX_LENT = 16, MAX_LENT_TICKS = 72_000;
+    private static final Pattern PLACEHOLDER_API = Pattern.compile("%[^%\\s]+%");
+    /** Capabilities that run only for behaviors on the command allow-list. */
+    private static final Set<String> PRIVILEGED = Set.of("animus:command", "mythic:cast-skill");
+    static final String FILLED = "PlaceholderAPI placeholders are filled for the clicking player; a value with characters other than letters, digits and _ . : + - stops the command unless the behavior is on rawTextBehaviors";
     /** Citizens' default error messages, by its error name. {0} and {1} are filled in where the cost is known. */
     private static final Map<String, String> MESSAGES = Map.of(
             "NO_PERMISSION", "You don't have permission to do that.",
@@ -47,15 +53,21 @@ final class CitizensCommands {
     private final String key, name;
     private final List<String> warnings;
     private final Set<String> converted;
+    private final Map<String, CitizensImporter.Note> notes;
     private boolean hide;
     private final Map<String, String> custom = new HashMap<>();
+    /** The trait's temporary permissions, lent to each command the clicking player runs. */
+    private List<String> lent = List.of();
+    private int lentTicks;
+    private boolean lentUsed;
 
-    private CitizensCommands(String key, String name, List<String> warnings, Set<String> converted) {
-        this.key = key; this.name = name; this.warnings = warnings; this.converted = converted;
+    private CitizensCommands(String key, String name, List<String> warnings, Set<String> converted, Map<String, CitizensImporter.Note> notes) {
+        this.key = key; this.name = name; this.warnings = warnings; this.converted = converted; this.notes = notes;
     }
 
-    static Result map(String key, String name, JsonObject traits, Addons addons, List<String> warnings, Set<String> converted) {
-        return new CitizensCommands(key, name, warnings, converted).convert(object(traits.get("commandtrait")), addons);
+    /** {@code notes} receives the reason a Citizens line went to review. */
+    static Result map(String key, String name, JsonObject traits, Addons addons, List<String> warnings, Set<String> converted, Map<String, CitizensImporter.Note> notes) {
+        return new CitizensCommands(key, name, warnings, converted, notes).convert(object(traits.get("commandtrait")), addons);
     }
 
     private Result convert(JsonObject trait, Addons addons) {
@@ -75,7 +87,8 @@ final class CitizensCommands {
         routine("sneak-right", "sneak_interact", clicks.get("sneak_interact"), routines, triggers);
         routine("sneak-left", "sneak_attack", clicks.get("sneak_attack"), routines, triggers);
         if (routines.isEmpty()) return new Result(Optional.empty(), routines, triggers);
-        warnings.add(BASE + ": commands stay denied until " + NAMESPACE + ":commands-" + key + " is on the [behaviors.actions] commandBehaviors list in config.toml");
+        if (routines.entrySet().stream().anyMatch((Map.Entry<String, JsonElement> routine) -> runs(routine.getValue(), PRIVILEGED)))
+            warnings.add(BASE + ": commands stay denied until " + NAMESPACE + ":commands-" + key + " is on the [behaviors.actions] commandBehaviors list in config.toml");
         return new Result(Optional.of(routines.keySet().iterator().next()), routines, triggers);
     }
 
@@ -101,12 +114,19 @@ final class CitizensCommands {
                 custom.put(message.getKey(), message.getValue().getAsString());
                 converted.add(BASE + "/customErrorMessages/" + pointer(message.getKey()));
             }
-        if (!entries(trait.get("temporaryPermissions")).isEmpty())
-            warnings.add(BASE + "/temporaryPermissions: temporary permissions are not granted; player commands run with the player's own permissions");
         Optional<Charge> clickCost = cost(trait.get("cost"), trait.get("experienceCost"), trait.get("itemRequirements"), BASE, "itemRequirements");
         if (clickCost == null) { warnings.add(BASE + ": the click cost has items that cannot be matched exactly, so no commands were converted"); return; }
+        List<String> lentPaths = lend(trait);
         List<Command> commands = new ArrayList<>();
         for (Map.Entry<String, JsonElement> entry : entries(trait.get("commands"))) command(entry.getKey(), object(entry.getValue())).ifPresent(commands::add);
+        if (!lent.isEmpty() && lentUsed) {
+            converted.addAll(lentPaths);
+            if (trait.has("temporaryPermissionsDuration")) converted.add(BASE + "/temporaryPermissionsDuration");
+        } else if (!lent.isEmpty()) {
+            String reason = "Animus lends permissions only to commands the clicking player runs, and this NPC has none";
+            warnings.add(BASE + "/temporaryPermissions: " + reason + ", so they are not granted");
+            for (String field : List.of("temporaryPermissions", "temporaryPermissionsDuration")) notes.put(BASE + "/" + field, new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW, reason));
+        }
         if (commands.isEmpty()) return;
         commands.sort(Comparator.comparingInt(Command::id));
         String mode = string(trait.get("executionMode"), "LINEAR").toUpperCase(Locale.ROOT);
@@ -128,6 +148,30 @@ final class CitizensCommands {
         }
         if ((!hands.get("sneak_interact").isEmpty() || !hands.get("sneak_attack").isEmpty()) && commands.stream().anyMatch((Command command) -> !command.hand().startsWith("SHIFT_")))
             warnings.add(BASE + ": LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones");
+    }
+
+    /** Reads the temporary permissions and their duration; returns the paths of the nodes it keeps. */
+    private List<String> lend(JsonObject trait) {
+        List<String> nodes = new ArrayList<>(), paths = new ArrayList<>();
+        for (Map.Entry<String, JsonElement> entry : entries(trait.get("temporaryPermissions"))) {
+            if (!entry.getValue().isJsonPrimitive()) continue;
+            String node = entry.getValue().getAsString().trim();
+            String at = BASE + "/temporaryPermissions/" + entry.getKey();
+            if (!node.matches(art.arcane.animus.core.behavior.trigger.TriggerCompiler.PERMISSION)) {
+                warnings.add(at + ": " + node + " is not a permission node; not granted");
+                notes.put(at, new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW, "not a permission node"));
+                continue;
+            }
+            if (nodes.size() == MAX_LENT) { warnings.add(BASE + "/temporaryPermissions: only the first " + MAX_LENT + " permissions are granted"); break; }
+            nodes.add(node);
+            paths.add(at);
+        }
+        lent = List.copyOf(nodes);
+        JsonElement duration = trait.get("temporaryPermissionsDuration");
+        long ticks = number(duration) ? (long) Math.floor(duration.getAsDouble()) : 0;
+        if (ticks > MAX_LENT_TICKS) warnings.add(BASE + "/temporaryPermissionsDuration: temporary permissions last at most " + MAX_LENT_TICKS + " ticks");
+        lentTicks = (int) clamp(ticks, 0, MAX_LENT_TICKS);
+        return paths;
     }
 
     private JsonObject mode(List<Command> commands, String mode, String quest) {
@@ -165,12 +209,32 @@ final class CitizensCommands {
             arguments.addProperty("caster", "player");
             run = action("mythic:cast-skill", arguments);
             warnings.add(at + "/command: the MythicMobs skill cast became mythic:cast-skill, which needs MythicMobs on the server");
-        } else {
-            if (op) warnings.add(at + "/op: the command ran as an operator player; it now runs from the console");
-            if (npc && player) warnings.add(at + "/npc: the NPC's own player body ran the command; it now runs from the console, with the NPC's name for the player");
-            JsonObject arguments = arguments("command", text);
-            arguments.addProperty("as", player && !op && !npc ? "player" : "console");
-            run = action("animus:command", arguments);
+        } else switch (CitizensCommandLines.read(text, (player || op) && !npc, key)) {
+            case CitizensCommandLines.Review review -> {
+                warnings.add(at + "/command: " + review.reason() + "; not converted");
+                notes.put(at, new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW, review.reason() + "; kept in citizens:review"));
+                return Optional.empty();
+            }
+            case CitizensCommandLines.Mapped mapped -> {
+                run = mapped.node();
+                mapped.note().ifPresent((String note) -> warnings.add(at + "/command: " + note));
+            }
+            case CitizensCommandLines.Plain plain -> {
+                if (op) warnings.add(at + "/op: the command ran as an operator player; it now runs from the console");
+                if (npc && player) warnings.add(at + "/npc: the NPC's own player body ran the command; it now runs from the console, with the NPC's name for the player");
+                boolean asPlayer = player && !op && !npc;
+                JsonObject arguments = arguments("command", text);
+                arguments.addProperty("as", asPlayer ? "player" : "console");
+                if (asPlayer && !lent.isEmpty()) {
+                    JsonArray nodes = new JsonArray();
+                    lent.forEach(nodes::add);
+                    arguments.add("permissions", nodes);
+                    if (lentTicks > 0) arguments.addProperty("permissionTicks", lentTicks);
+                    lentUsed = true;
+                }
+                if (PLACEHOLDER_API.matcher(text).find()) warnings.add(at + "/command: " + FILLED);
+                run = action("animus:command", arguments);
+            }
         }
         String flag = "commands-" + key + "-" + id;
         long cooldown = seconds(data.get("cooldown"), at + "/cooldown"), globalCooldown = seconds(data.get("globalcooldown"), at + "/globalcooldown");
@@ -368,7 +432,7 @@ final class CitizensCommands {
                 warnings.add(at + ": the permission " + kind + " is not granted for the command; it runs with the player's own permissions");
             }
         }
-        if (command.matches("(?s).*%[A-Za-z0-9_]+%.*")) warnings.add(at + ": PlaceholderAPI placeholders other than %p% and %player% are not filled in");
+        if (!kind.equalsIgnoreCase("message") && PLACEHOLDER_API.matcher(command).find()) warnings.add(at + ": " + FILLED);
         if (delay < 1) return Optional.of(node);
         JsonObject wait = new JsonObject();
         wait.addProperty("type", "wait");
@@ -458,12 +522,15 @@ final class CitizensCommands {
     private static String capability(JsonObject node) { return node.has("capability") ? node.get("capability").getAsString() : ""; }
 
     /** Whether {@code node} or a step inside it runs {@code animus:command}. */
-    private static boolean runsCommand(JsonElement node) {
-        if (node.isJsonArray()) { for (JsonElement step : node.getAsJsonArray()) if (runsCommand(step)) return true; return false; }
+    private static boolean runsCommand(JsonElement node) { return runs(node, Set.of("animus:command")); }
+
+    /** Whether {@code node} or a step inside it uses one of {@code capabilities}. */
+    private static boolean runs(JsonElement node, Set<String> capabilities) {
+        if (node.isJsonArray()) { for (JsonElement step : node.getAsJsonArray()) if (runs(step, capabilities)) return true; return false; }
         if (!node.isJsonObject()) return false;
         JsonObject object = node.getAsJsonObject();
-        if ("animus:command".equals(capability(object))) return true;
-        for (String field : List.of("steps", "then", "else")) if (object.has(field) && runsCommand(object.get(field))) return true;
+        if (capabilities.contains(capability(object))) return true;
+        for (String field : List.of("steps", "then", "else")) if (object.has(field) && runs(object.get(field), capabilities)) return true;
         return false;
     }
 
@@ -511,11 +578,14 @@ final class CitizensCommands {
         return action("animus:set-flag", arguments);
     }
 
-    /** Citizens' clicking-player placeholders become {player_name}, or the NPC's name when the NPC runs it; the NPC's own name and id are written in. */
+    /**
+     * Citizens' clicking-player placeholders become {player_name}, or the NPC's name when the NPC runs it; the NPC's own
+     * name and id are written in. PlaceholderAPI's are kept for Animus to fill.
+     */
     private String placeholders(String text, String path, boolean npc) {
         String player = npc ? name : "{player_name}";
-        String result = text.replace("<player>", player).replace("<p>", player).replace("<npc>", name).replace("<id>", key);
-        if (result.matches("(?s).*(<[a-z_]+>|%[a-z_]+%).*")) warnings.add(path + ": placeholders other than <p>, <player>, <npc> and <id> are not filled in");
+        String result = text.replace("<player>", player).replace("<p>", player).replace("%player%", player).replace("<npc>", name).replace("<id>", key);
+        if (result.matches("(?s).*<[a-z_]+>.*")) warnings.add(path + ": placeholders other than <p>, <player>, <npc> and <id> are not filled in");
         return result;
     }
 }

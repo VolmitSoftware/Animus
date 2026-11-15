@@ -2,7 +2,6 @@
   "citizensId": 0,
   "presentationWarnings": [],
   "runtimeWarnings": [
-    "/traits/commandtrait/commands/1/npc: the NPC's own player body ran the command; it now runs from the console, with the NPC's name for the player",
     "/traits/commandtrait/commands/2/itemCost: an item cost cannot be matched exactly; not converted",
     "/traits/commandtrait: commands stay denied until citizens:commands-0 is on the [behaviors.actions] commandBehaviors list in config.toml"
   ],

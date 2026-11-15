@@ -1,0 +1,47 @@
+{
+  "citizensId": 1,
+  "presentationWarnings": [],
+  "runtimeWarnings": [
+    "/traits/commandtrait/commands/3/command: npc moveto names a world; set the Animus world by hand; not converted",
+    "/traits/commandtrait/commands/4/command: runs from the console, where Citizens has no player to teleport; not converted",
+    "/traits/commandtrait: commands stay denied until citizens:commands-1 is on the [behaviors.actions] commandBehaviors list in config.toml"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/commandtrait/temporaryPermissions/0": "CONVERTED",
+    "/traits/commandtrait/temporaryPermissionsDuration": "CONVERTED",
+    "/traits/commandtrait/commands/0/command": "CONVERTED",
+    "/traits/commandtrait/commands/0/hand": "CONVERTED",
+    "/traits/commandtrait/commands/0/player": "CONVERTED",
+    "/traits/commandtrait/commands/1/command": "CONVERTED",
+    "/traits/commandtrait/commands/1/hand": "CONVERTED",
+    "/traits/commandtrait/commands/2/command": "CONVERTED",
+    "/traits/commandtrait/commands/2/hand": "CONVERTED",
+    "/traits/commandtrait/commands/3/command": "REQUIRES_REVIEW",
+    "/traits/commandtrait/commands/3/hand": "REQUIRES_REVIEW",
+    "/traits/commandtrait/commands/4/command": "REQUIRES_REVIEW",
+    "/traits/commandtrait/commands/4/hand": "REQUIRES_REVIEW"
+  },
+  "reasons": {
+    "/traits/commandtrait/commands/3/command": "npc moveto names a world; set the Animus world by hand; kept in citizens:review",
+    "/traits/commandtrait/commands/3/hand": "npc moveto names a world; set the Animus world by hand; kept in citizens:review",
+    "/traits/commandtrait/commands/4/command": "runs from the console, where Citizens has no player to teleport; kept in citizens:review",
+    "/traits/commandtrait/commands/4/hand": "runs from the console, where Citizens has no player to teleport; kept in citizens:review"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "old_harbor",
+      "to": "harbor"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

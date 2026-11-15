@@ -21,6 +21,12 @@ public record Hitbox(Vec3 min, Vec3 max) {
     }
 
     public Hitbox translated(Vec3 offset) { return new Hitbox(min.add(offset), max.add(offset)); }
+    /** The two boxes overlap or touch. */
+    public boolean touches(Hitbox other) {
+        return min.x() <= other.max.x() && max.x() >= other.min.x() && min.y() <= other.max.y() && max.y() >= other.min.y()
+                && min.z() <= other.max.z() && max.z() >= other.min.z();
+    }
+    public Vec3 center() { return new Vec3((min.x() + max.x()) / 2, (min.y() + max.y()) / 2, (min.z() + max.z()) / 2); }
     public Hitbox inflated(double amount) { return inflated(amount, amount, amount); }
     public Hitbox inflated(double x, double y, double z) {
         Vec3 by = new Vec3(x, y, z);

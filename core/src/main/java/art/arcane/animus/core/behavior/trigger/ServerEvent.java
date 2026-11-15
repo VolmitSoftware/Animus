@@ -196,8 +196,15 @@ public record ServerEvent(TriggerKind kind, Optional<UUID> player, Map<String, O
         }
         return true;
     }
-    /** A pattern without a colon matches the name after the namespace of a namespaced key, or the whole text. */
+    /**
+     * A pattern without a colon matches the name after the namespace of a namespaced key, or the whole text. Patterns
+     * separated by commas match when any of them does.
+     */
     static boolean key(String pattern, String text) {
+        if (pattern.indexOf(',') >= 0) {
+            for (String one : pattern.split(",")) if (!one.isEmpty() && key(one, text)) return true;
+            return false;
+        }
         if (glob(pattern, text)) return true;
         int colon = text.indexOf(':');
         return colon >= 0 && pattern.indexOf(':') < 0 && glob(pattern, text.substring(colon + 1));

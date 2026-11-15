@@ -46,8 +46,10 @@ public final class BehaviorCompiler {
         if(variable==null)return List.of();
         List<Diagnostic> warnings=new ArrayList<>();
         for(int index=0;index<program.triggers().size();index++){
-            TriggerKind kind=program.triggers().get(index).spec().kind();
-            if(kind.carriesPlayer())continue;
+            TriggerBinding.Spec spec=program.triggers().get(index).spec();
+            TriggerKind kind=spec.kind();
+            // A sensed event carries a player only when one is involved, unless its filters demand one.
+            if(spec instanceof TriggerBinding.EntityEvent sensed?sensed.alwaysPlayer():kind.carriesPlayer())continue;
             warnings.add(new Diagnostic(Diagnostic.Severity.WARNING,"behavior-trigger-needs-player","$.triggers["+index+"]",
                     "A "+kind.name().toLowerCase(Locale.ROOT)+" trigger has no player, and this behavior declares the player variable "+variable+", so every firing will be refused"));
         }

@@ -133,6 +133,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     final RegionRides<RegionActor> rides = new RegionRides<>();
     /** The combat module, when the server configuration enables it. */
     volatile RegionCombat combat;
+    /** Hears each projectile region combat stops in an NPC's body, on the projectile's region. */
+    volatile art.arcane.animus.bukkit.combat.ProjectileStrikes strikes = art.arcane.animus.bukkit.combat.ProjectileStrikes.NONE;
     private final AtomicBoolean mountsDirty = new AtomicBoolean(true);
     private Map<String, NpcDefinition> mountSnapshot;
     final AtomicLong accepted = new AtomicLong(), rejected = new AtomicLong();
@@ -463,6 +465,12 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         return null;
     }
     public String combatStatus() { RegionCombat module = combat; return module == null ? null : module.status(); }
+    /**
+     * On the projectile's region: region combat follows this projectile and stops it in the NPC's body, as it decides from
+     * the NPC's published view.
+     */
+    public boolean combatStops(org.bukkit.entity.Projectile projectile, UUID npc) { RegionCombat module = combat; return module != null && module.stops(projectile, npc); }
+    public void combatStrikes(art.arcane.animus.bukkit.combat.ProjectileStrikes listener) { strikes = listener; }
     public String combatCommand(String id, art.arcane.animus.core.command.CombatControl.Operation operation, Optional<UUID> target) {
         return Objects.requireNonNull(combat, "Combat is not running").command(id, operation, target);
     }
@@ -494,6 +502,14 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         RegionActor actor = available() ? byUuid.get(npc) : null;
         RegionActor.Publication view = actor == null ? null : actor.publication;
         return view == null || !view.live() ? Optional.empty() : Optional.of(new ActiveNpc(actor.id, view.name(), view.snapshot()));
+    }
+    @Override public SpatialNpcIndex.Scan nearbyNpcs(WorldPosition center, double radius, SpatialNpcIndex.Budget budget) {
+        return index.scan(new SpatialNpcIndex.Query(center, radius), null, budget, (art.arcane.animus.core.virtual.ChunkPosition chunk) -> true);
+    }
+    /** Any thread: viewers mark the NPCs within their view distance every second, on whichever region owns them. */
+    @Override public boolean watched(UUID npc) {
+        RegionActor actor = available() ? byUuid.get(npc) : null;
+        return actor != null && actor.watched();
     }
     @Override public String navigationStatus(String id) {
         if (!available()) return "Navigation " + id + ": " + (closed ? "closed" : unavailable);

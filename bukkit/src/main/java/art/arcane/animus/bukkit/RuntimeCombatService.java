@@ -16,6 +16,7 @@ import art.arcane.animus.bukkit.combat.CombatLimits;
 import art.arcane.animus.bukkit.combat.MobProfile;
 import art.arcane.animus.bukkit.combat.Explosions;
 import art.arcane.animus.bukkit.combat.NpcDecoys;
+import art.arcane.animus.bukkit.combat.ProjectileStrikes;
 import art.arcane.animus.core.combat.CombatEngine;
 import art.arcane.animus.core.combat.CombatWorld;
 import art.arcane.animus.core.combat.VanillaMelee;
@@ -117,6 +118,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     private final String regionUnavailable;
     /** Folia: manual attack and mob control on each subject's region; null elsewhere. */
     private final RegionManualCombat regionManual;
+    private volatile ProjectileStrikes strikes = ProjectileStrikes.NONE;
 
     /** {@code living} is the main-thread runtime and null on Folia, where {@code regions} runs combat on each NPC's owner. */
     RuntimeCombatService(JavaPlugin plugin, AnimusRuntime runtime, PersistedNpcService<Player, ItemStack> living, String version, boolean folia, RegionNpcRuntime regions) {
@@ -271,6 +273,21 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     }
     private void foughtBetween(UUID npc, UUID player) { fought.computeIfAbsent(npc, (UUID key) -> new HashMap<>()).put(player, ticks); }
 
+    /**
+     * Whether combat follows this real projectile and stops it in the NPC's body: combat runs for the NPC, it is alive and
+     * its defense takes projectiles. Any other projectile flies on through. On the projectile's owner.
+     */
+    boolean stops(Projectile projectile, UUID npc) {
+        if (regions != null) return regionUnavailable == null && regions.combatStops(projectile, npc);
+        return module.running() && flying.containsKey(projectile.getUniqueId()) && module.engine().shootable(npc);
+    }
+    /** Whether this entity stands in for an NPC body: a decoy that mobs fight. On the entity's owner. */
+    boolean standIn(Entity entity) { return decoys != null && decoys.decoy(entity); }
+    /** Who hears each projectile combat stops in an NPC's body, before the strike is dealt. */
+    void strikes(ProjectileStrikes listener) {
+        strikes = listener;
+        if (regions != null) regions.combatStrikes(listener);
+    }
     /** Combat NPCs waiting for a slot on the main thread; 0 on Folia, where each region keeps its own queue. */
     int waiting() { return regions != null ? 0 : module.waiting(); }
     int load() { return regions != null ? 0 : module.load(); }
@@ -334,6 +351,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
             Optional<ProjectileFlight.Hit> hit = next.flight().advance(BukkitShots.position(projectile), BukkitShots.velocity(projectile), scanner, module.engine()::shootable);
             if (hit.isEmpty()) continue;
             NpcDecoys.firstStrike(projectile, struckKey);
+            strikes.struck(projectile, hit.get().npc(), hit.get().point(), next.flight().spent());
             module.engine().shot(hit.get().npc(), BukkitShots.shot(projectile, next.kind(), next.shooter(), next.flight(), random));
             BukkitShots.land(projectile, next.kind(), hit.get().point(), next.flight().spent());
             if (next.flight().spent()) each.remove();
@@ -389,6 +407,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         Flying followed = flying.remove(projectile.getUniqueId());
         ProjectileFlight flight = followed == null ? new ProjectileFlight(BukkitShots.pierce(projectile)) : followed.flight();
         if (followed == null) flight.launched(BukkitShots.position(projectile));
+        strikes.struck(projectile, npc.get(), BukkitShots.position(projectile).point(), true);
         module.engine().shot(npc.get(), BukkitShots.shot(projectile, kind.get(), shooter, flight, random));
         BukkitShots.land(projectile, kind.get(), BukkitShots.position(projectile).point(), true);
     }

@@ -530,8 +530,7 @@ final class CitizensTraits {
             String[] parts = entry.getValue().isJsonPrimitive() ? entry.getValue().getAsString().split(";") : new String[0];
             Double yaw = parts.length >= 3 ? decimal(parts[1]) : null, pitch = parts.length >= 3 ? decimal(parts[2]) : null;
             if (yaw == null || pitch == null) { kept(path, "not a name;yaw;pitch pose"); continue; }
-            String name = parts[0].toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]+", "-").replaceAll("^[^a-z0-9]+", "");
-            if (name.length() > 32) name = name.substring(0, 32);
+            String name = poseName(parts[0]);
             if (name.isEmpty()) { kept(path, "the pose name has no letters or digits to keep"); continue; }
             if (named.has(name)) { kept(path, "another pose already uses the name " + name); continue; }
             if (named.size() == art.arcane.animus.core.npc.NamedPoses.MAXIMUM_POSES) { kept(path, "an NPC keeps at most 64 poses"); continue; }
@@ -542,6 +541,12 @@ final class CitizensTraits {
             converted.add(path);
         }
         if (!named.isEmpty()) fields.add("poses", named);
+    }
+
+    /** A Citizens pose name as an Animus pose name: lowercase, at most 32 characters; empty when nothing is left. */
+    static String poseName(String citizens) {
+        String name = citizens.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]+", "-").replaceAll("^[^a-z0-9]+", "");
+        return name.length() > 32 ? name.substring(0, 32) : name;
     }
 
     private static Double decimal(String text) {

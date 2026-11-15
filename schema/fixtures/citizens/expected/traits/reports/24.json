@@ -1,9 +1,7 @@
 {
   "citizensId": 24,
   "presentationWarnings": [],
-  "runtimeWarnings": [
-    "/traits/commandtrait: commands stay denied until citizens:commands-24 is on the [behaviors.actions] commandBehaviors list in config.toml"
-  ],
+  "runtimeWarnings": [],
   "fieldPathFormat": "json-pointer",
   "fields": {
     "/name": "CONVERTED",

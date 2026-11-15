@@ -101,6 +101,53 @@ public record TriggerBinding(String id, Spec spec, Optional<String> routine, Opt
     public record WorldEvent(TriggerKind kind, java.util.Map<String, String> filters, Optional<BehaviorExpression> cancel) implements Spec {
         public WorldEvent { Objects.requireNonNull(kind); filters = java.util.Map.copyOf(filters); Objects.requireNonNull(cancel); }
     }
+    /** Where an entity touches an NPC: {@code top} stands on its hitbox, {@code side} is any other touch. */
+    public enum Contact { ANY, TOP, SIDE }
+    /**
+     * Who an entity trigger answers to. {@code entity}, {@code named} and {@code tag} test the event's entity: its type
+     * key, its custom or player name, and its scoreboard tags. {@code players} needs a player in the event (true) or none
+     * (false), and {@code permission} a player holding the node. Empty fields match everything.
+     */
+    public record EntityFilter(Optional<String> entity, Optional<String> named, Optional<String> tag, Optional<Boolean> players,
+                               Optional<String> permission, OptionalInt entityCooldownTicks) {
+        public static final EntityFilter ANY = new EntityFilter(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), OptionalInt.empty());
+        public EntityFilter {
+            Objects.requireNonNull(entity); Objects.requireNonNull(named); Objects.requireNonNull(tag); Objects.requireNonNull(players);
+            Objects.requireNonNull(permission); Objects.requireNonNull(entityCooldownTicks);
+        }
+        /** {@code holds} answers whether the event's player holds a permission node; it is only asked when there is a player. */
+        public boolean accepts(Optional<TriggerEvent.Subject> subject, Optional<java.util.UUID> player, java.util.function.Predicate<String> holds) {
+            if (entity.isPresent() && (subject.isEmpty() || !ServerEvent.key(entity.get(), subject.get().type()))) return false;
+            if (named.isPresent() && (subject.isEmpty() || !ServerEvent.glob(named.get(), subject.get().name()))) return false;
+            if (tag.isPresent() && (subject.isEmpty() || !subject.get().tags().contains(tag.get()))) return false;
+            if (players.isPresent() && players.get() != player.isPresent()) return false;
+            return permission.isEmpty() || player.isPresent() && holds.test(permission.get());
+        }
+    }
+    /**
+     * A sensed event about real entities or other NPCs near the NPC. {@code radius} is 0 for events without one;
+     * {@code patterns} holds the event's own filters ({@code projectile}, {@code item}, {@code npc}, {@code pattern}) keyed by
+     * field, matched against the context value of the same meaning.
+     */
+    public record EntityEvent(TriggerKind kind, EntityFilter filter, Optional<Phase> phase, double radius, Contact contact,
+                              java.util.Map<String, String> patterns, boolean thrown) implements Spec {
+        public EntityEvent {
+            Objects.requireNonNull(kind); Objects.requireNonNull(filter); Objects.requireNonNull(phase); Objects.requireNonNull(contact);
+            patterns = java.util.Map.copyOf(patterns);
+            if (!kind.sensed()) throw new IllegalArgumentException(kind.jsonName() + " is not a sensed event");
+        }
+        public EntityEvent(TriggerKind kind, EntityFilter filter) { this(kind, filter, Optional.empty(), 0, Contact.ANY, java.util.Map.of(), false); }
+        /** Every firing has a player: a lead tie always does, and the filters can demand one. */
+        public boolean alwaysPlayer() {
+            return kind == TriggerKind.LEASH_TIE || filter.players().orElse(false) || filter.permission().isPresent();
+        }
+        /** Whether a context value passes this event's own filter for {@code field}; an absent filter passes everything. */
+        public boolean passes(String field, String value) {
+            String pattern = patterns.get(field);
+            if (pattern == null) return true;
+            return field.equals("pattern") ? ServerEvent.glob(pattern, value) : ServerEvent.key(pattern, value);
+        }
+    }
     public enum Shape { CUBOID, ELLIPSOID }
     /**
      * A named area of one world. A cuboid's bounds are block coordinates, both corners included; an ellipsoid is a centre
@@ -144,6 +191,7 @@ public record TriggerBinding(String id, Spec spec, Optional<String> routine, Opt
             case WorldChange ignored -> false;
             case WorldEvent ignored -> false;
             case Area ignored -> false;
+            case EntityEvent ignored -> event instanceof TriggerEvent.Entity input && input.binding().equals(key);
         };
     }
 }

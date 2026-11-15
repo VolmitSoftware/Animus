@@ -60,7 +60,24 @@ String eventWords(String event) => switch (event) {
       'player_respawn' => 'Player respawns',
       'player_world_change' => 'World change',
       'player_area' => 'Player in an area',
+      'entity_proximity' => 'Entity nearby',
+      'entity_collide' => 'Entity touches',
+      'hit_by_projectile' => 'Projectile hit',
+      'item_dropped' => 'Item dropped',
+      'vehicle_bump' => 'Vehicle bump',
+      'leash_tie' => 'Lead tied',
+      'leash_pass' => 'Led past',
+      'npc_proximity' => 'NPC nearby',
+      'npc_speech' => 'NPC speaks',
       _ => _sentence(event.replaceAll('_', ' ')),
+    };
+
+/// Labels for trigger fields whose key reads badly as words; null keeps the key in words.
+String? triggerFieldLabel(String key) => switch (key) {
+      'named' => 'Name',
+      'entityCooldownTicks' => 'Entity cooldown',
+      'thrown' => 'Thrown only',
+      _ => null,
     };
 
 /// The short words for one trigger, with the click kind, command name or

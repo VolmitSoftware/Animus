@@ -118,15 +118,18 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         ServerPlayer online = server.getPlayerList().getPlayer(player);
         return online == null ? Optional.empty() : Optional.of(online.getGameProfile().name());
     }
-    @Override public void runCommand(CommandSource source, Optional<UUID> player, String command) {
+    /** Mod servers have no placeholder plugin, so nothing is filled, and no permission system to lend nodes from. */
+    @Override public void runCommand(CommandRun run) {
+        if (!run.permissions().isEmpty())
+            throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "permissions-unsupported", "Mod servers cannot lend permissions to a command; only Paper, Spigot and Folia can");
         CommandSourceStack stack;
-        if (source == CommandSource.CONSOLE) stack = server.createCommandSourceStack();
+        if (run.source() == CommandSource.CONSOLE) stack = server.createCommandSourceStack();
         else {
-            UUID target = player.filter(living.players()::online).orElseThrow(PlatformRefusals::offline);
+            UUID target = run.player().filter(living.players()::online).orElseThrow(PlatformRefusals::offline);
             stack = living.players().owned(target).orElseThrow(PlatformRefusals::offline).createCommandSourceStack();
         }
         Commands commands = server.getCommands();
-        String text = command.startsWith("/") ? command.substring(1) : command;
+        String text = run.command().startsWith("/") ? run.command().substring(1) : run.command();
         ParseResults<CommandSourceStack> parsed = commands.getDispatcher().parse(text, stack);
         if (Commands.getParseException(parsed) != null || parsed.getContext().getCommand() == null) throw PlatformRefusals.rejectedCommand();
         commands.performCommand(parsed, text);

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "citizens:commands-2",
+  "entry": "click",
+  "routines": {
+    "click": {
+      "type": "action",
+      "capability": "animus:command",
+      "arguments": {
+        "command": "tell {player_name} You may fly for five minutes",
+        "as": "console"
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "action": "any",
+      "routine": "click"
+    }
+  ]
+}

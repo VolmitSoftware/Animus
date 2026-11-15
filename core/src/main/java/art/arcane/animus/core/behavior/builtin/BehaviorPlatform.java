@@ -74,6 +74,18 @@ public interface BehaviorPlatform {
     record CostItem(String item, Optional<String> components, int amount, MatchRule match) {
         public CostItem { Objects.requireNonNull(item); Objects.requireNonNull(components); Objects.requireNonNull(match); }
     }
+    /**
+     * One {@code animus:command}. {@code player} runs it for {@link CommandSource#PLAYER}. {@code filledFor} is the player
+     * whose placeholders fill its {@code %tokens%}, through {@link CommandPlaceholders#fill} on that player's owner, with
+     * {@code rawText} for a behavior on {@code rawTextBehaviors}; empty fills nothing. {@code permissions} are granted to
+     * the player while the command runs and taken back at once, or {@code permissionTicks} later.
+     */
+    record CommandRun(CommandSource source, Optional<UUID> player, String command, Optional<UUID> filledFor, boolean rawText, List<String> permissions, int permissionTicks) {
+        public CommandRun {
+            Objects.requireNonNull(source); Objects.requireNonNull(player); Objects.requireNonNull(command); Objects.requireNonNull(filledFor);
+            permissions = List.copyOf(permissions);
+        }
+    }
     /** Where {@code animus:teleport} sends its target. */
     sealed interface Destination permits Point, ToNpc, ToPlayer {}
     /** An empty world keeps the target's world; empty yaw or pitch keeps its facing. */
@@ -110,7 +122,7 @@ public interface BehaviorPlatform {
     int presentChoices(NpcHandle npc, UUID player, String prompt, String token, List<ChoiceOption> options);
     /** The player's current name, or empty when the player is unknown here. */
     Optional<String> playerName(UUID player);
-    void runCommand(CommandSource source, Optional<UUID> player, String command);
+    void runCommand(CommandRun run);
     /** Returns the identity of the requested route. Completion does not wait for arrival; see {@link #routeFinished}. */
     String navigate(NpcHandle npc, Vec3 destination, MovementProfile.Mode mode, double speed);
     void followRoute(NpcHandle npc, String route);

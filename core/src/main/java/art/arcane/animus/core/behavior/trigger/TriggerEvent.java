@@ -102,6 +102,37 @@ public sealed interface TriggerEvent {
         public AnimationFinished { Objects.requireNonNull(npc); Objects.requireNonNull(animation); }
         @Override public TriggerKind kind() { return TriggerKind.ANIMATION_FINISHED; }
     }
+    /** The entity a sensed event is about: its UUID, type key such as {@code minecraft:sheep}, custom or player name, and scoreboard tags. */
+    record Subject(UUID id, String type, String name, java.util.Set<String> tags) {
+        public Subject { Objects.requireNonNull(id); Objects.requireNonNull(type); Objects.requireNonNull(name); tags = java.util.Set.copyOf(tags); }
+    }
+    /**
+     * A sensed event for one binding, already matched against that binding's filters by the sensor. {@code subject} is the
+     * entity the filters tested and {@code player} the player involved, which is the run's player.
+     */
+    record Entity(UUID npc, TriggerKind kind, String binding, Optional<Subject> subject, Optional<UUID> player, Map<String, Object> context) implements TriggerEvent {
+        public Entity {
+            Objects.requireNonNull(npc); Objects.requireNonNull(kind); Objects.requireNonNull(binding); Objects.requireNonNull(subject); Objects.requireNonNull(player);
+            context = readable(context);
+        }
+        /** A run reads only booleans, longs, doubles and strings; one value of any other type would stop the whole dispatcher. */
+        private static Map<String, Object> readable(Map<String, Object> context) {
+            Map<String, Object> values = new java.util.HashMap<>();
+            for (Map.Entry<String, Object> entry : context.entrySet()) {
+                Object value = switch (entry.getValue()) {
+                    case Integer whole -> whole.longValue();
+                    case Float decimal -> decimal.doubleValue();
+                    case Boolean flag -> flag;
+                    case Long whole -> whole;
+                    case Double decimal -> decimal;
+                    case String text -> text;
+                    default -> throw new IllegalArgumentException("A run cannot read context." + entry.getKey());
+                };
+                values.put(entry.getKey(), value);
+            }
+            return Map.copyOf(values);
+        }
+    }
     record Module(UUID npc, Optional<UUID> player, Capabilities.Key key) implements TriggerEvent {
         public Module { Objects.requireNonNull(npc); Objects.requireNonNull(player); Objects.requireNonNull(key); }
         @Override public TriggerKind kind() { return TriggerKind.MODULE; }

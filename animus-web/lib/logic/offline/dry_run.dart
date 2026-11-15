@@ -206,7 +206,24 @@ const int dryRunStepLimit = 400;
 const int dryRunLoopLimit = 1000;
 
 /// Events that start a run without a player.
-const Set<String> _playerless = <String>{'timer', 'spawn', 'despawn', 'waypoint', 'module', 'build_finished', 'build_paused', 'animation_finished', 'server_start', 'damage', 'death'};
+const Set<String> _playerless = <String>{'timer', 'spawn', 'despawn', 'waypoint', 'module', 'build_finished', 'build_paused', 'animation_finished', 'server_start', 'damage', 'death', 'npc_proximity', 'npc_speech'};
+
+/// What a sensed trigger's run reads of the entity: a sample player, or the NPC that came near or spoke.
+const Map<String, Object?> _sampleEntity = <String, Object?>{
+  'entity': '00000000-0000-4000-8000-000000000001',
+  'entity_type': 'minecraft:player',
+  'entity_name': 'Steve',
+  'x': 0.0,
+  'y': 64.0,
+  'z': 0.0,
+};
+
+/// A filter's first alternative without wildcards, namespaced like the value a server reports.
+String _sampleKey(Object? filter, String fallback) {
+  final String first = (asString(filter) ?? fallback).split(',').first.replaceAll('*', '');
+  final String name = first.isEmpty ? fallback : first;
+  return name.contains(':') ? name : 'minecraft:$name';
+}
 
 /// Sample event values, read as `context.<key>`, per server event.
 Map<String, Object?> sampleContext(JsonMap trigger) => switch (asString(trigger['event'])) {
@@ -215,6 +232,14 @@ Map<String, Object?> sampleContext(JsonMap trigger) => switch (asString(trigger[
       'player_death' => <String, Object?>{'message': 'Player fell from a high place'},
       'player_world_change' => <String, Object?>{'from': asString(trigger['from']) ?? 'world', 'to': asString(trigger['to']) ?? 'world_nether'},
       'command' => <String, Object?>{'command': asString(trigger['name']) ?? 'command', 'alias': asString(trigger['name']) ?? 'command', 'args': <Object?>[], 'raw_args': ''},
+      'entity_proximity' => <String, Object?>{..._sampleEntity, 'phase': asString(trigger['phase']) ?? 'enter'},
+      'entity_collide' => <String, Object?>{..._sampleEntity, 'contact': asString(trigger['contact']) == 'top' ? 'top' : 'side'},
+      'hit_by_projectile' => <String, Object?>{..._sampleEntity, 'projectile': _sampleKey(trigger['projectile'], 'arrow'), 'projectile_uuid': '00000000-0000-4000-8000-000000000002', 'stopped': false},
+      'item_dropped' => <String, Object?>{..._sampleEntity, 'item': _sampleKey(trigger['item'], 'bread'), 'amount': 1, 'item_entity': '00000000-0000-4000-8000-000000000003', 'thrown': trigger['thrown'] == true},
+      'vehicle_bump' => <String, Object?>{..._sampleEntity, 'entity_type': 'minecraft:minecart', 'entity_name': '', 'speed': 0.4, 'rider': _sampleEntity['entity']},
+      'leash_tie' || 'leash_pass' => <String, Object?>{..._sampleEntity, 'entity_type': 'minecraft:sheep', 'entity_name': '', 'holder': _sampleEntity['entity'], 'holder_type': 'minecraft:player'},
+      'npc_proximity' => <String, Object?>{'npc': 'guard', 'npc_uuid': '00000000-0000-4000-8000-000000000004', 'phase': asString(trigger['phase']) ?? 'enter'},
+      'npc_speech' => <String, Object?>{'npc': 'guard', 'npc_uuid': '00000000-0000-4000-8000-000000000004', 'text': (asString(trigger['pattern']) ?? 'Hello').replaceAll('*', '')},
       _ => const <String, Object?>{},
     };
 
@@ -264,6 +289,15 @@ String _eventLine(JsonMap trigger) {
     'player_death' => 'a player dies',
     'player_respawn' => 'a player respawns',
     'player_world_change' => 'a player changes world',
+    'entity_proximity' => 'an entity ${asString(trigger['phase']) == 'leave' ? 'leaves' : 'comes within'} ${_number(trigger['radius']) ?? '?'} blocks',
+    'entity_collide' => asString(trigger['contact']) == 'top' ? 'an entity stands on the NPC' : 'an entity touches the NPC',
+    'hit_by_projectile' => 'a projectile hits the NPC',
+    'item_dropped' => trigger['thrown'] == true ? 'an item is thrown at the NPC' : 'an item is dropped within ${_number(trigger['radius']) ?? '?'} blocks',
+    'vehicle_bump' => 'a minecart or boat runs into the NPC',
+    'leash_tie' => 'a player leading a mob clicks the NPC',
+    'leash_pass' => 'a mob on a lead comes within ${_number(trigger['radius']) ?? '?'} blocks',
+    'npc_proximity' => 'another NPC ${asString(trigger['phase']) == 'leave' ? 'leaves' : 'comes within'} ${_number(trigger['radius']) ?? '?'} blocks',
+    'npc_speech' => 'another NPC speaks within ${_number(trigger['radius']) ?? '?'} blocks',
     _ => event.replaceAll('_', ' '),
   };
 }

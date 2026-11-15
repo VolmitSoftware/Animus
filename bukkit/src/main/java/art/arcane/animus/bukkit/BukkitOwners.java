@@ -48,6 +48,14 @@ final class BukkitOwners {
         return regions.submit(online, work, () -> {});
     }
 
+    /** Runs on the player's owner after {@code ticks}; on Folia also when the player leaves first. False when not accepted. */
+    boolean later(Player online, Runnable work, long ticks) {
+        if (!plugin.isEnabled()) return false;
+        if (regions != null) return regions.later(online, work, work, ticks);
+        try { server.getScheduler().runTaskLater(plugin, work, ticks); return true; }
+        catch (RuntimeException refused) { return false; }
+    }
+
     /** Whether the calling thread owns the player. */
     boolean owns(Player player) { return regions == null ? server.isPrimaryThread() : regions.owns(player); }
 

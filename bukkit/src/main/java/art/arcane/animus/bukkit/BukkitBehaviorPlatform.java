@@ -17,6 +17,7 @@ import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.api.Outcome;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
+import art.arcane.animus.core.behavior.builtin.CommandPlaceholders;
 import art.arcane.animus.core.behavior.builtin.PlatformRefusals;
 import art.arcane.animus.core.building.BuildService;
 import art.arcane.animus.core.extension.CapabilityRefusal;
@@ -65,12 +66,16 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     private final PersistedNpcService<Player, ItemStack> relocator;
     private final Placeholders placeholders;
     private final Supplier<Economy> economy;
+    private final CommandGrants grants;
+    private final Consumer<String> log;
 
     /** {@code relocator} is the main-thread runtime that can move NPCs; null on Folia. */
     BukkitBehaviorPlatform(JavaPlugin plugin, NpcRuntime<Player, ItemStack> living, RuntimeCombatService combat, BuildService<Player, ItemStack> builds,
                            Supplier<String> buildsUnavailable, Function<Runnable, AutoCloseable> ticks, Supplier<HoloService<Player, ItemStack>> guis,
-                           BukkitOwners owners, PersistedNpcService<Player, ItemStack> relocator, Placeholders placeholders, Supplier<Economy> economy) {
+                           BukkitOwners owners, PersistedNpcService<Player, ItemStack> relocator, Placeholders placeholders, Supplier<Economy> economy, CommandGrants grants) {
         this.placeholders = placeholders;
+        this.grants = grants;
+        log = plugin.getLogger()::warning;
         this.economy = economy;
         this.guis = guis;
         server = plugin.getServer();
@@ -146,22 +151,45 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         return Optional.ofNullable(server.getOfflinePlayer(player).getName());
     }
 
-    /** Folia: a command for a player another region owns, or for the console, is handed to that owner and not awaited. */
-    @Override public void runCommand(CommandSource source, Optional<UUID> player, String command) {
-        if (source == CommandSource.CONSOLE) {
+    /**
+     * Placeholders are filled on the owner of the player they belong to. Folia: a command for a player another region owns,
+     * or for the console, is handed to that owner and not awaited, so a refusal there is logged and the command not run.
+     */
+    @Override public void runCommand(CommandRun run) {
+        Optional<UUID> filler = run.filledFor().filter((UUID id) -> personal(run.command()));
+        if (filler.isEmpty()) { dispatch(run, run.command(), Optional.empty()); return; }
+        if (!living.players().online(filler.get())) throw PlatformRefusals.offline();
+        Optional<Player> owned = living.players().owned(filler.get());
+        if (owned.isPresent()) { dispatch(run, filled(run, owned.get()), owned); return; }
+        if (!living.players().deliver(filler.get(), (Player online) -> {
+            try { dispatch(run, filled(run, online), Optional.of(online)); }
+            catch (CapabilityRefusal refused) { log.accept("Behavior command not run: " + refused.getMessage()); }
+        })) throw PlatformRefusals.offline();
+    }
+
+    /** On the player's owner: the command with that player's placeholders filled one at a time. */
+    private String filled(CommandRun run, Player player) { return CommandPlaceholders.fill(run.command(), (String token) -> fill(player, token), run.rawText()); }
+
+    /** {@code here} is a player the calling thread owns. */
+    private void dispatch(CommandRun run, String command, Optional<Player> here) {
+        if (run.source() == CommandSource.CONSOLE) {
             AtomicBoolean ran = new AtomicBoolean(), accepted = new AtomicBoolean();
             if (!living.players().console(() -> { accepted.set(server.dispatchCommand(server.getConsoleSender(), command)); ran.set(true); }))
                 throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "console-unavailable", "The console cannot accept commands now");
             if (ran.get() && !accepted.get()) throw PlatformRefusals.rejectedCommand();
             return;
         }
-        UUID target = player.filter(living.players()::online).orElseThrow(PlatformRefusals::offline);
-        Optional<Player> owned = living.players().owned(target);
+        UUID target = run.player().filter(living.players()::online).orElseThrow(PlatformRefusals::offline);
+        Optional<Player> owned = here.filter((Player player) -> player.getUniqueId().equals(target)).or(() -> living.players().owned(target));
         if (owned.isPresent()) {
-            if (!owned.get().performCommand(command)) throw PlatformRefusals.rejectedCommand();
+            if (!perform(owned.get(), run, command)) throw PlatformRefusals.rejectedCommand();
             return;
         }
-        if (!living.players().deliver(target, online -> online.performCommand(command))) throw PlatformRefusals.offline();
+        if (!living.players().deliver(target, (Player online) -> perform(online, run, command))) throw PlatformRefusals.offline();
+    }
+
+    private boolean perform(Player player, CommandRun run, String command) {
+        return grants.perform(player, run.permissions(), run.permissionTicks(), (Player sender) -> sender.performCommand(command));
     }
 
     @Override public String navigate(NpcHandle npc, Vec3 destination, MovementProfile.Mode mode, double speed) {

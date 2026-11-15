@@ -202,7 +202,7 @@ void main() {
 
     test('suggests trigger events, booleans and routine names from hints', () {
       final (String text, int caret) = _caret('{"routines": {"main": {}, "wave": {}}, "triggers": [{"id": "a", "event": "prox|"}]}');
-      expect(labels(suggestJson(text, caret, schemas.behavior, catalog: catalog)), <String>['proximity']);
+      expect(labels(suggestJson(text, caret, schemas.behavior, catalog: catalog)), <String>['proximity', 'entity_proximity', 'npc_proximity']);
       final (String text2, int caret2) = _caret('{"routines": {"main": {}, "wave": {}}, "triggers": [{"id": "a", "event": "spawn", "routine": "|"}]}');
       expect(labels(suggestJson(text2, caret2, schemas.behavior, catalog: catalog, hints: behaviorHints())), <String>['main', 'wave']);
       final (String text3, int caret3) = _caret('{"spawned": t|}');

@@ -19,6 +19,24 @@ public enum TriggerKind {
     BUILD_FINISHED("build_finished", false, Reach.NPC, "A build this NPC works on places its last block."),
     BUILD_PAUSED("build_paused", false, Reach.NPC, "A build this NPC works on is paused by command or starts waiting for terrain, materials or builders."),
     ANIMATION_FINISHED("animation_finished", false, Reach.NPC, "An animation started by animus:play-animation reaches its end: a once clip stops, a hold clip starts holding.", "animation"),
+    ENTITY_PROXIMITY("entity_proximity", true, Reach.NPC, "A real entity, players included, crosses a radius around the NPC. Runs read context.entity, context.entity_type, context.entity_name and context.phase.",
+            "phase", "radius", "entity", "named", "tag", "players", "permission", "entityCooldownTicks"),
+    ENTITY_COLLIDE("entity_collide", true, Reach.NPC, "A real entity starts to touch the NPC's hitbox or stands on top of it. Runs read context.entity, context.entity_type and context.contact (top or side).",
+            "contact", "entity", "named", "tag", "players", "permission", "entityCooldownTicks"),
+    HIT_BY_PROJECTILE("hit_by_projectile", true, Reach.NPC, "A real projectile flies into the NPC's hitbox. Runs read context.projectile, context.projectile_uuid, context.stopped and the shooter as context.entity; a player shooter is the run's player.",
+            "projectile", "entity", "named", "tag", "players", "permission", "entityCooldownTicks"),
+    ITEM_DROPPED("item_dropped", true, Reach.NPC, "A player or mob drops an item within a radius of the NPC, or throws it into its hitbox. Runs read context.item, context.amount, context.item_entity, context.thrown and the thrower as context.entity.",
+            "radius", "item", "thrown", "entity", "named", "tag", "players", "permission", "entityCooldownTicks"),
+    VEHICLE_BUMP("vehicle_bump", true, Reach.NPC, "A moving minecart or boat runs into the NPC's hitbox. Runs read the vehicle as context.entity, context.speed and context.rider; a player riding it is the run's player.",
+            "entity", "named", "tag", "players", "permission", "entityCooldownTicks"),
+    LEASH_TIE("leash_tie", true, Reach.NPC, "A player leading mobs on a lead right-clicks the NPC, once for each mob. Runs read the mob as context.entity and context.holder; the player is the run's player.",
+            "entity", "named", "tag", "players", "permission", "entityCooldownTicks"),
+    LEASH_PASS("leash_pass", true, Reach.NPC, "A mob on a lead is led within a radius of the NPC. Runs read the mob as context.entity and context.holder; a player holding the lead is the run's player.",
+            "radius", "entity", "named", "tag", "players", "permission", "entityCooldownTicks"),
+    NPC_PROXIMITY("npc_proximity", false, Reach.NPC, "Another NPC crosses a radius around this one. Runs read context.npc (its id), context.npc_uuid and context.phase.",
+            "phase", "radius", "npc", "entityCooldownTicks"),
+    NPC_SPEECH("npc_speech", false, Reach.NPC, "Another NPC within the radius speaks with animus:say. Runs read context.npc, context.npc_uuid and context.text.",
+            "radius", "npc", "pattern", "entityCooldownTicks"),
     PLAYER_JOIN("player_join", true, Reach.SERVER, "A player joins the server. first: true matches only first joins, false only returning players.", "first"),
     PLAYER_QUIT("player_quit", true, Reach.SERVER, "A player leaves the server."),
     PLAYER_CHAT("player_chat", true, Reach.SERVER, "A player sends a chat message, optionally matching a case-insensitive pattern with * wildcards.", "pattern"),
@@ -88,6 +106,13 @@ public enum TriggerKind {
             java.util.Map.entry("shooter", "shooter"), java.util.Map.entry("bow", "bow"), java.util.Map.entry("quest", "quest"));
     /** Whether a trigger of this event may name a {@code cancel} condition: the platform event can be cancelled. */
     public boolean cancellable() { return fields.contains("cancel"); }
+    /** Events about real entities and other NPCs near an NPC, which the platform senses because NPC bodies are not entities. */
+    public boolean sensed() {
+        return switch (this) {
+            case ENTITY_PROXIMITY, ENTITY_COLLIDE, HIT_BY_PROJECTILE, ITEM_DROPPED, VEHICLE_BUMP, LEASH_TIE, LEASH_PASS, NPC_PROXIMITY, NPC_SPEECH -> true;
+            default -> false;
+        };
+    }
     public static List<String> names() {
         List<String> names = new ArrayList<>();
         for (TriggerKind kind : values()) names.add(kind.jsonName);

@@ -102,6 +102,7 @@ FieldProfile triggerFieldProfile(String key, {required String type}) {
     'projectile' || 'shooter' || 'entity' || 'damager' => idProfile(const ValueRef.registry(RegistryKind.entity)),
     'world' || 'from' || 'to' => idProfile(const ValueRef.registry(RegistryKind.world)),
     'animation' => idProfile(const ValueRef.document(DocumentKind.animation)),
+    'npc' => idProfile(const ValueRef.document(DocumentKind.npc)),
     _ => FieldProfile.none,
   };
 }

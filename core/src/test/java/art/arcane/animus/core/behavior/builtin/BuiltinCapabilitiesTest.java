@@ -776,6 +776,46 @@ class BuiltinCapabilitiesTest {
         assertTrue(platform.calls.isEmpty());
     }
 
+    @Test void commandPermissionsNeedAPlayerCommandAndPermissionNodes() {
+        start();
+        assertTrue(builtins.validate(key("command"), "{\"command\":\"warp docks\",\"as\":\"player\",\"permissions\":[\"essentials.warp\",\"essentials.warps.*\"],\"permissionTicks\":100}").isEmpty());
+        assertEquals("permissions-need-player", builtins.validate(key("command"), "{\"command\":\"warp docks\",\"permissions\":[\"essentials.warp\"]}").getFirst().code(), "a console command needs no permission");
+        assertEquals("permissions-need-player", builtins.validate(key("command"), "{\"command\":\"warp docks\",\"as\":\"console\",\"permissions\":[\"essentials.warp\"]}").getFirst().code());
+        assertEquals("permission-ticks-without-permissions", builtins.validate(key("command"), "{\"command\":\"warp docks\",\"as\":\"player\",\"permissionTicks\":20}").getFirst().code());
+        assertEquals("argument-syntax", builtins.validate(key("command"), "{\"command\":\"warp docks\",\"as\":\"player\",\"permissions\":[\"not a node\"]}").getFirst().code());
+    }
+
+    @Test void playerCommandCarriesItsPermissionsAndWhoseValuesFillIt() throws Exception {
+        start(Platform.PAPER, 5000, grants(List.of("town:greeter"), List.of()));
+        Outcome<String> granted = action("command", "{\"command\":\"warp docks\",\"as\":\"player\",\"permissions\":[\"essentials.warp\"],\"permissionTicks\":40}",
+                Optional.of(PLAYER), false, true, Optional.of("town:greeter"));
+        assertEquals(Outcome.Status.OK, granted.status(), granted.diagnostics().toString());
+        assertEquals(List.of("command:PLAYER:warp docks:[essentials.warp]:40"), platform.calls);
+        assertEquals(Optional.of(PLAYER), platform.command.filledFor(), "a player command is filled with its own player's values");
+        assertFalse(platform.command.rawText());
+
+        UUID other = UUID.randomUUID();
+        Outcome<String> named = action("command", "{\"command\":\"broadcast %server_online%\",\"player\":\"" + other + "\"}", Optional.of(PLAYER), false, true, Optional.of("town:greeter"));
+        assertEquals(Outcome.Status.OK, named.status(), named.diagnostics().toString());
+        assertEquals(Optional.of(other), platform.command.filledFor(), "player names whose values fill a console command");
+        assertTrue(platform.command.permissions().isEmpty());
+        assertEquals(0, platform.command.permissionTicks());
+
+        Outcome<String> alone = action("command", "{\"command\":\"broadcast %server_online%\"}", Optional.empty(), false, true, Optional.of("town:greeter"));
+        assertEquals(Outcome.Status.OK, alone.status(), alone.diagnostics().toString());
+        assertEquals(Optional.empty(), platform.command.filledFor(), "no player, nothing to fill");
+    }
+
+    @Test void rawTextGrantReachesThePlaceholderRule() throws Exception {
+        BuiltinActionSettings defaults = BuiltinActionSettings.DEFAULT;
+        start(Platform.PAPER, 5000, new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(),
+                defaults.choiceLifetimeSeconds(), List.of("town:greeter"), List.of(), defaults.navigationWaits(), List.of("town:greeter")));
+        Outcome<String> outcome = action("command", "{\"command\":\"say %player_displayname%\"}", Optional.of(PLAYER), false, true, Optional.of("town:greeter"));
+        assertEquals(Outcome.Status.OK, outcome.status(), outcome.diagnostics().toString());
+        assertTrue(platform.command.rawText());
+        assertEquals(Optional.of(PLAYER), platform.command.filledFor());
+    }
+
     @Test void chargeTakesTheWholeCostOrRefusesAndCanAffordReadsIt() throws Exception {
         start();
         String cost = "{\"money\":2.5,\"levels\":3,\"items\":[{\"item\":{\"id\":\"minecraft:emerald\",\"components\":\"[custom_name='Coin']\"},\"amount\":4}]}";

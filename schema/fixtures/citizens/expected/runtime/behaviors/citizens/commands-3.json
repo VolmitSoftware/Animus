@@ -89,10 +89,9 @@
               },
               {
                 "type": "action",
-                "capability": "animus:command",
+                "capability": "animus:say",
                 "arguments": {
-                  "command": "say Scribe stamps a letter",
-                  "as": "player"
+                  "text": "Scribe stamps a letter"
                 }
               }
             ]
@@ -147,10 +146,9 @@
               },
               {
                 "type": "action",
-                "capability": "animus:command",
+                "capability": "animus:say",
                 "arguments": {
-                  "command": "say Scribe stamps a letter",
-                  "as": "player"
+                  "text": "Scribe stamps a letter"
                 }
               }
             ]

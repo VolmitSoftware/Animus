@@ -1,0 +1,35 @@
+{
+  "citizensId": 2,
+  "presentationWarnings": [],
+  "runtimeWarnings": [
+    "/traits/commandtrait/temporaryPermissions: Animus lends permissions only to commands the clicking player runs, and this NPC has none, so they are not granted",
+    "/traits/commandtrait: commands stay denied until citizens:commands-2 is on the [behaviors.actions] commandBehaviors list in config.toml"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/commandtrait/temporaryPermissions/0": "REQUIRES_REVIEW",
+    "/traits/commandtrait/temporaryPermissionsDuration": "REQUIRES_REVIEW",
+    "/traits/commandtrait/commands/0/command": "CONVERTED",
+    "/traits/commandtrait/commands/0/hand": "CONVERTED"
+  },
+  "reasons": {
+    "/traits/commandtrait/temporaryPermissions/0": "Animus lends permissions only to commands the clicking player runs, and this NPC has none",
+    "/traits/commandtrait/temporaryPermissionsDuration": "Animus lends permissions only to commands the clicking player runs, and this NPC has none"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "old_harbor",
+      "to": "harbor"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

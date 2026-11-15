@@ -74,6 +74,12 @@ public final class FoliaRegions implements RegionScheduler {
         try { return (boolean) entityExecute.invoke(entityScheduler.invoke(entity), plugin, action, retired, 1L); }
         catch (ReflectiveOperationException | RuntimeException failure) { return false; }
     }
+    /** Runs on the entity's owner after {@code delay} ticks; {@code retired} runs instead when the entity leaves first. */
+    public boolean later(Entity entity, Runnable action, Runnable retired, long delay) {
+        if (!plugin.isEnabled()) return false;
+        try { return (boolean) entityExecute.invoke(entityScheduler.invoke(entity), plugin, action, retired, Math.max(1L, delay)); }
+        catch (ReflectiveOperationException | RuntimeException failure) { return false; }
+    }
     /** Repeats on the player's owner until cancelled or the player retires. */
     public AutoCloseable repeat(Player player, Runnable action, Runnable retired) { return repeat(player, action, retired, 1L, 1L); }
     /** Repeats on the entity's owner every {@code period} ticks until cancelled or the entity retires. */

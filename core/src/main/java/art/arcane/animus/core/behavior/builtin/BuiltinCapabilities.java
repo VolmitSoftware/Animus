@@ -92,6 +92,8 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private static final String PERMISSION = "[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*";
     /** The longest a speech bubble shows: one minute. */
     static final int MAXIMUM_BUBBLE_TICKS = 1200;
+    /** At most 16 nodes a command grants, for at most an hour after it runs. */
+    static final int MAXIMUM_COMMAND_PERMISSIONS = 16, MAXIMUM_PERMISSION_TICKS = 72_000;
 
     /** Decides what a capability may do when previewed and whether it needs the platform owner. */
     private enum Effect {
@@ -123,6 +125,11 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private final Map<Key, Spec> specs = new LinkedHashMap<>();
     private volatile boolean closed;
     private AutoCloseable ticks;
+    /** Hears what an NPC said with animus:say, on the NPC's owner; quick and nonblocking. */
+    @FunctionalInterface public interface SpeechListener { void spoke(NpcHandle npc, String plain); }
+    private volatile SpeechListener speech = (NpcHandle npc, String plain) -> {};
+    /** Connect during startup; npc_speech triggers hear speech through it. */
+    public void speech(SpeechListener listener) { speech = Objects.requireNonNull(listener); }
 
     public BuiltinCapabilities(BehaviorPlatform platform, BehaviorState state, DialogueChoiceSink choiceSink,
                                BuiltinActionSettings settings, Consumer<String> log) {
@@ -367,6 +374,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                         String spoken = withPlayerName(written, named);
                         // A bubble shows one line over the NPC to everyone who sees it, so it holds the first 256 characters.
                         if (bubble > 0) platform.bubble(call.npc(), spoken.length() > 256 ? spoken.substring(0, 256) : spoken, bubble);
+                        if (!call.invocation.preview()) speech.spoke(call.npc(), art.arcane.animus.core.text.RichText.plain(spoken));
                         return delivered(chat ? platform.say(call.npc(), audience, spoken) : 0);
                     });
                 });
@@ -376,8 +384,9 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                                 + "," + choice("style", "bold", "italic", "underlined", "plain"), required("id", "text")) + "}",
                         required("id", "prompt", "options")),
                 BuiltinArguments::checkChoices, this::presentChoices);
-        action("command", Effect.PRIVILEGED, "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
-                schema(string("command", 1024) + "," + choice("as", "console", "player") + "," + PLAYER, required("command")),
+        action("command", Effect.PRIVILEGED, "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name, and placeholders are filled for that player. A player command may hold permissions while it runs, and for permissionTicks after. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
+                schema(string("command", 1024) + "," + choice("as", "console", "player") + "," + PLAYER + "," + texts("permissions", 1, MAXIMUM_COMMAND_PERMISSIONS, 128)
+                        + "," + integer("permissionTicks", 0, MAXIMUM_PERMISSION_TICKS), required("command")),
                 BuiltinArguments::checkCommand, this::runCommand);
         action("navigate", Effect.WORLD, "Starts a route to a position in the NPC's world, or follows a reusable route. Completes when requested, or on arrival with wait.",
                 schema(string("route", 64) + "," + string("anchor", 32) + "," + COORDINATES + "," + choice("mode", "walk", "swim", "fly") + "," + number("speed", 1, 5) + "," + bool("wait") + "," + integer("timeoutTicks", MINIMUM_WAIT_TICKS, MAXIMUM_WAIT_TICKS),
@@ -801,14 +810,19 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
             throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "privileged-capability-not-granted", "This behavior is not on the command allow-list");
         CommandSource source = text(call.arguments, "as").orElse("console").equals("player") ? CommandSource.PLAYER : CommandSource.CONSOLE;
         Optional<UUID> player = source == CommandSource.PLAYER ? Optional.of(target(call)) : Optional.empty();
+        Optional<UUID> filledFor = player.isPresent() || call.arguments.has("player") ? Optional.of(target(call)) : call.player();
+        boolean rawText = settings.rawTextAllowed(behavior.get());
+        List<String> permissions = BuiltinArguments.permissions(call.arguments);
+        int permissionTicks = ticks(call.arguments, "permissionTicks", 0);
         String written = text(call.arguments, "command").orElseThrow();
         String identified = written.contains(PLAYER_TOKEN) ? written.replace(PLAYER_TOKEN, target(call).toString()) : written;
         Optional<UUID> named = identified.contains(PLAYER_NAME_TOKEN) ? Optional.of(target(call)) : Optional.empty();
         Supplier<String> work = () -> {
             String command = withPlayerName(identified, named.map(this::commandSafeName));
             log.accept("Behavior command: behavior=" + behavior.get() + " npc=" + call.npc().uuid() + " as=" + source.name().toLowerCase(Locale.ROOT)
-                    + player.map(id -> " player=" + id).orElse("") + " command=" + command.substring(0, Math.min(command.length(), MAXIMUM_LOGGED_COMMAND)));
-            platform.runCommand(source, player, command);
+                    + player.map(id -> " player=" + id).orElse("") + (permissions.isEmpty() ? "" : " permissions=" + String.join(",", permissions))
+                    + " command=" + command.substring(0, Math.min(command.length(), MAXIMUM_LOGGED_COMMAND)));
+            platform.runCommand(new BehaviorPlatform.CommandRun(source, player, command, filledFor, rawText, permissions, permissionTicks));
             return "{}";
         };
         if (!server(call)) return onOwner(call, work);

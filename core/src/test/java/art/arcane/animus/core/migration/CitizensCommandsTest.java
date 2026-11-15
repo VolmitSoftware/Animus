@@ -94,6 +94,49 @@ class CitizensCommandsTest {
         assertTrue(result.warnings().contains("/traits/commandtrait/commands/0/npc: the NPC's own player body ran the command; it now runs from the console, with the NPC's name for the player"), result.warnings().toString());
     }
 
+    @Test void sayAndNpcLinesBecomeActionsAndTheRestGoesToReview() {
+        CitizensBehaviors.Result result = map("{\"commandtrait\":{\"commands\":{\"0\":{\"command\":\"say Hello <p>\",\"hand\":\"RIGHT\",\"player\":true},"
+                + "\"1\":{\"command\":\"npc glowing --color red\",\"hand\":\"RIGHT\"}}}}", CitizensCommands.Addons.NONE);
+        JsonObject behavior = accepted(result);
+        assertEquals(json("{\"type\":\"action\",\"capability\":\"animus:say\",\"arguments\":{\"text\":\"Hello {player_name}\"}}"), routine(behavior, "right"),
+                "a say line is the NPC speaking to the clicker, not the server's /say");
+        assertTrue(result.warnings().contains("/traits/commandtrait/commands/1/command: npc glowing has no Animus action; not converted"), result.warnings().toString());
+        assertEquals(new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW, "npc glowing has no Animus action; kept in citizens:review"), result.notes().get("/traits/commandtrait/commands/1"));
+        assertTrue(result.warnings().stream().noneMatch((String warning) -> warning.contains("commandBehaviors")), "speech needs no command allow-list");
+    }
+
+    @Test void temporaryPermissionsGoToEachCommandThePlayerRuns() {
+        CitizensBehaviors.Result result = map("{\"commandtrait\":{\"temporaryPermissions\":{\"0\":\"essentials.warp\",\"1\":\"not a node\"},\"temporaryPermissionsDuration\":100,"
+                + "\"commands\":{\"0\":{\"command\":\"warp docks\",\"hand\":\"RIGHT\",\"player\":true},\"1\":{\"command\":\"broadcast hi\",\"hand\":\"RIGHT\"}}}}", CitizensCommands.Addons.NONE);
+        JsonArray steps = routine(accepted(result), "right").getAsJsonArray("steps");
+        assertEquals(json("{\"command\":\"warp docks\",\"as\":\"player\",\"permissions\":[\"essentials.warp\"],\"permissionTicks\":100}"), steps.get(0).getAsJsonObject().getAsJsonObject("arguments"));
+        assertEquals(json("{\"command\":\"broadcast hi\",\"as\":\"console\"}"), steps.get(1).getAsJsonObject().getAsJsonObject("arguments"), "the console needs no permission");
+        assertTrue(result.converted().containsAll(List.of("/traits/commandtrait/temporaryPermissions/0", "/traits/commandtrait/temporaryPermissionsDuration")));
+        assertFalse(result.converted().contains("/traits/commandtrait/temporaryPermissions/1"));
+        assertTrue(result.warnings().contains("/traits/commandtrait/temporaryPermissions/1: not a node is not a permission node; not granted"), result.warnings().toString());
+
+        CitizensBehaviors.Result instant = map("{\"commandtrait\":{\"temporaryPermissions\":[\"kits.starter\"],\"temporaryPermissionsDuration\":-1,"
+                + "\"commands\":{\"0\":{\"command\":\"kit starter\",\"hand\":\"BOTH\",\"player\":true}}}}", CitizensCommands.Addons.NONE);
+        assertEquals(json("{\"command\":\"kit starter\",\"as\":\"player\",\"permissions\":[\"kits.starter\"]}"), routine(accepted(instant), "click").getAsJsonObject("arguments"),
+                "no duration takes them back right after the command");
+    }
+
+    @Test void temporaryPermissionsWithNoPlayerCommandAreReported() {
+        CitizensBehaviors.Result result = map("{\"commandtrait\":{\"temporaryPermissions\":[\"kits.starter\"],\"commands\":{\"0\":{\"command\":\"kit starter <p>\",\"hand\":\"BOTH\"}}}}",
+                CitizensCommands.Addons.NONE);
+        assertEquals(json("{\"command\":\"kit starter {player_name}\",\"as\":\"console\"}"), routine(accepted(result), "click").getAsJsonObject("arguments"));
+        assertFalse(result.converted().contains("/traits/commandtrait/temporaryPermissions/0"));
+        assertTrue(result.warnings().stream().anyMatch((String warning) -> warning.startsWith("/traits/commandtrait/temporaryPermissions: ")), result.warnings().toString());
+    }
+
+    @Test void placeholderApiPlaceholdersStayForAnimusToFill() {
+        CitizensBehaviors.Result result = map("{\"commandtrait\":{\"commands\":{\"0\":{\"command\":\"eco give %player% %vault_eco_balance%\",\"hand\":\"BOTH\"}}}}", CitizensCommands.Addons.NONE);
+        assertEquals(json("{\"command\":\"eco give {player_name} %vault_eco_balance%\",\"as\":\"console\"}"), routine(accepted(result), "click").getAsJsonObject("arguments"),
+                "Citizens fills %player% itself; PlaceholderAPI's are kept as written");
+        assertTrue(result.warnings().contains("/traits/commandtrait/commands/0/command: " + CitizensCommands.FILLED), result.warnings().toString());
+        assertTrue(result.warnings().stream().noneMatch((String warning) -> warning.contains("not filled in")), result.warnings().toString());
+    }
+
     @Test void itemCostsThatCannotBeMatchedExactlyAreNotConverted() {
         CitizensBehaviors.Result result = map("{\"commandtrait\":{\"commands\":{\"0\":{\"command\":\"a\",\"hand\":\"BOTH\",\"itemCost\":{\"0\":{\"type\":\"STONE\",\"amount\":1,\"odd\":1}}}}}}", CitizensCommands.Addons.NONE);
         assertTrue(result.documents().isEmpty());

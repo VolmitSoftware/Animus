@@ -74,6 +74,8 @@ public final class RegionCombat implements Listener, AutoCloseable {
     /** At most this many real projectiles are followed at once across regions, each for at most this many ticks. */
     private static final int MAXIMUM_FLYING = 2048, FLIGHT_TICKS = 1200;
     private final java.util.concurrent.atomic.AtomicInteger flying = new java.util.concurrent.atomic.AtomicInteger();
+    /** The projectiles followed now, each read on its own region. */
+    private final Set<UUID> followed = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final RegionNpcRuntime host;
     /** The budgets in effect; replaced by a hotload, read by each NPC's owner at the start of its combat turn. */
     volatile CombatBudgets budgets;
@@ -450,6 +452,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
             this.projectile = projectile; this.kind = kind; this.shooter = shooter; this.observed = observed;
             flight = new ProjectileFlight(BukkitShots.pierce(projectile));
             flight.launched(BukkitShots.position(projectile));
+            followed.add(projectile.getUniqueId());
         }
         @Override public void run() {
             if (ended) return;
@@ -457,6 +460,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
             Optional<ProjectileFlight.Hit> hit = flight.advance(BukkitShots.position(projectile), BukkitShots.velocity(projectile),
                     (WorldPosition center, double radius, SpatialNpcIndex.Budget budget) -> scan(center, radius, null, budget), RegionCombat.this::shootable);
             if (hit.isEmpty()) return;
+            host.strikes.struck(projectile, hit.get().npc(), hit.get().point(), flight.spent());
             RegionActor struck = actor(hit.get().npc());
             RealShot shot = BukkitShots.shot(projectile, kind, shooter, flight, random);
             if (struck != null) send(struck, "shot", (ActorCombat combat) -> combat.shot(shot, observed));
@@ -468,7 +472,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
             try { if (running != null) running.close(); } catch (Exception ignored) { }
             end();
         }
-        void end() { if (!ended) { ended = true; flying.decrementAndGet(); } }
+        void end() { if (!ended) { ended = true; flying.decrementAndGet(); followed.remove(projectile.getUniqueId()); } }
     }
     /** On the explosion's region: every combat NPC in reach takes vanilla explosion damage, handed to its owner. */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -493,6 +497,8 @@ public final class RegionCombat implements Listener, AutoCloseable {
             if (damage > 0) send(actor, "explosion", (ActorCombat combat) -> combat.exploded(source, at, damage));
         }
     }
+    /** On the projectile's region: this projectile is followed here and stops in the NPC's body. */
+    boolean stops(Projectile projectile, UUID npc) { return followed.contains(projectile.getUniqueId()) && shootable(npc); }
     /** Whether a real projectile striking this NPC counts, from the view its owner published. */
     private boolean shootable(UUID npc) {
         RegionActor actor = actor(npc);

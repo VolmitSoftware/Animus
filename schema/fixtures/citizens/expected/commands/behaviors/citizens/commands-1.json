@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "citizens:commands-1",
+  "entry": "click",
+  "routines": {
+    "click": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "kit starter",
+            "as": "player",
+            "permissions": [
+              "kits.starter"
+            ]
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:navigate",
+          "arguments": {
+            "x": 30.0,
+            "y": 63.0,
+            "z": 4.0
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "animus npc rename citizens-1 \"Old Tom\"",
+            "as": "console"
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "action": "any",
+      "routine": "click"
+    }
+  ]
+}

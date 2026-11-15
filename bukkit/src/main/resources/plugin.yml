@@ -42,6 +42,7 @@ permissions:
       animus.npc.delete: true
       animus.npc.skin: true
       animus.npc.move: true
+      animus.npc.speak: true
       animus.tools: true
       animus.behaviors: true
       animus.behaviors.state: true
@@ -71,6 +72,9 @@ permissions:
     default: op
   animus.npc.move:
     description: Move NPCs to you, teleport to them, send them along routes, and end NPC rides.
+    default: op
+  animus.npc.speak:
+    description: Make NPCs say a line with /animus speak.
     default: op
   animus.tools:
     description: Open the Animus menu with /animus gui or /animus tools, use the selection wand and /animus setup; each menu job also needs its own node.

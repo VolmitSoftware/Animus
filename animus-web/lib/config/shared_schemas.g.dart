@@ -1073,7 +1073,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     "module",
                     "build_finished",
                     "build_paused",
-                    "animation_finished"
+                    "animation_finished",
+                    "entity_proximity",
+                    "entity_collide",
+                    "hit_by_projectile",
+                    "item_dropped",
+                    "vehicle_bump",
+                    "leash_tie",
+                    "leash_pass",
+                    "npc_proximity",
+                    "npc_speech"
                   ],
                   "description": "Server events need \"server\": true."
                 }
@@ -1135,7 +1144,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:command",
-          "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name. Allowed only for behaviors on the TOML allow-list, and never in a preview."
+          "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name, and placeholders are filled for that player. A player command may hold permissions while it runs, and for permissionTicks after. Allowed only for behaviors on the TOML allow-list, and never in a preview."
         },
         {
           "const": "animus:complete-quest",
@@ -2749,12 +2758,26 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 36
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 16,
+                      "items": {
+                        "type": "string",
+                        "maxLength": 128
+                      }
+                    },
+                    "permissionTicks": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 72000
                     }
                   },
                   "required": [
                     "command"
                   ],
-                  "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name. Allowed only for behaviors on the TOML allow-list, and never in a preview."
+                  "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name, and placeholders are filled for that player. A player command may hold permissions while it runs, and for permissionTicks after. Allowed only for behaviors on the TOML allow-list, and never in a preview."
                 }
               },
               "required": [
@@ -6273,6 +6296,15 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "build_finished",
             "build_paused",
             "animation_finished",
+            "entity_proximity",
+            "entity_collide",
+            "hit_by_projectile",
+            "item_dropped",
+            "vehicle_bump",
+            "leash_tie",
+            "leash_pass",
+            "npc_proximity",
+            "npc_speech",
             "player_join",
             "player_quit",
             "player_chat",
@@ -6508,6 +6540,141 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "$ref": "#/$defs/trigger-animation_finished"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "entity_proximity"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-entity_proximity"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "entity_collide"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-entity_collide"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "hit_by_projectile"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-hit_by_projectile"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "item_dropped"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-item_dropped"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "vehicle_bump"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-vehicle_bump"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "leash_tie"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-leash_tie"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "leash_pass"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-leash_pass"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "npc_proximity"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-npc_proximity"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "npc_speech"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-npc_speech"
           }
         },
         {
@@ -7368,6 +7535,576 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "event"
       ]
     },
+    "trigger-entity_proximity": {
+      "type": "object",
+      "description": "A real entity, players included, crosses a radius around the NPC. Runs read context.entity, context.entity_type, context.entity_name and context.phase.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "entity_proximity"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "phase": {
+          "enum": [
+            "enter",
+            "leave"
+          ],
+          "description": "Entering or leaving the radius or area."
+        },
+        "radius": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 64.0,
+          "description": "Blocks, above 0."
+        },
+        "entity": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
+        },
+        "named": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 64,
+          "description": "The entity's custom name, or the player's name, ignoring case; * matches any text. Omit for any name."
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+          "description": "A scoreboard tag the entity carries, as /tag adds. Omit for any entity."
+        },
+        "players": {
+          "type": "boolean",
+          "description": "true fires only when a player is involved (the entity, its shooter, thrower, rider or lead holder), false only when none is. Omit for both."
+        },
+        "permission": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$",
+          "description": "A permission node the command's sender, or the event's player, must hold. Omit to let everyone."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      },
+      "required": [
+        "id",
+        "event",
+        "phase",
+        "radius"
+      ]
+    },
+    "trigger-entity_collide": {
+      "type": "object",
+      "description": "A real entity starts to touch the NPC's hitbox or stands on top of it. Runs read context.entity, context.entity_type and context.contact (top or side).",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "entity_collide"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "contact": {
+          "enum": [
+            "any",
+            "top",
+            "side"
+          ],
+          "description": "top fires when the entity stands on the NPC, side for any other touch, any (default) for both."
+        },
+        "entity": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
+        },
+        "named": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 64,
+          "description": "The entity's custom name, or the player's name, ignoring case; * matches any text. Omit for any name."
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+          "description": "A scoreboard tag the entity carries, as /tag adds. Omit for any entity."
+        },
+        "players": {
+          "type": "boolean",
+          "description": "true fires only when a player is involved (the entity, its shooter, thrower, rider or lead holder), false only when none is. Omit for both."
+        },
+        "permission": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$",
+          "description": "A permission node the command's sender, or the event's player, must hold. Omit to let everyone."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-hit_by_projectile": {
+      "type": "object",
+      "description": "A real projectile flies into the NPC's hitbox. Runs read context.projectile, context.projectile_uuid, context.stopped and the shooter as context.entity; a player shooter is the run's player.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "hit_by_projectile"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "projectile": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball; commas separate alternatives. Omit for every projectile."
+        },
+        "entity": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
+        },
+        "named": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 64,
+          "description": "The entity's custom name, or the player's name, ignoring case; * matches any text. Omit for any name."
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+          "description": "A scoreboard tag the entity carries, as /tag adds. Omit for any entity."
+        },
+        "players": {
+          "type": "boolean",
+          "description": "true fires only when a player is involved (the entity, its shooter, thrower, rider or lead holder), false only when none is. Omit for both."
+        },
+        "permission": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$",
+          "description": "A permission node the command's sender, or the event's player, must hold. Omit to let everyone."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-item_dropped": {
+      "type": "object",
+      "description": "A player or mob drops an item within a radius of the NPC, or throws it into its hitbox. Runs read context.item, context.amount, context.item_entity, context.thrown and the thrower as context.entity.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "item_dropped"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "radius": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 64.0,
+          "description": "Blocks, above 0."
+        },
+        "item": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "thrown": {
+          "type": "boolean",
+          "description": "true fires only for an item that flies into the NPC's hitbox. Omit for any item dropped within the radius."
+        },
+        "entity": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
+        },
+        "named": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 64,
+          "description": "The entity's custom name, or the player's name, ignoring case; * matches any text. Omit for any name."
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+          "description": "A scoreboard tag the entity carries, as /tag adds. Omit for any entity."
+        },
+        "players": {
+          "type": "boolean",
+          "description": "true fires only when a player is involved (the entity, its shooter, thrower, rider or lead holder), false only when none is. Omit for both."
+        },
+        "permission": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$",
+          "description": "A permission node the command's sender, or the event's player, must hold. Omit to let everyone."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      },
+      "required": [
+        "id",
+        "event",
+        "radius"
+      ]
+    },
+    "trigger-vehicle_bump": {
+      "type": "object",
+      "description": "A moving minecart or boat runs into the NPC's hitbox. Runs read the vehicle as context.entity, context.speed and context.rider; a player riding it is the run's player.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "vehicle_bump"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "entity": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
+        },
+        "named": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 64,
+          "description": "The entity's custom name, or the player's name, ignoring case; * matches any text. Omit for any name."
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+          "description": "A scoreboard tag the entity carries, as /tag adds. Omit for any entity."
+        },
+        "players": {
+          "type": "boolean",
+          "description": "true fires only when a player is involved (the entity, its shooter, thrower, rider or lead holder), false only when none is. Omit for both."
+        },
+        "permission": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$",
+          "description": "A permission node the command's sender, or the event's player, must hold. Omit to let everyone."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-leash_tie": {
+      "type": "object",
+      "description": "A player leading mobs on a lead right-clicks the NPC, once for each mob. Runs read the mob as context.entity and context.holder; the player is the run's player.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "leash_tie"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "entity": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
+        },
+        "named": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 64,
+          "description": "The entity's custom name, or the player's name, ignoring case; * matches any text. Omit for any name."
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+          "description": "A scoreboard tag the entity carries, as /tag adds. Omit for any entity."
+        },
+        "players": {
+          "type": "boolean",
+          "description": "true fires only when a player is involved (the entity, its shooter, thrower, rider or lead holder), false only when none is. Omit for both."
+        },
+        "permission": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$",
+          "description": "A permission node the command's sender, or the event's player, must hold. Omit to let everyone."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-leash_pass": {
+      "type": "object",
+      "description": "A mob on a lead is led within a radius of the NPC. Runs read the mob as context.entity and context.holder; a player holding the lead is the run's player.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "leash_pass"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "radius": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 64.0,
+          "description": "Blocks, above 0."
+        },
+        "entity": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
+        },
+        "named": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 64,
+          "description": "The entity's custom name, or the player's name, ignoring case; * matches any text. Omit for any name."
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+          "description": "A scoreboard tag the entity carries, as /tag adds. Omit for any entity."
+        },
+        "players": {
+          "type": "boolean",
+          "description": "true fires only when a player is involved (the entity, its shooter, thrower, rider or lead holder), false only when none is. Omit for both."
+        },
+        "permission": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$",
+          "description": "A permission node the command's sender, or the event's player, must hold. Omit to let everyone."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      },
+      "required": [
+        "id",
+        "event",
+        "radius"
+      ]
+    },
+    "trigger-npc_proximity": {
+      "type": "object",
+      "description": "Another NPC crosses a radius around this one. Runs read context.npc (its id), context.npc_uuid and context.phase.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "npc_proximity"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "phase": {
+          "enum": [
+            "enter",
+            "leave"
+          ],
+          "description": "Entering or leaving the radius or area."
+        },
+        "radius": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 64.0,
+          "description": "Blocks, above 0."
+        },
+        "npc": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "The other NPC's id such as guard, with * matching any text and commas between alternatives. Omit for every NPC."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      },
+      "required": [
+        "id",
+        "event",
+        "phase",
+        "radius"
+      ]
+    },
+    "trigger-npc_speech": {
+      "type": "object",
+      "description": "Another NPC within the radius speaks with animus:say. Runs read context.npc, context.npc_uuid and context.text.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "npc_speech"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "radius": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 64.0,
+          "description": "Blocks, above 0."
+        },
+        "npc": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "The other NPC's id such as guard, with * matching any text and commas between alternatives. Omit for every NPC."
+        },
+        "pattern": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 256,
+          "description": "Case-insensitive match of the whole message or speech; * matches any text. Omit for everything said."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      },
+      "required": [
+        "id",
+        "event",
+        "radius"
+      ]
+    },
     "trigger-player_join": {
       "type": "object",
       "description": "A player joins the server. first: true matches only first joins, false only returning players.",
@@ -7454,7 +8191,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "string",
           "pattern": "\\S",
           "maxLength": 256,
-          "description": "Case-insensitive match of the whole message; * matches any text. Omit for every message."
+          "description": "Case-insensitive match of the whole message or speech; * matches any text. Omit for everything said."
         }
       },
       "required": [
@@ -7502,7 +8239,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "permission": {
           "type": "string",
           "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$",
-          "description": "A permission node the sender must hold. Omit to let everyone run it."
+          "description": "A permission node the command's sender, or the event's player, must hold. Omit to let everyone."
         },
         "description": {
           "type": "string",
@@ -7741,7 +8478,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "inventory": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
         },
         "cancel": {
@@ -7780,7 +8517,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "inventory": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
         }
       },
@@ -7813,17 +8550,17 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "inventory": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
         },
         "click": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "The click: left or right on a block; left, right, shift_left, shift_right, middle, number_key, double_click, drop and so on in an inventory. Omit for every click."
         },
         "item": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
         },
         "cancel": {
@@ -7862,7 +8599,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "item": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
         },
         "cancel": {
@@ -7901,7 +8638,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "item": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
         },
         "cancel": {
@@ -7940,7 +8677,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "item": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
         },
         "cancel": {
@@ -7979,12 +8716,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "block": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
         },
         "click": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "The click: left or right on a block; left, right, shift_left, shift_right, middle, number_key, double_click, drop and so on in an inventory. Omit for every click."
         },
         "cancel": {
@@ -8023,7 +8760,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "block": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
         },
         "cancel": {
@@ -8062,7 +8799,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "block": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
         },
         "cancel": {
@@ -8101,13 +8838,13 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "cause": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "A damage type such as fall, lava or player_attack. Omit for every cause."
         },
         "damager": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
-          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
         },
         "cancel": {
           "type": "string",
@@ -8145,8 +8882,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "entity": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
-          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
         },
         "cancel": {
           "type": "string",
@@ -8184,8 +8921,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "entity": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
-          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
         }
       },
       "required": [
@@ -8217,12 +8954,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "projectile": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
-          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball. Omit for every projectile."
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball; commas separate alternatives. Omit for every projectile."
         },
         "shooter": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "The shooter's entity type such as minecraft:player or skeleton. Omit for every shooter, none included."
         },
         "cancel": {
@@ -8261,22 +8998,22 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "projectile": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
-          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball. Omit for every projectile."
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball; commas separate alternatives. Omit for every projectile."
         },
         "shooter": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "The shooter's entity type such as minecraft:player or skeleton. Omit for every shooter, none included."
         },
         "entity": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
-          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
         },
         "block": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
         },
         "cancel": {
@@ -8315,18 +9052,18 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "shooter": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "The shooter's entity type such as minecraft:player or skeleton. Omit for every shooter, none included."
         },
         "bow": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "The weapon's item key such as minecraft:crossbow, or a name without namespace such as bow. Omit for every bow and crossbow."
         },
         "projectile": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
-          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball. Omit for every projectile."
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball; commas separate alternatives. Omit for every projectile."
         },
         "cancel": {
           "type": "string",
@@ -8364,7 +9101,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "quest": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
         }
       },
@@ -8397,7 +9134,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "quest": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
         }
       },
@@ -8430,7 +9167,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "quest": {
           "type": "string",
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
         }
       },
@@ -8859,7 +9596,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:command",
       "kind": "action",
-      "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
+      "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name, and placeholders are filled for that player. A player command may hold permissions while it runs, and for permissionTicks after. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
       "privileged": true,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -8884,6 +9621,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "required": false,
           "minLength": 1,
           "maxLength": 36
+        },
+        "permissions": {
+          "type": "array",
+          "required": false
+        },
+        "permissionTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000
         }
       }
     },
@@ -10611,6 +11358,639 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         }
       }
     },
+    "entity_proximity": {
+      "description": "A real entity, players included, crosses a radius around the NPC. Runs read context.entity, context.entity_type, context.entity_name and context.phase.",
+      "carriesPlayer": true,
+      "reach": "npc",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "entity_proximity"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "phase": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "enter",
+            "leave"
+          ],
+          "description": "Entering or leaving the radius or area."
+        },
+        "radius": {
+          "type": "number",
+          "required": true,
+          "maximum": 64.0,
+          "exclusiveMinimum": 0,
+          "description": "Blocks, above 0."
+        },
+        "entity": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
+        },
+        "named": {
+          "type": "string",
+          "required": false,
+          "maxLength": 64,
+          "pattern": "\\S",
+          "description": "The entity's custom name, or the player's name, ignoring case; * matches any text. Omit for any name."
+        },
+        "tag": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+          "description": "A scoreboard tag the entity carries, as /tag adds. Omit for any entity."
+        },
+        "players": {
+          "type": "boolean",
+          "required": false,
+          "description": "true fires only when a player is involved (the entity, its shooter, thrower, rider or lead holder), false only when none is. Omit for both."
+        },
+        "permission": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$",
+          "description": "A permission node the command's sender, or the event's player, must hold. Omit to let everyone."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      }
+    },
+    "entity_collide": {
+      "description": "A real entity starts to touch the NPC's hitbox or stands on top of it. Runs read context.entity, context.entity_type and context.contact (top or side).",
+      "carriesPlayer": true,
+      "reach": "npc",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "entity_collide"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "contact": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "any",
+            "top",
+            "side"
+          ],
+          "description": "top fires when the entity stands on the NPC, side for any other touch, any (default) for both."
+        },
+        "entity": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
+        },
+        "named": {
+          "type": "string",
+          "required": false,
+          "maxLength": 64,
+          "pattern": "\\S",
+          "description": "The entity's custom name, or the player's name, ignoring case; * matches any text. Omit for any name."
+        },
+        "tag": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+          "description": "A scoreboard tag the entity carries, as /tag adds. Omit for any entity."
+        },
+        "players": {
+          "type": "boolean",
+          "required": false,
+          "description": "true fires only when a player is involved (the entity, its shooter, thrower, rider or lead holder), false only when none is. Omit for both."
+        },
+        "permission": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$",
+          "description": "A permission node the command's sender, or the event's player, must hold. Omit to let everyone."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      }
+    },
+    "hit_by_projectile": {
+      "description": "A real projectile flies into the NPC's hitbox. Runs read context.projectile, context.projectile_uuid, context.stopped and the shooter as context.entity; a player shooter is the run's player.",
+      "carriesPlayer": true,
+      "reach": "npc",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "hit_by_projectile"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "projectile": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball; commas separate alternatives. Omit for every projectile."
+        },
+        "entity": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
+        },
+        "named": {
+          "type": "string",
+          "required": false,
+          "maxLength": 64,
+          "pattern": "\\S",
+          "description": "The entity's custom name, or the player's name, ignoring case; * matches any text. Omit for any name."
+        },
+        "tag": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+          "description": "A scoreboard tag the entity carries, as /tag adds. Omit for any entity."
+        },
+        "players": {
+          "type": "boolean",
+          "required": false,
+          "description": "true fires only when a player is involved (the entity, its shooter, thrower, rider or lead holder), false only when none is. Omit for both."
+        },
+        "permission": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$",
+          "description": "A permission node the command's sender, or the event's player, must hold. Omit to let everyone."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      }
+    },
+    "item_dropped": {
+      "description": "A player or mob drops an item within a radius of the NPC, or throws it into its hitbox. Runs read context.item, context.amount, context.item_entity, context.thrown and the thrower as context.entity.",
+      "carriesPlayer": true,
+      "reach": "npc",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "item_dropped"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "radius": {
+          "type": "number",
+          "required": true,
+          "maximum": 64.0,
+          "exclusiveMinimum": 0,
+          "description": "Blocks, above 0."
+        },
+        "item": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "thrown": {
+          "type": "boolean",
+          "required": false,
+          "description": "true fires only for an item that flies into the NPC's hitbox. Omit for any item dropped within the radius."
+        },
+        "entity": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
+        },
+        "named": {
+          "type": "string",
+          "required": false,
+          "maxLength": 64,
+          "pattern": "\\S",
+          "description": "The entity's custom name, or the player's name, ignoring case; * matches any text. Omit for any name."
+        },
+        "tag": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+          "description": "A scoreboard tag the entity carries, as /tag adds. Omit for any entity."
+        },
+        "players": {
+          "type": "boolean",
+          "required": false,
+          "description": "true fires only when a player is involved (the entity, its shooter, thrower, rider or lead holder), false only when none is. Omit for both."
+        },
+        "permission": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$",
+          "description": "A permission node the command's sender, or the event's player, must hold. Omit to let everyone."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      }
+    },
+    "vehicle_bump": {
+      "description": "A moving minecart or boat runs into the NPC's hitbox. Runs read the vehicle as context.entity, context.speed and context.rider; a player riding it is the run's player.",
+      "carriesPlayer": true,
+      "reach": "npc",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "vehicle_bump"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "entity": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
+        },
+        "named": {
+          "type": "string",
+          "required": false,
+          "maxLength": 64,
+          "pattern": "\\S",
+          "description": "The entity's custom name, or the player's name, ignoring case; * matches any text. Omit for any name."
+        },
+        "tag": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+          "description": "A scoreboard tag the entity carries, as /tag adds. Omit for any entity."
+        },
+        "players": {
+          "type": "boolean",
+          "required": false,
+          "description": "true fires only when a player is involved (the entity, its shooter, thrower, rider or lead holder), false only when none is. Omit for both."
+        },
+        "permission": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$",
+          "description": "A permission node the command's sender, or the event's player, must hold. Omit to let everyone."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      }
+    },
+    "leash_tie": {
+      "description": "A player leading mobs on a lead right-clicks the NPC, once for each mob. Runs read the mob as context.entity and context.holder; the player is the run's player.",
+      "carriesPlayer": true,
+      "reach": "npc",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "leash_tie"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "entity": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
+        },
+        "named": {
+          "type": "string",
+          "required": false,
+          "maxLength": 64,
+          "pattern": "\\S",
+          "description": "The entity's custom name, or the player's name, ignoring case; * matches any text. Omit for any name."
+        },
+        "tag": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+          "description": "A scoreboard tag the entity carries, as /tag adds. Omit for any entity."
+        },
+        "players": {
+          "type": "boolean",
+          "required": false,
+          "description": "true fires only when a player is involved (the entity, its shooter, thrower, rider or lead holder), false only when none is. Omit for both."
+        },
+        "permission": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$",
+          "description": "A permission node the command's sender, or the event's player, must hold. Omit to let everyone."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      }
+    },
+    "leash_pass": {
+      "description": "A mob on a lead is led within a radius of the NPC. Runs read the mob as context.entity and context.holder; a player holding the lead is the run's player.",
+      "carriesPlayer": true,
+      "reach": "npc",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "leash_pass"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "radius": {
+          "type": "number",
+          "required": true,
+          "maximum": 64.0,
+          "exclusiveMinimum": 0,
+          "description": "Blocks, above 0."
+        },
+        "entity": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
+        },
+        "named": {
+          "type": "string",
+          "required": false,
+          "maxLength": 64,
+          "pattern": "\\S",
+          "description": "The entity's custom name, or the player's name, ignoring case; * matches any text. Omit for any name."
+        },
+        "tag": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+          "description": "A scoreboard tag the entity carries, as /tag adds. Omit for any entity."
+        },
+        "players": {
+          "type": "boolean",
+          "required": false,
+          "description": "true fires only when a player is involved (the entity, its shooter, thrower, rider or lead holder), false only when none is. Omit for both."
+        },
+        "permission": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$",
+          "description": "A permission node the command's sender, or the event's player, must hold. Omit to let everyone."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      }
+    },
+    "npc_proximity": {
+      "description": "Another NPC crosses a radius around this one. Runs read context.npc (its id), context.npc_uuid and context.phase.",
+      "carriesPlayer": false,
+      "reach": "npc",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "npc_proximity"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "phase": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "enter",
+            "leave"
+          ],
+          "description": "Entering or leaving the radius or area."
+        },
+        "radius": {
+          "type": "number",
+          "required": true,
+          "maximum": 64.0,
+          "exclusiveMinimum": 0,
+          "description": "Blocks, above 0."
+        },
+        "npc": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "The other NPC's id such as guard, with * matching any text and commas between alternatives. Omit for every NPC."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      }
+    },
+    "npc_speech": {
+      "description": "Another NPC within the radius speaks with animus:say. Runs read context.npc, context.npc_uuid and context.text.",
+      "carriesPlayer": false,
+      "reach": "npc",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "npc_speech"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "radius": {
+          "type": "number",
+          "required": true,
+          "maximum": 64.0,
+          "exclusiveMinimum": 0,
+          "description": "Blocks, above 0."
+        },
+        "npc": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "The other NPC's id such as guard, with * matching any text and commas between alternatives. Omit for every NPC."
+        },
+        "pattern": {
+          "type": "string",
+          "required": false,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "description": "Case-insensitive match of the whole message or speech; * matches any text. Omit for everything said."
+        },
+        "entityCooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."
+        }
+      }
+    },
     "player_join": {
       "description": "A player joins the server. first: true matches only first joins, false only returning players.",
       "carriesPlayer": true,
@@ -10712,7 +12092,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "required": false,
           "maxLength": 256,
           "pattern": "\\S",
-          "description": "Case-insensitive match of the whole message; * matches any text. Omit for every message."
+          "description": "Case-insensitive match of the whole message or speech; * matches any text. Omit for everything said."
         }
       }
     },
@@ -10764,7 +12144,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "string",
           "required": false,
           "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$",
-          "description": "A permission node the sender must hold. Omit to let everyone run it."
+          "description": "A permission node the command's sender, or the event's player, must hold. Omit to let everyone."
         },
         "description": {
           "type": "string",
@@ -11009,7 +12389,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "inventory": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
         },
         "cancel": {
@@ -11051,7 +12431,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "inventory": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
         }
       }
@@ -11086,19 +12466,19 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "inventory": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
         },
         "click": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "The click: left or right on a block; left, right, shift_left, shift_right, middle, number_key, double_click, drop and so on in an inventory. Omit for every click."
         },
         "item": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
         },
         "cancel": {
@@ -11140,7 +12520,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "item": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
         },
         "cancel": {
@@ -11182,7 +12562,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "item": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
         },
         "cancel": {
@@ -11224,7 +12604,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "item": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
         },
         "cancel": {
@@ -11266,13 +12646,13 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "block": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
         },
         "click": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "The click: left or right on a block; left, right, shift_left, shift_right, middle, number_key, double_click, drop and so on in an inventory. Omit for every click."
         },
         "cancel": {
@@ -11314,7 +12694,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "block": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
         },
         "cancel": {
@@ -11356,7 +12736,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "block": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
         },
         "cancel": {
@@ -11398,14 +12778,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "cause": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "A damage type such as fall, lava or player_attack. Omit for every cause."
         },
         "damager": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
-          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
         },
         "cancel": {
           "type": "expression",
@@ -11446,8 +12826,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "entity": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
-          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
         },
         "cancel": {
           "type": "expression",
@@ -11488,8 +12868,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "entity": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
-          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
         }
       }
     },
@@ -11534,13 +12914,13 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "projectile": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
-          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball. Omit for every projectile."
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball; commas separate alternatives. Omit for every projectile."
         },
         "shooter": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "The shooter's entity type such as minecraft:player or skeleton. Omit for every shooter, none included."
         },
         "cancel": {
@@ -11596,25 +12976,25 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "projectile": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
-          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball. Omit for every projectile."
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball; commas separate alternatives. Omit for every projectile."
         },
         "shooter": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "The shooter's entity type such as minecraft:player or skeleton. Omit for every shooter, none included."
         },
         "entity": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
-          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."
         },
         "block": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
         },
         "cancel": {
@@ -11670,20 +13050,20 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "shooter": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "The shooter's entity type such as minecraft:player or skeleton. Omit for every shooter, none included."
         },
         "bow": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "The weapon's item key such as minecraft:crossbow, or a name without namespace such as bow. Omit for every bow and crossbow."
         },
         "projectile": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
-          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball. Omit for every projectile."
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
+          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball; commas separate alternatives. Omit for every projectile."
         },
         "cancel": {
           "type": "expression",
@@ -11729,7 +13109,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "quest": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
         }
       }
@@ -11769,7 +13149,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "quest": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
         }
       }
@@ -11809,7 +13189,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "quest": {
           "type": "string",
           "required": false,
-          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}(,[a-z0-9_.*:/-]{1,128}){0,7}$",
           "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
         }
       }

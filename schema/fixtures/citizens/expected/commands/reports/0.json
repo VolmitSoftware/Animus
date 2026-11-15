@@ -1,0 +1,70 @@
+{
+  "citizensId": 0,
+  "presentationWarnings": [],
+  "runtimeWarnings": [
+    "/traits/commandtrait/commands/4/command: PlaceholderAPI placeholders are filled for the clicking player; a value with characters other than letters, digits and _ . : + - stops the command unless the behavior is on rawTextBehaviors",
+    "/traits/commandtrait/commands/6/command: npc glowing has no Animus action; not converted",
+    "/traits/commandtrait/commands/8/command: waypoint commands edit Citizens' waypoints, which Animus routes replace; not converted",
+    "/traits/commandtrait/commands/9/command: acts on NPC 12, not this one; not converted",
+    "/traits/commandtrait/temporaryPermissions/2: not a node is not a permission node; not granted",
+    "/traits/commandtrait: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones",
+    "/traits/commandtrait: commands stay denied until citizens:commands-0 is on the [behaviors.actions] commandBehaviors list in config.toml"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/commandtrait/executionMode": "CONVERTED",
+    "/traits/commandtrait/temporaryPermissions/0": "CONVERTED",
+    "/traits/commandtrait/temporaryPermissions/1": "CONVERTED",
+    "/traits/commandtrait/temporaryPermissions/2": "REQUIRES_REVIEW",
+    "/traits/commandtrait/temporaryPermissionsDuration": "CONVERTED",
+    "/traits/commandtrait/commands/0/command": "CONVERTED",
+    "/traits/commandtrait/commands/0/hand": "CONVERTED",
+    "/traits/commandtrait/commands/0/player": "CONVERTED",
+    "/traits/commandtrait/commands/1/command": "CONVERTED",
+    "/traits/commandtrait/commands/1/hand": "CONVERTED",
+    "/traits/commandtrait/commands/2/command": "CONVERTED",
+    "/traits/commandtrait/commands/2/hand": "CONVERTED",
+    "/traits/commandtrait/commands/3/command": "CONVERTED",
+    "/traits/commandtrait/commands/3/hand": "CONVERTED",
+    "/traits/commandtrait/commands/3/player": "CONVERTED",
+    "/traits/commandtrait/commands/3/cooldown": "CONVERTED",
+    "/traits/commandtrait/commands/4/command": "CONVERTED",
+    "/traits/commandtrait/commands/4/hand": "CONVERTED",
+    "/traits/commandtrait/commands/5/command": "CONVERTED",
+    "/traits/commandtrait/commands/5/hand": "CONVERTED",
+    "/traits/commandtrait/commands/5/player": "CONVERTED",
+    "/traits/commandtrait/commands/6/command": "REQUIRES_REVIEW",
+    "/traits/commandtrait/commands/6/hand": "REQUIRES_REVIEW",
+    "/traits/commandtrait/commands/7/command": "CONVERTED",
+    "/traits/commandtrait/commands/7/hand": "CONVERTED",
+    "/traits/commandtrait/commands/8/command": "REQUIRES_REVIEW",
+    "/traits/commandtrait/commands/8/hand": "REQUIRES_REVIEW",
+    "/traits/commandtrait/commands/9/command": "REQUIRES_REVIEW",
+    "/traits/commandtrait/commands/9/hand": "REQUIRES_REVIEW"
+  },
+  "reasons": {
+    "/traits/commandtrait/temporaryPermissions/2": "not a permission node",
+    "/traits/commandtrait/commands/6/command": "npc glowing has no Animus action; kept in citizens:review",
+    "/traits/commandtrait/commands/6/hand": "npc glowing has no Animus action; kept in citizens:review",
+    "/traits/commandtrait/commands/8/command": "waypoint commands edit Citizens' waypoints, which Animus routes replace; kept in citizens:review",
+    "/traits/commandtrait/commands/8/hand": "waypoint commands edit Citizens' waypoints, which Animus routes replace; kept in citizens:review",
+    "/traits/commandtrait/commands/9/command": "acts on NPC 12, not this one; kept in citizens:review",
+    "/traits/commandtrait/commands/9/hand": "acts on NPC 12, not this one; kept in citizens:review"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "old_harbor",
+      "to": "harbor"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

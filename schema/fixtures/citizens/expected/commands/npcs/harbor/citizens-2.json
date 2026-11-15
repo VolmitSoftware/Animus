@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000602",
+  "id": "citizens-2",
+  "group": "harbor",
+  "name": "Sky Warden",
+  "type": "minecraft:player",
+  "spawned": true,
+  "migration": {
+    "importId": "424e50a00256dccf2e9833c3499091f2e28960420d9a08164deece52221ffb65",
+    "citizensId": 2,
+    "references": []
+  },
+  "position": {
+    "world": "harbor",
+    "x": 0.5,
+    "y": 80.0,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "behaviors": [
+    "citizens:commands-2"
+  ],
+  "modules": {
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "harbor",
+        "x": 0.5,
+        "y": 80.0,
+        "z": 0.5
+      },
+      "commandtrait": {
+        "temporaryPermissions": {
+          "0": "essentials.fly"
+        },
+        "temporaryPermissionsDuration": 6000,
+        "commands": {
+          "0": {
+            "command": "tell <p> You may fly for five minutes",
+            "hand": "BOTH"
+          }
+        }
+      }
+    }
+  }
+}

@@ -25,7 +25,7 @@ class TriggerSettingsHotloadTest {
 
     /** eventQueue, maximumQueued, queueLifetimeTicks, concurrentTotal and the proximity interval vary; the rest stay generous. */
     private static TriggerSettings settings(boolean enabled, int eventQueue, int maximumQueued, int lifetime, int concurrentTotal, int proximityInterval) {
-        return new TriggerSettings(enabled, eventQueue, 32, 8, maximumQueued, 64, 64, lifetime, concurrentTotal, 16, 16, 0, 0, 4096, 1024, 1, 32, proximityInterval, 16, 32, 64, 0);
+        return new TriggerSettings(enabled, eventQueue, 32, 8, maximumQueued, 64, 64, lifetime, concurrentTotal, 16, 16, 0, 0, 4096, 1024, 1, 32, proximityInterval, 16, 32, 64, 0,5,16,32,16,64,256);
     }
     @BeforeEach void setUp() throws Exception {
         String source = "{\"schemaVersion\":1,\"id\":\"" + BEHAVIOR + "\",\"entry\":\"main\",\"routines\":{\"main\":{\"type\":\"sequence\",\"steps\":[]}},\"triggers\":[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]}";

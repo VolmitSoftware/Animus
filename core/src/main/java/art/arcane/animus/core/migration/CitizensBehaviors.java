@@ -309,7 +309,7 @@ final class CitizensBehaviors {
     }
 
     /** Citizens' player animations as {@code animus:animate}; elytra flight has no Animus animation. */
-    private static final Map<String, String> ANIMATIONS = Map.ofEntries(Map.entry("ARM_SWING", "swing"), Map.entry("ARM_SWING_OFFHAND", "swing_offhand"),
+    static final Map<String, String> ANIMATIONS = Map.ofEntries(Map.entry("ARM_SWING", "swing"), Map.entry("ARM_SWING_OFFHAND", "swing_offhand"),
             Map.entry("HURT", "hurt"), Map.entry("CRIT", "crit"), Map.entry("MAGIC_CRIT", "magic_crit"), Map.entry("LEAVE_BED", "wake"), Map.entry("STOP_SLEEPING", "wake"),
             Map.entry("SLEEP", "sleep"), Map.entry("SIT", "sit"), Map.entry("STOP_SITTING", "stand"), Map.entry("SNEAK", "sneak"), Map.entry("STOP_SNEAKING", "stand"),
             Map.entry("EAT_FOOD", "use_item"), Map.entry("START_USE_MAINHAND_ITEM", "use_item"), Map.entry("START_USE_OFFHAND_ITEM", "use_item"),
@@ -623,7 +623,7 @@ final class CitizensBehaviors {
     // ---- Commands ----
 
     private void commands(CitizensCommands.Addons addons) {
-        CitizensCommands.Result result = CitizensCommands.map(key, name, traits, addons, warnings, converted);
+        CitizensCommands.Result result = CitizensCommands.map(key, name, traits, addons, warnings, converted, notes);
         result.entry().ifPresent((String entry) -> behavior("commands-" + key, entry, result.routines(), result.triggers()));
     }
 

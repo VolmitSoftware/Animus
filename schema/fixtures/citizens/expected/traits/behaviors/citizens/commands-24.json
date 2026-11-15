@@ -6,10 +6,9 @@
   "routines": {
     "right": {
       "type": "action",
-      "capability": "animus:command",
+      "capability": "animus:say",
       "arguments": {
-        "command": "say Hear ye",
-        "as": "console"
+        "text": "Hear ye"
       }
     }
   },

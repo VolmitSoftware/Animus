@@ -45,6 +45,33 @@ public final class ProjectileFlight {
      * The projectile is at {@code now} moving by {@code velocity} per tick. The segment runs from the last observation, or
      * from one tick back along the velocity on the first one, to {@code now}.
      */
+    /**
+     * Every body in {@code watched} the segment since the last observation passes through, nearest first, each once per
+     * flight. It never spends the flight: a sensor watches projectiles fly through bodies combat does not stop.
+     */
+    public java.util.List<Hit> crossings(WorldPosition now, Vec3 velocity, Scanner scanner, Predicate<UUID> watched) {
+        Vec3 from = last != null && now.world().equals(world) ? last : now.point().subtract(velocity);
+        if (origin == null) origin = from;
+        last = now.point();
+        world = now.world();
+        double length = from.distance(now.point());
+        if (length < .0001 || length > MAXIMUM_SEGMENT) return java.util.List.of();
+        Vec3 direction = now.point().subtract(from);
+        SpatialNpcIndex.Scan near = scanner.scan(new WorldPosition(now.world(), from.add(now.point()).multiply(.5)), length / 2 + BODY_REACH, BUDGET);
+        java.util.List<Hit> crossed = new java.util.ArrayList<>();
+        java.util.Map<UUID, Double> distances = new java.util.HashMap<>();
+        for (VirtualNpcState.Snapshot candidate : near.candidates()) {
+            if (!candidate.active() || struck.contains(candidate.npcId()) || !watched.test(candidate.npcId())) continue;
+            OptionalDouble distance = candidate.bounds().rayDistance(from, direction, length);
+            if (distance.isEmpty()) continue;
+            distances.put(candidate.npcId(), distance.getAsDouble());
+            crossed.add(new Hit(candidate.npcId(), from.add(direction.normalized().multiply(distance.getAsDouble()))));
+        }
+        crossed.sort(java.util.Comparator.comparingDouble((Hit hit) -> distances.get(hit.npc())));
+        for (Hit hit : crossed) struck.add(hit.npc());
+        return java.util.List.copyOf(crossed);
+    }
+
     public Optional<Hit> advance(WorldPosition now, Vec3 velocity, Scanner scanner, Predicate<UUID> shootable) {
         Vec3 from = last != null && now.world().equals(world) ? last : now.point().subtract(velocity);
         if (origin == null) origin = from;

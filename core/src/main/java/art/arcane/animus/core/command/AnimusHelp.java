@@ -31,7 +31,7 @@ public final class AnimusHelp {
     static final List<Topic> TOPICS = List.of(
             new Topic("Tools", DocsLink.TOOLS, List.of("setup", ToolkitCommands.GUI, "tools")),
             new Topic("NPCs", DocsLink.COMMANDS, List.of("status", "list", "create", "mythic", "inspect", "edit", "clone", "delete", "spawn", "despawn",
-                    "undo", "select", "selection", "validate", "reload", "rollback", "npc")),
+                    "speak", "undo", "select", "selection", "validate", "reload", "rollback", "npc")),
             new Topic("Movement", DocsLink.MOVEMENT, List.of("navigation", "schedule", "ride")),
             new Topic("Recordings", DocsLink.RECORDINGS, List.of("record")),
             new Topic("Combat", DocsLink.COMBAT, List.of("combat")),

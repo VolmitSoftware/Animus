@@ -492,7 +492,14 @@ public final class BehaviorSchemaGenerator {
             case "key" -> new Field(described(pattern(KEY), "A trigger a module registered, namespace:name."), "capability", true);
             case "animation" -> new Field(described(pattern("^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$"), "An animation id under animations/. Omit for any played animation."), "string", false);
             case "first" -> new Field(described(type("boolean"), "true fires only on first joins, false only for returning players. Omit for every join."), "boolean", false);
-            case "pattern" -> new Field(described(bounded(TriggerCompiler.MAX_PATTERN), "Case-insensitive match of the whole message; * matches any text. Omit for every message."), "string", false);
+            case "pattern" -> new Field(described(bounded(TriggerCompiler.MAX_PATTERN), "Case-insensitive match of the whole message or speech; * matches any text. Omit for everything said."), "string", false);
+            case "named" -> new Field(described(bounded(TriggerCompiler.MAX_NAME_PATTERN), "The entity's custom name, or the player's name, ignoring case; * matches any text. Omit for any name."), "string", false);
+            case "tag" -> new Field(described(pattern("^" + TriggerCompiler.TAG + "$"), "A scoreboard tag the entity carries, as /tag adds. Omit for any entity."), "string", false);
+            case "players" -> new Field(described(type("boolean"), "true fires only when a player is involved (the entity, its shooter, thrower, rider or lead holder), false only when none is. Omit for both."), "boolean", false);
+            case "entityCooldownTicks" -> new Field(described(range("integer", 0, TriggerCompiler.MAX_COOLDOWN_TICKS), "Ticks between one entity's runs of this trigger. Without it the configured defaultCooldownTicks applies to each entity, unless cooldownTicks is set; 0 turns it off."), "integer", false);
+            case "contact" -> new Field(described(choices(lower(TriggerBinding.Contact.values())), "top fires when the entity stands on the NPC, side for any other touch, any (default) for both."), "string", false);
+            case "thrown" -> new Field(described(type("boolean"), "true fires only for an item that flies into the NPC's hitbox. Omit for any item dropped within the radius."), "boolean", false);
+            case "npc" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "The other NPC's id such as guard, with * matching any text and commas between alternatives. Omit for every NPC."), "string", false);
             case "name" -> new Field(described(pattern("^" + TriggerCompiler.COMMAND_NAME + "$"), "The command to register, without a slash."), "string", true);
             case "aliases" -> {
                 JsonObject aliases = type("array");
@@ -501,7 +508,7 @@ public final class BehaviorSchemaGenerator {
                 aliases.add("items", pattern("^" + TriggerCompiler.COMMAND_NAME + "$"));
                 yield new Field(described(aliases, "Other names for the command, at most " + TriggerCompiler.MAX_ALIASES + "."), "array", false);
             }
-            case "permission" -> new Field(described(pattern("^" + TriggerCompiler.PERMISSION + "$"), "A permission node the sender must hold. Omit to let everyone run it."), "string", false);
+            case "permission" -> new Field(described(pattern("^" + TriggerCompiler.PERMISSION + "$"), "A permission node the command's sender, or the event's player, must hold. Omit to let everyone."), "string", false);
             case "description" -> new Field(described(bounded(TriggerCompiler.MAX_COMMAND_TEXT), "Shown in the server's command help."), "string", false);
             case "usage" -> new Field(described(bounded(TriggerCompiler.MAX_COMMAND_TEXT), "Usage text shown in the server's command help."), "string", false);
             case "from" -> new Field(described(bounded(TriggerCompiler.MAX_WORLD_NAME), "Fires only when leaving this world. Omit for any world."), "string", false);
@@ -515,8 +522,8 @@ public final class BehaviorSchemaGenerator {
             case "item" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."), "string", false);
             case "block" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."), "string", false);
             case "cause" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "A damage type such as fall, lava or player_attack. Omit for every cause."), "string", false);
-            case "damager", "entity" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."), "string", false);
-            case "projectile" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball. Omit for every projectile."), "string", false);
+            case "damager", "entity" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "An entity type such as minecraft:zombie, or a name without namespace; commas separate alternatives such as zombie,skeleton. Omit for every entity."), "string", false);
+            case "projectile" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball; commas separate alternatives. Omit for every projectile."), "string", false);
             case "shooter" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "The shooter's entity type such as minecraft:player or skeleton. Omit for every shooter, none included."), "string", false);
             case "bow" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "The weapon's item key such as minecraft:crossbow, or a name without namespace such as bow. Omit for every bow and crossbow."), "string", false);
             case "quest" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."), "string", false);

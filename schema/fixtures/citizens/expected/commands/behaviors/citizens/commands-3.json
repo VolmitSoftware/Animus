@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "citizens:commands-3",
+  "entry": "right",
+  "routines": {
+    "right": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Halt, {player_name}! Docks close at %server_time_HH%."
+      }
+    },
+    "left": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Stand back",
+        "audience": "nearby",
+        "radius": 8.0
+      }
+    },
+    "sneak-right": {
+      "type": "action",
+      "capability": "animus:command",
+      "arguments": {
+        "command": "warp docks",
+        "as": "player",
+        "permissions": [
+          "essentials.warp"
+        ],
+        "permissionTicks": 200
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "right",
+      "event": "interaction",
+      "action": "interact",
+      "routine": "right"
+    },
+    {
+      "id": "left",
+      "event": "interaction",
+      "action": "attack",
+      "routine": "left"
+    },
+    {
+      "id": "sneak-right",
+      "event": "interaction",
+      "action": "sneak_interact",
+      "routine": "sneak-right"
+    }
+  ]
+}

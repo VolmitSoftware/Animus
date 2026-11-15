@@ -1,0 +1,68 @@
+{
+  "name": "Harbor Herald",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000600",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "old_harbor",
+      "x": 10.5,
+      "y": 64.0,
+      "z": -3.5
+    },
+    "commandtrait": {
+      "executionMode": "LINEAR",
+      "temporaryPermissions": {
+        "0": "essentials.warp",
+        "1": "essentials.warps.docks",
+        "2": "not a node"
+      },
+      "temporaryPermissionsDuration": 100,
+      "commands": {
+        "0": {
+          "command": "say Welcome to the docks, <p>!",
+          "hand": "RIGHT",
+          "player": true
+        },
+        "1": {
+          "command": "npc speak Tide comes in at dusk --range 12",
+          "hand": "RIGHT"
+        },
+        "2": {
+          "command": "npc speak \"Mind the gap\" --bubble 3s",
+          "hand": "RIGHT"
+        },
+        "3": {
+          "command": "warp docks",
+          "hand": "RIGHT",
+          "player": true,
+          "cooldown": 30
+        },
+        "4": {
+          "command": "eco give <p> %vault_eco_balance%",
+          "hand": "LEFT"
+        },
+        "5": {
+          "command": "npc tphere",
+          "hand": "LEFT",
+          "player": true
+        },
+        "6": {
+          "command": "npc glowing --color red",
+          "hand": "LEFT"
+        },
+        "7": {
+          "command": "npc panimate ARM_SWING",
+          "hand": "SHIFT_RIGHT"
+        },
+        "8": {
+          "command": "wp provider wander",
+          "hand": "SHIFT_RIGHT"
+        },
+        "9": {
+          "command": "npc speak Over here --id 12",
+          "hand": "SHIFT_RIGHT"
+        }
+      }
+    }
+  }
+}

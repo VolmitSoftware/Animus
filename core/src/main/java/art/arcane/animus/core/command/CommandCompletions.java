@@ -84,7 +84,10 @@ final class CommandCompletions {
             case "mythic-mob" -> tree.runtime().templates().names(art.arcane.animus.core.integration.NpcTemplates.MYTHIC);
             case "viewer" -> services.debug().viewers();
             case "uuid" -> Stream.concat(actor.player().stream(), actor.nearby().stream()).map(UUID::toString).distinct().toList();
-            case "target" -> targets(actor, false);
+            // Only /animus speak types text before its target, and it speaks to players, never NPCs.
+            case "target" -> given.containsKey("text") ? speakers(actor) : targets(actor, false);
+            case "range" -> List.of("8", "16", "32");
+            case "bubble" -> List.of("40", "60", "100");
             case "charge" -> targets(actor, true);
             case "mob" -> nearby(actor);
             case "enabled" -> List.of("on", "off", DiagnosticCommands.TOGGLE);
@@ -165,6 +168,11 @@ final class CommandCompletions {
         List<String> players = List.copyOf(tree.services.players().get());
         List<String> npcs = tree.runtime().npcs().all().stream().map(NpcDefinition::id).toList();
         return WorldCommands.Targets.offered(stop, actor.player().isPresent(), players, npcs, actor.nearby());
+    }
+
+    /** The players a line can be spoken to: {@code @me} for a player, then the online names. */
+    private List<String> speakers(CommandActor actor) {
+        return WorldCommands.Targets.offered(false, actor.player().isPresent(), List.copyOf(tree.services.players().get()), List.of(), List.of());
     }
 
     /** {@code npc1}, {@code npc2} and so on: the first id no NPC uses. */
