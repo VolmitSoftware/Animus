@@ -49,7 +49,7 @@ class BuiltinActionSettingsTest {
                 navigationWaits = 6
                 rawTextBehaviors = ["town:shout"]
                 """);
-        assertEquals(new BuiltinActionSettings(8, 2, 16, 32, 120, List.of("town:gate/open"), List.of("quests"), 6, List.of("town:shout")), settings);
+        assertEquals(new BuiltinActionSettings(8, 2, 16, 32, 120, List.of("town:gate/open"), List.of("quests"), 6, List.of("town:shout"), false), settings);
         assertTrue(settings.rawTextAllowed("town:shout"));
         assertFalse(settings.rawTextAllowed("town:gate/open"), "raw text is granted per behavior, never by the command grant");
         assertTrue(settings.commandAllowed("town:gate/open"));
@@ -74,11 +74,11 @@ class BuiltinActionSettingsTest {
     }
 
     @Test void perNpcBudgetCannotExceedTheGlobalBudget() {
-        assertThrows(IllegalArgumentException.class, () -> new BuiltinActionSettings(2, 3, 8, 8, 60, List.of(), List.of(), 8, List.of()));
+        assertThrows(IllegalArgumentException.class, () -> new BuiltinActionSettings(2, 3, 8, 8, 60, List.of(), List.of(), 8, List.of(), false));
     }
 
     @Test void allowListSizeIsBounded() {
         List<String> tooMany = java.util.stream.IntStream.range(0, 257).mapToObj(index -> "town:gate" + index).toList();
-        assertThrows(IllegalArgumentException.class, () -> new BuiltinActionSettings(32, 4, 256, 256, 60, tooMany, List.of(), 8, List.of()));
+        assertThrows(IllegalArgumentException.class, () -> new BuiltinActionSettings(32, 4, 256, 256, 60, tooMany, List.of(), 8, List.of(), false));
     }
 }

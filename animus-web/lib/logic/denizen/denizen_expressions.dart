@@ -7,15 +7,57 @@ part of 'denizen_converter.dart';
 
 const int _maximumExpression = 4096;
 
-/// An expression and what it gives: `b` boolean, `n` number, `s` text, `l` list, `a` anything. [flag] is the call
-/// prefix of a plain flag read, which takes its default last.
+/// An expression and what it gives: `b` boolean, `n` number, `s` text, `l` list, `a` anything, `e` one NPC's UUID and
+/// `N` a list of NPC UUIDs, whose attributes read NPC facts and flags, and `L` a location as the facts write it,
+/// `x,y,z,world`, `t` a time in epoch milliseconds, `d` a duration in seconds, `i` an item, a map with item, amount and
+/// optionally name, lore and enchantments, as `animus:give-item` takes it as stack, and `I` a list of items. [flag] is the call
+/// prefix of a plain flag read, which takes its default last. A read that can be unset, such as a flag, a definition or
+/// a list item, gives its `||` fallback as `before + fallback + after`.
 class _Expr {
-  const _Expr(this.text, this.kind, [this.flag]);
+  const _Expr(this.text, this.kind)
+      : flag = null,
+        before = null,
+        after = null,
+        guard = null;
+
+  const _Expr._unset(this.text, this.kind, this.flag, this.before, this.after) : guard = null;
+
+  const _Expr._all(this.text, this.kind, this.flag, this.before, this.after, this.guard);
+
+  /// A value that is set exactly when [guard] holds, which attributes read from it keep.
+  const _Expr.guarded(this.text, this.kind, String this.guard)
+      : flag = null,
+        before = null,
+        after = null;
+
+  const _Expr.flagRead(String prefix) : this._unset("$prefix'')", 'a', prefix, prefix, ')');
+
+  const _Expr.orElse(String text, String kind, String before, String after) : this._unset(text, kind, null, before, after);
 
   final String text;
   final String kind;
   final String? flag;
+  final String? before;
+  final String? after;
+  final String? guard;
+
+  _Expr withGuard(String? held) => guard != null || held == null ? this : _Expr._all(text, kind, flag, before, after, held);
 }
+
+JObject _setNode(String variable, JElement value) => JObject()
+  ..addString('type', 'set')
+  ..addString('variable', variable)
+  ..add('value', value);
+
+JObject _operandNode(String expression) => JObject()..addString('expression', expression);
+
+/// A loop over every item of a list, up to the behavior limit of 1024.
+JObject _each(_Expr list, String item, List<JObject> steps) => JObject()
+  ..addString('type', 'foreach')
+  ..add('list', _operandNode(list.text))
+  ..addString('as', item)
+  ..addInt('maximum', 1024)
+  ..add('body', _sequence(steps));
 
 /// A value or the reason there is none.
 class _Result<T> {
@@ -53,11 +95,13 @@ final class _Atom extends _Cond {
   final String expression;
 }
 
+/// A capability condition; [expressions] fill its null arguments as the condition runs.
 final class _Capability extends _Cond {
-  const _Capability(this.capability, this.arguments);
+  _Capability(this.capability, this.arguments, [JObject? expressions]) : expressions = expressions ?? JObject();
 
   final String capability;
   final JObject arguments;
+  final JObject expressions;
 }
 
 final class _And extends _Cond {
@@ -116,12 +160,12 @@ _Expr _literal(String text) {
 }
 
 String _numeric(_Expr expr) {
-  if (expr.kind == 'n') return expr.text;
+  if (expr.kind == 'n' || expr.kind == 't' || expr.kind == 'd') return expr.text;
   if (expr.flag != null) return 'num(${expr.flag}0))';
   return 'num(${expr.text})';
 }
 
-String _textual(_Expr expr) => expr.kind == 's' ? expr.text : 'text(${expr.text})';
+String _textual(_Expr expr) => expr.kind == 's' || expr.kind == 'L' ? expr.text : 'text(${expr.text})';
 
 String _truth(_Expr expr) => expr.kind == 'b' ? expr.text : 'truthy(${expr.text})';
 
@@ -156,6 +200,7 @@ String? _literalTag(DenizenTag tag, bool command) {
   final List<DenizenPart> parts = tag.parts;
   final String base = tag.base.toLowerCase();
   final String code = command ? '§' : '&';
+  if (parts.length == 2 && base == 'element' && tag.fallback == null && parts[1].name.toLowerCase() == 'color_gradient') return _gradient(parts, command);
   if (parts.length != 1 || tag.fallback != null) return null;
   final String? parameter = parts.first.parameter;
   if (parameter == null) {
@@ -187,6 +232,111 @@ String? _literalTag(DenizenTag tag, bool command) {
   return null;
 }
 
+const Map<String, int> _namedColors = <String, int>{
+  'white': 0xFFFFFF, 'silver': 0xC0C0C0, 'gray': 0x808080, 'black': 0x000000, 'red': 0xFF0000,
+  'maroon': 0x800000, 'yellow': 0xFFFF00, 'olive': 0x808000, 'lime': 0x00FF00, 'green': 0x008000,
+  'aqua': 0x00FFFF, 'teal': 0x008080, 'blue': 0x0000FF, 'navy': 0x000080, 'fuchsia': 0xFF00FF,
+  'purple': 0x800080, 'orange': 0xFFA500,
+};
+
+/// A Denizen colour written as `#rrggbb`, `r,g,b` or a colour name, as an RGB number; null for anything else.
+int? _color(String raw) {
+  String text = javaTrim(raw).toLowerCase();
+  if (text.startsWith('co@')) text = text.substring(3);
+  if (_full('#[0-9a-f]{6}', text)) return int.parse(text.substring(1), radix: 16);
+  if (_full('[0-9]{1,3},[0-9]{1,3},[0-9]{1,3}', text)) {
+    int rgb = 0;
+    for (final String channel in text.split(',')) {
+      final int value = int.parse(channel);
+      if (value > 255) return null;
+      rgb = rgb << 8 | value;
+    }
+    return rgb;
+  }
+  return _namedColors[text];
+}
+
+final Float32List _single = Float32List(1);
+
+/// [value] rounded to single precision, as a Java float holds it.
+double _f(double value) {
+  _single[0] = value;
+  return _single[0];
+}
+
+/// `<element[text].color_gradient[from=..;to=..]>` on written text: one colour per character, worked out as Denizen's
+/// RGB gradient does, in single precision, so each character gets the colour Denizen gives it. The HSB style, text with
+/// tags or formatting codes, and characters outside the basic plane are left to the tag mapping.
+String? _gradient(List<DenizenPart> parts, bool command) {
+  final String? text = parts.first.parameter, map = parts[1].parameter;
+  if (text == null || map == null) return null;
+  if (text.isEmpty || text.contains('<') || text.contains('&') || text.contains('§') || text.codeUnits.any((int at) => at >= 0xD800 && at <= 0xDFFF)) return null;
+  int? from, to;
+  for (final String entry in map.split(';')) {
+    final int equals = entry.indexOf('=');
+    if (equals <= 0) return null;
+    final String key = javaTrim(entry.substring(0, equals)).toLowerCase(), value = entry.substring(equals + 1);
+    switch (key) {
+      case 'from':
+        from = _color(value);
+      case 'to':
+        to = _color(value);
+      case 'style':
+        if (javaTrim(value).toLowerCase() != 'rgb') return null;
+      default:
+        return null;
+    }
+  }
+  if (from == null || to == null) return null;
+  final int length = text.length;
+  double r = _fromSRGB((from >> 16 & 255).toDouble()), g = _fromSRGB((from >> 8 & 255).toDouble()), b = _fromSRGB((from & 255).toDouble());
+  final double toR = _fromSRGB((to >> 16 & 255).toDouble()), toG = _fromSRGB((to >> 8 & 255).toDouble()), toB = _fromSRGB((to & 255).toDouble());
+  double x = _f(math.pow(_f(_f(r + g) + b), 0.43).toDouble());
+  final double xMove = _f(_f(_f(math.pow(_f(_f(toR + toG) + toB), 0.43).toDouble()) - x) / length);
+  final double rMove = _f(_f(toR - r) / length), gMove = _f(_f(toG - g) / length), bMove = _f(_f(toB - b) / length);
+  final double exponent = _f(1 / _f(0.43));
+  final StringBuffer out = StringBuffer();
+  for (int index = 0; index < length; index++) {
+    double red = r, green = g, blue = b;
+    final double sum = _f(_f(red + green) + blue);
+    if (sum > 0) {
+      final double multiplier = _f(_f(math.pow(x, exponent).toDouble()) / sum);
+      red = _f(red * multiplier);
+      green = _f(green * multiplier);
+      blue = _f(blue * multiplier);
+    }
+    String hex = ((_toSRGB(red).toInt() << 16 | _toSRGB(green).toInt() << 8 | _toSRGB(blue).toInt()) & 0xFFFFFFFF).toRadixString(16);
+    hex = '${'0' * math.max(0, 6 - hex.length)}$hex';
+    if (command) {
+      out.write('§x');
+      for (int digit = 0; digit < hex.length; digit++) {
+        out
+          ..write('§')
+          ..write(hex[digit]);
+      }
+    } else {
+      out.write('&#$hex');
+    }
+    out.write(text[index]);
+    x = _f(x + xMove);
+    r = _f(r + rMove);
+    g = _f(g + gMove);
+    b = _f(b + bMove);
+  }
+  return out.toString();
+}
+
+double _fromSRGB(double channel) {
+  final double value = _f(channel / 255);
+  if (value <= 0.04045) return _f(value / _f(12.92));
+  return _f(math.pow((value + 0.055) / 1.055, 2.4).toDouble());
+}
+
+double _toSRGB(double value) {
+  final double inner = value <= _f(0.0031308) ? _f(_f(12.92) * value) : _f(_f(_f(1.055) * _f(math.pow(value, _f(1 / _f(2.4))).toDouble())) - _f(0.055));
+  return _f(_f(255.9999) * inner);
+}
+
 String? _attributeName(List<DenizenPart> parts, int index) =>
     index < parts.length && parts[index].parameter == null ? parts[index].name.toLowerCase() : null;
 
@@ -195,10 +345,65 @@ _Result<_Step> _fact(String name, String kind, int next) => _Result<_Step>.ok(_S
 _Result<_Step> _locationFact(String root, List<DenizenPart> parts, String? next) {
   if (next != null && <String>['x', 'y', 'z'].contains(next)) return _fact('$root.$next', 'n', 3);
   if (next == 'world') return _fact('$root.world', 's', _attributeName(parts, 3) == 'name' ? 4 : 3);
-  return _fact('$root.location', 's', 2);
+  return _fact('$root.location', 'L', 2);
 }
 
 _Result<_Step> _expressionStep(String text, String kind, int next) => _Result<_Step>.ok(_Step(_Expr(text, kind), next));
+
+/// The context key an inventory opening or closing event lists, meaning it passes the inventory's contents and location.
+const String _inventoryContents = '@contents';
+
+/// A material read from text, as an item key: `minecraft:` added when it names no namespace.
+String _material(String text) {
+  final String lowered = "lower(replace($text, 'i@', ''))";
+  return "(contains($lowered, ':') ? $lowered : 'minecraft:' + $lowered)";
+}
+
+/// The kind a definition has when its define did not convert.
+const String _unconverted = '?';
+
+/// The block a location written x,y,z,world is in, written `x,y,z,world` with whole coordinates, as Denizen's simple form.
+String _blockKey(String location) {
+  final List<String> coordinates = <String>[
+    for (int axis = 0; axis < 3; axis++) "text(floor(num(get(split($location, ','), $axis, 0))))",
+  ];
+  return "(${coordinates.join(" + ',' + ")} + ',' + get(split($location, ','), 3, ''))";
+}
+
+/// A number as Denizen writes it: without a trailing `.0`.
+String _trimmed(double number) => number == number.roundToDouble() ? number.toInt().toString() : javaDoubleToString(number);
+
+/// Seconds per unit of the duration reads Denizen gives, and the reads a value takes as a duration first.
+const Map<String, String> _durationReads = <String, String>{
+  'in_seconds': '', 'in_milliseconds': ' * 1000', 'in_minutes': ' / 60', 'in_hours': ' / 3600',
+  'in_days': ' / 86400', 'in_weeks': ' / 604800', 'in_years': ' / 31536000',
+};
+
+/// A value as a number of seconds: a duration or a number as it is, written duration text as its seconds.
+String _seconds(_Expr value) {
+  if (value.kind == 'd' || value.kind == 'n') return value.text;
+  if (value.kind == 's' && _full(r"'[^'\\]*'", value.text)) {
+    final int? ticks = denizenTicks(value.text.substring(1, value.text.length - 1));
+    if (ticks != null) return _trimmed(ticks / 20.0);
+  }
+  return 'duration_seconds(${value.text})';
+}
+
+/// `after`, `before`, `after_last` and `before_last`: the text around the first or last place the other text appears,
+/// ignoring case. Where it does not appear, after gives nothing and before all the text.
+String _around(String text, String other, String name) {
+  final String parts = 'split(lower($text), lower($other))', found = 'contains(lower($text), lower($other))';
+  return switch (name) {
+    'after' => "($found ? slice($text, len(first($parts)) + len($other), len($text)) : '')",
+    'before' => 'slice($text, 0, len(first($parts)))',
+    'after_last' => "($found ? slice($text, len($text) - len(last($parts)), len($text)) : '')",
+    _ => '($found ? slice($text, 0, len($text) - len(last($parts)) - len($other)) : $text)',
+  };
+}
+
+const Map<String, String> _durationComparisons = <String, String>{
+  'is_more_than': ' > ', 'is_less_than': ' < ', 'is_more_than_or_equal_to': ' >= ', 'is_less_than_or_equal_to': ' <= ',
+};
 
 /// A data node as constant JSON: scalars by the typed rules, lists as arrays, keys as objects. Null when a value holds
 /// a tag.
@@ -307,12 +512,13 @@ JObject _build(_Cond cond, JObject then, JObject? otherwise) {
     return node;
   }
   return switch (cond) {
-    _Capability(:final String capability, :final JObject arguments) => () {
+    _Capability(:final String capability, :final JObject arguments, :final JObject expressions) => () {
         final JObject node = JObject()
           ..addString('type', 'condition')
           ..addString('capability', capability)
-          ..add('arguments', arguments.deepCopy())
-          ..add('then', then);
+          ..add('arguments', arguments.deepCopy());
+        if (expressions.isNotEmpty) node.add('expressions', expressions.deepCopy());
+        node.add('then', then);
         if (otherwise != null) node.add('else', otherwise);
         return node;
       }(),
@@ -417,6 +623,10 @@ class _Expressions {
   /// A tag as an expression, with its `||` fallback applied to a flag read.
   _Result<_Expr> tag(DenizenTag tag, _Scope scope, _Pending pending, int depth) {
     if (depth > 4) return const _Result<_Expr>.fail('data values nest too deep');
+    final _Result<_Expr>? data = dataFallback(tag, scope, pending, depth);
+    if (data != null) return data;
+    final _Result<_Expr>? noted = areaFallback(tag, scope, pending);
+    if (noted != null) return noted;
     final _Result<_Step> base = this.base(tag, scope, pending, depth);
     if (base.failed) return _Result<_Expr>.fail(base.reason!);
     _Expr expr = base.value!.expr;
@@ -433,20 +643,53 @@ class _Expressions {
       }
       final _Result<_Step> next = attribute(expr, parts, index, scope, pending);
       if (next.failed) return _Result<_Expr>.fail(next.reason!);
-      expr = next.value!.expr;
+      expr = next.value!.expr.withGuard(expr.guard);
       index = next.value!.next;
     }
     if (tag.fallback != null) return fallback(expr, tag.fallback!, scope, pending);
     return _Result<_Expr>.ok(expr);
   }
 
+  /// A data key read with a fallback (`||` or a last `if_null`): a constant, so the fallback stands in exactly when the
+  /// key does not exist. Null for any other tag.
+  _Result<_Expr>? dataFallback(DenizenTag tag, _Scope scope, _Pending pending, int depth) {
+    final List<DenizenPart> parts = tag.parts;
+    String? fallback = tag.fallback;
+    if (fallback == null && parts.length == 3 && parts[2].name.toLowerCase() == 'if_null' && parts[2].parameter != null) fallback = parts[2].parameter;
+    if (fallback == null || tag.base.toLowerCase() != 'script' || parts.length < 2 || !const <String>['data_key', 'yaml_key'].contains(parts[1].name.toLowerCase())) return null;
+    final DenizenTag bare = DenizenTag(parts.sublist(0, 2), null);
+    if (tag.fallback != null && parts.length != 2 || (parts[1].parameter?.contains('<') ?? false)) return null;
+    if (dataNode(bare, scope) == null) return value(fallback, scope, pending);
+    return this.tag(bare, scope, pending, depth);
+  }
+
+  /// A noted area read with a fallback (`||` or a last `if_null`): the area when it is noted, which is never unset, or else
+  /// the fallback. Null for any other tag.
+  _Result<_Expr>? areaFallback(DenizenTag tag, _Scope scope, _Pending pending) {
+    final List<DenizenPart> parts = tag.parts;
+    final String base = tag.base.toLowerCase();
+    if (base != 'cuboid' && base != 'ellipsoid' || parts.first.parameter == null || parts.first.parameter!.contains('<')) return null;
+    String? fallback = tag.fallback;
+    if (fallback == null && parts.length == 2 && parts[1].name.toLowerCase() == 'if_null' && parts[1].parameter != null) fallback = parts[1].parameter;
+    if (fallback == null || parts.length > 2 || parts.length == 2 && tag.fallback != null) return null;
+    final String? area = this.area(base, parts.first, scope, pending);
+    if (area != null) return _Result<_Expr>.ok(_Expr(area, 'a'));
+    return value(fallback, scope, pending);
+  }
+
   _Result<_Expr> fallback(_Expr expr, String raw, _Scope scope, _Pending pending) {
     // A flag test and a constant never fail, so their fallback is never used.
-    if (expr.flag == null && expr.kind == 'b' && (expr.text == 'true' || expr.text.startsWith('has_flag('))) return _Result<_Expr>.ok(expr);
-    if (expr.flag == null) return const _Result<_Expr>.fail('the || fallback works only on a flag read; other tags have no unset value');
+    if (expr.before == null &&
+        (expr.guard == null || expr.guard == 'true') &&
+        expr.kind == 'b' &&
+        (expr.text == 'true' || expr.text.startsWith('has_flag(') || expr.guard == 'true')) {
+      return _Result<_Expr>.ok(_Expr(expr.text, 'b'));
+    }
+    if (expr.before == null && expr.guard == null) return const _Result<_Expr>.fail('the || fallback works only on a flag, definition or list item read; other tags have no unset value');
     final _Result<_Expr> value = this.value(raw, scope, pending);
     if (value.failed) return value;
-    return _Result<_Expr>.ok(_Expr('${expr.flag}${value.value!.text})', 'a'));
+    if (expr.before == null) return _Result<_Expr>.ok(_Expr('(${expr.guard} ? ${expr.text} : ${value.value!.text})', 'a'));
+    return _Result<_Expr>.ok(_Expr('${expr.before}${value.value!.text}${expr.after}', 'a'));
   }
 
   _Result<_Step> base(DenizenTag tag, _Scope scope, _Pending pending, int depth) {
@@ -493,6 +736,18 @@ class _Expressions {
         return hoist(map, scope, pending);
       case 'script':
         return script(parts, scope, pending, depth);
+      case 'duration':
+        if (first.parameter == null) return const _Result<_Step>.fail('duration without a value');
+        final int? ticks = denizenTicks(first.parameter!);
+        if (ticks != null) return _Result<_Step>.ok(_Step(_Expr(_literal(_trimmed(ticks / 20.0)).text, 'd'), 1));
+        final _Result<_Expr> value = this.value(first.parameter!, scope, pending);
+        return value.failed ? _Result<_Step>.fail(value.reason!) : _Result<_Step>.ok(_Step(_Expr('duration_seconds(${value.value!.text})', 'd'), 1));
+      case 'item':
+        return item(first, scope, pending);
+      case 'cuboid':
+      case 'ellipsoid':
+        final String? area = this.area(base, first, scope, pending);
+        return area == null ? _Result<_Step>.fail('no noted $base named ${first.parameter ?? ''}') : _Result<_Step>.ok(_Step(_Expr(area, 'a'), 1));
       case 'proc':
         return procedure(parts, scope, pending);
       case 'entry':
@@ -510,6 +765,8 @@ class _Expressions {
     final String name = path[0].toLowerCase();
     final String? override = scope.definitions[name];
     final StringBuffer text = StringBuffer();
+    if (override != null && override.startsWith('@npc:') && path.length == 1) return _Result<_Step>.ok(_Step(_Expr(override.substring(5), 'e'), 1));
+    if (override != null && override.startsWith('@item:') && path.length == 1) return _Result<_Step>.ok(_Step(_Expr(override.substring(6), 'i'), 1));
     if (override != null && override.startsWith('@') && path.length == 1) return _Result<_Step>.ok(_Step(_Expr(override.substring(1), 'a'), 1));
     if (override != null) {
       if (path.length > 1) return _Result<_Step>.fail('definition $name is a loop counter, not a map');
@@ -524,6 +781,10 @@ class _Expressions {
         ..write('.')
         ..write(path[index]);
     }
+    // An unset definition reads as empty text, which is what its fallback stands in for; one map key falls back as get does.
+    final String kind = scope.doc.kinds[name] ?? 'a';
+    if (path.length == 1) return _Result<_Step>.ok(_Step(_Expr.orElse(variable, kind == _unconverted ? 'a' : kind, "(same(text($variable), '') ? ", ' : $variable)'), 1));
+    if (path.length == 2) return _Result<_Step>.ok(_Step(_Expr.orElse(text.toString(), 'a', 'get($variable, ${_quote(path[1])}, ', ')'), 1));
     return _Result<_Step>.ok(_Step(_Expr(text.toString(), 'a'), 1));
   }
 
@@ -534,7 +795,132 @@ class _Expressions {
     if (name.failed) return _Result<_Step>.fail(name.reason!);
     final String prefix = 'flag(${_quote(scope)}, ${name.value}, ';
     if (part.name.toLowerCase() == 'has_flag') return _Result<_Step>.ok(_Step(_Expr('has_flag(${_quote(scope)}, ${name.value})', 'b'), next));
-    return _Result<_Step>.ok(_Step(_Expr("$prefix'')", 'a', prefix), next));
+    return _Result<_Step>.ok(_Step(_Expr.flagRead(prefix), next));
+  }
+
+  /// The global flag that holds the flag [raw] of every block: `locations-<name>`.
+  _Result<String> locationFlagName(String raw, _Scope scope, _Pending pending) {
+    final _Result<String> name = flagNameExpression(raw, scope, pending);
+    if (name.failed) return name;
+    if (name.value!.startsWith("'")) return _Result<String>.ok(_quote('locations-${name.value!.substring(1, name.value!.length - 1)}'));
+    return _Result<String>.ok("('locations-' + ${name.value})");
+  }
+
+  /// The blocks a location flag is set on, as a map: the global flag [name], or an empty map hoisted before the command
+  /// when it is unset.
+  String locationBlocks(String name, _Scope scope, _Pending pending) {
+    final String empty = constant(JObject(), scope, pending);
+    return "(has_flag('global', $name) ? flag('global', $name, 0) : $empty)";
+  }
+
+  /// `<item[material]>` or `<item[material[quantity=3]]>`: an item map hoisted as a constant, or built as the command runs
+  /// when the material is computed. Item scripts and other properties have no value form.
+  _Result<_Step> item(DenizenPart first, _Scope scope, _Pending pending) {
+    final String? raw = first.parameter;
+    if (raw == null) return const _Result<_Step>.fail('item without a material');
+    if (raw.contains('<')) {
+      final _Result<_Expr> named = value(raw, scope, pending);
+      if (named.failed) return _Result<_Step>.fail(named.reason!);
+      final String constant = this.constant(JObject()..addInt('amount', 1), scope, pending);
+      return _Result<_Step>.ok(_Step(_Expr("put($constant, 'item', ${_material(_textual(named.value!))})", 'i'), 1));
+    }
+    final RegExpMatch? written = RegExp(r'^(?:minecraft:)?([a-z0-9_]{1,64})(?:\[(.*)])?$').firstMatch(raw.toLowerCase());
+    if (written == null) return _Result<_Step>.fail('item $raw is not a material');
+    if (converter.containers.containsKey(written.group(1))) return const _Result<_Step>.fail('item scripts have no value form in Animus');
+    final JObject item = JObject()
+      ..addString('item', 'minecraft:${written.group(1)}')
+      ..addInt('amount', 1);
+    if (written.group(2) != null) {
+      for (final String property in written.group(2)!.split(';')) {
+        final int equals = property.indexOf('=');
+        final String key = equals < 0 ? property : property.substring(0, equals);
+        if (key != 'quantity' || !_full('[0-9]{1,4}', property.substring(equals + 1))) return _Result<_Step>.fail('item property $key has no Animus equivalent');
+        final int amount = int.parse(property.substring(equals + 1));
+        if (amount < 1 || amount > 6400) return const _Result<_Step>.fail('quantity must be from 1 to 6400');
+        item.addInt('amount', amount);
+      }
+    }
+    return _Result<_Step>.ok(_Step(_Expr(constant(item, scope, pending), 'i'), 1));
+  }
+
+  /// `<cuboid[name]>` or `<ellipsoid[name]>`: the noted area as a constant map of its world, shape and six bounds, which
+  /// `within` tests. Null when no area of that shape has the name.
+  String? area(String shape, DenizenPart first, _Scope scope, _Pending pending) {
+    if (first.parameter == null) return null;
+    final _Note? note = converter.notes[first.parameter!.toLowerCase()];
+    if (note == null || note.cuboid != (shape == 'cuboid')) return null;
+    final JArray bounds = JArray();
+    for (final double value in note.bounds) {
+      bounds.add(value == value.roundToDouble() && value.abs() < 1e15 ? JInt.of(value.toInt()) : JDouble(value));
+    }
+    return constant(
+        JObject()
+          ..addString('world', note.world)
+          ..addString('shape', shape)
+          ..add('bounds', bounds),
+        scope,
+        pending);
+  }
+
+  /// `<player.cursor_on[range]>`: the block the player looks at, found before the command with `animus:ray-trace`, as a
+  /// location that is unset when the player looks at no block.
+  _Result<_Step> cursor(DenizenPart part, _Scope scope, _Pending pending) {
+    final JObject arguments = JObject();
+    final String? range = part.parameter;
+    if (range != null) {
+      if (!_full(r'[0-9]{1,3}(?:\.[0-9]{1,4})?', range) || double.parse(range) < 1 || double.parse(range) > 128) {
+        return const _Result<_Step>.fail('cursor_on takes a written range of 1 to 128 blocks');
+      }
+      arguments.addDouble('range', double.parse(range));
+    }
+    final String result = converter.temporary(scope);
+    pending.steps.add(JObject()
+      ..addString('type', 'action')
+      ..addString('capability', 'animus:ray-trace')
+      ..add('arguments', arguments)
+      ..addString('result', result));
+    final String location = "get($result, 'location', '')";
+    return _Result<_Step>.ok(_Step(_Expr.guarded(location, 'L', '(len($location) > 0)'), 2));
+  }
+
+  /// A constant map set into a temporary before the command; the temporary's name.
+  String constant(JObject map, _Scope scope, _Pending pending) => hoist(map, scope, pending).value!.expr.text;
+
+  /// `inventory.list_contents`: the items of the player's, or the held player's, inventory, read before the command.
+  _Result<_Step> inventory(String? player, int next, _Scope scope, _Pending pending) {
+    final String result = converter.temporary(scope);
+    final JObject read = JObject()
+      ..addString('type', 'action')
+      ..addString('capability', 'animus:read-inventory');
+    final JObject arguments = JObject();
+    if (player != null) {
+      arguments.add('player', JNull.instance);
+      read.add('arguments', arguments);
+      read.add('expressions', JObject()..addString('/player', "get(players($player), 0, '')"));
+    } else {
+      read.add('arguments', arguments);
+    }
+    read.addString('result', result);
+    pending.steps.add(read);
+    return _Result<_Step>.ok(_Step(_Expr("get($result, 'items', [])", 'I'), next));
+  }
+
+  /// A value as one item map for `stack`: an item as it is, any other value read as the command runs, a map kept and
+  /// anything else taken as a material name.
+  String stack(_Expr value, _Scope scope, _Pending pending) {
+    if (value.kind == 'i') return value.text;
+    final String empty = constant(JObject(), scope, pending);
+    return "(same(type_of(${value.text}), 'map') ? ${value.text} : put($empty, 'item', ${_material('text(${value.text})')}))";
+  }
+
+  /// When a flag expires, as a time in epoch milliseconds that is set only while the flag has an expiry.
+  _Result<_Step> expiryRead(String prefix, DenizenPart part, int next, _Scope from, _Pending pending) {
+    final String? parameter = part.parameter;
+    if (parameter == null) return const _Result<_Step>.fail('flag_expiration without a name');
+    final _Result<String> name = flagNameExpression(parameter, from, pending);
+    if (name.failed) return _Result<_Step>.fail(name.reason!);
+    final String read = '$prefix${name.value})';
+    return _Result<_Step>.ok(_Step(_Expr.guarded(read, 't', '$read > 0'), next));
   }
 
   /// A flag name as an expression: a literal Animus flag name, or written text joined with tags such as
@@ -555,7 +941,8 @@ class _Expressions {
       mapped.write(lowered.replaceAll('.', '-'));
     }
     final _Result<_Expr> name = value(mapped.toString(), scope, pending);
-    return name.failed ? _Result<String>.fail(name.reason!) : _Result<String>.ok(_textual(name.value!));
+    // Flag names ignore case and their dots name sub-flags, which Animus writes with dashes, as the import does.
+    return name.failed ? _Result<String>.fail(name.reason!) : _Result<String>.ok("replace(lower(${_textual(name.value!)}), '.', '-')");
   }
 
   _Result<_Step> player(List<DenizenPart> parts, _Scope scope, _Pending pending) {
@@ -564,6 +951,10 @@ class _Expressions {
     final String attribute = part.name.toLowerCase();
     if (attribute == 'flag' || attribute == 'has_flag') return flagRead('player', part, 2, scope, pending);
     if (attribute == 'has_permission') return const _Result<_Step>.fail('has_permission works only as an if condition');
+    if (attribute == 'flag_expiration') return expiryRead("flag_expiry('player', ", part, 2, scope, pending);
+    // A run has a player when a player started it; a command run from the console has none.
+    if (attribute == 'exists' && part.parameter == null) return _fact('has_player()', 'b', 2);
+    if (attribute == 'cursor_on') return cursor(part, scope, pending);
     if (part.parameter != null) return _Result<_Step>.fail('tag player.$attribute has no Animus expression');
     final String? next = _attributeName(parts, 2);
     switch (attribute) {
@@ -601,6 +992,8 @@ class _Expressions {
         return _fact('player.world', 's', next == 'name' ? 3 : 2);
       case 'location':
         return _locationFact('player', parts, next);
+      case 'inventory':
+        return next == 'list_contents' ? inventory(null, 3, scope, pending) : const _Result<_Step>.fail('tag player.inventory has no Animus expression');
       case 'item_in_hand':
         if (next == 'quantity') return _fact('player.item_in_hand_amount', 'n', 3);
         if (next == 'material') return _fact('player.item_in_hand', 's', _attributeName(parts, 3) == 'name' ? 4 : 3);
@@ -615,6 +1008,7 @@ class _Expressions {
     final DenizenPart part = parts[1];
     final String attribute = part.name.toLowerCase();
     if (attribute == 'flag' || attribute == 'has_flag') return flagRead('npc', part, 2, scope, pending);
+    if (attribute == 'flag_expiration') return expiryRead("flag_expiry('npc', ", part, 2, scope, pending);
     if (part.parameter != null) return _Result<_Step>.fail('tag npc.$attribute has no Animus expression');
     final String? next = _attributeName(parts, 2);
     return switch (attribute) {
@@ -634,16 +1028,46 @@ class _Expressions {
     final DenizenPart part = parts[1];
     final String attribute = part.name.toLowerCase();
     if (attribute == 'flag' || attribute == 'has_flag') return flagRead('global', part, 2, scope, pending);
+    if (attribute == 'flag_expiration') return expiryRead("flag_expiry('global', ", part, 2, scope, pending);
+    if (attribute == 'match_player' && part.parameter != null) {
+      final _Result<_Expr> name = value(part.parameter!, scope, pending);
+      if (name.failed) return _Result<_Step>.fail(name.reason!);
+      final String found = 'player_named(${_textual(name.value!)})';
+      // No player of that name is no value, which a fallback stands in for.
+      return _Result<_Step>.ok(_Step(_Expr.guarded(found, 'a', '(len($found) > 0)'), 2));
+    }
     final String? next = _attributeName(parts, 2);
     return switch (attribute) {
       'online_players' => next == 'size' || next == 'count'
           ? _fact('server.online_players', 'n', 3)
           : _fact('server.players', 'l', 2),
+      'npcs' => _fact('npcs()', 'N', 2),
+      'spawned_npcs' => filtered(const _Expr('npcs()', 'N'), (String npc) => "get(npc_info($npc), 'spawned', false)", 2, scope, pending),
+      'npcs_flagged' || 'online_players_flagged' => flaggedList(part, attribute, scope, pending),
+      'npcs_assigned' => assignedList(part, scope, pending),
       'max_players' => _fact('server.max_players', 'n', 2),
       'current_time_millis' => _fact('server.time_millis', 'n', 2),
       'current_tick' => _fact('server.tick', 'n', 2),
       _ => _Result<_Step>.fail('tag server.$attribute has no Animus expression'),
     };
+  }
+
+  _Result<_Step> flaggedList(DenizenPart part, String attribute, _Scope scope, _Pending pending) {
+    if (part.parameter == null) return _Result<_Step>.fail('tag server.$attribute needs a flag name');
+    final _Result<String> flag = flagNameExpression(part.parameter!, scope, pending);
+    if (flag.failed) return _Result<_Step>.fail(flag.reason!);
+    final bool npcs = attribute == 'npcs_flagged';
+    return filtered(npcs ? const _Expr('npcs()', 'N') : const _Expr('server.players', 'l'), (String item) => '${npcs ? 'npc_has_flag(' : 'player_has_flag('}$item, ${flag.value})', 2, scope, pending);
+  }
+
+  _Result<_Step> assignedList(DenizenPart part, _Scope scope, _Pending pending) {
+    if (part.parameter == null || part.parameter!.contains('<')) return const _Result<_Step>.fail('tag server.npcs_assigned needs a literal assignment name');
+    final List<String>? behaviors = converter.assignmentBehaviors(part.parameter!);
+    if (behaviors == null) return _Result<_Step>.fail('no assignment script named ${part.parameter}');
+    return filtered(const _Expr('npcs()', 'N'), (String npc) {
+      final List<String> tests = <String>[for (final String behavior in behaviors) "contains(get(npc_info($npc), 'behaviors', []), ${_quote(behavior)})"];
+      return tests.length == 1 ? tests.first : '(${tests.join(' || ')})';
+    }, 2, scope, pending);
   }
 
   _Result<_Step> util(List<DenizenPart> parts, _Scope scope, _Pending pending) {
@@ -678,6 +1102,8 @@ class _Expressions {
       switch (first) {
         case 'random_decimal':
           return _fact('random_decimal()', 'n', 2);
+        case 'time_now':
+          return _fact('now()', 't', 2);
         case 'random_boolean':
           return _fact('chance(50)', 'b', 2);
         case 'current_time_millis':
@@ -708,9 +1134,14 @@ class _Expressions {
     switch (mapped) {
       case 'inventory_type':
         if (attribute == 'inventory_type') return _fact('upper(context.inventory_type)', 's', 3);
-        return const _Result<_Step>.fail('context.inventory is an inventory; Animus passes only its type, as context.inventory.inventory_type');
+        // Opening and closing pass what the inventory holds and the block that holds it.
+        if (scope.context.containsKey(_inventoryContents) && attribute == 'list_contents') return _fact('context.inventory_items', 'I', 3);
+        if (scope.context.containsKey(_inventoryContents) && attribute == 'location') return _fact('context.inventory_location', 'L', 3);
+        return const _Result<_Step>.fail('context.inventory is an inventory; Animus passes its type, and on opening and closing its contents and location');
       case 'location':
-        if (attribute == null) return _fact('context.location', 's', 2);
+        if (attribute == null || attribute == 'distance') {
+          return const _Result<_Step>.ok(_Step(_Expr.orElse('context.location', 'L', "(same(text(context.location), '') ? ", ' : context.location)'), 2));
+        }
         return switch (attribute) {
           'x' || 'y' || 'z' || 'block_x' || 'block_y' || 'block_z' => _fact('context.${attribute.substring(attribute.length - 1)}', 'n', 3),
           'world' => _fact('context.world', 's', _attributeName(parts, 3) == 'name' ? 4 : 3),
@@ -747,7 +1178,8 @@ class _Expressions {
     int next = 2;
     if ((key == 'origin_world' || key == 'destination_world') && attribute == 'name') next = 3;
     final String kind = _contextKinds[mapped] ?? 's';
-    return _Result<_Step>.ok(_Step(_Expr('context.$mapped', kind[0]), next));
+    // An event value that is empty text stands for one the event did not have, which a fallback stands in for.
+    return _Result<_Step>.ok(_Step(_Expr.orElse('context.$mapped', kind[0], "(same(text(context.$mapped), '') ? ", ' : context.$mapped)'), next));
   }
 
   // ---- Data scripts ----
@@ -772,6 +1204,59 @@ class _Expressions {
     return node;
   }
 
+  /// `<script[name].data_key[path.<[key]>]>`: the map the written path names, hoisted once as a constant with its keys
+  /// lowercased, read at the computed last key ignoring case. Null when the key is not computed or the map has tags.
+  _Result<_Step>? computedDataKey(List<DenizenPart> parts, _Scope scope, _Pending pending) {
+    if (parts.length < 2 || !const <String>['data_key', 'yaml_key'].contains(parts[1].name.toLowerCase()) || parts[1].parameter == null) return null;
+    final String path = parts[1].parameter!;
+    if (!path.contains('<')) return null;
+    DenizenContainer? target = scope.container;
+    if (parts.first.parameter != null) {
+      target = converter.containers[parts.first.parameter!.toLowerCase()];
+      if (target == null) return null;
+    }
+    int dot = -1;
+    int depth = 0;
+    for (int index = 0; index < path.length; index++) {
+      final String at = path[index];
+      if (at == '<') {
+        depth++;
+      } else if (at == '>' && depth > 0) {
+        depth--;
+      } else if (at == '.' && depth == 0) {
+        dot = index;
+      }
+    }
+    final String written = dot < 0 ? '' : path.substring(0, dot);
+    final String key = path.substring(dot + 1);
+    if (written.contains('<')) return null;
+    DenizenNode node = target.body;
+    if (written.isNotEmpty) {
+      for (final String part in written.split('.')) {
+        if (node is! DenizenMapping) return null;
+        final DenizenNode? child = node.get(part.toLowerCase());
+        if (child == null) return null;
+        node = child;
+      }
+    }
+    if (node is! DenizenMapping) return null;
+    final JObject map = JObject();
+    for (final DenizenEntry entry in node.entries) {
+      if (written.isEmpty && entry.key.toLowerCase() == 'type') continue;
+      final JElement? value = _data(entry.value, 1);
+      if (value == null) return null;
+      map.add(entry.key.toLowerCase(), value);
+    }
+    if (map.isEmpty) return null;
+    final _Result<_Expr> computed = value(key, scope, pending);
+    if (computed.failed) return _Result<_Step>.fail(computed.reason!);
+    final _Result<_Step> hoisted = hoist(map, scope, pending);
+    if (hoisted.failed) return hoisted;
+    final String read = 'lower(${_textual(computed.value!)})';
+    final String table = hoisted.value!.expr.text;
+    return _Result<_Step>.ok(_Step(_Expr.orElse('get($table, $read)', 'a', 'get($table, $read, ', ')'), 2));
+  }
+
   _Result<_Step> script(List<DenizenPart> parts, _Scope scope, _Pending pending, int depth) {
     final DenizenTag tag = DenizenTag(parts.sublist(0, parts.length < 2 ? parts.length : 2), null);
     if (parts.length >= 2 && parts[1].name.toLowerCase() == 'name' && parts[1].parameter == null) {
@@ -781,7 +1266,11 @@ class _Expressions {
       return _Result<_Step>.ok(_Step(_Expr(_quote(target.name), 's'), 2));
     }
     final DenizenNode? node = dataNode(tag, scope);
-    if (node == null) return _Result<_Step>.fail('tag script.${parts.length > 1 ? parts[1].name.toLowerCase() : ''} reads no data key that exists');
+    if (node == null) {
+      final _Result<_Step>? computed = computedDataKey(parts, scope, pending);
+      if (computed != null) return computed;
+      return _Result<_Step>.fail('tag script.${parts.length > 1 ? parts[1].name.toLowerCase() : ''} reads no data key that exists');
+    }
     if (node is DenizenScalar) {
       if (!node.text.contains('<')) return _Result<_Step>.ok(_Step(_literal(node.text), 2));
       final _Result<_Expr> value = this.value(node.text, scope, pending);
@@ -804,6 +1293,48 @@ class _Expressions {
     if (json is! JObject) return const _Result<_Step>.fail('data maps with tags or deep nesting have no constant form');
     final _Result<_Step> hoisted = hoist(json, scope, pending);
     return hoisted.failed ? hoisted : _Result<_Step>.ok(_Step(hoisted.value!.expr, 2));
+  }
+
+  /// The items of a list a test holds for, gathered by a loop before the command into a temporary: a list of NPCs stays
+  /// one. [test] writes the condition on the variable holding each item.
+  _Result<_Step> filtered(_Expr list, String Function(String item) test, int next, _Scope scope, _Pending pending) {
+    final String out = converter.temporary(scope);
+    final String item = converter.temporary(scope);
+    pending.steps.add(_setNode(out, JArray()));
+    final JObject keep = JObject()
+      ..addString('type', 'condition')
+      ..addString('expression', test(item))
+      ..add('then', _setNode(out, _operandNode('append($out, $item)')));
+    pending.steps.add(_each(list, item, <JObject>[keep]));
+    return _Result<_Step>.ok(_Step(_Expr(out, list.kind == 'N' ? 'N' : 'l'), next));
+  }
+
+  /// `list.filter_tag[test]`, `list.filter[attribute]`, `list.parse_tag[value]` and `list.parse[attribute]`: the test or
+  /// value read for each item as `<[filter_value]>` or `<[parse_value]>`, by a loop before the command. A list of NPCs
+  /// gives NPC items.
+  _Result<_Step> perItem(_Expr list, String name, String written, int next, _Scope scope, _Pending pending) {
+    final bool filter = name.startsWith('filter');
+    final String out = converter.temporary(scope);
+    final String item = converter.temporary(scope);
+    final String word = filter ? 'filter_value' : 'parse_value';
+    final SplayTreeMap<String, String> definitions = SplayTreeMap<String, String>.of(scope.definitions);
+    definitions[word] = '${list.kind == 'N' ? '@npc:' : '@'}$item';
+    final _Scope inner = scope.loop(definitions, scope.loops);
+    final _Pending body = _Pending();
+    final _Result<_Expr> value = this.value(name.endsWith('_tag') ? written : '<[$word].$written>', inner, body);
+    if (value.failed) return _Result<_Step>.fail(value.reason!);
+    pending.steps.add(_setNode(out, JArray()));
+    final List<JObject> steps = <JObject>[...body.steps];
+    if (filter) {
+      steps.add(JObject()
+        ..addString('type', 'condition')
+        ..addString('expression', _truth(value.value!))
+        ..add('then', _setNode(out, _operandNode('append($out, $item)'))));
+    } else {
+      steps.add(_setNode(out, _operandNode('append($out, ${value.value!.text})')));
+    }
+    pending.steps.add(_each(list, item, steps));
+    return _Result<_Step>.ok(_Step(_Expr(out, filter && list.kind == 'N' ? 'N' : 'l'), next));
   }
 
   /// A constant map set into a temporary variable before the command, since expressions have no map literal.
@@ -849,7 +1380,7 @@ class _Expressions {
     if (arguments.isNotEmpty) call.add('arguments', arguments);
     call.addString('result', temporary);
     pending.steps.add(call);
-    return _Result<_Step>.ok(_Step(_Expr(temporary, 'a'), next));
+    return _Result<_Step>.ok(_Step(_Expr(temporary, converter.returnKind(routine.value!)), next));
   }
 
   _Result<_Step> entry(List<DenizenPart> parts, _Scope scope) {
@@ -902,20 +1433,160 @@ class _Expressions {
   /// kind.
   static const Map<String, List<String>> _playerAttributes = <String, List<String>>{
     'name': <String>['name', "''", 's'], 'is_online': <String>['online', 'false', 'b'], 'is_op': <String>['op', 'false', 'b'],
-    'health': <String>['health', '0', 'n'], 'world': <String>['world', "''", 's'], 'location': <String>['location', "''", 's'],
+    'health': <String>['health', '0', 'n'], 'world': <String>['world', "''", 's'], 'location': <String>['location', "''", 'L'],
     'gamemode': <String>['gamemode', "''", 's'],
   };
+
+  /// Attributes of a value holding an NPC: the fact npc_info reads and its value when the NPC is unknown.
+  static const Map<String, List<String>> _npcAttributes = <String, List<String>>{
+    'id': <String>['citizens_id', "''", 'a'], 'name': <String>['name', "''", 's'], 'is_spawned': <String>['spawned', 'false', 'b'],
+    'location': <String>['location', "''", 'L'], 'world': <String>['world', "''", 's'], 'health': <String>['health', '0', 'n'],
+  };
+
+  /// The attributes of a time (`t`, epoch milliseconds) and a duration (`d`, seconds), as Denizen's TimeTag and
+  /// DurationTag read them; a duration never goes below zero. Other values take `as[duration]` and the duration reads as a
+  /// duration written as text or seconds. Null for any other attribute.
+  _Result<_Step>? time(_Expr expr, String name, DenizenPart part, _Expr? parameter, int next) {
+    final String e = expr.text;
+    if (name == 'as' && part.parameter?.toLowerCase() == 'duration' || name == 'as_duration' && parameter == null) {
+      return _expressionStep(expr.kind == 'd' ? e : _seconds(expr), 'd', next);
+    }
+    if (expr.kind == 't') {
+      if (parameter == null && name == 'from_now') return _expressionStep('max(0, ($e - now()) / 1000)', 'd', next);
+      if (parameter == null && const <String>['epoch_millis', 'millis'].contains(name)) return _expressionStep(e, 'n', next);
+      if (parameter != null && name == 'duration_since') return _expressionStep('max(0, ($e - ${_numeric(parameter)}) / 1000)', 'd', next);
+      if (parameter != null && (name == 'add' || name == 'sub')) return _expressionStep('($e${name == 'add' ? ' + ' : ' - '}${_seconds(parameter)} * 1000)', 't', next);
+      if (parameter != null && (name == 'is_after' || name == 'is_before')) return _expressionStep('($e${name == 'is_after' ? ' > ' : ' < '}${_numeric(parameter)})', 'b', next);
+      return null;
+    }
+    if (expr.kind != 'd' && (parameter != null || !_durationReads.containsKey(name) && name != 'in_ticks')) return null;
+    final String duration = expr.kind == 'd' ? e : _seconds(expr);
+    if (parameter == null && _durationReads.containsKey(name)) {
+      return _expressionStep(_durationReads[name]!.isEmpty ? duration : '($duration${_durationReads[name]})', 'n', next);
+    }
+    if (parameter == null && name == 'in_ticks') return _expressionStep('floor($duration * 20)', 'n', next);
+    if (parameter == null && name == 'formatted') return _expressionStep('duration_text($duration)', 's', next);
+    if (parameter != null && (name == 'add' || name == 'sub')) {
+      return _expressionStep(name == 'add' ? '($duration + ${_seconds(parameter)})' : 'max(0, $duration - ${_seconds(parameter)})', 'd', next);
+    }
+    if (parameter != null && _durationComparisons.containsKey(name)) return _expressionStep('($duration${_durationComparisons[name]}${_seconds(parameter)})', 'b', next);
+    return null;
+  }
 
   _Result<_Step> attribute(_Expr expr, List<DenizenPart> parts, int index, _Scope scope, _Pending pending) {
     final DenizenPart part = parts[index];
     final String name = part.name.toLowerCase();
+    if (part.parameter != null && const <String>['filter_tag', 'filter', 'parse_tag', 'parse'].contains(name) && expr.kind != 's' && expr.kind != 'n' && expr.kind != 'b') {
+      return perItem(expr, name, part.parameter!, index + 1, scope, pending);
+    }
+    // A value holding an NPC, such as an item of server.npcs, reads that NPC's flags and facts.
+    if (expr.kind == 'e') {
+      if ((name == 'has_flag' || name == 'flag') && part.parameter != null) {
+        final _Result<String> flag = flagNameExpression(part.parameter!, scope, pending);
+        if (flag.failed) return _Result<_Step>.fail(flag.reason!);
+        if (name == 'has_flag') return _expressionStep('npc_has_flag(${expr.text}, ${flag.value})', 'b', index + 1);
+        return _Result<_Step>.ok(_Step(_Expr.flagRead('npc_flag(${expr.text}, ${flag.value}, '), index + 1));
+      }
+      final List<String>? fact = _npcAttributes[name];
+      if (part.parameter == null && fact != null) return _expressionStep("get(npc_info(${expr.text}), '${fact[0]}', ${fact[1]})", fact[2], index + 1);
+      if (part.parameter == null && name == 'uuid') return _expressionStep(expr.text, 's', index + 1);
+      // An NPC is its own entity, so its entity reads as the NPC.
+      if (part.parameter == null && name == 'entity') return _expressionStep(expr.text, 'e', index + 1);
+      if (part.parameter == null && name == 'is_npc') return _expressionStep("has(npc_info(${expr.text}), 'uuid')", 'b', index + 1);
+    }
+    // A location the facts write as x,y,z,world: its world, coordinates and distance to another location, and the flags of its block.
+    if (expr.kind == 'L') {
+      if ((name == 'has_flag' || name == 'flag') && part.parameter != null) {
+        final _Result<String> flag = locationFlagName(part.parameter!.toLowerCase(), scope, pending);
+        if (flag.failed) return _Result<_Step>.fail(flag.reason!);
+        final String key = _blockKey(expr.text);
+        final String set = "(has_flag('global', ${flag.value}) && has(flag('global', ${flag.value}, 0), $key))";
+        // Whether a block has a flag is always known, so a fallback after it is never used.
+        if (name == 'has_flag') return _Result<_Step>.ok(_Step(_Expr.guarded(set, 'b', 'true'), index + 1));
+        final String before = "($set ? get(flag('global', ${flag.value}, 0), $key) : ";
+        return _Result<_Step>.ok(_Step(_Expr.orElse("$before'')", 'a', before, ')'), index + 1));
+      }
+      if (name == 'distance' && part.parameter != null) {
+        final _Result<_Expr> other = value(part.parameter!, scope, pending);
+        if (other.failed) return _Result<_Step>.fail(other.reason!);
+        return _expressionStep('distance(${expr.text}, ${_textual(other.value!)})', 'n', index + 1);
+      }
+      if (part.parameter == null && name == 'world') {
+        return _expressionStep("get(split(${expr.text}, ','), 3, '')", 's', _attributeName(parts, index + 1) == 'name' ? index + 2 : index + 1);
+      }
+      if (part.parameter == null && const <String>['x', 'y', 'z'].contains(name)) {
+        return _expressionStep("num(get(split(${expr.text}, ','), ${const <String>['x', 'y', 'z'].indexOf(name)}, 0))", 'n', index + 1);
+      }
+      // The block there, read before the command with animus:read-block.
+      if (part.parameter == null && name == 'material') {
+        final String result = converter.temporary(scope);
+        pending.steps.add(JObject()
+          ..addString('type', 'action')
+          ..addString('capability', 'animus:read-block')
+          ..add('arguments', JObject()..add('location', JNull.instance))
+          ..add('expressions', JObject()..addString('/location', _textual(expr)))
+          ..addString('result', result));
+        return _expressionStep("replace(get($result, 'block', ''), 'minecraft:', '')", 's', _attributeName(parts, index + 1) == 'name' ? index + 2 : index + 1);
+      }
+      // Moved up or down, the players near it nearest first, and whether it is inside a noted area.
+      if (name == 'above' || name == 'below') {
+        String by = '1';
+        if (part.parameter != null) {
+          final _Result<_Expr> amount = value(part.parameter!, scope, pending);
+          if (amount.failed) return _Result<_Step>.fail(amount.reason!);
+          by = _numeric(amount.value!);
+        }
+        return _expressionStep('offset(${expr.text}, 0, ${name == 'below' ? '-($by)' : by}, 0)', 'L', index + 1);
+      }
+      if (name == 'find_players_within' && part.parameter != null) {
+        final _Result<_Expr> radius = value(part.parameter!, scope, pending);
+        if (radius.failed) return _Result<_Step>.fail(radius.reason!);
+        return _expressionStep('players_near(${expr.text}, ${_numeric(radius.value!)})', 'l', index + 1);
+      }
+      if (name == 'is_within' && part.parameter != null) {
+        final _Result<_Expr> area = value(part.parameter!, scope, pending);
+        if (area.failed) return _Result<_Step>.fail(area.reason!);
+        return _expressionStep('within(${expr.text}, ${area.value!.text})', 'b', index + 1);
+      }
+    }
+    // An item: its material, amount, name and lore.
+    if (expr.kind == 'i' && part.parameter == null) {
+      switch (name) {
+        case 'material':
+          return _expressionStep("replace(get(${expr.text}, 'item', ''), 'minecraft:', '')", 's', _attributeName(parts, index + 1) == 'name' ? index + 2 : index + 1);
+        case 'quantity':
+          return _expressionStep("get(${expr.text}, 'amount', 1)", 'n', index + 1);
+        case 'display':
+          // A display name is unset on an item without one, which a fallback after later attributes stands in for.
+          return _Result<_Step>.ok(_Step(_Expr.guarded("get(${expr.text}, 'name', '')", 's', "has(${expr.text}, 'name')"), index + 1));
+        case 'lore':
+          return _expressionStep("get(${expr.text}, 'lore', [])", 'l', index + 1);
+        default:
+          break;
+      }
+    }
+    if (part.parameter == null && name == 'inventory' && _attributeName(parts, index + 1) == 'list_contents' && expr.kind != 's' && expr.kind != 'l') {
+      return inventory(expr.text, index + 2, scope, pending);
+    }
+    // Only NPCs have an id, and both NPCs and online players are spawned.
+    if (expr.kind == 'a' && part.parameter == null && name == 'id') return _expressionStep("get(npc_info(${expr.text}), 'citizens_id', '')", 'a', index + 1);
+    if (expr.kind == 'a' && part.parameter == null && name == 'is_spawned') {
+      return _expressionStep("get(npc_info(${expr.text}), 'spawned', get(player_info(${expr.text}), 'online', false))", 'b', index + 1);
+    }
+    if (expr.kind == 'a' && part.parameter == null && name == 'is_npc') return _expressionStep("has(npc_info(${expr.text}), 'uuid')", 'b', index + 1);
+    if (name == 'flag_expiration' && part.parameter != null && expr.kind != 'e' && expr.kind != 'N' && expr.kind != 'l') {
+      final _Result<String> flag = flagNameExpression(part.parameter!, scope, pending);
+      if (flag.failed) return _Result<_Step>.fail(flag.reason!);
+      final String read = 'player_flag_expiry(${expr.text}, ${flag.value})';
+      return _Result<_Step>.ok(_Step(_Expr.guarded(read, 't', '$read > 0'), index + 1));
+    }
     // A value holding a player, such as a fan-out's or a loop's player, reads that player's flags and facts.
     if ((name == 'has_flag' || name == 'flag') && part.parameter != null) {
       final _Result<String> flag = flagNameExpression(part.parameter!, scope, pending);
       if (flag.failed) return _Result<_Step>.fail(flag.reason!);
       if (name == 'has_flag') return _expressionStep('player_has_flag(${expr.text}, ${flag.value})', 'b', index + 1);
       final String prefix = 'player_flag(${expr.text}, ${flag.value}, ';
-      return _Result<_Step>.ok(_Step(_Expr("$prefix'')", 'a', prefix), index + 1));
+      return _Result<_Step>.ok(_Step(_Expr.flagRead(prefix), index + 1));
     }
     final List<String>? fact = _playerAttributes[name];
     if (part.parameter == null && expr.kind != 's' && expr.kind != 'l' && fact != null) {
@@ -930,6 +1601,12 @@ class _Expressions {
     }
     final String e = expr.text;
     final int next = index + 1;
+    final _Result<_Step>? timed = time(expr, name, part, parameter, next);
+    if (timed != null) return timed;
+    if (expr.kind == 'L' && parameter == null && name == 'simple') return _expressionStep(_blockKey(e), 's', next);
+    if (parameter != null && const <String>['after', 'before', 'after_last', 'before_last'].contains(name)) {
+      return _Result<_Step>.ok(_Step(_Expr(_around(_textual(expr), _textual(parameter), name), 's'), next));
+    }
     if (parameter == null) {
       return switch (name) {
         'length' || 'size' || 'count' => _expressionStep('len($e)', 'n', next),
@@ -941,9 +1618,11 @@ class _Expressions {
         'abs' => _expressionStep('abs(${_numeric(expr)})', 'n', next),
         'sqrt' => _expressionStep('pow(${_numeric(expr)}, 0.5)', 'n', next),
         'trim' => _expressionStep('trim(${_textual(expr)})', 's', next),
+        'strip_color' => _expressionStep('plain(${_textual(expr)})', 's', next),
+        'parse_color' => _expressionStep(_textual(expr), 's', next),
         'split' => _expressionStep("split(${_textual(expr)}, ' ')", 'l', next),
-        'first' => _expressionStep('first($e)', 'a', next),
-        'last' => _expressionStep('last($e)', 'a', next),
+        'first' => _Result<_Step>.ok(_Step(_Expr.orElse('first($e)', 'a', 'get($e, 0, ', ')'), next)),
+        'last' => _Result<_Step>.ok(_Step(_Expr.orElse('last($e)', 'a', '(len($e) == 0 ? ', ' : last($e))'), next)),
         'reverse' => _expressionStep('reverse($e)', 'a', next),
         'alphabetical' || 'numerical' || 'sort' => _expressionStep('sort($e)', 'l', next),
         'space_separated' => _expressionStep("join($e, ' ')", 's', next),
@@ -952,6 +1631,7 @@ class _Expressions {
         'sum' => _expressionStep('sum($e)', 'n', next),
         'random' => _expressionStep('pick($e)', 'a', next),
         'is_empty' => _expressionStep('(len($e) == 0)', 'b', next),
+        'exists' => _expressionStep('(len(${_textual(expr)}) > 0)', 'b', next),
         'any' => _expressionStep('(len($e) > 0)', 'b', next),
         'keys' => _expressionStep('keys($e)', 'l', next),
         'values' => _expressionStep('values($e)', 'l', next),
@@ -967,6 +1647,14 @@ class _Expressions {
     switch (name) {
       case 'add':
         return _expressionStep('(${_numeric(expr)} + ${_numeric(parameter)})', 'n', next);
+      case 'is_less_than':
+        return _expressionStep('(${_numeric(expr)} < ${_numeric(parameter)})', 'b', next);
+      case 'is_more_than':
+        return _expressionStep('(${_numeric(expr)} > ${_numeric(parameter)})', 'b', next);
+      case 'is_less_than_or_equal_to':
+        return _expressionStep('(${_numeric(expr)} <= ${_numeric(parameter)})', 'b', next);
+      case 'is_more_than_or_equal_to':
+        return _expressionStep('(${_numeric(expr)} >= ${_numeric(parameter)})', 'b', next);
       case 'sub':
         return _expressionStep('(${_numeric(expr)} - ${_numeric(parameter)})', 'n', next);
       case 'mul':
@@ -1001,7 +1689,8 @@ class _Expressions {
       case 'equals':
         return _expressionStep('${_equality(expr, parameter)}($e, $p)', 'b', next);
       case 'get':
-        return parameter.kind == 'n' ? _expressionStep('get($e, ${_numeric(parameter)} - 1)', 'a', next) : _expressionStep('get($e, $p)', 'a', next);
+        final String key = parameter.kind == 'n' ? '${_numeric(parameter)} - 1' : p;
+        return _Result<_Step>.ok(_Step(_Expr.orElse('get($e, $key)', 'a', 'get($e, $key, ', ')'), next));
       case 'substring':
         final List<String> bounds = part.parameter!.split(',');
         if (bounds.length > 2) return const _Result<_Step>.fail('substring takes one or two positions');
@@ -1123,10 +1812,103 @@ class _Expressions {
         if (permission.contains('<')) return const _Result<_Cond>.fail('a computed permission has no Animus condition');
         return _Result<_Cond>.ok(_Capability('animus:has-permission', JObject()..addString('permission', permission)));
       }
+      final _Result<_Cond>? items = holds(tag, scope, pending);
+      if (items != null) return items;
+      final _Result<_Cond>? room = fits(tag, scope, pending);
+      if (room != null) return room;
     }
     final _Result<_Expr> value = this.value(token, scope, pending);
     if (value.failed) return _Result<_Cond>.fail(value.reason!);
     return _Result<_Cond>.ok(_Atom(_truth(value.value!)));
+  }
+
+  /// `<player.inventory.can_fit[<[item]>]>`, or the inventory of a player held in a definition: whether the item, an item
+  /// value or a material, fits without dropping any, as `animus:can-fit` checks it. Null for any other tag.
+  _Result<_Cond>? fits(DenizenTag tag, _Scope scope, _Pending pending) {
+    final List<DenizenPart> parts = tag.parts;
+    if (tag.fallback != null ||
+        parts.length != 3 ||
+        parts[1].name.toLowerCase() != 'inventory' ||
+        parts[1].parameter != null ||
+        parts[2].name.toLowerCase() != 'can_fit' ||
+        parts[2].parameter == null) {
+      return null;
+    }
+    final bool player = parts.first.name.toLowerCase() == 'player' && parts.first.parameter == null;
+    final bool held = parts.first.name.isEmpty && parts.first.parameter != null && _full('[A-Za-z0-9_]{1,64}', parts.first.parameter!);
+    if (!player && !held) return null;
+    final _Result<_Expr> item = value(parts[2].parameter!, scope, pending);
+    if (item.failed) return _Result<_Cond>.fail(item.reason!);
+    final JObject arguments = JObject()..add('stack', JNull.instance);
+    final JObject expressions = JObject()..addString('/stack', stack(item.value!, scope, pending));
+    if (held) {
+      final _Result<_Step> who = definition(parts.first.parameter!, scope);
+      if (who.failed) return _Result<_Cond>.fail(who.reason!);
+      arguments.add('player', JNull.instance);
+      expressions.addString('/player', "get(players(${who.value!.expr.text}), 0, '')");
+    }
+    return _Result<_Cond>.ok(_Capability('animus:can-fit', arguments, expressions));
+  }
+
+  /// `<player.inventory.contains_item[iron_ingot].quantity[3]>`, or the inventory of a player held in a definition:
+  /// whether the player holds that many of the material, as `animus:can-afford` checks it. Null for any other tag.
+  _Result<_Cond>? holds(DenizenTag tag, _Scope scope, _Pending pending) {
+    final List<DenizenPart> parts = tag.parts;
+    if (tag.fallback != null ||
+        parts.length < 3 ||
+        parts.length > 4 ||
+        parts[1].name.toLowerCase() != 'inventory' ||
+        parts[1].parameter != null ||
+        parts[2].name.toLowerCase() != 'contains_item' ||
+        parts[2].parameter == null) {
+      return null;
+    }
+    final bool player = parts.first.name.toLowerCase() == 'player' && parts.first.parameter == null;
+    final bool held = parts.first.name.isEmpty && parts.first.parameter != null && _full('[A-Za-z0-9_]{1,64}', parts.first.parameter!);
+    if (!player && !held) return null;
+    String item = parts[2].parameter!.toLowerCase();
+    if (item.startsWith('minecraft:')) item = item.substring(10);
+    String? computed;
+    if (item.contains('<')) {
+      // A material read as the check runs; an item script name there finds nothing, as no item has that material.
+      final _Result<_Expr> named = value(parts[2].parameter!, scope, pending);
+      if (named.failed) return _Result<_Cond>.fail(named.reason!);
+      final String material = "lower(replace(${_textual(named.value!)}, 'i@', ''))";
+      computed = "(contains($material, ':') ? $material : 'minecraft:' + $material)";
+    } else if (!_full('[a-z0-9_]{1,64}', item) || converter.containers.containsKey(item)) {
+      return const _Result<_Cond>.fail('contains_item checks only a plain material in Animus');
+    }
+    int amount = 1;
+    if (parts.length == 4) {
+      if (parts[3].name.toLowerCase() != 'quantity' || parts[3].parameter == null || !_full('[0-9]{1,4}', parts[3].parameter!)) {
+        return const _Result<_Cond>.fail('contains_item takes a literal quantity in Animus');
+      }
+      amount = int.parse(parts[3].parameter!);
+      if (amount < 1 || amount > 6400) return const _Result<_Cond>.fail('quantity must be from 1 to 6400');
+    }
+    final JObject expressions = JObject();
+    final JObject id = JObject();
+    if (computed != null) {
+      id.add('id', JNull.instance);
+      expressions.addString('/items/0/item/id', computed);
+    } else {
+      id.addString('id', 'minecraft:$item');
+    }
+    final JObject arguments = JObject()
+      ..add(
+          'items',
+          JArray()
+            ..add(JObject()
+              ..add('item', id)
+              ..addInt('amount', amount)))
+      ..addString('match', 'material');
+    if (held) {
+      final _Result<_Step> who = definition(parts.first.parameter!, scope);
+      if (who.failed) return _Result<_Cond>.fail(who.reason!);
+      arguments.add('player', JNull.instance);
+      expressions.addString('/player', "get(players(${who.value!.expr.text}), 0, '')");
+    }
+    return _Result<_Cond>.ok(_Capability('animus:can-afford', arguments, expressions));
   }
 
   _Result<_Cond> compare(String leftRaw, String operator, String rightRaw, _Scope scope, _Pending pending) {

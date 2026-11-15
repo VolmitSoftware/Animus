@@ -148,12 +148,24 @@ final class ModServerBehaviors {
      */
 
     boolean opening(ServerPlayer player, AbstractContainerMenu menu) {
-        return wants(TriggerKind.PLAYER_INVENTORY_OPEN, player)
-                && servers.decide(ServerEvent.inventory(TriggerKind.PLAYER_INVENTORY_OPEN, player.getUUID(), inventoryType(menu)));
+        return wants(TriggerKind.PLAYER_INVENTORY_OPEN, player) && servers.decide(inventoryEvent(TriggerKind.PLAYER_INVENTORY_OPEN, player, menu));
     }
     void closing(ServerPlayer player) {
-        if (wants(TriggerKind.PLAYER_INVENTORY_CLOSE, player))
-            servers.publish(ServerEvent.inventory(TriggerKind.PLAYER_INVENTORY_CLOSE, player.getUUID(), inventoryType(player.containerMenu)));
+        if (wants(TriggerKind.PLAYER_INVENTORY_CLOSE, player)) servers.publish(inventoryEvent(TriggerKind.PLAYER_INVENTORY_CLOSE, player, player.containerMenu));
+    }
+    /** An inventory opening or closing with the filled slots that are not the player's own and the block entity that holds them, if any. */
+    private ServerEvent inventoryEvent(TriggerKind kind, ServerPlayer player, AbstractContainerMenu menu) {
+        List<ItemStack> stacks = new java.util.ArrayList<>();
+        String location = "";
+        for (net.minecraft.world.inventory.Slot slot : menu.slots) {
+            if (slot.container instanceof net.minecraft.world.entity.player.Inventory) continue;
+            stacks.add(slot.getItem());
+            if (location.isEmpty() && slot.container instanceof net.minecraft.world.level.block.entity.BlockEntity holder && holder.getLevel() != null) {
+                net.minecraft.core.BlockPos pos = holder.getBlockPos();
+                location = SnapshotFacts.location(pos.getX(), pos.getY(), pos.getZ(), ModWorldKeys.key(holder.getLevel()));
+            }
+        }
+        return ServerEvent.inventory(kind, player.getUUID(), inventoryType(menu), VanillaBehaviorPlatform.held(stacks, server.registryAccess()), location);
     }
     /** Only clicks vanilla would carry out: the open menu, a living non-spectator, a valid slot. A drag counts once, when it ends. */
     boolean clicking(ServerPlayer player, int containerId, int slot, int button, ContainerInput input) {

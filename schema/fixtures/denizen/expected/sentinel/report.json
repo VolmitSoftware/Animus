@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 8,
-  "importId": "a3018f6931462d78483c931edd00fcf5d289bca6e9b506eb80360eb8620734f7",
+  "converterVersion": 9,
+  "importId": "44fb743b90d8855d809966355398d6fbfe4b38a95ec51f521f061977bb176f42",
   "notice": "Data conversion only. Apply lists the generated behaviors on their NPCs and turns the server behaviors on, except held behaviors, whose guard did not convert.",
   "sources": {
     "scripts/guard.dsc": "2aeddb30391c8fa3c1e8c06a17e2f0a557e58128157d6533c51bbb3382e9364f"
@@ -57,9 +57,7 @@
   "serverBehaviors": [],
   "guis": [],
   "sounds": {},
-  "issues": [
-    "guard.dsc:6: execute as_op runs as the player without operator rights; the command fails where it needs them"
-  ],
+  "issues": [],
   "preserved": [
     {
       "source": "guard.dsc:11",

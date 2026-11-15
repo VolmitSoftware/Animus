@@ -46,6 +46,9 @@ public interface BehaviorState {
      */
     default Value read(Subject subject,String variable,ScopedVariable declaration,Value initial,Type declared){return read(subject,variable,declaration,initial);}
 
+    /** When the key expires, in epoch milliseconds; empty when it is unset, expired, or never expires. */
+    default java.util.OptionalLong expiry(Subject subject,String variable,ScopedVariable declaration){return java.util.OptionalLong.empty();}
+
     /** Applies every write or none of them. A written key loses any expiry it had. */
     void write(Subject subject,Map<String,Value> writes,Map<String,ScopedVariable> declarations);
 

@@ -143,6 +143,7 @@ final class DenizenEvents {
                         trigger.addProperty("inventory", w[2]);
                     }
                     context.put("inventory", "inventory_type");
+                    context.put(DenizenExpressions.INVENTORY_CONTENTS, "inventory_items");
                 } else if (w.length >= 3 && w[0].equals("player") && w[1].equals("clicks") && w[w.length - 1].equals("inventory") && (w.length == 4 && w[2].equals("in") || w.length == 5 && w[3].equals("in"))) {
                     event = "player_inventory_click";
                     cancellable = true;

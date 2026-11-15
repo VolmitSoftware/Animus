@@ -439,7 +439,8 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
                 strings(actions, "commandBehaviors", defaults.commandBehaviors()),
                 strings(actions, "commandNamespaces", defaults.commandNamespaces()),
                 integer(actions, "navigationWaits", defaults.navigationWaits()),
-                strings(actions, "rawTextBehaviors", defaults.rawTextBehaviors()));
+                strings(actions, "rawTextBehaviors", defaults.rawTextBehaviors()),
+                bool(actions, "explosionsDamageBlocks", defaults.explosionsDamageBlocks()));
     }
 
     private static List<String> strings(JsonObject document, String key, List<String> fallback) {

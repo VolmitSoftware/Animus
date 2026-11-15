@@ -149,6 +149,14 @@ final class DenizenCommands {
                     hold(scope, item);
                     return close(scope, items, index + 1, steps);
                 }
+                case "random" -> {
+                    if (item.children().isEmpty() || !command.args().isEmpty() || item.children().get().items().isEmpty()) {
+                        preserveTree(scope, item, "random needs a block of lines to choose from and no arguments");
+                        if (item.children().isPresent() && stops(item.children().get().items(), Set.of())) { hold(scope, item); return close(scope, items, index + 1, steps); }
+                        continue;
+                    }
+                    steps.addAll(random(item, scope));
+                }
                 case "repeat", "foreach", "while" -> {
                     Optional<List<JsonObject>> converted = item.children().isEmpty() ? control(item, command, scope) : loop(item, command, scope);
                     if (converted.isPresent()) steps.addAll(converted.get());
@@ -166,8 +174,6 @@ final class DenizenCommands {
                     if (converted.reason().isEmpty()) {
                         steps.addAll(pending.steps);
                         steps.addAll(converted.steps());
-                        if (scope.record && command.name().equals("execute") && command.args().stream().anyMatch((Arg arg) -> arg.is("as_op")))
-                            converter.issue(scope.container.file() + ":" + item.line() + ": execute as_op runs as the player without operator rights; the command fails where it needs them");
                         continue;
                     }
                     if (GUARDS.contains(command.name())) hold(scope, item);
@@ -336,7 +342,9 @@ final class DenizenCommands {
         }
         Pending pending = new Pending();
         if (command.args().size() == 1) {
-            Result<JsonElement> value = expressions.operand(raw(command.args().getFirst()), scope, pending);
+            Result<JsonElement> value = typedOperand(raw(command.args().getFirst()), scope, pending, (Character kind) -> {
+                if (scope.container.type().equals("procedure")) converter.returned(scope.container, kind);
+            });
             if (value.failed()) {
                 hold(scope, item);
                 converter.outcome(scope, item, "command", "determine", false, value.reason());
@@ -348,6 +356,25 @@ final class DenizenCommands {
         List<JsonObject> steps = new ArrayList<>(pending.steps);
         steps.add(node);
         return steps;
+    }
+
+    /**
+     * {@link DenizenExpressions#operand}, telling {@code kind} what a single tag gives, or {@code a} for anything else,
+     * so a definition or a procedure keeps holding NPCs.
+     */
+    private Result<JsonElement> typedOperand(String raw, Scope scope, Pending pending, java.util.function.Consumer<Character> kind) {
+        List<DenizenArgs.Segment> segments = DenizenArgs.segments(raw);
+        if (segments.size() == 1 && segments.getFirst().tag() && DenizenExpressions.literalTag(DenizenArgs.tag(segments.getFirst().text()), false).isEmpty()) {
+            Result<Expr> value = expressions.value(raw, scope, pending);
+            if (value.failed()) return Result.fail(value.reason());
+            if (value.value().text().length() > DenizenExpressions.MAXIMUM_EXPRESSION) return Result.fail("expression longer than " + DenizenExpressions.MAXIMUM_EXPRESSION + " characters");
+            kind.accept(value.value().kind());
+            JsonObject operand = new JsonObject();
+            operand.addProperty("expression", value.value().text());
+            return Result.ok(operand);
+        }
+        kind.accept('a');
+        return expressions.operand(raw, scope, pending);
     }
 
     // ---- Chains ----
@@ -418,6 +445,27 @@ final class DenizenCommands {
         return Optional.of(steps);
     }
 
+    /**
+     * A {@code random} block: one of its lines, each with any block it opens, picked evenly as the block runs, by a
+     * number drawn into a temporary and a condition chain on it.
+     */
+    private List<JsonObject> random(Item item, Scope scope) {
+        List<Item> options = item.children().get().items();
+        converter.outcome(scope, item, "command", "random", true, "");
+        String drawn = converter.temporary(scope);
+        JsonObject set = plain("set");
+        set.addProperty("variable", drawn);
+        JsonObject operand = new JsonObject();
+        operand.addProperty("expression", "random(1, " + options.size() + ")");
+        set.add("value", operand);
+        Optional<JsonObject> chain = Optional.empty();
+        List<JsonObject> bodies = new ArrayList<>();
+        for (Item option : options) bodies.add(DenizenConverter.sequence(block(List.of(option), 0, scope)));
+        for (int index = options.size() - 1; index >= 0; index--)
+            chain = Optional.of(DenizenExpressions.build(new DenizenExpressions.Atom("(" + drawn + " == " + (index + 1) + ")"), bodies.get(index), chain));
+        return List.of(set, chain.orElseThrow());
+    }
+
     /** The value a choose compares: a variable as it is, anything else read once into a temporary. */
     private Result<String> choice(String raw, Scope scope, Pending pending) {
         Result<Expr> subject = expressions.value(raw, scope, pending);
@@ -475,6 +523,13 @@ final class DenizenCommands {
                 node.addProperty("as", variable);
                 definitions.remove(as);
                 definitions.remove(key);
+                // Each item of a list of NPCs is an NPC, so its attributes read NPC facts and flags.
+                if (source.value().kind() == 'N') {
+                    definitions.put(as, "@npc:" + variable);
+                    node.addProperty("maximum", 1024);
+                }
+                // Each item of an inventory is an item, whose attributes read its material, amount and name.
+                if (source.value().kind() == 'I') definitions.put(as, "@item:" + variable);
                 if (mentionsBody(item, "[loop_index]")) {
                     String index = converter.loopIndex(scope);
                     node.addProperty("index", index);
@@ -583,7 +638,7 @@ final class DenizenCommands {
             case "cooldown" -> cooldown(command, scope);
             case "announce" -> announce(command, scope, pending);
             case "chat" -> chat(command, scope, pending);
-            case "wait" -> waitFor(command);
+            case "wait" -> waitFor(command, scope, pending);
             case "flag" -> flag(command, scope, pending);
             case "define" -> define(command, scope, pending);
             case "zap" -> zap(command, scope);
@@ -591,16 +646,21 @@ final class DenizenCommands {
             case "execute" -> execute(command, scope, pending);
             case "give" -> give(command, scope, pending);
             case "take" -> take(command, scope, pending);
-            case "look" -> scope.server ? Converted.kept(DenizenConverter.NO_NPC) : look(command);
+            case "look" -> look(command, scope, pending);
             case "walk" -> scope.server ? Converted.kept(DenizenConverter.NO_NPC) : walk(command);
             case "equip" -> scope.server ? Converted.kept(DenizenConverter.NO_NPC) : equip(command);
             case "trait" -> scope.server ? Converted.kept(DenizenConverter.NO_NPC) : trait(command);
-            case "playsound" -> sound(command, scope);
-            case "playeffect" -> particle(command, scope);
+            case "lookclose" -> lookclose(command, scope, pending);
+            case "explode" -> explode(command, scope, pending);
+            case "playsound" -> sound(command, scope, pending, false);
+            case "animate" -> animate(command, scope, pending);
+            case "playeffect" -> particle(command, scope, false);
             case "actionbar" -> actionbar(command, scope, pending);
             case "title" -> title(command, scope, pending);
-            case "teleport" -> teleport(command, scope);
+            case "teleport" -> teleport(command, scope, pending);
             case "adjust" -> adjust(command, scope, pending);
+            case "bossbar" -> bossbar(command, scope, pending);
+            case "sidebar" -> sidebar(command, scope, pending);
             case "inventory" -> inventory(command);
             case "debug" -> Converted.of();
             case "trigger" -> Converted.kept("trigger settings change only in on assignment; the NPC's saved triggers are used");
@@ -625,15 +685,27 @@ final class DenizenCommands {
         if (!FANNED.contains(command.name())) return Optional.empty();
         List<Arg> args = command.args();
         int at = -1;
+        String replacement = "<player>";
+        boolean anchored = false;
         for (int index = 0; index < args.size() && at < 0; index++) {
             Arg arg = args.get(index);
             boolean targets = arg.prefix().equals("targets") && !playerTarget(arg.value()) && !(command.name().equals("narrate") && everyone(arg.value()));
             boolean place = command.name().equals("playsound") && arg.prefix().isEmpty() && arg.value().startsWith("<") && at(arg.value()).isEmpty()
                     && !arg.value().toLowerCase(Locale.ROOT).contains("location") && location(arg.value()).isEmpty();
+            Optional<String[]> held = command.name().equals("playeffect") && arg.prefix().equals("at") || command.name().equals("playsound") && arg.prefix().isEmpty() ? heldPlace(arg.value()) : Optional.empty();
             if (targets || place) at = index;
+            else if (held.isPresent()) {
+                at = index;
+                replacement = command.name().equals("playsound") ? "<player>" : "<player" + held.get()[1] + ">";
+                // A particle, or a sound at a location, placed at a held player is still for the players the command
+                // names, or everyone near when it names none, as in Denizen; only targets naming the same players make it theirs.
+                String holder = held.get()[0];
+                anchored = (command.name().equals("playeffect") || !held.get()[1].isEmpty())
+                        && args.stream().noneMatch((Arg other) -> other.prefix().equals("targets") && other.value().equalsIgnoreCase(holder));
+            }
         }
         if (at < 0) return Optional.empty();
-        String value = args.get(at).value();
+        String value = heldPlace(args.get(at).value()).map((String[] held) -> held[0]).orElse(args.get(at).value());
         List<Part> filters = new ArrayList<>();
         List<DenizenArgs.Segment> segments = DenizenArgs.segments(value);
         Result<Expr> list;
@@ -657,6 +729,10 @@ final class DenizenCommands {
             if (list == null) list = Result.ok(Expr.of("[" + String.join(", ", items) + "]", 'l'));
         }
         if (list.failed()) return Optional.of(Converted.kept("targets " + list.reason()));
+        if (list.value().kind() == 'e' || list.value().kind() == 'N') {
+            if (heldPlace(args.get(at).value()).isEmpty()) return Optional.of(Converted.kept(command.name() + " for NPCs has no viewer; only players see particles and hear sounds"));
+            return Optional.of(atNpcs(command, at, list.value(), scope, pending));
+        }
         String variable = converter.temporary(scope);
         TreeMap<String, String> definitions = new TreeMap<>(scope.definitions);
         definitions.put(FAN, "@" + variable);
@@ -671,14 +747,22 @@ final class DenizenCommands {
             conditions.add(name.equals("exclude") ? "!contains(players(" + test.value().text() + "), " + variable + ")" : DenizenExpressions.truth(test.value()));
         }
         List<Arg> replaced = new ArrayList<>(args);
-        replaced.set(at, new Arg(args.get(at).prefix(), "<player>", false));
+        replaced.set(at, new Arg(args.get(at).prefix(), replacement, false));
+        // Shown to the same players it is shown at: the player of each pass.
+        for (int index = 0; index < args.size(); index++)
+            if (index != at && args.get(index).prefix().equals("targets") && args.get(index).value().equalsIgnoreCase(value)) replaced.set(index, new Arg("targets", "<player>", false));
         Converted single = simple(new Command(command.name(), replaced), inner, body);
         if (!single.reason().isEmpty()) return Optional.of(single);
-        for (JsonObject step : single.steps()) {
-            if (!step.has("capability") || !PLAYER_ACTIONS.contains(step.get("capability").getAsString())) return Optional.of(Converted.kept(command.name() + " for other players has no Animus equivalent"));
-            step.getAsJsonObject("arguments").add("player", JsonNull.INSTANCE);
+        List<JsonObject> actions = new ArrayList<>();
+        for (JsonObject step : single.steps())
+            if (!playerActions(step, actions, anchored ? 1 : 0, false)) return Optional.of(Converted.kept(command.name() + " for other players has no Animus equivalent"));
+        boolean named = replaced.stream().anyMatch((Arg arg) -> arg.prefix().equals("targets"));
+        for (JsonObject step : actions) {
+            String argument = anchored ? "atPlayer" : "player";
+            step.getAsJsonObject("arguments").add(argument, JsonNull.INSTANCE);
+            if (anchored && !named) step.getAsJsonObject("arguments").addProperty("audience", "nearby");
             JsonObject filled = step.has("expressions") ? step.getAsJsonObject("expressions") : new JsonObject();
-            filled.addProperty("/player", variable);
+            filled.addProperty("/" + argument, variable);
             step.add("expressions", filled);
         }
         List<JsonObject> steps = new ArrayList<>(body.steps);
@@ -695,7 +779,72 @@ final class DenizenCommands {
         return Optional.of(Converted.of(loop));
     }
 
+    /**
+     * A particle or sound placed at an NPC held in a definition, or at each NPC of a list: the action at the NPC with
+     * the {@code npc} argument, for the triggering player with {@code targets:<player>} or for everyone near.
+     */
+    private Converted atNpcs(Command command, int at, Expr npcs, Scope scope, Pending pending) {
+        List<Arg> args = command.args();
+        for (Arg arg : args) if (arg.prefix().equals("targets") && !playerTarget(arg.value())) return Converted.kept(command.name() + " for NPCs has no viewer; only players see particles and hear sounds");
+        String[] held = heldPlace(args.get(at).value()).orElseThrow();
+        List<Arg> replaced = new ArrayList<>(args);
+        replaced.set(at, new Arg(args.get(at).prefix(), command.name().equals("playsound") ? "<npc>" : "<npc" + held[1] + ">", false));
+        Command placed = new Command(command.name(), replaced);
+        Converted single = command.name().equals("playeffect") ? particle(placed, scope, true) : sound(placed, scope, pending, true);
+        if (!single.reason().isEmpty()) return single;
+        JsonObject node = single.steps().getFirst();
+        String each = npcs.kind() == 'e' ? npcs.text() : converter.temporary(scope);
+        node.getAsJsonObject("arguments").add("npc", JsonNull.INSTANCE);
+        JsonObject filled = node.has("expressions") ? node.getAsJsonObject("expressions") : new JsonObject();
+        filled.addProperty("/npc", each);
+        node.add("expressions", filled);
+        if (npcs.kind() == 'e') return Converted.of(node);
+        JsonObject loop = plain("foreach");
+        JsonObject source = new JsonObject();
+        source.addProperty("expression", npcs.text());
+        loop.add("list", source);
+        loop.addProperty("as", each);
+        loop.addProperty("maximum", 1024);
+        loop.add("body", node);
+        return Converted.of(loop);
+    }
+
+    /**
+     * Gathers the player actions of a converted command into {@code actions}, through at most {@code loops} fan-outs
+     * over the players it is for and the filters inside them; false when anything else is there.
+     */
+    private static boolean playerActions(JsonObject node, List<JsonObject> actions, int loops, boolean looped) {
+        switch (node.get("type").getAsString()) {
+            case "action" -> {
+                if (!PLAYER_ACTIONS.contains(node.get("capability").getAsString())) return false;
+                actions.add(node);
+                return true;
+            }
+            case "set" -> { return true; }
+            case "sequence" -> {
+                for (JsonElement step : node.getAsJsonArray("steps")) if (!playerActions(step.getAsJsonObject(), actions, loops, looped)) return false;
+                return true;
+            }
+            case "condition" -> { return looped && !node.has("else") && playerActions(node.getAsJsonObject("then"), actions, loops, true); }
+            case "foreach" -> { return loops > 0 && playerActions(node.getAsJsonObject("body"), actions, loops - 1, true); }
+            default -> { return false; }
+        }
+    }
+
     static String raw(Arg arg) { return arg.prefix().isEmpty() ? arg.value() : arg.prefix() + ":" + arg.value(); }
+
+    private static final java.util.regex.Pattern HELD_PLACE = java.util.regex.Pattern.compile("(<\\[[A-Za-z0-9_]+])((?:\\.location(?:\\.above(?:\\[[0-9.]{1,6}])?)?)?)>"),
+            ABOVE = java.util.regex.Pattern.compile("<(?:player|npc)\\.location\\.above(?:\\[([0-9]{1,2}(?:\\.[0-9]{1,4})?)])?>");
+
+    /**
+     * A place held in a definition: {@code <[someone]>}, {@code <[someone].location>} or
+     * {@code <[someone].location.above[2]>}, as the definition's tag and what follows it. The definition is read as
+     * players, so a fan-out over it shows the effect at each player and skips anything that is no player.
+     */
+    private static Optional<String[]> heldPlace(String value) {
+        java.util.regex.Matcher matcher = HELD_PLACE.matcher(value);
+        return matcher.matches() ? Optional.of(new String[] {matcher.group(1) + ">", matcher.group(2)}) : Optional.empty();
+    }
 
     private static boolean playerTarget(String value) {
         String lowered = value.toLowerCase(Locale.ROOT);
@@ -735,9 +884,10 @@ final class DenizenCommands {
         if (words.isEmpty()) return Converted.kept("nothing to say");
         Result<Text> text = text(String.join(" ", words), scope, pending, false, DenizenConverter.MAXIMUM_TEXT);
         if (text.failed()) return Converted.kept(text.reason());
-        if (!text.value().dynamic() && text.value().literal().isBlank()) return Converted.kept("nothing to say");
         Action action = new Action();
-        action.text("text", text.value());
+        // A blank narrate is an empty chat line; a lone reset code sends one.
+        if (!text.value().dynamic() && text.value().literal().isBlank()) action.put("text", "&r");
+        else action.text("text", text.value());
         if (!to.equals("trigger")) action.put("to", to);
         return Converted.of(action.node("animus:message"));
     }
@@ -791,15 +941,51 @@ final class DenizenCommands {
         return Converted.of();
     }
 
-    private static Converted waitFor(Command command) {
+    private Converted waitFor(Command command, Scope scope, Pending pending) {
         if (command.args().size() > 1 || command.args().size() == 1 && !command.args().getFirst().prefix().isEmpty()) return Converted.kept("wait argument has no Animus equivalent");
         OptionalLong ticks = command.args().isEmpty() ? OptionalLong.of(60) : DenizenArgs.ticks(command.args().getFirst().value());
-        if (ticks.isEmpty()) return Converted.kept("wait needs a literal duration");
+        Result<String> computed = ticks.isEmpty() ? ticks(command.args().getFirst().value(), scope, pending) : Result.ok("");
+        if (computed.failed()) return Converted.kept("wait " + computed.reason());
+        if (computed.value().matches("[0-9]{1,8}")) ticks = OptionalLong.of(Long.parseLong(computed.value()));
+        if (ticks.isEmpty()) {
+            JsonObject node = plain("wait");
+            JsonObject operand = new JsonObject();
+            operand.addProperty("expression", "clamp(" + computed.value() + ", 0, 72000)");
+            node.add("ticks", operand);
+            return Converted.of(node);
+        }
         if (ticks.getAsLong() == 0) return Converted.of();
         if (ticks.getAsLong() > 72_000) return Converted.kept("wait longer than an hour");
         JsonObject node = plain("wait");
         node.addProperty("ticks", ticks.getAsLong());
         return Converted.of(node);
+    }
+
+    private static final Map<Character, Long> UNITS = Map.of('t', 1L, 's', 20L, 'm', 1200L, 'h', 72_000L, 'd', 1_728_000L);
+
+    /**
+     * A duration that is not written out, as an expression of ticks: a tag with a unit after it ({@code <[delay]>s}), a
+     * tag giving a number of seconds, or a data value holding a written duration. Otherwise the reason.
+     */
+    private Result<String> ticks(String raw, Scope scope, Pending pending) {
+        String value = raw.trim();
+        long factor = 20;
+        if (value.length() > 1 && UNITS.containsKey(Character.toLowerCase(value.charAt(value.length() - 1))) && value.charAt(value.length() - 2) == '>') {
+            factor = UNITS.get(Character.toLowerCase(value.charAt(value.length() - 1)));
+            value = value.substring(0, value.length() - 1);
+        }
+        if (!value.startsWith("<") || DenizenArgs.tagEnd(value, 0) != value.length() - 1) return Result.fail("needs a literal duration");
+        Result<Expr> expr = expressions.value(value, scope, pending);
+        if (expr.failed()) return Result.fail(expr.reason());
+        String text = expr.value().text();
+        if (expr.value().kind() == 's' && text.matches("'[^'\\\\]*'")) {
+            OptionalLong written = DenizenArgs.ticks(text.substring(1, text.length() - 1));
+            if (written.isEmpty() || raw.trim().length() != value.length()) return Result.fail("needs a literal duration");
+            return Result.ok(Long.toString(written.getAsLong()));
+        }
+        // A value without a unit after it is a duration as Denizen reads one: seconds, or text such as 5m.
+        if (raw.trim().length() == value.length() && expr.value().kind() != 'n' && expr.value().kind() != 'd') return Result.ok("round(" + DenizenExpressions.seconds(expr.value()) + " * 20)");
+        return Result.ok("round(" + DenizenExpressions.numeric(expr.value()) + " * " + factor + ")");
     }
 
     /** The new value of a Denizen data action ({@code ++}, {@code +:n}, {@code ->:v}, ...) on the current value. Null when it is a plain value. */
@@ -836,17 +1022,96 @@ final class DenizenCommands {
         return Result.ok(null);
     }
 
+    /**
+     * {@code flag player|npc|server name:value}, and a flag on players held in a definition or listed online
+     * ({@code flag <[target]> ...}, {@code flag <server.online_players> ...}): the same flag set for each player in a
+     * {@code foreach} over {@code players(...)}, which holds one player or a list and skips anything that is no player.
+     */
     private Converted flag(Command command, Scope scope, Pending pending) {
         if (command.args().size() < 2) return Converted.kept("flag needs a target and a name");
-        String target = command.args().getFirst().value().toLowerCase(Locale.ROOT).replace("<", "").replace(">", "");
-        if (!command.args().getFirst().prefix().isEmpty() || !List.of("player", "npc", "server").contains(target)) return Converted.kept("flags on other objects have no Animus equivalent");
-        if (target.equals("npc") && scope.server) return Converted.kept("flag npc needs an NPC; " + DenizenConverter.NO_NPC);
+        Arg first = command.args().getFirst();
+        String target = first.value().toLowerCase(Locale.ROOT).replace("<", "").replace(">", "");
+        if (!first.prefix().isEmpty()) return Converted.kept("flags on other objects have no Animus equivalent");
+        if (List.of("player", "npc", "server").contains(target)) {
+            if (target.equals("npc") && scope.server) return Converted.kept("flag npc needs an NPC; " + DenizenConverter.NO_NPC);
+            return flagOf(command, DenizenConverter.scopeOf(target), Optional.empty(), scope, pending);
+        }
+        if (!target.matches("\\[[a-z0-9_]+]|server\\.online_players")) return Converted.kept("flags on other objects have no Animus equivalent");
+        if (target.startsWith("[") && scope.doc.kinds.getOrDefault(target.substring(1, target.length() - 1), 'a') == UNCONVERTED)
+            return Converted.kept("flag on definition " + target.substring(1, target.length() - 1) + ", whose value did not convert");
+        Result<Expr> who = expressions.value(first.value(), scope, pending);
+        if (who.failed()) return Converted.kept(who.reason());
+        if (who.value().kind() == 'L') return locationFlag(command, who.value().text(), scope, pending);
+        if (who.value().kind() == 'e') return flagOf(command, "npc", Optional.of(who.value().text()), scope, pending);
+        String each = converter.temporary(scope);
+        Converted single = flagOf(command, who.value().kind() == 'N' ? "npc" : "player", Optional.of(each), scope, pending);
+        if (!single.reason().isEmpty()) return single;
+        JsonObject loop = plain("foreach");
+        JsonObject source = new JsonObject();
+        source.addProperty("expression", who.value().kind() == 'N' ? who.value().text() : "players(" + who.value().text() + ")");
+        loop.add("list", source);
+        loop.addProperty("as", each);
+        loop.addProperty("maximum", who.value().kind() == 'N' ? 1024 : 100);
+        loop.add("body", DenizenConverter.sequence(single.steps()));
+        return Converted.of(loop);
+    }
+
+    /** The kind a definition has when its define did not convert. */
+    static final char UNCONVERTED = '?';
+
+    /**
+     * A flag on a location held in a definition: Denizen keeps it on the block there, and Animus in a global flag named
+     * {@code locations-<name>} that maps each block, written {@code x,y,z,world}, to its value. Expiry has no per-block form.
+     */
+    private Converted locationFlag(Command command, String location, Scope scope, Pending pending) {
+        if (command.args().size() > 2) return Converted.kept("a flag on a location takes no expire");
+        String rawName = raw(command.args().get(1));
+        int colon = rawName.indexOf(':');
+        String denizen = (colon < 0 ? rawName : rawName.substring(0, colon)).toLowerCase(Locale.ROOT);
+        String value = colon < 0 ? "" : rawName.substring(colon + 1);
+        Result<String> name = expressions.locationFlagName(denizen, scope, pending);
+        if (name.failed()) return Converted.kept(name.reason());
+        String key = DenizenExpressions.blockKey(location);
+        String blocks = expressions.locationBlocks(name.value(), scope, pending);
+        String written;
+        if (colon >= 0 && value.equals("!")) written = "remove(" + blocks + ", " + key + ")";
+        else {
+            String held = "get(" + blocks + ", " + key + ", ";
+            Result<String> computed = colon < 0 ? Result.ok(null) : dataAction(value, held + "[])", "num(" + held + "0))", scope, pending);
+            if (computed.failed()) return Converted.kept(computed.reason());
+            String stored = computed.value();
+            if (stored == null && colon < 0) stored = "true";
+            if (stored == null) {
+                Result<Expr> operand = expressions.value(value, scope, pending);
+                if (operand.failed()) return Converted.kept(operand.reason());
+                stored = operand.value().text();
+            }
+            written = "put(" + blocks + ", " + key + ", " + stored + ")";
+        }
+        if (written.length() > DenizenExpressions.MAXIMUM_EXPRESSION) return Converted.kept("expression longer than 4096 characters");
+        Action action = new Action();
+        action.expression("name", name.value());
+        action.put("scope", "global");
+        action.expression("value", written);
+        return Converted.of(action.node("animus:set-flag"));
+    }
+
+    /** One flag write of {@code scopeName}; {@code other} holds another player, or NPC for an NPC flag, whose flag it is. */
+    private Converted flagOf(Command command, String scopeName, Optional<String> other, Scope scope, Pending pending) {
+        String argument = scopeName.equals("npc") ? "npc" : "player";
         Optional<Long> expire = Optional.empty();
+        Optional<String> computedExpire = Optional.empty();
         for (int index = 2; index < command.args().size(); index++) {
             Arg arg = command.args().get(index);
             if (!arg.prefix().equals("expire") && !arg.prefix().equals("duration")) return Converted.kept("flag argument " + raw(arg) + " has no Animus equivalent");
             OptionalLong ticks = DenizenArgs.ticks(arg.value());
-            if (ticks.isEmpty()) return Converted.kept("flag expire needs a literal duration");
+            Result<String> computed = ticks.isEmpty() ? ticks(arg.value(), scope, pending) : Result.ok("");
+            if (computed.failed()) return Converted.kept("flag expire " + computed.reason());
+            if (computed.value().matches("[0-9]{1,8}")) ticks = OptionalLong.of(Long.parseLong(computed.value()));
+            if (ticks.isEmpty()) {
+                computedExpire = Optional.of("clamp(ceil(" + computed.value() + " / 20), 1, 31536000)");
+                continue;
+            }
             long seconds = Math.max(1, (ticks.getAsLong() + 19) / 20);
             if (seconds > 31_536_000) return Converted.kept("flag expire longer than a year");
             expire = Optional.of(seconds);
@@ -856,23 +1121,23 @@ final class DenizenCommands {
         String denizen = (colon < 0 ? rawName : rawName.substring(0, colon)).toLowerCase(Locale.ROOT);
         String value = colon < 0 ? "" : rawName.substring(colon + 1);
         // A name joined with tags, such as npc_done_<npc.id>, is computed as the run writes it, like the reads of it.
-        Result<String> named = DenizenArgs.segments(denizen).stream().anyMatch(DenizenArgs.Segment::tag) && !denizen.startsWith("<")
+        Result<String> named = DenizenArgs.segments(denizen).stream().anyMatch(DenizenArgs.Segment::tag)
                 ? expressions.flagNameExpression(denizen, scope, pending) : Result.fail("");
         Optional<String> name = DenizenConverter.flagName(denizen);
         if (named.failed() && (denizen.contains("<") || denizen.contains("[") || name.isEmpty())) return Converted.kept("flag name " + denizen + " cannot be an Animus flag name");
         String nameExpression = named.failed() ? DenizenExpressions.quote(name.orElseThrow()) : named.value();
-        String scopeName = DenizenConverter.scopeOf(target);
         Action action = new Action();
         if (named.failed()) action.put("name", name.get());
         else action.expression("name", nameExpression);
         action.put("scope", scopeName);
         if (colon >= 0 && value.equals("!")) {
-            if (expire.isPresent()) return Converted.kept("clearing a flag takes no expire");
+            if (expire.isPresent() || computedExpire.isPresent()) return Converted.kept("clearing a flag takes no expire");
             action.put("clear", new JsonPrimitive(true));
+            other.ifPresent((String who) -> action.expression(argument, who));
             return Converted.of(action.node("animus:set-flag"));
         }
         if (colon >= 0) {
-            String read = "flag(" + DenizenExpressions.quote(scopeName) + ", " + nameExpression + ", ";
+            String read = other.isPresent() ? argument + "_flag(" + other.get() + ", " + nameExpression + ", " : "flag(" + DenizenExpressions.quote(scopeName) + ", " + nameExpression + ", ";
             Result<String> computed = dataAction(value, read + "[])", "num(" + read + "0))", scope, pending);
             if (computed.failed()) return Converted.kept(computed.reason());
             if (computed.value() != null) {
@@ -889,12 +1154,14 @@ final class DenizenCommands {
             }
         }
         expire.ifPresent((Long seconds) -> action.put("expireSeconds", seconds));
+        computedExpire.ifPresent((String seconds) -> action.expression("expireSeconds", seconds));
+        other.ifPresent((String who) -> action.expression(argument, who));
         return Converted.of(action.node("animus:set-flag"));
     }
 
     private Converted define(Command command, Scope scope, Pending pending) {
         if (command.args().isEmpty()) return Converted.kept("define without a name");
-        Arg first = command.args().getFirst();
+        Arg first = command.args().size() == 1 ? DenizenArgs.prefixed(command.args().getFirst()) : command.args().getFirst();
         String name, value;
         boolean action = false;
         if (!first.prefix().isEmpty() && command.args().size() == 1) {
@@ -913,7 +1180,9 @@ final class DenizenCommands {
         set.addProperty("variable", variable);
         if (action) {
             if (value.equals("!")) { set.addProperty("value", ""); return Converted.of(set); }
-            Result<String> computed = dataAction(value, variable, "num(" + variable + ")", scope, pending);
+            // An unset definition is empty text: a list action starts from an empty list and a number from zero, as in Denizen.
+            String unset = "same(text(" + variable + "), '')";
+            Result<String> computed = dataAction(value, "(" + unset + " ? [] : " + variable + ")", "num((" + unset + " ? 0 : " + variable + "))", scope, pending);
             if (computed.failed()) return Converted.kept(computed.reason());
             if (computed.value() != null) {
                 JsonObject operand = new JsonObject();
@@ -922,8 +1191,12 @@ final class DenizenCommands {
                 return Converted.of(set);
             }
         }
-        Result<JsonElement> operand = expressions.operand(value, scope, pending);
-        if (operand.failed()) return Converted.kept(operand.reason());
+        Result<JsonElement> operand = typedOperand(value, scope, pending, (Character kind) -> {
+            if (kind == 'e' || kind == 'N' || kind == 'L' || kind == 'i' || kind == 'I') scope.doc.kinds.put(name, kind);
+            else scope.doc.kinds.remove(name);
+        });
+        // A definition whose value did not convert holds nothing, so a flag on it is kept rather than set on nobody.
+        if (operand.failed()) { scope.doc.kinds.put(name, UNCONVERTED); return Converted.kept(operand.reason()); }
         set.add("value", operand.value());
         return Converted.of(set);
     }
@@ -966,6 +1239,7 @@ final class DenizenCommands {
         Optional<String> save = Optional.empty();
         List<String> positional = new ArrayList<>();
         LinkedHashMap<String, String> named = new LinkedHashMap<>();
+        Optional<String> npcFor = Optional.empty(), playerFor = Optional.empty();
         for (Arg arg : command.args()) {
             if (arg.prefix().isEmpty()) {
                 if (arg.is("instantly") || arg.is("local") || arg.is("locally")) continue;
@@ -980,8 +1254,8 @@ final class DenizenCommands {
             }
             switch (arg.prefix()) {
                 case "path" -> path = Optional.of(arg.value());
-                case "npc" -> { if (!arg.value().equalsIgnoreCase("<npc>")) return Converted.kept("running for another NPC has no Animus equivalent"); }
-                case "player" -> { if (!arg.value().equalsIgnoreCase("<player>")) return Converted.kept("running for another player has no Animus equivalent"); }
+                case "npc" -> { if (!arg.value().equalsIgnoreCase("<npc>")) npcFor = Optional.of(arg.value()); }
+                case "player" -> { if (!arg.value().equalsIgnoreCase("<player>")) playerFor = Optional.of(arg.value()); }
                 case "def", "definitions", "context" -> positional.addAll(DenizenExpressions.pipes(arg.value()));
                 case "defmap" -> {
                     String map = arg.value();
@@ -997,7 +1271,13 @@ final class DenizenCommands {
                 default -> { return Converted.kept("argument " + arg.prefix() + ": has no Animus equivalent"); }
             }
         }
-        if (name.isPresent() && name.get().contains("<")) return dynamic(name.get(), path, save, positional, named, scope, pending);
+        JsonObject subject = new JsonObject();
+        if (playerFor.isPresent() || npcFor.isPresent()) {
+            if (command.name().equals("inject")) return Converted.kept("inject runs in place for the same player and NPC");
+            Optional<String> problem = subject(playerFor, npcFor, subject, scope, pending);
+            if (problem.isPresent()) return Converted.kept(problem.get());
+        }
+        if (name.isPresent() && name.get().contains("<")) return dynamic(name.get(), path, save, positional, named, subject, scope, pending);
         Container task;
         if (name.isEmpty() && path.isPresent() && scope.container.type().equals("task")) task = scope.container;
         else {
@@ -1007,17 +1287,51 @@ final class DenizenCommands {
         if (task == null) return Converted.kept("no script named " + name.orElse(""));
         if (command.name().equals("inject") && task.type().equals("task")) {
             Optional<Node> injected = task.body().get(path.map((String value) -> value.toLowerCase(Locale.ROOT)).orElse("script"));
-            if (injected.isPresent() && injected.get() instanceof Sequence lines && stops(lines.items(), Set.of()))
-                return Converted.kept("inject runs " + task.name() + " inside this script, so a stop there ends this script too; an Animus call ends only the task");
+            if (injected.isPresent() && injected.get() instanceof Sequence lines && stops(lines.items(), Set.of())) {
+                // A stop there ends this script too, so the lines run in place, sharing this script's definitions.
+                if (save.isPresent() || !positional.isEmpty() || !named.isEmpty())
+                    return Converted.kept("inject runs " + task.name() + " inside this script, so a stop there ends this script too; an Animus call ends only the task");
+                String routine = converter.routineFor(task, path);
+                if (scope.calling.contains(routine)) return Converted.kept("recursive inject has no Animus equivalent");
+                scope.calling.add(routine);
+                Scope inside = scope.injected(task);
+                List<JsonObject> steps = block(lines.items(), 0, inside);
+                scope.calling.remove(routine);
+                return new Converted(steps, "");
+            }
         }
-        return callTask(task, path, save, positional, named, scope, pending);
+        return callTask(task, path, save, positional, named, subject, scope, pending);
+    }
+
+    /**
+     * The player and NPC a run for someone else is for, as the call node's {@code player} and {@code npc}: a player or
+     * NPC held in a definition or read by a tag. Empty when both convert, otherwise the reason.
+     */
+    private Optional<String> subject(Optional<String> player, Optional<String> npc, JsonObject subject, Scope scope, Pending pending) {
+        if (player.isPresent()) {
+            Result<Expr> who = expressions.value(player.get(), scope, pending);
+            if (who.failed()) return Optional.of(who.reason());
+            if (who.value().kind() == 'e' || who.value().kind() == 'N') return Optional.of("player: names an NPC");
+            JsonObject operand = new JsonObject();
+            operand.addProperty("expression", "get(players(" + who.value().text() + "), 0, '')");
+            subject.add("player", operand);
+        }
+        if (npc.isPresent()) {
+            Result<Expr> which = expressions.value(npc.get(), scope, pending);
+            if (which.failed()) return Optional.of(which.reason());
+            if (which.value().kind() == 'N' || which.value().kind() == 'l') return Optional.of("npc: names a list; run the task for each NPC in a foreach");
+            JsonObject operand = new JsonObject();
+            operand.addProperty("expression", which.value().kind() == 'e' ? which.value().text() : "replace(text(" + which.value().text() + "), 'n@', '')");
+            subject.add("npc", operand);
+        }
+        return Optional.empty();
     }
 
     /**
      * {@code run <npc.flag[name]>}: the script the flag names, chosen when the line runs from the task scripts that a
      * {@code flag} command or an NPC's saved flags give that flag. A value naming none of them runs nothing.
      */
-    private Converted dynamic(String raw, Optional<String> path, Optional<String> save, List<String> positional, Map<String, String> named, Scope scope, Pending pending) {
+    private Converted dynamic(String raw, Optional<String> path, Optional<String> save, List<String> positional, Map<String, String> named, JsonObject subject, Scope scope, Pending pending) {
         if (!raw.startsWith("<") || !raw.endsWith(">") || DenizenArgs.tagEnd(raw, 0) != raw.length() - 1) return Converted.kept("running a computed script has no Animus equivalent");
         DenizenArgs.Tag tag = DenizenArgs.tag(raw.substring(1, raw.length() - 1));
         String base = tag.base().toLowerCase(Locale.ROOT);
@@ -1038,7 +1352,7 @@ final class DenizenCommands {
         String read = "lower(text(flag(" + DenizenExpressions.quote(flagScope) + ", " + DenizenExpressions.quote(flag.get()) + ", '')))";
         List<JsonObject> calls = new ArrayList<>();
         for (Container task : tasks) {
-            Converted call = callTask(task, Optional.empty(), Optional.empty(), positional, named, scope, pending);
+            Converted call = callTask(task, Optional.empty(), Optional.empty(), positional, named, subject, scope, pending);
             if (!call.reason().isEmpty()) return call;
             calls.add(DenizenConverter.sequence(call.steps()));
         }
@@ -1050,7 +1364,7 @@ final class DenizenCommands {
         return Converted.of(chain.orElseThrow());
     }
 
-    private Converted callTask(Container task, Optional<String> path, Optional<String> save, List<String> positional, Map<String, String> named, Scope scope, Pending pending) {
+    private Converted callTask(Container task, Optional<String> path, Optional<String> save, List<String> positional, Map<String, String> named, JsonObject subject, Scope scope, Pending pending) {
         if (!task.type().equals("task")) return Converted.kept("only task scripts can become routines");
         String key = path.map((String value) -> value.toLowerCase(Locale.ROOT)).orElse("script");
         Optional<Node> body = task.body().get(key);
@@ -1066,11 +1380,15 @@ final class DenizenCommands {
             Converted problem = argument(arguments, entry.getKey(), entry.getValue(), scope, pending);
             if (problem != null) return problem;
         }
+        // A server behavior running a task for an NPC converts it again as an NPC's routine, since it then has an NPC.
+        boolean asNpc = scope.server && subject.has("npc");
         String routine = converter.routineFor(task, path);
+        if (asNpc) routine = (routine.length() > 60 ? routine.substring(0, 60) : routine) + "-npc";
         if (scope.calling.contains(routine)) return Converted.kept("recursive task calls have no Animus equivalent");
         JsonObject call = plain("call");
         call.addProperty("routine", routine);
         if (!arguments.isEmpty()) call.add("arguments", arguments);
+        for (Map.Entry<String, JsonElement> entry : subject.entrySet()) call.add(entry.getKey(), entry.getValue().deepCopy());
         if (save.isPresent()) {
             String result = DenizenConverter.variable("r_", save.get());
             converter.declare(scope, result, "any");
@@ -1080,7 +1398,7 @@ final class DenizenCommands {
             if (scope.doc.routines.size() >= BehaviorLimits.ROUTINES) return Converted.kept("more than 32 routines in one behavior");
             scope.doc.routines.put(routine, new JsonObject());
             scope.calling.add(routine);
-            List<JsonObject> steps = block(sequence.items(), 0, scope.in(task));
+            List<JsonObject> steps = block(sequence.items(), 0, asNpc ? scope.in(task).withNpc() : scope.in(task));
             scope.calling.remove(routine);
             scope.doc.routines.put(routine, DenizenConverter.sequence(steps));
         }
@@ -1099,11 +1417,13 @@ final class DenizenCommands {
 
     private Converted execute(Command command, Scope scope, Pending pending) {
         String as = null;
+        boolean operator = false;
         List<String> words = new ArrayList<>();
         for (Arg arg : command.args()) {
             if (arg.is("as_server")) { as = "console"; continue; }
-            // as_op lends the player operator rights for the line; Animus never does, so it runs as the plain player.
-            if (arg.is("as_player") || arg.is("as_op")) { as = "player"; continue; }
+            if (arg.is("as_player")) { as = "player"; continue; }
+            // as_op makes the player an operator for the one line, as asOperator does.
+            if (arg.is("as_op")) { as = "player"; operator = true; continue; }
             if (arg.is("as_npc")) return Converted.kept("commands run as the NPC have no Animus equivalent");
             if (arg.is("silent")) continue;
             words.add(raw(arg));
@@ -1112,13 +1432,14 @@ final class DenizenCommands {
         String line = String.join(" ", words).trim();
         if (line.startsWith("/")) line = line.substring(1);
         String[] split = line.split("\\s+");
-        if (split[0].equalsIgnoreCase("sentinel")) return sentinel(List.of(split).subList(1, split.length), scope);
+        if (split[0].equalsIgnoreCase("sentinel")) return sentinel(List.of(split).subList(1, split.length), scope, pending);
         Result<Text> text = text(line, scope, pending, true, 1024);
         if (text.failed()) return Converted.kept(text.reason());
         if (!text.value().dynamic() && text.value().literal().isBlank()) return Converted.kept("command is empty");
         Action action = new Action();
         action.text("command", text.value());
         if (as.equals("player")) action.put("as", "player");
+        if (operator) action.put("asOperator", new JsonPrimitive(true));
         return Converted.of(action.node("animus:command"));
     }
 
@@ -1127,7 +1448,7 @@ final class DenizenCommands {
      * combat-control on the behavior's own NPC: attacking, forgiving and guarding the triggering player. Target types and
      * Sentinel settings are animus:combat settings, so those lines are kept with the reason.
      */
-    private Converted sentinel(List<String> words, Scope scope) {
+    private Converted sentinel(List<String> words, Scope scope, Pending pending) {
         if (scope.server) return Converted.kept("sentinel acts on an NPC, and " + DenizenConverter.NO_NPC);
         List<String> rest = new ArrayList<>();
         for (int i = 0; i < words.size(); i++) {
@@ -1140,13 +1461,19 @@ final class DenizenCommands {
         String operation = rest.isEmpty() ? "" : rest.getFirst().toLowerCase(Locale.ROOT);
         List<String> arguments = rest.isEmpty() ? List.of() : rest.subList(1, rest.size());
         boolean player = arguments.size() == 1 && triggeringPlayer(arguments.getFirst());
+        Optional<String> held = arguments.size() == 1 ? heldPlayer(arguments.getFirst()) : Optional.empty();
         Action action = new Action();
         switch (operation) {
             case "addtarget", "removetarget" -> {
-                if (!player) return Converted.kept("sentinel " + String.join(" ", rest) + ": target types are animus:combat settings; set them in the NPC's animus:combat targets");
+                if (!player && held.isEmpty()) return Converted.kept("sentinel " + String.join(" ", rest) + ": target types are animus:combat settings; set them in the NPC's animus:combat targets");
                 // Taking the player off the target list stops the attack on them; combat-control releases the current target.
                 action.put("operation", operation.equals("addtarget") ? "target" : "release");
-                if (operation.equals("addtarget")) action.put("target", "player");
+                if (operation.equals("addtarget") && player) action.put("target", "player");
+                else if (operation.equals("addtarget")) {
+                    Result<Expr> who = expressions.value(held.get(), scope, pending);
+                    if (who.failed()) return Converted.kept(who.reason());
+                    action.expression("target", "get(players(" + who.value().text() + "), 0, '')");
+                }
             }
             case "forgive", "forgiveall" -> {
                 if (!arguments.isEmpty()) return Converted.kept("sentinel " + operation + " with arguments has no combat action");
@@ -1162,6 +1489,14 @@ final class DenizenCommands {
         }
         return Converted.of(action.node("animus:combat-control"));
     }
+
+    /** A player held in a definition, as Sentinel's target syntax names them: {@code player:<[target].name>} reads {@code <[target]>}. */
+    private static Optional<String> heldPlayer(String value) {
+        java.util.regex.Matcher matcher = HELD_PLAYER.matcher(value);
+        return matcher.matches() ? Optional.of("<[" + matcher.group(1) + "]>") : Optional.empty();
+    }
+
+    private static final java.util.regex.Pattern HELD_PLAYER = java.util.regex.Pattern.compile("(?i)(?:player:)?<\\[([a-z0-9_]{1,64})](?:\\.(?:name|uuid))?>");
 
     /** The player who triggered the behavior, as Sentinel's target syntax names them. */
     private static boolean triggeringPlayer(String value) {
@@ -1219,6 +1554,7 @@ final class DenizenCommands {
         }
         if (item.isEmpty()) return Converted.kept("nothing to give");
         String what = item.get();
+        if (what.startsWith("<") && DenizenArgs.tagEnd(what, 0) == what.length() - 1) return giveValue(what, quantity, scope, pending);
         if (what.equalsIgnoreCase("xp") || what.equalsIgnoreCase("money")) return Converted.kept("giving " + what + " has no Animus equivalent");
         Container script = converter.containers.get(what.toLowerCase(Locale.ROOT));
         if (script != null && script.type().equals("book")) {
@@ -1240,6 +1576,36 @@ final class DenizenCommands {
             if (problem != null) return problem;
         }
         return Converted.of(reorder(action, List.of("item", "amount", "name", "lore")).node("animus:give-item"));
+    }
+
+    /**
+     * {@code give <[item]>}: an item value, a list of them, or a material name read as the command runs, each given as
+     * one stack; a value that may be a list is given item by item, up to 100.
+     */
+    private Converted giveValue(String raw, Optional<String> quantity, Scope scope, Pending pending) {
+        Result<Expr> value = expressions.value(raw, scope, pending);
+        if (value.failed()) return Converted.kept(value.reason());
+        char kind = value.value().kind();
+        if (List.of('L', 'e', 'N', 'b', 'n', 't', 'd').contains(kind)) return Converted.kept("only items and materials can be given");
+        Action action = new Action();
+        if (quantity.isPresent()) {
+            Converted problem = amount(action, quantity.get(), scope, pending);
+            if (problem != null) return problem;
+        }
+        if (kind == 'i') {
+            action.expression("stack", value.value().text());
+            return Converted.of(reorder(action, List.of("stack", "amount")).node("animus:give-item"));
+        }
+        String each = converter.temporary(scope);
+        action.expression("stack", expressions.stack(Expr.of(each, 'a'), scope, pending));
+        JsonObject loop = plain("foreach");
+        JsonObject list = new JsonObject();
+        list.addProperty("expression", kind == 'l' || kind == 'I' ? value.value().text() : "(same(type_of(" + value.value().text() + "), 'list') ? " + value.value().text() + " : [" + value.value().text() + "])");
+        loop.add("list", list);
+        loop.addProperty("as", each);
+        loop.addProperty("maximum", 100);
+        loop.add("body", reorder(action, List.of("stack", "amount")).node("animus:give-item"));
+        return Converted.of(loop);
     }
 
     private static Action reorder(Action action, List<String> order) {
@@ -1301,22 +1667,66 @@ final class DenizenCommands {
         return Optional.of(new String[] {null, null, null});
     }
 
-    private static Converted look(Command command) {
+    /**
+     * {@code look (<entity>) <target> (duration:..)}: the NPC, or another NPC held in a definition, turns to the player, a
+     * literal location or a location value. A duration is not held; the look-close module turns the NPC again as usual.
+     */
+    private Converted look(Command command, Scope scope, Pending pending) {
         List<Arg> plain = command.plain();
-        if (plain.size() != command.args().size()) return Converted.kept("look argument has no Animus equivalent");
-        if (plain.size() == 2 && npcTarget(plain.getFirst().value())) plain = plain.subList(1, 2);
+        for (Arg arg : command.args()) if (!arg.prefix().isEmpty() && !arg.prefix().equals("duration")) return Converted.kept("look argument " + arg.prefix() + ": has no Animus equivalent");
+        Action action = new Action();
+        if (plain.size() == 2) {
+            Optional<Converted> other = subjectNpc(plain.getFirst().value(), action, scope, pending);
+            if (other.isPresent()) return other.get();
+            plain = plain.subList(1, 2);
+        } else if (scope.server) return Converted.kept(DenizenConverter.NO_NPC);
         if (plain.size() != 1) return Converted.kept("look at more than one target has no Animus equivalent");
         String target = plain.getFirst().value().toLowerCase(Locale.ROOT);
-        JsonObject arguments = new JsonObject();
-        if (target.equals("<player>") || target.equals("<player.location>") || target.equals("<player.eye_location>")) arguments.addProperty("target", "player");
+        if (target.equals("<player>") || target.equals("<player.location>") || target.equals("<player.eye_location>")) action.put("target", "player");
         else {
             Optional<double[]> at = location(plain.getFirst().value());
-            if (at.isEmpty()) return Converted.kept("look target must be the player or a literal location");
-            arguments.addProperty("x", at.get()[0]);
-            arguments.addProperty("y", at.get()[1]);
-            arguments.addProperty("z", at.get()[2]);
+            if (at.isPresent()) {
+                action.put("x", at.get()[0]);
+                action.put("y", at.get()[1]);
+                action.put("z", at.get()[2]);
+            } else {
+                Optional<String> problem = coordinates(plain.getFirst().value(), action, scope, pending, false);
+                if (problem.isPresent()) return Converted.kept(problem.get());
+            }
         }
-        return Converted.of(action("animus:look", arguments));
+        return Converted.of(reorder(action, List.of("target", "x", "y", "z", "npc")).node("animus:look"));
+    }
+
+    /**
+     * The entity a command acts on, written first: the NPC itself, or another NPC held in a definition as the {@code npc}
+     * argument. A reason when it is anything else, or the NPC itself in a server behavior.
+     */
+    private Optional<Converted> subjectNpc(String raw, Action action, Scope scope, Pending pending) {
+        if (npcTarget(raw)) return scope.server ? Optional.of(Converted.kept(DenizenConverter.NO_NPC)) : Optional.empty();
+        if (!raw.matches("<\\[[A-Za-z0-9_]{1,64}]>")) return Optional.of(Converted.kept("only NPCs can be turned or animated"));
+        Result<Expr> held = expressions.value(raw, scope, pending);
+        if (held.failed()) return Optional.of(Converted.kept(held.reason()));
+        // Only a value known to hold an NPC, such as an item of an NPC list, may be one; a player held there could not be turned.
+        if (held.value().kind() != 'e') return Optional.of(Converted.kept("only NPCs held in a definition, such as an item of an NPC list, can be turned or animated"));
+        action.expression("npc", held.value().text());
+        return Optional.empty();
+    }
+
+    /** x, y and z (and world when {@code world}) from a location value, such as a definition holding one. Empty when it converts. */
+    private Optional<String> coordinates(String raw, Action action, Scope scope, Pending pending, boolean world) {
+        return coordinates(raw, action, scope, pending, world, false);
+    }
+
+    /** As above; {@code anything} also reads a value of unknown kind as location text, written with or without {@code l@}. */
+    private Optional<String> coordinates(String raw, Action action, Scope scope, Pending pending, boolean world, boolean anything) {
+        Result<Expr> place = expressions.value(raw, scope, pending);
+        if (place.failed()) return Optional.of(place.reason());
+        boolean unknown = anything && place.value().kind() == 'a';
+        if (place.value().kind() != 'L' && !unknown) return Optional.of("the target must be the player, the NPC, a literal location or a location value");
+        String parts = unknown ? "split(replace(text(" + place.value().text() + "), 'l@', ''), ',')" : "split(" + place.value().text() + ", ',')";
+        for (int axis = 0; axis < 3; axis++) action.expression(List.of("x", "y", "z").get(axis), "num(get(" + parts + ", " + axis + ", 0))");
+        if (world) action.expression("world", "get(" + parts + ", 3, '')");
+        return Optional.empty();
     }
 
     private static Converted walk(Command command) {
@@ -1366,22 +1776,35 @@ final class DenizenCommands {
     /** Where a sound or particle plays: {@code player} or {@code npc}, or empty when the place has no Animus equivalent. */
     private static Optional<String> at(String value) {
         String target = value.toLowerCase(Locale.ROOT);
-        if (target.equals("<player>") || target.equals("<player.location>") || target.equals("<player.eye_location>")) return Optional.of("player");
+        if (target.equals("<player>") || target.equals("<player.location>") || target.equals("<player.eye_location>") || target.matches("<player\\.location\\.above(\\[[0-9.]{1,6}])?>")) return Optional.of("player");
         if (target.equals("<npc>") || target.equals("<npc.location>") || target.equals("<npc.eye_location>") || target.matches("<npc\\.location\\.above(\\[[0-9.]{1,6}])?>")) return Optional.of("npc");
         return Optional.empty();
     }
 
-    private Converted sound(Command command, Scope scope) {
+    /** How far above the feet {@code <player.location.above[n]>} or {@code <npc.location.above[n]>} is: n, or 1 without it. */
+    private static Optional<Double> above(String value) {
+        java.util.regex.Matcher matcher = ABOVE.matcher(value.toLowerCase(Locale.ROOT));
+        if (!matcher.matches()) return Optional.empty();
+        double height = matcher.group(1) == null ? 1 : Double.parseDouble(matcher.group(1));
+        return height <= 16 ? Optional.of(height) : Optional.empty();
+    }
+
+    /** {@code npcGiven} says the caller names the NPC with the npc argument, which a server behavior may do too. */
+    private Converted sound(Command command, Scope scope, Pending pending, boolean npcGiven) {
         Optional<String> sound = Optional.empty();
         String place = null;
         boolean custom = false;
-        Double volume = null, pitch = null;
+        Action levels = new Action();
         for (Arg arg : command.args()) {
             if (arg.is("custom")) { custom = true; continue; }
             switch (arg.prefix()) {
                 case "sound" -> sound = Optional.of(arg.value());
-                case "volume" -> { volume = number(arg.value(), 0, 4); if (volume == null) return Converted.kept("volume must be a number from 0 to 4"); }
-                case "pitch" -> { pitch = number(arg.value(), 0.5, 2); if (pitch == null) return Converted.kept("pitch must be a number from 0.5 to 2"); }
+                // The sound category picks the player's volume slider; Animus plays every sound in the master category.
+                case "sound_category" -> { }
+                case "volume", "pitch" -> {
+                    String reason = level(levels, arg.prefix(), arg.value(), arg.prefix().equals("volume") ? 0 : 0.5, arg.prefix().equals("volume") ? 4 : 2, scope, pending);
+                    if (reason != null) return Converted.kept(reason);
+                }
                 case "" -> {
                     if (place != null) return Converted.kept("sound for several targets has no Animus equivalent");
                     Optional<String> where = at(arg.value());
@@ -1392,18 +1815,103 @@ final class DenizenCommands {
                 default -> { return Converted.kept("playsound argument " + arg.prefix() + ": has no Animus equivalent"); }
             }
         }
-        if (sound.isEmpty() || sound.get().contains("<")) return Converted.kept("playsound needs a literal sound");
-        if ("npc".equals(place) && scope.server) return Converted.kept("a sound at the NPC needs an NPC; " + DenizenConverter.NO_NPC);
-        Optional<String> key = DenizenConverter.soundKey(sound.get(), custom);
-        if (key.isEmpty()) return Converted.kept("sound " + sound.get() + " has no resource key");
-        converter.sounds.put(sound.get(), key.get());
-        JsonObject arguments = new JsonObject();
-        arguments.addProperty("sound", key.get());
-        if (volume != null) arguments.addProperty("volume", volume);
-        if (pitch != null) arguments.addProperty("pitch", pitch);
-        if ("player".equals(place) || scope.server) arguments.addProperty("at", "player");
-        else if ("npc".equals(place)) arguments.addProperty("audience", "nearby");
-        return Converted.of(action("animus:play-sound", arguments));
+        if (sound.isEmpty()) return Converted.kept("playsound needs a sound");
+        if ("npc".equals(place) && scope.server && !npcGiven) return Converted.kept("a sound at the NPC needs an NPC; " + DenizenConverter.NO_NPC);
+        Action action = new Action();
+        if (sound.get().contains("<")) {
+            Result<Expr> named = expressions.value(sound.get(), scope, pending);
+            if (named.failed()) return Converted.kept(named.reason());
+            String held = converter.temporary(scope);
+            JsonObject set = plain("set");
+            set.addProperty("variable", held);
+            JsonObject operand = new JsonObject();
+            operand.addProperty("expression", "lower(" + DenizenExpressions.textual(named.value()) + ")");
+            set.add("value", operand);
+            pending.steps.add(set);
+            action.expression("sound", soundKey(held, custom));
+        } else {
+            Optional<String> key = DenizenConverter.soundKey(sound.get(), custom);
+            if (key.isEmpty()) return Converted.kept("sound " + sound.get() + " has no resource key");
+            converter.sounds.put(sound.get(), key.get());
+            action.put("sound", key.get());
+        }
+        action = merged(action, levels, List.of("volume", "pitch"));
+        if ("player".equals(place) || scope.server && !npcGiven) action.put("at", "player");
+        else if ("npc".equals(place)) action.put("audience", "nearby");
+        return Converted.of(action.node("animus:play-sound"));
+    }
+
+    /**
+     * A sound's volume or pitch: a literal number held to the range, as the game holds pitch to 0.5-2, or a tag read
+     * as a number and held there when it plays. Null when it converts, otherwise the reason.
+     */
+    private String level(Action action, String name, String value, double minimum, double maximum, Scope scope, Pending pending) {
+        if (value.matches("[0-9]{1,4}(?:\\.[0-9]{1,6})?")) {
+            action.put(name, Math.max(minimum, Math.min(maximum, Double.parseDouble(value))));
+            return null;
+        }
+        if (!value.contains("<")) return name + " must be a number";
+        Result<Expr> expr = expressions.value(value, scope, pending);
+        if (expr.failed()) return expr.reason();
+        action.expression(name, "clamp(" + DenizenExpressions.numeric(expr.value()) + ", " + DenizenExpressions.literal(trim(minimum)).text() + ", " + DenizenExpressions.literal(trim(maximum)).text() + ")");
+        return null;
+    }
+
+    /**
+     * The resource key of a sound name read as the sound plays, as {@link DenizenConverter#soundKey} makes it from a
+     * written name: a key stays, a dotted name gets the namespace, and a Bukkit name has its first and last
+     * underscores turned into dots.
+     */
+    private static String soundKey(String name, boolean custom) {
+        String words = "split(" + name + ", '_')";
+        String bukkit = custom ? name : "(contains(" + name + ", '.') ? " + name + " : first(" + words + ") + '.' + join(slice(" + words + ", 1, len(" + words + ") - 1), '_') + '.' + last(" + words + "))";
+        return "(contains(" + name + ", ':') ? " + name + " : 'minecraft:' + " + bukkit + ")";
+    }
+
+    /** A number as Denizen writes it: without a trailing {@code .0}. */
+    private static String trim(double number) { return number == Math.rint(number) ? Long.toString((long) number) : Double.toString(number); }
+
+    /** {@code action} followed by the named arguments of {@code from}, with their expressions. */
+    private static Action merged(Action action, Action from, List<String> names) {
+        for (String name : names) {
+            if (!from.arguments.has(name)) continue;
+            action.arguments.add(name, from.arguments.get(name));
+            if (from.expressions.has("/" + name)) action.expressions.add("/" + name, from.expressions.get("/" + name));
+        }
+        return action;
+    }
+
+    private static final Map<String, String> ANIMATIONS = Map.ofEntries(
+            Map.entry("arm_swing", "swing"), Map.entry("swing_main_hand", "swing"), Map.entry("arm_swing_offhand", "swing_offhand"), Map.entry("swing_off_hand", "swing_offhand"),
+            Map.entry("hurt", "hurt"), Map.entry("crit", "crit"), Map.entry("magic_crit", "magic_crit"), Map.entry("sit", "sit"), Map.entry("stop_sitting", "stand"),
+            Map.entry("sleep", "sleep"), Map.entry("stop_sleeping", "wake"), Map.entry("sneak", "sneak"), Map.entry("stop_sneaking", "stand"),
+            Map.entry("start_use_mainhand_item", "use_item"), Map.entry("stop_use_item", "stop_using_item"));
+
+    /** {@code animate <npc> animation:arm_swing}: the vanilla animation every viewer of the NPC sees. */
+    private Converted animate(Command command, Scope scope, Pending pending) {
+        Optional<String> animation = Optional.empty();
+        boolean npc = false;
+        Action subject = new Action();
+        for (Arg arg : command.args()) {
+            if (arg.prefix().isEmpty()) {
+                if (npc) return Converted.kept("animating several entities has no Animus equivalent");
+                Optional<Converted> other = subjectNpc(arg.value(), subject, scope, pending);
+                if (other.isPresent()) return other.get();
+                npc = true;
+                continue;
+            }
+            if (arg.prefix().equals("animation")) animation = Optional.of(arg.value().toLowerCase(Locale.ROOT));
+            else if (arg.prefix().equals("for")) return Converted.kept("animate for: has no Animus equivalent; every viewer sees the animation");
+            else return Converted.kept("animate argument " + arg.prefix() + ": has no Animus equivalent");
+        }
+        if (!npc) return Converted.kept("animate needs the NPC");
+        if (animation.isEmpty() || animation.get().contains("<")) return Converted.kept("animate needs a literal animation");
+        String mapped = ANIMATIONS.get(animation.get());
+        if (mapped == null) return Converted.kept("animation " + animation.get() + " has no Animus equivalent");
+        Action action = new Action();
+        action.put("animation", mapped);
+        if (subject.expressions.has("/npc")) action.expression("npc", subject.expressions.get("/npc").getAsString());
+        return Converted.of(action.node("animus:animate"));
     }
 
     private static Double number(String value, double minimum, double maximum) {
@@ -1425,19 +1933,21 @@ final class DenizenCommands {
     private static final Set<String> DATA_PARTICLES = Set.of("dust", "redstone", "block", "block_crack", "block_dust", "item", "item_crack", "falling_dust", "dust_color_transition",
             "vibration", "entity_effect", "spell_mob", "spell_mob_ambient", "block_marker", "sculk_charge", "shriek", "dust_pillar", "trail", "legacy_block_marker");
 
-    private static Converted particle(Command command, Scope scope) {
+    /** {@code npcGiven} says the caller names the NPC with the npc argument, which a server behavior may do too. */
+    private static Converted particle(Command command, Scope scope, boolean npcGiven) {
         Optional<String> effect = Optional.empty();
         String place = scope.server ? "player" : "npc";
         boolean trigger = false;
         Long count = null;
-        Double spread = null;
+        Double spread = null, height = null;
         for (Arg arg : command.args()) {
             switch (arg.prefix()) {
                 case "effect" -> effect = Optional.of(arg.value().toLowerCase(Locale.ROOT));
                 case "at" -> {
                     Optional<String> where = at(arg.value());
-                    if (where.isEmpty()) return Converted.kept("particles show only at the NPC or the player in Animus");
+                    if (where.isEmpty()) return Converted.kept("particles show only at the NPC or a player in Animus");
                     place = where.get();
+                    height = above(arg.value()).orElse(null);
                 }
                 case "quantity" -> {
                     if (!arg.value().matches("[0-9]{1,2}") || Long.parseLong(arg.value()) < 1 || Long.parseLong(arg.value()) > 64) return Converted.kept("quantity must be from 1 to 64");
@@ -1457,7 +1967,7 @@ final class DenizenCommands {
                 default -> { return Converted.kept("playeffect argument " + (arg.prefix().isEmpty() ? arg.value() : arg.prefix() + ":") + " has no Animus equivalent"); }
             }
         }
-        if (place.equals("npc") && scope.server) return Converted.kept("particles at the NPC need an NPC; " + DenizenConverter.NO_NPC);
+        if (place.equals("npc") && scope.server && !npcGiven) return Converted.kept("particles at the NPC need an NPC; " + DenizenConverter.NO_NPC);
         if (effect.isEmpty() || effect.get().contains("<")) return Converted.kept("playeffect needs a literal effect");
         String name = effect.get().startsWith("minecraft:") ? effect.get().substring(10) : effect.get();
         if (DATA_PARTICLES.contains(name)) return Converted.kept("particles that need extra data have no Animus equivalent");
@@ -1467,6 +1977,7 @@ final class DenizenCommands {
         arguments.addProperty("particle", "minecraft:" + name);
         if (count != null) arguments.addProperty("count", count);
         if (spread != null) arguments.addProperty("spread", spread);
+        if (height != null) arguments.addProperty("height", height);
         if (place.equals("player")) arguments.addProperty("at", "player");
         else if (!trigger) arguments.addProperty("audience", "nearby");
         return Converted.of(action("animus:spawn-particle", arguments));
@@ -1523,7 +2034,7 @@ final class DenizenCommands {
         return new Arg(arg.value().substring(0, colon).toLowerCase(Locale.ROOT), arg.value().substring(colon + 1), true);
     }
 
-    private Converted teleport(Command command, Scope scope) {
+    private Converted teleport(Command command, Scope scope, Pending pending) {
         List<Arg> plain = command.plain();
         if (plain.size() != command.args().size()) return Converted.kept("teleport argument has no Animus equivalent");
         if (plain.isEmpty() || plain.size() > 2) return Converted.kept("teleport needs a target and a destination");
@@ -1545,7 +2056,13 @@ final class DenizenCommands {
         else {
             Optional<double[]> at = location(destination);
             Optional<String[]> extras = locationExtras(destination);
-            if (at.isEmpty() || extras.isEmpty()) return Converted.kept("teleport destination must be the player, the NPC or a literal location");
+            if (at.isEmpty() || extras.isEmpty()) {
+                Action computed = new Action();
+                for (Map.Entry<String, JsonElement> entry : arguments.entrySet()) computed.put(entry.getKey(), entry.getValue());
+                Optional<String> problem = destination.startsWith("<") ? coordinates(destination, computed, scope, pending, true) : Optional.of("teleport destination must be the player, the NPC, a literal location or a location value");
+                if (problem.isPresent()) return Converted.kept(problem.get());
+                return Converted.of(computed.node("animus:teleport"));
+            }
             arguments.addProperty("x", at.get()[0]);
             arguments.addProperty("y", at.get()[1]);
             arguments.addProperty("z", at.get()[2]);
@@ -1560,6 +2077,7 @@ final class DenizenCommands {
 
     /** Mechanisms with an Animus action: the NPC's name and held or worn items, and showing a book script to the player. */
     private Converted adjust(Command command, Scope scope, Pending pending) {
+        if (command.args().size() == 2 && command.args().getFirst().prefix().equals("def")) return adjustItem(command.args().getFirst().value(), command.args().get(1), scope, pending);
         if (command.args().size() != 2 || !command.args().getFirst().prefix().isEmpty()) return Converted.kept("adjust takes one object and one mechanism");
         String object = command.args().getFirst().value();
         Arg mechanism = command.args().get(1);
@@ -1588,6 +2106,261 @@ final class DenizenCommands {
             return given.map(Converted::of).orElseGet(() -> Converted.kept("book script " + book.name() + " did not convert"));
         }
         return Converted.kept("mechanism " + name + " of " + object + " has no Animus equivalent");
+    }
+
+    private static final java.util.regex.Pattern BAR_ID = java.util.regex.Pattern.compile("([A-Za-z0-9_.-]{1,64})(?:<(player|\\[[A-Za-z0-9_]{1,64}])\\.uuid>)?");
+
+    /**
+     * {@code bossbar create|update|auto|remove id ...}: a boss bar for each player, by the written part of its id. An id
+     * that ends with a player's uuid, as scripts write bars meant for one player, is that player's bar.
+     */
+    private Converted bossbar(Command command, Scope scope, Pending pending) {
+        List<String> named = List.of("title", "progress", "color", "style", "players");
+        List<Arg> plain = command.args().stream().filter((Arg arg) -> quotedPrefix(arg, named).prefix().isEmpty()).toList();
+        if (plain.size() != 2 || !List.of("create", "update", "auto", "remove").contains(plain.getFirst().value().toLowerCase(Locale.ROOT)))
+            return Converted.kept("bossbar needs create, update, auto or remove and one id");
+        boolean remove = plain.getFirst().value().equalsIgnoreCase("remove");
+        java.util.regex.Matcher id = BAR_ID.matcher(plain.get(1).value());
+        if (!id.matches()) return Converted.kept("a bossbar id must be written out, with at most a player's uuid after it");
+        Optional<String> players = id.group(2) == null || id.group(2).equals("player") ? Optional.empty() : Optional.of("<" + id.group(2) + ">");
+        Action action = new Action();
+        action.put("id", id.group(1).toLowerCase(Locale.ROOT));
+        if (remove) action.put("operation", "remove");
+        for (Arg written : command.args()) {
+            if (plain.contains(written)) continue;
+            Arg arg = quotedPrefix(written, named);
+            switch (arg.prefix()) {
+                case "players" -> {
+                    if (players.isPresent() && !players.get().equalsIgnoreCase(arg.value())) return Converted.kept("a bossbar for players its id does not name has no Animus equivalent");
+                    if (!playerTarget(arg.value())) players = Optional.of(arg.value());
+                }
+                case "title" -> {
+                    if (remove) return Converted.kept("a removed bossbar takes no title");
+                    Result<Text> text = text(arg.value(), scope, pending, false, 256);
+                    if (text.failed()) return Converted.kept(text.reason());
+                    action.text("title", text.value());
+                }
+                case "progress" -> {
+                    if (remove) return Converted.kept("a removed bossbar takes no progress");
+                    if (arg.value().matches("(?:0|1)(?:\\.[0-9]{1,6})?") && Double.parseDouble(arg.value()) <= 1) action.put("progress", Double.parseDouble(arg.value()));
+                    else {
+                        Result<Expr> progress = expressions.value(arg.value(), scope, pending);
+                        if (progress.failed()) return Converted.kept(progress.reason());
+                        action.expression("progress", "clamp(" + DenizenExpressions.numeric(progress.value()) + ", 0, 1)");
+                    }
+                }
+                case "color", "style" -> {
+                    String value = arg.value().toLowerCase(Locale.ROOT);
+                    List<String> known = arg.prefix().equals("color") ? List.of("pink", "blue", "red", "green", "yellow", "purple", "white")
+                            : List.of("solid", "segmented_6", "segmented_10", "segmented_12", "segmented_20");
+                    if (remove || !known.contains(value)) return Converted.kept("bossbar " + arg.prefix() + " " + value + " has no Animus equivalent");
+                    action.put(arg.prefix(), value);
+                }
+                default -> { return Converted.kept("bossbar argument " + (arg.prefix().isEmpty() ? arg.value() : arg.prefix() + ":") + " has no Animus equivalent"); }
+            }
+        }
+        return forPlayers(action.node("animus:bossbar"), players, scope, pending);
+    }
+
+    /**
+     * {@code sidebar set|add|set_line|remove (title:..) (values:a|b) (scores:n) (players:..)}: the players' sidebar, its
+     * lines top first, up to 15. add puts lines below the last ones, and set_line writes the line its one score names.
+     */
+    private Converted sidebar(Command command, Scope scope, Pending pending) {
+        List<String> named = List.of("title", "values", "players", "scores");
+        List<Arg> plain = command.args().stream().filter((Arg arg) -> quotedPrefix(arg, named).prefix().isEmpty()).toList();
+        String operation = plain.isEmpty() ? "set" : plain.getFirst().value().toLowerCase(Locale.ROOT);
+        if (plain.size() > 1 || !List.of("set", "add", "set_line", "remove").contains(operation)) return Converted.kept("only sidebar set, add, set_line and remove have an Animus equivalent");
+        Action action = new Action();
+        Optional<String> players = Optional.empty();
+        boolean titled = false, lined = false;
+        if (!operation.equals("set")) action.put("operation", operation);
+        for (Arg written : command.args()) {
+            Arg arg = quotedPrefix(written, named);
+            if (!arg.prefix().equals("scores")) continue;
+            if (!operation.equals("set_line") || !arg.value().matches("[0-9]{1,2}") || Integer.parseInt(arg.value()) < 1 || Integer.parseInt(arg.value()) > 15)
+                return Converted.kept("sidebar scores: takes one written line from 1 to 15, with set_line only");
+            action.put("line", Long.parseLong(arg.value()));
+            lined = true;
+        }
+        if (operation.equals("set_line") && !lined) return Converted.kept("sidebar set_line needs scores: naming its line");
+        for (Arg written : command.args()) {
+            if (plain.contains(written)) continue;
+            Arg arg = quotedPrefix(written, named);
+            switch (arg.prefix()) {
+                case "scores" -> { }
+                case "players" -> { if (!playerTarget(arg.value())) players = Optional.of(arg.value()); }
+                case "title" -> {
+                    if (operation.equals("remove")) return Converted.kept("a removed sidebar takes no title");
+                    Result<Text> text = text(arg.value(), scope, pending, false, 128);
+                    if (text.failed()) return Converted.kept(text.reason());
+                    action.text("title", text.value());
+                    titled = true;
+                }
+                case "values" -> {
+                    if (operation.equals("remove")) return Converted.kept("a removed sidebar takes no values");
+                    Result<Expr> lines = DenizenArgs.segments(arg.value()).size() == 1 && arg.value().startsWith("<") ? expressions.value(arg.value(), scope, pending) : literalList(arg.value(), scope, pending);
+                    if (lines.failed()) return Converted.kept(lines.reason());
+                    String text = lines.value().kind() == 'l' ? "join(" + lines.value().text() + ", '|')" : "(same(type_of(" + lines.value().text() + "), 'list') ? join(" + lines.value().text() + ", '|') : text(" + lines.value().text() + "))";
+                    action.expression("lines", "slice(split(" + text + ", '|'), 0, " + (operation.equals("set_line") ? 1 : 15) + ")");
+                }
+                default -> { return Converted.kept("sidebar argument " + (arg.prefix().isEmpty() ? arg.value() : arg.prefix() + ":") + " has no Animus equivalent"); }
+            }
+        }
+        if (operation.equals("set") && !titled) return Converted.kept("a sidebar needs a title in Animus");
+        return forPlayers(action.node("animus:sidebar"), players, scope, pending);
+    }
+
+    /**
+     * {@code lookclose (<npc>) state:true|false (range:n) (realistic)}: the NPC's look-close until a restart or a
+     * definition change, with line of sight for realistic. Without a state it toggles, which has no Animus equivalent.
+     */
+    private Converted lookclose(Command command, Scope scope, Pending pending) {
+        Action action = new Action();
+        Optional<Boolean> state = Optional.empty();
+        for (Arg arg : command.args()) {
+            switch (arg.prefix()) {
+                case "state" -> {
+                    if (!arg.value().equalsIgnoreCase("true") && !arg.value().equalsIgnoreCase("false")) return Converted.kept("lookclose state must be true or false");
+                    state = Optional.of(arg.value().equalsIgnoreCase("true"));
+                }
+                case "range" -> {
+                    Double range = number(arg.value(), 1, 64);
+                    if (range == null) return Converted.kept("lookclose range must be a written number from 1 to 64");
+                    action.put("range", range);
+                }
+                case "" -> {
+                    if (arg.is("realistic")) action.put("lineOfSight", new JsonPrimitive(true));
+                    else {
+                        Optional<Converted> other = subjectNpc(arg.value(), action, scope, pending);
+                        if (other.isPresent()) return other.get();
+                    }
+                }
+                default -> { return Converted.kept("lookclose argument " + arg.prefix() + ": has no Animus equivalent"); }
+            }
+        }
+        if (scope.server && !action.expressions.has("/npc")) return Converted.kept(DenizenConverter.NO_NPC);
+        if (state.isEmpty()) return Converted.kept("lookclose without state: toggles, which has no Animus equivalent; write state:true or state:false");
+        Action ordered = new Action();
+        ordered.put("enabled", new JsonPrimitive(state.get()));
+        for (Map.Entry<String, JsonElement> entry : action.arguments.entrySet()) ordered.arguments.add(entry.getKey(), entry.getValue());
+        for (Map.Entry<String, JsonElement> entry : action.expressions.entrySet()) ordered.expressions.add(entry.getKey(), entry.getValue());
+        return Converted.of(ordered.node("animus:look-close"));
+    }
+
+    /**
+     * {@code explode (power:n) (<location>) (fire) (breakblocks)}: an explosion at the location, or at the NPC. Fire and
+     * broken blocks need {@code explosionsDamageBlocks}, which is off by default.
+     */
+    private Converted explode(Command command, Scope scope, Pending pending) {
+        if (scope.server) return Converted.kept("explode happens at the NPC's place; " + DenizenConverter.NO_NPC);
+        Action action = new Action();
+        for (Arg arg : command.args()) {
+            if (arg.is("fire")) { action.put("fire", new JsonPrimitive(true)); continue; }
+            if (arg.is("breakblocks")) { action.put("breakBlocks", new JsonPrimitive(true)); continue; }
+            switch (arg.prefix()) {
+                case "power" -> {
+                    Double power = number(arg.value(), 0, 16);
+                    if (power != null) action.put("power", power);
+                    else {
+                        if (!arg.value().contains("<")) return Converted.kept("explode power must be from 0 to 16");
+                        Result<Expr> computed = expressions.value(arg.value(), scope, pending);
+                        if (computed.failed()) return Converted.kept(computed.reason());
+                        action.expression("power", "clamp(" + DenizenExpressions.numeric(computed.value()) + ", 0, 16)");
+                    }
+                }
+                case "" -> {
+                    if (npcTarget(arg.value())) continue;
+                    Optional<double[]> at = location(arg.value());
+                    if (at.isPresent()) {
+                        action.put("x", at.get()[0]);
+                        action.put("y", at.get()[1]);
+                        action.put("z", at.get()[2]);
+                        continue;
+                    }
+                    // A definition given to explode holds a place, which Denizen writes as location text.
+                    Optional<String> problem = arg.value().startsWith("<") ? coordinates(arg.value(), action, scope, pending, true, true) : Optional.of("explode argument " + arg.value() + " has no Animus equivalent");
+                    if (problem.isPresent()) return Converted.kept(problem.get());
+                }
+                default -> { return Converted.kept("explode argument " + arg.prefix() + ": has no Animus equivalent"); }
+            }
+        }
+        return Converted.of(reorder(action, List.of("x", "y", "z", "world", "power", "fire", "breakBlocks")).node("animus:explode"));
+    }
+
+    /** One action for the triggering player, or for each player a list names, up to 100, as the player argument. */
+    private Converted forPlayers(JsonObject node, Optional<String> players, Scope scope, Pending pending) {
+        if (players.isEmpty()) return Converted.of(node);
+        Result<Expr> list = expressions.value(players.get(), scope, pending);
+        if (list.failed()) return Converted.kept("players " + list.reason());
+        if (list.value().kind() == 'e' || list.value().kind() == 'N') return Converted.kept("only players can be shown bars and sidebars");
+        String each = converter.temporary(scope);
+        node.getAsJsonObject("arguments").add("player", JsonNull.INSTANCE);
+        JsonObject filled = node.has("expressions") ? node.getAsJsonObject("expressions") : new JsonObject();
+        filled.addProperty("/player", each);
+        node.add("expressions", filled);
+        JsonObject loop = plain("foreach");
+        JsonObject source = new JsonObject();
+        source.addProperty("expression", "players(" + list.value().text() + ")");
+        loop.add("list", source);
+        loop.addProperty("as", each);
+        loop.addProperty("maximum", 100);
+        loop.add("body", node);
+        return Converted.of(loop);
+    }
+
+    private static final java.util.regex.Pattern ENCHANTMENT = java.util.regex.Pattern.compile("(?:minecraft:)?([a-z0-9_]{1,64})[=,]([0-9]{1,3})");
+
+    /**
+     * {@code adjust def:sword enchantments:[sharpness=5]}: an item held in a definition takes its enchantments, display
+     * name, lore or quantity into its map. Other mechanisms have no item value form.
+     */
+    private Converted adjustItem(String name, Arg written, Scope scope, Pending pending) {
+        if (!name.matches("[A-Za-z0-9_]{1,64}")) return Converted.kept("adjust def: needs a definition name");
+        Arg mechanism = quotedPrefix(written, List.of("enchantments", "display", "lore", "quantity"));
+        if (!List.of("enchantments", "display", "lore", "quantity").contains(mechanism.prefix()))
+            return Converted.kept("item mechanism " + (mechanism.prefix().isEmpty() ? mechanism.value().split(":", 2)[0].toLowerCase(Locale.ROOT) : mechanism.prefix()) + " has no Animus equivalent");
+        String variable = DenizenConverter.definitionVariable(name.toLowerCase(Locale.ROOT));
+        converter.declare(scope, variable, "any");
+        String value;
+        switch (mechanism.prefix()) {
+            case "enchantments" -> {
+                String raw = mechanism.value().toLowerCase(Locale.ROOT);
+                if (raw.startsWith("[") && raw.endsWith("]")) raw = raw.substring(1, raw.length() - 1);
+                JsonObject levels = new JsonObject();
+                for (String entry : raw.split("[;|]", -1)) {
+                    java.util.regex.Matcher matcher = ENCHANTMENT.matcher(entry.trim());
+                    if (!matcher.matches()) return Converted.kept("enchantments need written names and levels");
+                    int level = Integer.parseInt(matcher.group(2));
+                    if (level < 1 || level > 255) return Converted.kept("an enchantment level is 1 to 255");
+                    levels.addProperty("minecraft:" + matcher.group(1), level);
+                }
+                if (levels.size() > 32) return Converted.kept("an item takes up to 32 enchantments");
+                value = "put(" + variable + ", 'enchantments', " + expressions.constant(levels, scope, pending) + ")";
+            }
+            case "display" -> {
+                Result<Expr> named = expressions.value(mechanism.value(), scope, pending);
+                if (named.failed()) return Converted.kept(named.reason());
+                value = "put(" + variable + ", 'name', " + DenizenExpressions.textual(named.value()) + ")";
+            }
+            case "lore" -> {
+                Result<Expr> lines = expressions.value(mechanism.value(), scope, pending);
+                if (lines.failed()) return Converted.kept(lines.reason());
+                value = "put(" + variable + ", 'lore', " + (lines.value().kind() == 'l' ? lines.value().text() : "split(" + DenizenExpressions.textual(lines.value()) + ", '|')") + ")";
+            }
+            default -> {
+                Result<Expr> amount = expressions.value(mechanism.value(), scope, pending);
+                if (amount.failed()) return Converted.kept(amount.reason());
+                value = "put(" + variable + ", 'amount', int(" + DenizenExpressions.numeric(amount.value()) + "))";
+            }
+        }
+        if (value.length() > DenizenExpressions.MAXIMUM_EXPRESSION) return Converted.kept("expression longer than 4096 characters");
+        JsonObject set = plain("set");
+        set.addProperty("variable", variable);
+        JsonObject operand = new JsonObject();
+        operand.addProperty("expression", value);
+        set.add("value", operand);
+        return Converted.of(set);
     }
 
     private Converted inventory(Command command) {

@@ -77,6 +77,20 @@ void main() {
     expect(session.runs.last.steps.single.outcome, DryRunOutcome.problem);
   });
 
+  test('should word a computed wait by its expression', () {
+    final JsonMap behavior = <String, Object?>{
+      'schemaVersion': 1,
+      'id': 'a:w',
+      'entry': 'main',
+      'variables': <String, Object?>{'delay': <String, Object?>{'type': 'integer', 'initial': 2}},
+      'routines': <String, Object?>{
+        'main': <String, Object?>{'type': 'wait', 'ticks': <String, Object?>{'expression': 'delay * 20'}},
+      },
+    };
+    final DryRunSession session = dryRun(behavior, DryRunInputs.start('main'));
+    expect(session.runs.single.steps.single.text, 'Waits delay * 20 ticks.');
+  });
+
   test('should walk the patrol square with waits on a timer', () {
     final JsonMap patrol = behaviorFromTemplate(BehaviorTemplate.patrol, 'a:p', origin: (0, 64, 0));
     final DryRunSession session = dryRun(patrol, DryRunInputs.start('rounds'));

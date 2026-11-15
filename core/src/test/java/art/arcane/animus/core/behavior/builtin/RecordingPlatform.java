@@ -17,6 +17,8 @@ import java.util.function.Supplier;
 /** Platform double: records owner-side calls and asserts they are made from the owner tick. */
 final class RecordingPlatform implements BehaviorPlatform {
     final List<String> calls = new CopyOnWriteArrayList<>();
+    /** Where each effect at a player went: the player it was placed at, then who it was for ({@code nearby} for everyone near). */
+    final List<String> places = new CopyOnWriteArrayList<>();
     final List<String> targets = new CopyOnWriteArrayList<>();
     /** Where each piece of owner work was placed: npc, player:<uuid> or global. */
     final List<String> routes = new CopyOnWriteArrayList<>();
@@ -76,11 +78,23 @@ final class RecordingPlatform implements BehaviorPlatform {
     @Override public int messageNearby(NpcHandle npc, double radius, String text) { record("message-nearby:" + radius + ":" + text); return delivered; }
     @Override public int title(UUID player, Title title) { record("title:" + title.title().orElse("") + ":" + title.subtitle().orElse("") + ":" + title.fadeIn() + ":" + title.stay() + ":" + title.fadeOut()); return delivered; }
     @Override public int actionbar(UUID player, String text) { record("actionbar:" + text); return delivered; }
-    @Override public int playSoundAtPlayer(UUID player, Audience audience, SoundEffect sound) { record("sound-at-player:" + sound.sound()); return delivered; }
-    @Override public int spawnParticleAtPlayer(UUID player, Audience audience, ParticleEffect particle) { record("particle-at-player:" + particle.particle()); return delivered; }
+    @Override public int playSoundAtPlayer(UUID player, Audience audience, SoundEffect sound) { places.add(player + ">" + audience.player().map(UUID::toString).orElse("nearby")); record("sound-at-player:" + sound.sound()); return delivered; }
+    @Override public int spawnParticleAtPlayer(UUID player, Audience audience, ParticleEffect particle) { places.add(player + ">" + audience.player().map(UUID::toString).orElse("nearby")); record("particle-at-player:" + particle.particle() + (particle.height().isPresent() ? ":" + particle.height().getAsDouble() : "")); return delivered; }
     @Override public boolean teleportPlayer(UUID player, NpcHandle npc, Destination to) { record("teleport-player:" + to.getClass().getSimpleName()); return true; }
     @Override public void teleportNpc(NpcHandle npc, Destination to) { record("teleport-npc:" + to.getClass().getSimpleName()); }
-    @Override public int giveItem(UUID player, ItemGift gift) { record("give:" + gift.item() + ":" + gift.amount() + ":" + gift.name().orElse("") + ":" + gift.lore().size()); return gift.amount(); }
+    @Override public int giveItem(UUID player, ItemGift gift) { record("give:" + gift.item() + ":" + gift.amount() + ":" + gift.name().orElse("") + ":" + gift.lore().size() + (gift.enchantments().isEmpty() ? "" : ":" + new java.util.TreeMap<>(gift.enchantments()))); return gift.amount(); }
+    @Override public int bossBar(UUID player, BossBar bar) { record("bossbar:" + bar.id() + (bar.remove() ? ":remove" : ":show:" + bar.title().orElse("") + ":" + (bar.progress().isPresent() ? bar.progress().getAsDouble() : "") + ":" + bar.color().orElse("") + ":" + bar.style().orElse(""))); return delivered; }
+    @Override public int sidebar(UUID player, Optional<Sidebar> sidebar) { record("sidebar:" + sidebar.map((Sidebar shown) -> shown.title() + ":" + shown.lines().size()).orElse("none")); return delivered; }
+    final List<UUID> acting = new CopyOnWriteArrayList<>();
+    volatile Optional<BlockHit> hit = Optional.empty();
+    @Override public Optional<BlockHit> rayTrace(UUID player, double range) { record("ray-trace:" + range); return hit; }
+    @Override public Optional<String> blockAt(String location) { record("block-at:" + location); return Optional.of("minecraft:stone"); }
+    @Override public void explode(NpcHandle npc, Explosion explosion) { record("explode:" + explosion.point().isPresent() + ":" + explosion.power() + ":" + explosion.fire() + ":" + explosion.breakBlocks()); }
+    @Override public void lookClose(NpcHandle npc, boolean enabled, java.util.OptionalDouble range, Optional<Boolean> lineOfSight) { acting.add(npc.uuid()); record("look-close:" + enabled + ":" + (range.isPresent() ? range.getAsDouble() : "") + ":" + lineOfSight.map(String::valueOf).orElse("")); }
+    volatile List<HeldItem> held = List.of();
+    volatile boolean fits = true;
+    @Override public List<HeldItem> inventory(UUID player) { record("inventory"); return held; }
+    @Override public boolean canFit(UUID player, ItemGift gift) { record("fits:" + gift.item() + ":" + gift.amount()); return fits; }
     @Override public int takeItem(UUID player, String item, int amount) { record("take:" + item + ":" + amount); return Math.min(amount, taken); }
     volatile boolean affordable = true;
     private static String describe(Cost cost) {
@@ -140,7 +154,7 @@ final class RecordingPlatform implements BehaviorPlatform {
     @Override public void playAnimation(NpcHandle npc, String animation, double speed, Optional<String> loop, int layer) { record("animation:" + animation + ":" + speed + ":" + loop.orElse("clip") + ":" + layer); }
     @Override public void stopAnimation(NpcHandle npc, java.util.OptionalInt layer, int fadeTicks) { record("stop-animation:" + (layer.isPresent() ? layer.getAsInt() : "all") + ":" + fadeTicks); }
     @Override public int playSound(NpcHandle npc, Audience audience, SoundEffect sound) { record("sound:" + sound.sound()); return delivered; }
-    @Override public int spawnParticle(NpcHandle npc, Audience audience, ParticleEffect particle) { record("particle:" + particle.particle() + ":" + particle.count()); return delivered; }
+    @Override public int spawnParticle(NpcHandle npc, Audience audience, ParticleEffect particle) { record("particle:" + particle.particle() + ":" + particle.count() + (particle.height().isPresent() ? ":" + particle.height().getAsDouble() : "")); return delivered; }
     @Override public boolean openScreen(NpcHandle npc, UUID player, ScreenKind kind, String id) { record("screen:" + kind + ":" + id); return true; }
     @Override public void combat(NpcHandle npc, CombatOperation operation, Optional<UUID> target) {
         record("combat:" + operation + ":" + target.isPresent());

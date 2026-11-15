@@ -43,7 +43,7 @@ import java.util.UUID;
  * held: apply leaves it unbound and off until an administrator releases it.
  */
 final class DenizenConverter {
-    static final int CONVERTER_VERSION = 8;
+    static final int CONVERTER_VERSION = 9;
     /** The author a converted book gets when its Denizen author is blank. */
     static final String BLANK_BOOK_AUTHOR = "Server";
     static final String NAMESPACE = "denizen";
@@ -86,6 +86,8 @@ final class DenizenConverter {
         long playerCooldown = -1, globalCooldown = -1;
         /** Sources ({@code file:line}) of guards and stops that did not convert; any one holds the behavior back from binding. */
         final LinkedHashSet<String> held = new LinkedHashSet<>();
+        /** Definitions last given an NPC ({@code e}) or a list of NPCs ({@code N}), by lowercase name. */
+        final TreeMap<String, Character> kinds = new TreeMap<>();
 
         Doc(boolean server) { this.server = server; }
     }
@@ -112,18 +114,28 @@ final class DenizenConverter {
         boolean cancellable;
 
         Scope(Doc doc, Set<String> calling, boolean record, Container container, Optional<Interact> interact, int step, Map<String, String> definitions, List<String> loops, Map<String, String> saves, Map<String, String> context) {
-            this.doc = doc; this.calling = calling; this.record = record; this.server = doc.server; this.container = container; this.interact = interact; this.step = step;
+            this(doc, calling, record, doc.server, container, interact, step, definitions, loops, saves, context);
+        }
+
+        private Scope(Doc doc, Set<String> calling, boolean record, boolean server, Container container, Optional<Interact> interact, int step, Map<String, String> definitions, List<String> loops, Map<String, String> saves, Map<String, String> context) {
+            this.doc = doc; this.calling = calling; this.record = record; this.server = server; this.container = container; this.interact = interact; this.step = step;
             this.definitions = definitions; this.loops = loops; this.saves = saves; this.context = context;
         }
+
+        /** The lines of an injected task, run in this scope's place with its definitions, loops and saves. */
+        Scope injected(Container task) { return new Scope(doc, calling, record, server, task, interact, step, definitions, loops, saves, context); }
+
+        /** This scope as the routine of a task run for an NPC: it has an NPC, though its document is a server behavior. */
+        Scope withNpc() { return new Scope(doc, calling, record, false, container, interact, step, definitions, loops, saves, context); }
 
         static Scope of(Doc doc, boolean record, Container container, Optional<Interact> interact, int step, Map<String, String> context) {
             return new Scope(doc, new HashSet<>(), record, container, interact, step, new TreeMap<>(), List.of(), new TreeMap<>(), context);
         }
 
         /** The scope of another script run from this one: same document, its own definitions, no loops and no event context. */
-        Scope in(Container other) { return new Scope(doc, calling, false, other, Optional.empty(), -1, new TreeMap<>(), List.of(), new TreeMap<>(), Map.of()); }
+        Scope in(Container other) { return new Scope(doc, calling, false, server, other, Optional.empty(), -1, new TreeMap<>(), List.of(), new TreeMap<>(), Map.of()); }
 
-        Scope loop(Map<String, String> inner, List<String> kinds) { return new Scope(doc, calling, record, container, interact, step, inner, kinds, saves, context); }
+        Scope loop(Map<String, String> inner, List<String> kinds) { return new Scope(doc, calling, record, server, container, interact, step, inner, kinds, saves, context); }
     }
 
     final TreeMap<String, Container> containers = new TreeMap<>();
@@ -146,6 +158,8 @@ final class DenizenConverter {
     private final TreeMap<String, List<String>> guards = new TreeMap<>();
     /** Noted areas by lowercase name: notables.yml first, then literal {@code note ... as:name} lines of scripts. */
     final TreeMap<String, DenizenEvents.Note> notes = new TreeMap<>();
+    /** What a procedure's routine returns when every determine gives an NPC or a list of NPCs. */
+    private final TreeMap<String, Character> returnKinds = new TreeMap<>();
     private final DenizenExpressions expressions = new DenizenExpressions(this);
     private final DenizenCommands commands = new DenizenCommands(this, expressions);
 
@@ -672,6 +686,28 @@ final class DenizenConverter {
         commands.block(sequence.items(), 0, scope);
         otherKeys(container, List.of("type", "script", "definitions", "debug"), "procedure");
         if (outcomesOf(container).isEmpty()) record(container, container.line(), "container", "procedure", container.name(), true, "");
+    }
+
+    /** Records the kind a procedure's determine returns; procedures that return different kinds return anything. */
+    void returned(Container procedure, char kind) {
+        String routine = procedureName(procedure);
+        Character known = returnKinds.get(routine);
+        returnKinds.put(routine, known == null || known == kind ? kind : 'a');
+    }
+
+    char returnKind(String routine) {
+        Character kind = returnKinds.get(routine);
+        return kind == null || kind != 'e' && kind != 'N' ? 'a' : kind;
+    }
+
+    /** The behaviors an assignment's NPCs have: the assignment's own and its interact scripts'. Empty when there is no such assignment. */
+    Optional<List<String>> assignmentBehaviors(String name) {
+        Container container = containers.get(name.toLowerCase(Locale.ROOT));
+        if (container == null || !container.type().equals("assignment")) return Optional.empty();
+        List<String> behaviors = new ArrayList<>();
+        behaviors.add(behaviorId("assignment", container));
+        for (Container listed : interactList(container)) behaviors.add(behaviorId("interact", listed));
+        return Optional.of(behaviors);
     }
 
     private String procedureName(Container procedure) {

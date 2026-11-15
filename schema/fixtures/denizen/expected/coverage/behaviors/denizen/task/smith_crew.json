@@ -1,0 +1,393 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/smith_crew",
+  "entry": "main",
+  "variables": {
+    "d_aim": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_apprentice": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_bench": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_caller": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_helper": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_note": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_notes": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_partner": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_pause": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_tune": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_2": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_3": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_4": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_5": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_6": {
+      "type": "any",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "set",
+          "variable": "d_partner",
+          "value": {
+            "expression": "((len(player_named(text(d_caller))) > 0) ? player_named(text(d_caller)) : 'nobody')"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:ray-trace",
+          "arguments": {
+            "range": 16.0
+          },
+          "result": "t_1"
+        },
+        {
+          "type": "set",
+          "variable": "d_aim",
+          "value": {
+            "expression": "get(t_1, 'location', '')"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "t_2",
+          "value": {}
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": null,
+            "scope": "global",
+            "value": null
+          },
+          "expressions": {
+            "/name": "'locations-smith_anvil'",
+            "/value": "put((has_flag('global', 'locations-smith_anvil') ? flag('global', 'locations-smith_anvil', 0) : t_2), (text(floor(num(get(split(d_aim, ','), 0, 0)))) + ',' + text(floor(num(get(split(d_aim, ','), 1, 0)))) + ',' + text(floor(num(get(split(d_aim, ','), 2, 0)))) + ',' + get(split(d_aim, ','), 3, '')), true)"
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "(has_flag('global', 'locations-smith_anvil') && has(flag('global', 'locations-smith_anvil', 0), (text(floor(num(get(split(d_aim, ','), 0, 0)))) + ',' + text(floor(num(get(split(d_aim, ','), 1, 0)))) + ',' + text(floor(num(get(split(d_aim, ','), 2, 0)))) + ',' + get(split(d_aim, ','), 3, ''))))",
+          "then": {
+            "type": "action",
+            "capability": "animus:message",
+            "arguments": {
+              "text": "&7Anvil marked."
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:read-block",
+          "arguments": {
+            "location": null
+          },
+          "expressions": {
+            "/location": "d_aim"
+          },
+          "result": "t_3"
+        },
+        {
+          "type": "condition",
+          "expression": "same(replace(get(t_3, 'block', ''), 'minecraft:', ''), 'anvil')",
+          "then": {
+            "type": "action",
+            "capability": "animus:message",
+            "arguments": {
+              "text": "&7That is an anvil."
+            }
+          }
+        },
+        {
+          "type": "set",
+          "variable": "t_4",
+          "value": []
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "npcs()"
+          },
+          "as": "t_5",
+          "maximum": 1024,
+          "body": {
+            "type": "condition",
+            "expression": "npc_has_flag(t_5, 'forge')",
+            "then": {
+              "type": "set",
+              "variable": "t_4",
+              "value": {
+                "expression": "append(t_4, t_5)"
+              }
+            }
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "t_4"
+          },
+          "as": "d_helper",
+          "maximum": 1024,
+          "body": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "action",
+                "capability": "animus:look",
+                "arguments": {
+                  "target": "player",
+                  "npc": null
+                },
+                "expressions": {
+                  "/npc": "d_helper"
+                }
+              },
+              {
+                "type": "action",
+                "capability": "animus:animate",
+                "arguments": {
+                  "animation": "swing",
+                  "npc": null
+                },
+                "expressions": {
+                  "/npc": "d_helper"
+                }
+              },
+              {
+                "type": "action",
+                "capability": "animus:spawn-particle",
+                "arguments": {
+                  "particle": "minecraft:flame",
+                  "count": 4,
+                  "height": 2.0,
+                  "audience": "nearby",
+                  "npc": null
+                },
+                "expressions": {
+                  "/npc": "d_helper"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_bench",
+          "value": {
+            "expression": "npc.location"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:teleport",
+          "arguments": {
+            "target": "npc",
+            "x": null,
+            "y": null,
+            "z": null,
+            "world": null
+          },
+          "expressions": {
+            "/x": "num(get(split(offset(d_bench, 0, 1, 0), ','), 0, 0))",
+            "/y": "num(get(split(offset(d_bench, 0, 1, 0), ','), 1, 0))",
+            "/z": "num(get(split(offset(d_bench, 0, 1, 0), ','), 2, 0))",
+            "/world": "get(split(offset(d_bench, 0, 1, 0), ','), 3, '')"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:look-close",
+          "arguments": {
+            "enabled": true,
+            "range": 8.0,
+            "lineOfSight": true
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:explode",
+          "arguments": {
+            "x": null,
+            "y": null,
+            "z": null,
+            "world": null,
+            "power": 1.0
+          },
+          "expressions": {
+            "/x": "num(get(split(d_bench, ','), 0, 0))",
+            "/y": "num(get(split(d_bench, ','), 1, 0))",
+            "/z": "num(get(split(d_bench, ','), 2, 0))",
+            "/world": "get(split(d_bench, ','), 3, '')"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:sidebar",
+          "arguments": {
+            "operation": "add",
+            "lines": null
+          },
+          "expressions": {
+            "/lines": "slice(split(join(['Hammer', 'Tongs'], '|'), '|'), 0, 15)"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:sidebar",
+          "arguments": {
+            "operation": "set_line",
+            "line": 1,
+            "lines": null
+          },
+          "expressions": {
+            "/lines": "slice(split(join(['Anvil'], '|'), '|'), 0, 1)"
+          }
+        },
+        {
+          "type": "call",
+          "routine": "task-smith_song",
+          "player": {
+            "expression": "get(players(d_apprentice), 0, '')"
+          }
+        }
+      ]
+    },
+    "task-smith_song": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "set",
+          "variable": "d_notes",
+          "value": {
+            "expression": "['block_note_block_bell', 'block.note_block.chime']"
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "d_notes"
+          },
+          "as": "d_note",
+          "body": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "set",
+                "variable": "t_6",
+                "value": {
+                  "expression": "lower(text(d_note))"
+                }
+              },
+              {
+                "type": "action",
+                "capability": "animus:play-sound",
+                "arguments": {
+                  "sound": null,
+                  "volume": 0.8,
+                  "pitch": null,
+                  "at": "player"
+                },
+                "expressions": {
+                  "/sound": "(contains(t_6, ':') ? t_6 : 'minecraft:' + (contains(t_6, '.') ? t_6 : first(split(t_6, '_')) + '.' + join(slice(split(t_6, '_'), 1, len(split(t_6, '_')) - 1), '_') + '.' + last(split(t_6, '_'))))",
+                  "/pitch": "clamp((0.8 + random_decimal() * (1.2 - 0.8)), 0.5, 2)"
+                }
+              },
+              {
+                "type": "wait",
+                "ticks": {
+                  "expression": "clamp(round(num(d_pause) * 1), 0, 72000)"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": "&r"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": null,
+            "scope": "player",
+            "value": "played",
+            "expireSeconds": null
+          },
+          "expressions": {
+            "/name": "replace(lower(text(d_tune)), '.', '-')",
+            "/expireSeconds": "clamp(ceil(round(num(d_pause) * 20) / 20), 1, 31536000)"
+          }
+        },
+        {
+          "type": "wait",
+          "ticks": {
+            "expression": "clamp(round(random(1, 2) * 20), 0, 72000)"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "&eThat was {{ d_tune }}."
+          }
+        }
+      ]
+    }
+  }
+}

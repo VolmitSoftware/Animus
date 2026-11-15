@@ -46,10 +46,12 @@ public record BehaviorProgram(String id,String entry,Map<String,Value> initial,M
     public record Template(String field,BehaviorTemplate template)implements Operand{}
     public sealed interface Node permits Sequence,Action,Condition,ExpressionCondition,Wait,Repeat,Foreach,While,Break,Continue,Parallel,Call,Return,SetValue {String path();}
     public record Sequence(String path,List<Node> steps)implements Node{public Sequence{steps=List.copyOf(steps);}}
-    public record Action(String path,Capabilities.Key capability,ArgumentTemplate arguments)implements Node{}
+    /** {@code result}, when set, is a declared variable that receives the capability's result map. */
+    public record Action(String path,Capabilities.Key capability,ArgumentTemplate arguments,String result)implements Node{}
     public record Condition(String path,Capabilities.Key capability,ArgumentTemplate arguments,Node thenNode,Node elseNode)implements Node{}
     public record ExpressionCondition(String path,BehaviorExpression expression,Node thenNode,Node elseNode)implements Node{}
-    public record Wait(String path,int ticks)implements Node{}
+    /** {@code computed} null means the literal {@code ticks}; a computed wait is held to 0..{@link BehaviorCompiler#MAX_WAIT_TICKS}, and 0 goes on at once. */
+    public record Wait(String path,int ticks,Operand computed)implements Node{}
     /** {@code computed} null means the literal {@code count}; {@code index} null means no pass variable. */
     public record Repeat(String path,int count,Operand computed,int maximum,String index,Node body)implements Node{
         public Repeat(String path,int count,Node body){this(path,count,null,BehaviorCompiler.MAX_REPEAT,null,body);}
@@ -61,9 +63,10 @@ public record BehaviorProgram(String id,String entry,Map<String,Value> initial,M
     public record Continue(String path)implements Node{}
     public record Parallel(String path,List<Node> branches)implements Node{public Parallel{branches=List.copyOf(branches);}}
     /** Arguments are assigned in order before the routine runs; {@code result} is null when nothing receives the return value. */
-    public record Call(String path,String routine,Map<String,Operand> arguments,String result)implements Node{
+    /** {@code player} and {@code npc}, when set, are operands naming the player and NPC the routine runs for instead of the run's own. */
+    public record Call(String path,String routine,Map<String,Operand> arguments,String result,Operand player,Operand npc)implements Node{
         public Call{arguments=Collections.unmodifiableMap(new LinkedHashMap<>(arguments));}
-        public Call(String path,String routine){this(path,routine,Map.of(),null);}
+        public Call(String path,String routine){this(path,routine,Map.of(),null,null,null);}
     }
     /** {@code value} is null for a return without a value. */
     public record Return(String path,Operand value)implements Node{}

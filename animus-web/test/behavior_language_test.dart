@@ -177,6 +177,8 @@ void main() {
       expect(nodeSummary(<String, Object?>{'type': 'action', 'capability': 'animus:say', 'arguments': <String, Object?>{'text': 'Welcome, &etraveller&f! <red>{player_name}'}}), 'Say: Welcome, traveller! {player_name}');
       expect(nodeSummary(<String, Object?>{'type': 'action', 'capability': 'animus:choices', 'arguments': <String, Object?>{'prompt': '&6Where to?'}}), 'Ask: Where to?');
       expect(nodeSummary(<String, Object?>{'type': 'set', 'variable': 'count', 'value': <String, Object?>{'expression': 'count + 1'}}), 'Set count to count + 1');
+      expect(nodeSummary(<String, Object?>{'type': 'wait', 'ticks': 40}), 'Wait 40 ticks (2s)');
+      expect(nodeSummary(<String, Object?>{'type': 'wait', 'ticks': <String, Object?>{'expression': 'delay * 20'}}), 'Wait delay * 20 ticks');
     });
   });
 

@@ -44,6 +44,14 @@ final class DenizenArgs {
         return new Command(name, args);
     }
 
+    /** A quoted argument read the way Denizen reads every argument: {@code "lines:->:a b"} has the prefix {@code lines}. */
+    static Arg prefixed(Arg arg) {
+        if (!arg.quoted() || !arg.prefix().isEmpty()) return arg;
+        int colon = arg.value().indexOf(':');
+        if (colon <= 0 || !arg.value().substring(0, colon).matches("[A-Za-z_][A-Za-z0-9_]*")) return arg;
+        return new Arg(arg.value().substring(0, colon).toLowerCase(Locale.ROOT), arg.value().substring(colon + 1), true);
+    }
+
     private static Arg arg(String token, boolean quoted) {
         if (!quoted) {
             int colon = token.indexOf(':');

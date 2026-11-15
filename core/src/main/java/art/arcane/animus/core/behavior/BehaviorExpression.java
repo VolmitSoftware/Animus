@@ -17,14 +17,17 @@ public final class BehaviorExpression {
     public static final Pattern NAME=Pattern.compile("[a-z][a-z0-9_]{0,63}");
     public static final Set<String> RESERVED=Set.of("player","npc","server","context","true","false");
     public static final List<String> PLAYER_FACTS=List.of("name","uuid","online","health","max_health","food","level","world","x","y","z","location","gamemode","op","sneaking","flying","item_in_hand","item_in_hand_amount");
-    public static final List<String> NPC_FACTS=List.of("name","id","citizens_id","uuid","spawned","health","world","x","y","z","location");
+    public static final List<String> NPC_FACTS=List.of("name","id","citizens_id","uuid","spawned","health","world","x","y","z","location","behaviors");
     public static final List<String> SERVER_FACTS=List.of("online_players","players","max_players","tick","time_millis");
     public static final List<String> FLAG_SCOPES=List.of("player","npc","relationship","global");
     public static final List<String> FUNCTIONS=List.of("get","has","keys","values","put","remove","append","insert","index_of","first","last","slice","reverse","sort","sum","join","split","range",
             "trim","replace","starts_with","ends_with","num","int","truthy","same","same_world","text","random","random_decimal","chance","pick","flag","has_flag","quest",
-            "players","player_info","player_flag","player_has_flag");
+            "players","player_info","player_flag","player_has_flag","npcs","npc_info","npc_flag","npc_has_flag","distance","duration_seconds","duration_text","flag_expiry","player_flag_expiry","type_of",
+            "has_player","offset","players_near","within","now","player_named");
     /** The most players {@code players} returns, which bounds a fan-out over a player list. */
     public static final int MAX_PLAYERS=100;
+    /** The most NPC UUIDs {@code npcs} returns. */
+    public static final int MAX_NPCS=1024;
     private static final Pattern PLAYER_ID=Pattern.compile("(?:p@)?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})");
     private static final Pattern NUMERIC=Pattern.compile("\\s*-?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)([eE][-+]?[0-9]+)?\\s*");
     private static final Map<String,GuiExpression.Function> LIBRARY=library();
@@ -58,6 +61,14 @@ public final class BehaviorExpression {
         RandomGenerator random();
         /** A player flag of this behavior's namespace for another player, empty when unset, expired or not readable here. */
         default Optional<Value> playerFlag(UUID player,String name){return Optional.empty();}
+        /** An NPC flag of this behavior's namespace for another NPC, empty when unset, expired or not readable here. */
+        default Optional<Value> npcFlag(UUID npc,String name){return Optional.empty();}
+        /** When a flag of this behavior's namespace expires, in epoch milliseconds; empty when it never does or is unset. */
+        default OptionalLong flagExpiry(String scope,String name){return OptionalLong.empty();}
+        /** As {@link #flagExpiry} for a player flag of another player. */
+        default OptionalLong playerFlagExpiry(UUID player,String name){return OptionalLong.empty();}
+        /** The time now in epoch milliseconds, read as the expression runs rather than from the server facts snapshot. */
+        default long nowMillis(){return System.currentTimeMillis();}
     }
 
     private final GuiExpression expression;private final String field;
@@ -233,6 +244,84 @@ public final class BehaviorExpression {
             throw new GuiExpression.Invalid("flag '"+GuiExpression.text(args.get(1))+"' is not set for that player");
         });
         functions.put("player_has_flag",(args,scope)->{arity("player_has_flag",args,2,2);return playerId(args.get(0)).flatMap(id->environment(scope).playerFlag(id,GuiExpression.text(args.get(1)))).isPresent();});
+        functions.put("npcs",(args,scope)->{
+            arity("npcs",args,0,0);List<Object> found=new ArrayList<>();
+            for(UUID npc:environment(scope).facts().npcs()){if(found.size()>=MAX_NPCS)break;found.add(npc.toString());}
+            work(scope,found.size());return Collections.unmodifiableList(found);
+        });
+        functions.put("npc_info",(args,scope)->{
+            arity("npc_info",args,1,1);Optional<UUID> npc=npcId(args.get(0));
+            return npc.flatMap(environment(scope).facts()::npc).map(BehaviorExpression::plain).orElse(Map.of());
+        });
+        functions.put("npc_flag",(args,scope)->{
+            arity("npc_flag",args,2,3);Optional<Value> value=npcId(args.get(0)).flatMap(id->environment(scope).npcFlag(id,GuiExpression.text(args.get(1))));
+            if(value.isPresent())return BehaviorValues.expression(value.get());
+            if(args.size()==3)return args.get(2);
+            throw new GuiExpression.Invalid("flag '"+GuiExpression.text(args.get(1))+"' is not set for that NPC");
+        });
+        functions.put("distance",(args,scope)->{
+            arity("distance",args,2,2);String[] from=location("distance",args.get(0)),to=location("distance",args.get(1));
+            if(from.length>3&&to.length>3&&!same(from[3].strip(),to[3].strip()))return 1.0E9;
+            double dx=number(from[0])-number(to[0]),dy=number(from[1])-number(to[1]),dz=number(from[2])-number(to[2]);
+            return Math.sqrt(dx*dx+dy*dy+dz*dz);
+        });
+        functions.put("now",(args,scope)->{arity("now",args,0,0);return (double)environment(scope).nowMillis();});
+        functions.put("player_named",(args,scope)->{
+            arity("player_named",args,1,1);String wanted=GuiExpression.text(args.get(0)).strip().toLowerCase(Locale.ROOT);
+            if(wanted.isEmpty())return "";
+            BehaviorFacts facts=environment(scope).facts();Object listed=facts.server().get("players");
+            String exact="",starts="",contains="";
+            if(listed instanceof List<?> players)for(Object entry:players){
+                Optional<UUID> player=playerId(entry);if(player.isEmpty())continue;
+                Optional<Map<String,Object>> known=facts.player(player.get());if(known.isEmpty()||!(known.get().get("name") instanceof String name))continue;
+                String lowered=name.toLowerCase(Locale.ROOT),id=player.get().toString();
+                if(lowered.equals(wanted)&&exact.isEmpty())exact=id;
+                else if(lowered.startsWith(wanted))starts=better(facts,starts,id);
+                else if(lowered.contains(wanted))contains=better(facts,contains,id);
+            }
+            return !exact.isEmpty()?exact:!starts.isEmpty()?starts:contains;
+        });
+        functions.put("has_player",(args,scope)->{arity("has_player",args,0,0);return environment(scope).player().isPresent();});
+        functions.put("offset",(args,scope)->{
+            arity("offset",args,4,4);String[] at=location("offset",args.get(0));
+            double x=number(at[0])+number(args.get(1)),y=number(at[1])+number(args.get(2)),z=number(at[2])+number(args.get(3));
+            return String.format(Locale.ROOT,"%.2f,%.2f,%.2f",x,y,z)+(at.length>3?","+at[3].strip():"");
+        });
+        functions.put("players_near",(args,scope)->{
+            arity("players_near",args,2,2);String[] at=location("players_near",args.get(0));double radius=number(args.get(1));
+            BehaviorFacts facts=environment(scope).facts();
+            Object listed=facts.server().get("players");
+            List<Map.Entry<Double,String>> found=new ArrayList<>();
+            if(listed instanceof List<?> players)for(Object entry:players){
+                Optional<UUID> player=playerId(entry);if(player.isEmpty())continue;
+                Optional<Map<String,Object>> known=facts.player(player.get());if(known.isEmpty()||!(known.get().get("location") instanceof String place))continue;
+                String[] other=place.split(",",-1);if(other.length<3||!numeric(other[0])||!numeric(other[1])||!numeric(other[2]))continue;
+                if(at.length>3&&other.length>3&&!world(facts,at[3].strip()).equalsIgnoreCase(world(facts,other[3].strip())))continue;
+                double dx=number(other[0])-number(at[0]),dy=number(other[1])-number(at[1]),dz=number(other[2])-number(at[2]),distance=Math.sqrt(dx*dx+dy*dy+dz*dz);
+                if(distance<=radius)found.add(Map.entry(distance,player.get().toString()));
+            }
+            found.sort(Map.Entry.<Double,String>comparingByKey().thenComparing(Map.Entry.comparingByValue()));
+            work(scope,found.size());List<Object> near=new ArrayList<>();for(Map.Entry<Double,String> entry:found){if(near.size()>=MAX_PLAYERS)break;near.add(entry.getValue());}
+            return Collections.unmodifiableList(near);
+        });
+        functions.put("within",(args,scope)->{
+            arity("within",args,2,2);String[] at=location("within",args.get(0));
+            if(!(args.get(1) instanceof Map<?,?> area)||!(area.get("bounds") instanceof List<?> bounds)||bounds.size()!=6||!(area.get("world") instanceof String world))
+                throw new GuiExpression.Invalid("within: expected an area map with world, shape and six bounds");
+            if(at.length>3&&!world(environment(scope).facts(),at[3].strip()).equalsIgnoreCase(world(environment(scope).facts(),world)))return false;
+            double x=number(at[0]),y=number(at[1]),z=number(at[2]);double[] b=new double[6];for(int i=0;i<6;i++)b[i]=number(bounds.get(i));
+            if("ellipsoid".equals(area.get("shape"))){double dx=(x-b[0])/b[3],dy=(y-b[1])/b[4],dz=(z-b[2])/b[5];return dx*dx+dy*dy+dz*dz<=1;}
+            // A cuboid holds the whole blocks from one corner block to the other, as Denizen's does.
+            return x>=Math.floor(Math.min(b[0],b[3]))&&x<Math.floor(Math.max(b[0],b[3]))+1&&y>=Math.floor(Math.min(b[1],b[4]))&&y<Math.floor(Math.max(b[1],b[4]))+1
+                    &&z>=Math.floor(Math.min(b[2],b[5]))&&z<Math.floor(Math.max(b[2],b[5]))+1;
+        });
+        functions.put("type_of",(args,scope)->{arity("type_of",args,1,1);return switch(args.get(0)){case List<?> ignored->"list";case Map<?,?> ignored->"map";case Boolean ignored->"boolean";case Number ignored->"number";default->"text";};});
+        functions.put("duration_seconds",(args,scope)->{arity("duration_seconds",args,1,1);return durationSeconds(args.get(0));});
+        functions.put("duration_text",(args,scope)->{arity("duration_text",args,1,1);return durationText(number(args.get(0)));});
+        functions.put("flag_expiry",(args,scope)->{arity("flag_expiry",args,2,2);return (double)environment(scope).flagExpiry(flagScope(args.get(0)),GuiExpression.text(args.get(1))).orElse(0);});
+        functions.put("player_flag_expiry",(args,scope)->{arity("player_flag_expiry",args,2,2);
+            return (double)playerId(args.get(0)).map(id->environment(scope).playerFlagExpiry(id,GuiExpression.text(args.get(1))).orElse(0)).orElse(0L);});
+        functions.put("npc_has_flag",(args,scope)->{arity("npc_has_flag",args,2,2);return npcId(args.get(0)).flatMap(id->environment(scope).npcFlag(id,GuiExpression.text(args.get(1)))).isPresent();});
         for(GuiExpression.Function function:List.copyOf(functions.values()))Objects.requireNonNull(function);
         if(!functions.keySet().equals(Set.copyOf(FUNCTIONS)))throw new IllegalStateException("Behavior function table and list differ");
         return Map.copyOf(functions);
@@ -246,6 +335,42 @@ public final class BehaviorExpression {
         if(!(value instanceof String text))return Optional.empty();
         java.util.regex.Matcher matcher=PLAYER_ID.matcher(text.strip());
         return matcher.matches()?Optional.of(UUID.fromString(matcher.group(1).toLowerCase(Locale.ROOT))):Optional.empty();
+    }
+    private static final Pattern DURATION_PART=Pattern.compile("([0-9]+(?:\\.[0-9]+)?)([tsmhdwy])");
+    private static final Map<Character,Double> DURATION_UNITS=Map.of('t',0.05,'s',1.0,'m',60.0,'h',3600.0,'d',86400.0,'w',604800.0,'y',31536000.0);
+    /** Seconds in a Denizen duration: a number of seconds, or text such as {@code 10m}, {@code 30t} or {@code d@1d1h}. */
+    private static double durationSeconds(Object value){
+        if(numeric(value))return number(value);
+        String text=GuiExpression.text(value).strip().toLowerCase(Locale.ROOT);
+        if(text.startsWith("d@"))text=text.substring(2);
+        java.util.regex.Matcher part=DURATION_PART.matcher(text);
+        double total=0;int at=0;
+        while(at<text.length()&&part.find(at)&&part.start()==at){total+=Double.parseDouble(part.group(1))*DURATION_UNITS.get(part.group(2).charAt(0));at=part.end();}
+        if(at==0||at!=text.length())throw new GuiExpression.Invalid("'"+GuiExpression.text(value)+"' is not a duration");
+        return total;
+    }
+    /** A duration as Denizen writes it readably: days and hours, minutes under a day, seconds under ten minutes. */
+    private static String durationText(double seconds){
+        long total=(long)Math.max(0,Math.floor(seconds)),days=total/86400,hours=total%86400/3600,minutes=total%3600/60,rest=total%60;
+        List<String> parts=new ArrayList<>();
+        if(days>0)parts.add(days+"d");
+        if(hours>0)parts.add(hours+"h");
+        if(minutes>0&&days==0)parts.add(minutes+"m");
+        if(rest>0&&total<600)parts.add(rest+"s");
+        return parts.isEmpty()?"0s":String.join(" ",parts);
+    }
+    /** A location written {@code x,y,z} or {@code x,y,z,world}, as the location facts give it, split at its commas. */
+    private static String[] location(String name,Object value){
+        String[] parts=GuiExpression.text(value).split(",",-1);
+        if(parts.length<3||parts.length>4||!numeric(parts[0])||!numeric(parts[1])||!numeric(parts[2]))throw new GuiExpression.Invalid(name+": expected a location x,y,z,world, got "+GuiExpression.text(value));
+        return parts;
+    }
+    /** An NPC UUID, also written as {@code n@<uuid>}; empty for anything else. */
+    private static Optional<UUID> npcId(Object value){
+        if(!(value instanceof String text))return Optional.empty();
+        String bare=text.strip();if(bare.startsWith("n@"))bare=bare.substring(2);
+        try{UUID id=UUID.fromString(bare);return id.toString().equalsIgnoreCase(bare)?Optional.of(id):Optional.empty();}
+        catch(IllegalArgumentException invalid){return Optional.empty();}
     }
     private static RandomGenerator random(GuiExpression.Scope scope){return environment(scope).random();}
     private static void work(GuiExpression.Scope scope,int amount){((Evaluation)scope).charge(amount);}
@@ -277,6 +402,13 @@ public final class BehaviorExpression {
     }
     private static boolean numeric(Object value){return value instanceof Double||value instanceof String text&&NUMERIC.matcher(text).matches();}
     /** A world name, dimension key or UUID in the form the platform's world facts use; a world it does not know stays as written. */
+    /** Of two matching players, the one with the shorter name, then the name first in order, as Denizen's match_player prefers. */
+    private static String better(BehaviorFacts facts,String held,String candidate){
+        if(held.isEmpty())return candidate;
+        String a=name(facts,held),b=name(facts,candidate);
+        return b.length()<a.length()||b.length()==a.length()&&b.compareToIgnoreCase(a)<0?candidate:held;
+    }
+    private static String name(BehaviorFacts facts,String player){return facts.player(UUID.fromString(player)).map(known->String.valueOf(known.get("name"))).orElse("");}
     private static String world(BehaviorFacts facts,Object reference){String text=GuiExpression.text(reference);return facts.world(text).orElse(text);}
     /** Denizen equality: numerically when both sides are numbers or numeric text, otherwise case-insensitive text. */
     static boolean same(Object left,Object right){

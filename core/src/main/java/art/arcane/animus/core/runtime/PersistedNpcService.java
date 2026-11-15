@@ -823,6 +823,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (value.rigId != null) rigs.bind(value);
         views.represent(value);
     }
+    @Override public void setLookClose(String id, boolean enabled, OptionalDouble range, Optional<Boolean> lineOfSight) {
+        Value value = navigable(id);
+        value.lookClose = enabled ? LookClose.changed(value.lookClose == null ? LookClose.parse(value.spec.definition().json()).orElse(null) : value.lookClose, range, lineOfSight) : null;
+        value.nextLook = 0;
+    }
     @Override public void setEquipment(String id, EquipmentSlot slot, I item) {
         Value value = navigable(id);
         if (!packets.equipmentAvailable()) throw new IllegalStateException("Equipment packets are unavailable on this server version");
@@ -1131,7 +1136,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         /** The seat a sitting body is shown on, and the feet it was read for. */
         WorldPosition seatFeet; art.arcane.animus.core.presentation.RestingPlacement.Seat seatAt;
         boolean supportQueued; double fallSpeed;
-        final LookClose lookClose; long nextLook, nextRandomLook;
+        LookClose lookClose; long nextLook, nextRandomLook;
         /** The navigation module's pause, and when this NPC's route stands still. */
         final RoutePause pause; final RoutePause.Clock pauseClock = new RoutePause.Clock();
         /** The animus:home module, the tick the NPC last stopped being busy or at home, and its next check. */

@@ -6,8 +6,8 @@ import java.util.UUID;
 
 /**
  * Read-only world facts for behavior expressions. Implementations answer from snapshots that the platform refreshes on
- * its own threads, so any thread may call them and a call never touches the world. Values are Boolean, Long, Double or
- * String.
+ * its own threads, so any thread may call them and a call never touches the world. Values are Boolean, Long, Double,
+ * String, or a list of strings such as an NPC's behaviors.
  */
 public interface BehaviorFacts {
     BehaviorFacts NONE = new BehaviorFacts() {
@@ -24,6 +24,9 @@ public interface BehaviorFacts {
 
     /** The latest server snapshot. */
     Map<String, Object> server();
+
+    /** The NPCs the runtime knows, spawned or not; empty where the platform lists none. */
+    default java.util.List<UUID> npcs() { return java.util.List.of(); }
 
     /**
      * The form this platform's {@code *.world} facts give for a world name, dimension key or UUID: the name on Bukkit,

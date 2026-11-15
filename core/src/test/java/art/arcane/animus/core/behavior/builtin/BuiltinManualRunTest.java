@@ -53,7 +53,7 @@ class BuiltinManualRunTest {
                 """.formatted(NPC)));
         BuiltinActionSettings defaults = BuiltinActionSettings.DEFAULT;
         BuiltinCapabilities builtins = new BuiltinCapabilities(platform, new MemoryBehaviorState(), choice -> {},
-                new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), List.of("town:allowed"), List.of(), defaults.navigationWaits(), List.of()), log::add);
+                new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), List.of("town:allowed"), List.of(), defaults.navigationWaits(), List.of(), false), log::add);
         extensions = new ExtensionRuntime(root.resolve("modules"), Platform.PAPER, new ModuleSettings(true, 16, 5000, 250), line -> {}, state -> {}, builtins);
         extensions.start();
         long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
@@ -105,6 +105,32 @@ class BuiltinManualRunTest {
         assertTrue(resolution.diagnostics().getFirst().message().contains("privileged-capability-not-granted"), resolution.diagnostics().toString());
         assertEquals(Outcome.Status.UNAVAILABLE, runtime.run("guard", "town:other").toCompletableFuture().get(4, TimeUnit.SECONDS).status());
         assertTrue(platform.calls.isEmpty());
+    }
+
+    /** Variables a plugin passes to a run reach the NPC list functions and a wait computed from a duration, as converted Denizen scripts use them. */
+    @Test void runVariablesReachNpcListsAndComputedWaits() throws Exception {
+        UUID smith = UUID.randomUUID();
+        runtime.facts(new art.arcane.animus.core.behavior.BehaviorFacts() {
+            @Override public Optional<Map<String, Object>> player(UUID player) { return Optional.empty(); }
+            @Override public Optional<Map<String, Object>> npc(UUID npc) { return Optional.of(Map.of("name", npc.equals(NPC) ? "Guard" : "Smith")); }
+            @Override public Map<String, Object> server() { return Map.of(); }
+            @Override public List<UUID> npcs() { return List.of(smith, NPC); }
+        });
+        source("town:count", "{\"type\":\"sequence\",\"steps\":[{\"type\":\"wait\",\"ticks\":{\"expression\":\"clamp(round(duration_seconds(context.delay) * 20), 0, 200)\"}},"
+                + "{\"type\":\"action\",\"capability\":\"animus:say\",\"arguments\":{\"text\":null},\"templates\":{\"/text\":\"{{ get(npc_info(first(npcs())), 'name') }} after {{ context.delay }}\"}}]}");
+        reload();
+        UUID execution = runtime.run("guard", "town:count", Optional.of(PLAYER), Map.of("delay", "1s")).toCompletableFuture().get(4, TimeUnit.SECONDS).value().orElseThrow();
+        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+        BehaviorEngine.Report report = null;
+        while (System.nanoTime() < until) {
+            platform.pump();
+            Optional<BehaviorRuntime.Execution> found = runtime.inspect(execution);
+            if (found.isPresent() && found.get().report().state() != BehaviorEngine.State.RUNNING) { report = found.get().report(); break; }
+            Thread.sleep(2);
+        }
+        assertNotNull(report, "the run finished");
+        assertEquals(BehaviorEngine.State.COMPLETED, report.state(), report.toString());
+        assertEquals(List.of("say:true:0.0:Smith after 1s"), platform.calls);
     }
 
     @Test void invalidBuiltinArgumentsAreRejectedAtValidation() throws Exception {

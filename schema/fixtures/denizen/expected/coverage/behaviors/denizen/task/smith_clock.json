@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/smith_clock",
+  "entry": "main",
+  "variables": {
+    "d_amount": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_apprentice": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_clock": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_length": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_metal": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_order": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_took": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_wait_left": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "smith_started",
+            "scope": "player",
+            "value": null
+          },
+          "expressions": {
+            "/value": "now()"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_took",
+          "value": {
+            "expression": "round(max(0, (now() - num(flag('player', 'smith_started', 0))) / 1000))"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_clock",
+          "value": {
+            "expression": "duration_text(duration_seconds(d_length))"
+          }
+        },
+        {
+          "type": "repeat",
+          "count": {
+            "expression": "int(round(duration_seconds(d_length)))"
+          },
+          "maximum": 1024,
+          "body": {
+            "type": "action",
+            "capability": "animus:message",
+            "arguments": {
+              "text": "&7Hammering..."
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:actionbar",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "&eNext order in {{ (flag_expiry('player', 'smith_order') > 0 ? duration_text(max(0, (flag_expiry('player', 'smith_order') - now()) / 1000)) : 'now') }}"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_wait_left",
+          "value": {
+            "expression": "(player_flag_expiry(d_apprentice, 'smith_order') > 0 ? max(0, (player_flag_expiry(d_apprentice, 'smith_order') - now()) / 1000) : 0)"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "smith_order",
+            "scope": "player",
+            "expireSeconds": null
+          },
+          "expressions": {
+            "/expireSeconds": "clamp(ceil(round(duration_seconds(d_length) * 20) / 20), 1, 31536000)"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_metal",
+          "value": {
+            "expression": "slice(text(d_order), 0, len(first(split(lower(text(d_order)), lower(':')))))"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_amount",
+          "value": {
+            "expression": "(contains(lower(text(d_order)), lower(':')) ? slice(text(d_order), len(text(d_order)) - len(last(split(lower(text(d_order)), lower(':')))), len(text(d_order))) : '')"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "&#ff8000F&#ff9200o&#fea100r&#feae00g&#feba00e&#fec600 &#fed100r&#fedb00e&#fee400a&#feee00d&#fff700y at {{ (text(floor(num(get(split(player.location, ','), 0, 0)))) + ',' + text(floor(num(get(split(player.location, ','), 1, 0)))) + ',' + text(floor(num(get(split(player.location, ','), 2, 0)))) + ',' + get(split(player.location, ','), 3, '')) }}"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "t_1",
+          "value": {
+            "expression": "random(1, 3)"
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "(t_1 == 1)",
+          "then": {
+            "type": "action",
+            "capability": "animus:message",
+            "arguments": {
+              "text": "&6The anvil rings."
+            }
+          },
+          "else": {
+            "type": "condition",
+            "expression": "(t_1 == 2)",
+            "then": {
+              "type": "action",
+              "capability": "animus:message",
+              "arguments": {
+                "text": "&6Sparks fly."
+              }
+            },
+            "else": {
+              "type": "condition",
+              "expression": "(t_1 == 3)",
+              "then": {
+                "type": "condition",
+                "expression": "player.op",
+                "then": {
+                  "type": "action",
+                  "capability": "animus:message",
+                  "arguments": {
+                    "text": "&6The smith nods at you."
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

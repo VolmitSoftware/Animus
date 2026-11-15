@@ -38,7 +38,7 @@ class NavigationWaitTest {
         host = new ModuleHost(Platform.PAPER, 16, Duration.ofMillis(deadlineMillis));
         BuiltinActionSettings d = BuiltinActionSettings.DEFAULT;
         builtins = new BuiltinCapabilities(platform, new MemoryBehaviorState(), choice -> {},
-                new BuiltinActionSettings(d.actionsPerTick(), d.actionsPerNpcPerTick(), d.queuedActions(), d.pendingChoices(), d.choiceLifetimeSeconds(), d.commandBehaviors(), d.commandNamespaces(), waits, d.rawTextBehaviors()), line -> {});
+                new BuiltinActionSettings(d.actionsPerTick(), d.actionsPerNpcPerTick(), d.queuedActions(), d.pendingChoices(), d.choiceLifetimeSeconds(), d.commandBehaviors(), d.commandNamespaces(), waits, d.rawTextBehaviors(), false), line -> {});
         assertEquals(Outcome.Status.OK, host.installBuiltin(builtins, builtins).status());
     }
     @AfterEach void stop() { if (host != null) host.close(); }

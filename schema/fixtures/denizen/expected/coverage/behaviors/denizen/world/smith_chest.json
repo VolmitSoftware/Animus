@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:world/smith_chest",
+  "server": true,
+  "entry": "on-player-closes-inventory",
+  "variables": {
+    "d_helper": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_item": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_note": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_notes": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_pause": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_tune": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_2": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_3": {
+      "type": "any",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "on-player-closes-inventory": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "!((len(context.inventory_location) > 0))",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "context.inventory_items"
+          },
+          "as": "d_item",
+          "body": {
+            "type": "condition",
+            "expression": "!same(replace(get(d_item, 'item', ''), 'minecraft:', ''), 'air')",
+            "then": {
+              "type": "action",
+              "capability": "animus:give-item",
+              "arguments": {
+                "stack": null
+              },
+              "expressions": {
+                "/stack": "d_item"
+              }
+            }
+          }
+        },
+        {
+          "type": "set",
+          "variable": "t_1",
+          "value": []
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "npcs()"
+          },
+          "as": "t_2",
+          "maximum": 1024,
+          "body": {
+            "type": "condition",
+            "expression": "npc_has_flag(t_2, 'forge')",
+            "then": {
+              "type": "set",
+              "variable": "t_1",
+              "value": {
+                "expression": "append(t_1, t_2)"
+              }
+            }
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "t_1"
+          },
+          "as": "d_helper",
+          "maximum": 1024,
+          "body": {
+            "type": "call",
+            "routine": "task-smith_song-npc",
+            "npc": {
+              "expression": "d_helper"
+            }
+          }
+        }
+      ]
+    },
+    "task-smith_song-npc": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "set",
+          "variable": "d_notes",
+          "value": {
+            "expression": "['block_note_block_bell', 'block.note_block.chime']"
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "d_notes"
+          },
+          "as": "d_note",
+          "body": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "set",
+                "variable": "t_3",
+                "value": {
+                  "expression": "lower(text(d_note))"
+                }
+              },
+              {
+                "type": "action",
+                "capability": "animus:play-sound",
+                "arguments": {
+                  "sound": null,
+                  "volume": 0.8,
+                  "pitch": null,
+                  "at": "player"
+                },
+                "expressions": {
+                  "/sound": "(contains(t_3, ':') ? t_3 : 'minecraft:' + (contains(t_3, '.') ? t_3 : first(split(t_3, '_')) + '.' + join(slice(split(t_3, '_'), 1, len(split(t_3, '_')) - 1), '_') + '.' + last(split(t_3, '_'))))",
+                  "/pitch": "clamp((0.8 + random_decimal() * (1.2 - 0.8)), 0.5, 2)"
+                }
+              },
+              {
+                "type": "wait",
+                "ticks": {
+                  "expression": "clamp(round(num(d_pause) * 1), 0, 72000)"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": "&r"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": null,
+            "scope": "player",
+            "value": "played",
+            "expireSeconds": null
+          },
+          "expressions": {
+            "/name": "replace(lower(text(d_tune)), '.', '-')",
+            "/expireSeconds": "clamp(ceil(round(num(d_pause) * 20) / 20), 1, 31536000)"
+          }
+        },
+        {
+          "type": "wait",
+          "ticks": {
+            "expression": "clamp(round(random(1, 2) * 20), 0, 72000)"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "&eThat was {{ d_tune }}."
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "on-player-closes-inventory",
+      "event": "player_inventory_close",
+      "routine": "on-player-closes-inventory"
+    }
+  ]
+}

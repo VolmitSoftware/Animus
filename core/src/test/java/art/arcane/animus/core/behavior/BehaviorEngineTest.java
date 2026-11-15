@@ -42,6 +42,19 @@ class BehaviorEngineTest {
         answer.complete(Outcome.ok(false));assertEquals(1,engine.status().callsInFlight());engine.tick();assertEquals(0,engine.status().callsInFlight());
         var report=finish(engine,id);assertEquals(State.COMPLETED,report.state());assertEquals(false,report.variables().get("flag").value());assertTrue(engine.status().tick()>=5);
     }
+    @Test void aComputedWaitWaitsItsTicksAndAZeroWaitGoesOn(){
+        Fake invoker=new Fake();var engine=new BehaviorEngine(Limits.defaults(),invoker,ignored->{},art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
+        String vars="{\"delay\":{\"type\":\"integer\",\"initial\":2}}";
+        String main="{\"type\":\"sequence\",\"steps\":[{\"type\":\"wait\",\"ticks\":{\"expression\":\"delay * 20\"}},"+ACTION+",{\"type\":\"wait\",\"ticks\":{\"expression\":\"delay - 2\"}},"+ACTION+"]}";
+        UUID id=start(engine,compile(document(vars,"\"main\":"+main)));
+        for(int i=0;i<39;i++)engine.tick();
+        assertEquals(0,invoker.actions.size(),"forty ticks have not passed");
+        var report=finish(engine,id);assertEquals(State.COMPLETED,report.state());assertEquals(2,invoker.actions.size());
+        var plain=new BehaviorEngine(Limits.defaults(),new Fake(),ignored->{},art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
+        finish(plain,start(plain,compile(document(vars,"\"main\":{\"type\":\"sequence\",\"steps\":[{\"type\":\"wait\",\"ticks\":40},"+ACTION+",{\"type\":\"sequence\",\"steps\":[]},"+ACTION+"]}"))));
+        assertEquals(plain.status().tick(),engine.status().tick(),"the zero wait costs a step like any node and waits no ticks");
+        assertFalse(BehaviorCompiler.compile(document("{\"type\":\"wait\",\"ticks\":{\"template\":\"5\"}}")).program().isPresent(),"a template makes text, not ticks");
+    }
     @Test void parallelJoinMergesOnlyIndependentTypedWrites(){
         Fake invoker=new Fake();var engine=new BehaviorEngine(Limits.defaults(),invoker,ignored->{},art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);String vars="{\"a\":{\"type\":\"integer\",\"initial\":0},\"b\":{\"type\":\"integer\",\"initial\":0}}";
         String parallel="{\"type\":\"parallel\",\"branches\":[{\"type\":\"set\",\"variable\":\"a\",\"value\":1},{\"type\":\"set\",\"variable\":\"b\",\"value\":2}]}";
@@ -114,7 +127,7 @@ class BehaviorEngineTest {
     }
     @Test void invalidPreparedEntryIsRejectedBeforeAllocatingExecution(){
         var engine=new BehaviorEngine(Limits.defaults(),new Fake(),ignored->{},art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
-        var program=new BehaviorProgram("example:bad","missing",Map.of(),Map.of(),Map.of("main",new BehaviorProgram.Wait("$",1)),1,List.of());
+        var program=new BehaviorProgram("example:bad","missing",Map.of(),Map.of(),Map.of("main",new BehaviorProgram.Wait("$",1,null)),1,List.of());
         assertEquals(Outcome.Status.INVALID,engine.start(program,context()).status());assertEquals(0,engine.status().activeExecutions());assertEquals(0,engine.status().fibers());engine.tick();engine.close();
     }
     @Test void completionObserverFailureCannotReleaseUnknownAdmittedWork(){

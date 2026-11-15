@@ -8,6 +8,7 @@ import art.arcane.animus.core.behavior.builtin.MemoryBehaviorState;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonObject;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 import static art.arcane.animus.core.behavior.BehaviorCompilerTest.*;
@@ -67,6 +68,30 @@ class LanguageNodesTest {
         assertEquals("{\"count\":6,\"half\":1.5,\"items\":[1,2,3],\"text\":\"Hi Steve\"}",invoker.actions.getFirst().argumentsJson());
         assertTrue(error(document(vars,"\"main\":"+action.replace("\"/text\":\"Hi","\"/count\":\"Hi"))).contains("overlapping"));
         assertTrue(error(document(vars,"\"main\":"+action.replace("\"text\":null","\"text\":\"set\""))).contains("null placeholder"));
+    }
+    @Test void anActionResultIsStoredInItsDeclaredVariable(){
+        Fake invoker=new Fake();invoker.action=i->new BehaviorInvoker.Call<>(CompletableFuture.completedFuture(Outcome.ok("{\"items\":[{\"item\":\"minecraft:bread\",\"amount\":3}]}")),()->{});
+        String vars="{\"held\":{\"type\":\"map\",\"initial\":{}},\"count\":{\"type\":\"integer\",\"initial\":0}}";
+        String main=seq("{\"type\":\"action\",\"capability\":\"sample:read\",\"result\":\"held\"}",set("count","{\"expression\":\"get(first(get(held, 'items')), 'amount')\"}"));
+        Report report=run(invoker,BehaviorState.UNAVAILABLE,vars,"\"main\":"+main);
+        assertEquals(State.COMPLETED,report.state(),report.reason());
+        assertEquals(3L,value(report,"count"));
+        assertTrue(error(document(vars,"\"main\":{\"type\":\"action\",\"capability\":\"sample:read\",\"result\":\"ghost\"}")).contains("unknown declared variable"));
+        String number="{\"held\":{\"type\":\"integer\",\"initial\":0}}";
+        assertEquals(State.FAILED,run(invoker,BehaviorState.UNAVAILABLE,number,"\"main\":{\"type\":\"action\",\"capability\":\"sample:read\",\"result\":\"held\"}").state(),"a map does not fit a number variable");
+    }
+    @Test void aCallRunsItsRoutineForAnotherPlayerAndNpcThenReturnsToTheRunsOwn(){
+        Fake invoker=new Fake();String other="00000000-0000-0000-0000-0000000000b1",npc="00000000-0000-0000-0000-0000000000c1";
+        String greet="{\"type\":\"action\",\"capability\":\"sample:greet\"}";
+        String main=seq("{\"type\":\"call\",\"routine\":\"greet\",\"player\":{\"expression\":\"'p@"+other+"'\"},\"npc\":\""+npc+"\"}",greet);
+        Report report=run(invoker,BehaviorState.UNAVAILABLE,"{}","\"main\":"+main+",\"greet\":"+greet);
+        assertEquals(State.COMPLETED,report.state(),report.reason());
+        assertEquals(Optional.of(UUID.fromString(other)),invoker.actions.get(0).player());
+        assertEquals(UUID.fromString(npc),invoker.actions.get(0).npc().uuid());
+        assertEquals(Optional.of(PLAYER),invoker.actions.get(1).player(),"back to the run's own player after the call");
+        assertNotEquals(UUID.fromString(npc),invoker.actions.get(1).npc().uuid());
+        Report bad=run(new Fake(),BehaviorState.UNAVAILABLE,"{}","\"main\":{\"type\":\"call\",\"routine\":\"greet\",\"player\":\"nobody\"},\"greet\":"+greet);
+        assertEquals(State.FAILED,bad.state());
     }
     @Test void computedRepeatRunsIndexedPassesWithinItsMaximum(){
         String vars="{\"n\":{\"type\":\"integer\",\"initial\":4},\"i\":{\"type\":\"integer\",\"initial\":-1},\"sum\":{\"type\":\"integer\",\"initial\":0}}";

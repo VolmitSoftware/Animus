@@ -7,7 +7,7 @@ import java.util.Optional;
 /** Node words of the behavior language and the fields each accepts. The compiler and the generated schema share this list. */
 public enum BehaviorNodeType {
     SEQUENCE("sequence", "Runs its steps in order.", "steps"),
-    ACTION("action", "Runs a capability and waits for its result.", "capability", "arguments", "bindings", "expressions", "templates"),
+    ACTION("action", "Runs a capability and waits for its result.", "capability", "arguments", "bindings", "expressions", "templates", "result"),
     CONDITION("condition", "Tests a capability or an expression, then runs then or else.", "capability", "arguments", "bindings", "expressions", "templates", "expression", "then", "else"),
     WAIT("wait", "Waits a number of behavior ticks.", "ticks"),
     REPEAT("repeat", "Runs its body a fixed or computed number of times.", "count", "maximum", "index", "body"),
@@ -16,7 +16,7 @@ public enum BehaviorNodeType {
     BREAK("break", "Leaves the innermost loop."),
     CONTINUE("continue", "Starts the next pass of the innermost loop."),
     PARALLEL("parallel", "Runs independent branches, then joins them.", "branches"),
-    CALL("call", "Runs another routine of this document.", "routine", "arguments", "result"),
+    CALL("call", "Runs another routine of this document, optionally for another player or NPC.", "routine", "arguments", "result", "player", "npc"),
     RETURN("return", "Ends the current routine, optionally with a value.", "value"),
     SET("set", "Writes a declared variable.", "variable", "value");
 

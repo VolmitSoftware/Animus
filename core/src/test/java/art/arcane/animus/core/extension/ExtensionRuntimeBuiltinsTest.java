@@ -73,7 +73,7 @@ class ExtensionRuntimeBuiltinsTest {
 
     private ExtensionRuntime start(boolean modulesEnabled, List<String> commandBehaviors, List<art.arcane.animus.api.TrustedModule> integrations) throws Exception {
         BuiltinActionSettings defaults = BuiltinActionSettings.DEFAULT;
-        BuiltinActionSettings settings = new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), commandBehaviors, List.of(), defaults.navigationWaits(), List.of());
+        BuiltinActionSettings settings = new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), commandBehaviors, List.of(), defaults.navigationWaits(), List.of(), false);
         BuiltinCapabilities builtins = new BuiltinCapabilities(UNAVAILABLE, new MemoryBehaviorState(), choice -> {}, settings, line -> {});
         runtime = new ExtensionRuntime(root.toRealPath().resolve("modules"), Platform.FOLIA, new ModuleSettings(modulesEnabled, 8, 2000, 250), line -> {}, state -> {}, builtins);
         for (art.arcane.animus.api.TrustedModule integration : integrations) runtime.integration(integration, OPEN);

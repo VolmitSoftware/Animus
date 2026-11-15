@@ -179,6 +179,7 @@ final class ApiHarness implements AutoCloseable {
         @Override public void playRecording(String id, String recording, Optional<art.arcane.animus.core.recording.Playback> playback) {}
         @Override public boolean resumePatrol(String id) { return false; }
         @Override public void setAttribute(String id, String attribute, java.util.OptionalDouble value) {}
+        @Override public void setLookClose(String id, boolean enabled, java.util.OptionalDouble range, Optional<Boolean> lineOfSight) {}
         @Override public void close() {}
     }
 }

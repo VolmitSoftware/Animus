@@ -50,6 +50,8 @@ public final class OwnerNeeds {
     /** What an import kept for review: data nothing runs, so it needs no node. */
     static final Set<String> REVIEWS = Set.of("citizens:review", "shopkeepers:review");
     private static final Set<String> BROADCASTS = Set.of("all", "world", "console");
+    /** Conditions whose {@code npc} argument only reads another NPC. */
+    private static final Set<String> READS_NPC = Set.of("animus:flag-state");
     private static final Set<String> TARGET_PLAYERS = Set.of("players", "permissions", "groups", "teams", "chat");
 
     private OwnerNeeds() {}
@@ -96,6 +98,12 @@ public final class OwnerNeeds {
             else if (element.isJsonObject()) {
                 JsonObject object = element.getAsJsonObject();
                 if (BehaviorNodes.capability(object).isPresent()) needs.addAll(node(object, where, owner, sources));
+                if (object.get("type") instanceof JsonElement type && type.isJsonPrimitive() && type.getAsString().equals("call")) {
+                    if (object.get("player") instanceof JsonElement player && !player.isJsonNull())
+                        needs.add(new OwnerNeed(PermissionNodes.OWNED_PLAYERS, "run a routine for another player", where));
+                    if (object.get("npc") instanceof JsonElement npc && !npc.isJsonNull())
+                        needs.add(new OwnerNeed(PermissionNodes.OWNED_SERVER, "run a routine for another NPC", where));
+                }
                 for (Map.Entry<String, JsonElement> entry : object.entrySet()) pending.add(entry.getValue());
             }
         }
@@ -135,6 +143,7 @@ public final class OwnerNeeds {
                     needs.add(new OwnerNeed(PermissionNodes.OWNED_SERVER, "teleport players", where));
             }
             case "animus:build" -> needs.add(new OwnerNeed(PermissionNodes.OWNED_SERVER, "build in the world", where));
+            case "animus:explode" -> needs.add(new OwnerNeed(PermissionNodes.OWNED_SERVER, "set off explosions", where));
             case "animus:message" -> {
                 boolean broadcast = BehaviorNodes.bound(node, "to") || BehaviorNodes.literal(node, "to").map((JsonElement to) -> !to.isJsonPrimitive() || BROADCASTS.contains(to.getAsString())).orElse(false);
                 if (broadcast) needs.add(new OwnerNeed(PermissionNodes.OWNED_PLAYERS, "message every player or the console", where));
@@ -149,6 +158,8 @@ public final class OwnerNeeds {
         }
         if (BehaviorNodes.paysQuest(node)) needs.add(new OwnerNeed(PermissionNodes.OWNED_ITEMS, "pay a quest's rewards", where));
         if (BehaviorNodes.given(node, "player")) needs.add(new OwnerNeed(PermissionNodes.OWNED_PLAYERS, "reach a player by name", where));
+        if (BehaviorNodes.given(node, "atPlayer")) needs.add(new OwnerNeed(PermissionNodes.OWNED_PLAYERS, "show effects at another player", where));
+        if (BehaviorNodes.given(node, "npc") && !READS_NPC.contains(capability)) needs.add(new OwnerNeed(PermissionNodes.OWNED_SERVER, "act on another NPC", where));
         return needs;
     }
 

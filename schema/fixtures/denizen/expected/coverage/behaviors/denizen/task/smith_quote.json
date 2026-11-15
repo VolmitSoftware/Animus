@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/smith_quote",
+  "entry": "main",
+  "variables": {
+    "d_fallback": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_item": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_known": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_price": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "set",
+          "variable": "t_1",
+          "value": {
+            "sword": 12
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_price",
+          "value": {
+            "expression": "get(t_1, lower(text(d_item)), 0)"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_fallback",
+          "value": {
+            "expression": "5"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_known",
+          "value": {
+            "expression": "12"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "That costs {{ d_price }}, or {{ d_fallback }} and {{ d_known }}."
+          }
+        }
+      ]
+    }
+  }
+}

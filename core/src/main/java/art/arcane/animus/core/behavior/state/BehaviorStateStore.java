@@ -164,6 +164,13 @@ public final class BehaviorStateStore implements BehaviorState {
     }
     private static boolean expired(Document document,String name,long now){Long at=document.expires.get(name);return at!=null&&at<=now;}
 
+    @Override public synchronized java.util.OptionalLong expiry(Subject subject,String variable,ScopedVariable declaration){
+        Document document=documents.get(key(subject,declaration));
+        if(document==null||document.problem!=null||!document.values.containsKey(variable))return java.util.OptionalLong.empty();
+        Long at=document.expires.get(variable);
+        return at==null||at<=millis.getAsLong()?java.util.OptionalLong.empty():java.util.OptionalLong.of(at);
+    }
+
     @Override public void write(Subject subject,Map<String,Value> writes,Map<String,ScopedVariable> declarations){write(subject,writes,declarations,Map.of());}
 
     /** An expiry at or before the current time removes the key at once. */

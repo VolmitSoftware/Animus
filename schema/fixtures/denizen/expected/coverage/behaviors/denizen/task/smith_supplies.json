@@ -1,0 +1,242 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/smith_supplies",
+  "entry": "main",
+  "variables": {
+    "d_blade": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_held": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_kit": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_orders": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_part": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_2": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_3": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_4": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_5": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_6": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_7": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_8": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_9": {
+      "type": "any",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "set",
+          "variable": "t_1",
+          "value": {
+            "item": "minecraft:iron_sword",
+            "amount": 1
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_blade",
+          "value": {
+            "expression": "t_1"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "t_2",
+          "value": {
+            "minecraft:sharpness": 2,
+            "minecraft:unbreaking": 1
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_blade",
+          "value": {
+            "expression": "put(d_blade, 'enchantments', t_2)"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_blade",
+          "value": {
+            "expression": "put(d_blade, 'name', ('&7Smith\\'s Blade'))"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "t_3",
+          "value": {
+            "item": "minecraft:bread",
+            "amount": 4
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_kit",
+          "value": {
+            "expression": "append((same(text(d_kit), '') ? [] : d_kit), t_3)"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_kit",
+          "value": {
+            "expression": "append((same(text(d_kit), '') ? [] : d_kit), d_blade)"
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "d_kit"
+          },
+          "as": "d_part",
+          "body": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "set",
+                "variable": "t_4",
+                "value": {}
+              },
+              {
+                "type": "condition",
+                "capability": "animus:can-fit",
+                "arguments": {
+                  "stack": null
+                },
+                "expressions": {
+                  "/stack": "(same(type_of(d_part), 'map') ? d_part : put(t_4, 'item', (contains(lower(replace(text(d_part), 'i@', '')), ':') ? lower(replace(text(d_part), 'i@', '')) : 'minecraft:' + lower(replace(text(d_part), 'i@', '')))))"
+                },
+                "then": {
+                  "type": "sequence",
+                  "steps": [
+                    {
+                      "type": "set",
+                      "variable": "t_6",
+                      "value": {}
+                    },
+                    {
+                      "type": "foreach",
+                      "list": {
+                        "expression": "(same(type_of(d_part), 'list') ? d_part : [d_part])"
+                      },
+                      "as": "t_5",
+                      "maximum": 100,
+                      "body": {
+                        "type": "action",
+                        "capability": "animus:give-item",
+                        "arguments": {
+                          "stack": null
+                        },
+                        "expressions": {
+                          "/stack": "(same(type_of(t_5), 'map') ? t_5 : put(t_6, 'item', (contains(lower(replace(text(t_5), 'i@', '')), ':') ? lower(replace(text(t_5), 'i@', '')) : 'minecraft:' + lower(replace(text(t_5), 'i@', '')))))"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "else": {
+                  "type": "action",
+                  "capability": "animus:message",
+                  "arguments": {
+                    "text": "&cYour pack is full."
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "set",
+          "variable": "t_8",
+          "value": {}
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "(same(type_of(d_orders), 'list') ? d_orders : [d_orders])"
+          },
+          "as": "t_7",
+          "maximum": 100,
+          "body": {
+            "type": "action",
+            "capability": "animus:give-item",
+            "arguments": {
+              "stack": null
+            },
+            "expressions": {
+              "/stack": "(same(type_of(t_7), 'map') ? t_7 : put(t_8, 'item', (contains(lower(replace(text(t_7), 'i@', '')), ':') ? lower(replace(text(t_7), 'i@', '')) : 'minecraft:' + lower(replace(text(t_7), 'i@', '')))))"
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:read-inventory",
+          "arguments": {},
+          "result": "t_9"
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "get(t_9, 'items', [])"
+          },
+          "as": "d_held",
+          "body": {
+            "type": "condition",
+            "expression": "(same(replace(get(d_held, 'item', ''), 'minecraft:', ''), 'iron_ingot') && same((has(d_held, 'name') ? plain(get(d_held, 'name', '')) : 'plain'), 'plain'))",
+            "then": {
+              "type": "action",
+              "capability": "animus:message",
+              "arguments": {
+                "text": null
+              },
+              "templates": {
+                "/text": "&7You carry {{ get(d_held, 'amount', 1) }} iron."
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

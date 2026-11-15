@@ -335,7 +335,14 @@ public final class BehaviorSchemaGenerator {
             case "then" -> new Field(described(reference("node"), "Runs when the condition is true."), "node", true);
             case "else" -> new Field(described(reference("node"), "Runs when the condition is false."), "node", false);
             case "body" -> new Field(described(reference("node"), "The repeated step."), "node", true);
-            case "ticks" -> new Field(described(range("integer", 1, BehaviorCompiler.MAX_WAIT_TICKS), "Behavior ticks, about 50 ms each."), "integer", true);
+            case "ticks" -> {
+                JsonArray options = new JsonArray();
+                options.add(range("integer", 1, BehaviorCompiler.MAX_WAIT_TICKS));
+                options.add(reference("operand"));
+                JsonObject ticks = described(new JsonObject(), "Behavior ticks, about 50 ms each: 1 to " + BehaviorCompiler.MAX_WAIT_TICKS + ", or an operand computed when the wait starts, held to 0 to " + BehaviorCompiler.MAX_WAIT_TICKS + ".");
+                ticks.add("anyOf", options);
+                yield new Field(ticks, "integer", true);
+            }
             case "count" -> {
                 JsonArray options = new JsonArray();
                 options.add(range("integer", 0, BehaviorCompiler.MAX_REPEAT));
@@ -349,8 +356,12 @@ public final class BehaviorSchemaGenerator {
             case "list" -> new Field(described(reference("operand"), "An operand that evaluates to a list or map."), "value", true);
             case "as" -> new Field(described(reference("identifier"), "An execution variable that receives each item."), "variable", true);
             case "key" -> new Field(described(reference("identifier"), "An execution variable that receives each map key."), "variable", false);
-            case "result" -> new Field(described(reference("identifier"), "A declared variable that receives the routine's return value."), "variable", false);
+            case "result" -> new Field(described(reference("identifier"), type == BehaviorNodeType.ACTION
+                    ? "A declared variable that receives the capability's result, a map such as the items an inventory read gives."
+                    : "A declared variable that receives the routine's return value."), "variable", false);
             case "routine" -> new Field(described(reference("identifier"), "A routine of this document."), "routine", true);
+            case "player" -> new Field(described(reference("operand"), "A player UUID the routine runs for: its player facts, player flags and actions address that player."), "value", false);
+            case "npc" -> new Field(described(reference("operand"), "An NPC UUID the routine runs for: its NPC facts, NPC flags and actions address that NPC."), "value", false);
             case "variable" -> new Field(described(pattern(NONBLANK), "A declared variable."), "variable", true);
             case "value" -> new Field(described(reference("value"), type == BehaviorNodeType.RETURN
                     ? "The value the routine returns to its call's result."

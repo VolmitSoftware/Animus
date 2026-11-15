@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 8,
-  "importId": "33dbaeee4f9130714f3466b3b024caba38e4ba60e5b34b7211f46fc195d047d3",
+  "converterVersion": 9,
+  "importId": "ba96a51d20d096978900b04f0ee31d91d0af8f23106d86221072816f5c099e11",
   "notice": "Data conversion only. Apply lists the generated behaviors on their NPCs and turns the server behaviors on, except held behaviors, whose guard did not convert.",
   "sources": {
     "scripts/guards.dsc": "466638fde72c8e5ecfcdc59043b873c50b88cd799c15741b458db2f3bf7951a9",
@@ -30,8 +30,8 @@
     "task": {
       "total": 2,
       "converted": 1,
-      "partial": 0,
-      "preserved": 1
+      "partial": 1,
+      "preserved": 0
     },
     "world": {
       "total": 1,
@@ -54,8 +54,8 @@
       "preserved": 2
     },
     "inject": {
-      "converted": 0,
-      "preserved": 1
+      "converted": 1,
+      "preserved": 0
     },
     "narrate": {
       "converted": 2,
@@ -159,7 +159,7 @@
     },
     "denizen:task/reward_task": {
       "lines": [
-        "guards.dsc:44"
+        "guards.dsc:45"
       ],
       "npcs": []
     },
@@ -179,7 +179,6 @@
   "guis": [],
   "sounds": {},
   "issues": [
-    "guards.dsc:39: execute as_op runs as the player without operator rights; the command fails where it needs them",
     "guards.dsc:67: command permission is not 1-256 characters of text; the command is held until it is fixed"
   ],
   "preserved": [
@@ -261,18 +260,11 @@
       "reason": "command permission is not 1-256 characters of text"
     },
     {
-      "source": "guards.dsc:44",
-      "container": "reward_task",
-      "kind": "command",
-      "item": "inject",
-      "reason": "inject runs vip_check inside this script, so a stop there ends this script too; an Animus call ends only the task"
-    },
-    {
       "source": "guards.dsc:45",
       "container": "reward_task",
       "kind": "command",
       "item": "ratelimit",
-      "reason": "never runs: after a line that did not convert and may stop the script; the routine ends there"
+      "reason": "ratelimit keyed on anything but the player has no Animus equivalent"
     },
     {
       "source": "guards.dsc:46",
@@ -285,8 +277,8 @@
   "documents": {
     "behaviors/denizen/command/reward_command.json": "bee827e80be08c1f4b7bcb6110ffed368fe685d8df863632ff0e6dc2e9eadc23",
     "behaviors/denizen/interact/bank_interact.json": "42393a35d4fc3bcc4b26e0f009b8dff3c42dd8ae0cc87749113b1b71e4e694a2",
-    "behaviors/denizen/interact/greeter_interact.json": "ad9fef85cd44a3e59f1f2bf3ab9bf6d3110b0c615d477fd99796bfbd915ba7c4",
-    "behaviors/denizen/task/reward_task.json": "7a91057532c2f47c5d584b9dca4372bf63942e01b5c5e31937b5214d802474e9",
+    "behaviors/denizen/interact/greeter_interact.json": "2f868bebf13de33c1aef86d97c7d31ca4bb3d3d2c2820804f46214dcd3a2d521",
+    "behaviors/denizen/task/reward_task.json": "847866e29ffc03531020027a2345f95aeb34983d5ab57cef9d6e9cb4ed2dc658",
     "behaviors/denizen/task/vip_check.json": "6c216c350f27d5ef8a03bf9428c82596cb36859134d7ae93b7db30d301543656",
     "behaviors/denizen/world/lobby_world.json": "eb12247dc9aaab9d0d53db8e31f811f36c7dc184dac87582e36239223598fde4"
   }

@@ -37,6 +37,16 @@ public record LookClose(double range, boolean lineOfSight, boolean whileNavigati
         if (switchTicks < 0 || switchTicks > MAXIMUM_RANDOM_DELAY) throw new IllegalArgumentException(FIELD + ".switchTicks: expected 1.." + MAXIMUM_RANDOM_DELAY + " ticks");
     }
     /** Looks at players only, without random looking. */
+    /**
+     * This look-close turned on at a runtime range and line of sight, keeping its other settings; with none, the
+     * defaults. Throws {@link IllegalArgumentException} for a range outside 1-64.
+     */
+    public static LookClose changed(LookClose base, java.util.OptionalDouble range, Optional<Boolean> lineOfSight) {
+        LookClose from = base == null ? new LookClose(DEFAULT_RANGE, false, false) : base;
+        return new LookClose(range.orElse(from.range()), lineOfSight.orElse(from.lineOfSight()), from.whileNavigating(), from.npcs(), from.randomLook(),
+                from.headOnly(), from.perPlayer(), from.permissions(), from.turnRate(), from.switchTicks());
+    }
+
     public LookClose(double range, boolean lineOfSight, boolean whileNavigating) {
         this(range, lineOfSight, whileNavigating, false, Optional.empty(), false, false, List.of(), Optional.empty(), 0);
     }

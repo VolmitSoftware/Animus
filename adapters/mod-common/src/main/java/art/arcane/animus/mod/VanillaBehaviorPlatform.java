@@ -240,7 +240,9 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     }
     @Override public int spawnParticle(NpcHandle npc, Audience audience, ParticleEffect effect) {
         NpcRuntime.ActiveNpc active = requireVoice(npc);
-        WorldPosition at = bodyCenter(active);
+        WorldPosition center = bodyCenter(active);
+        WorldPosition at = effect.height().isPresent()
+                ? new WorldPosition(center.world(), new Vec3(center.point().x(), active.state().bounds().min().y() + effect.height().getAsDouble(), center.point().z())) : center;
         SimpleParticleType particle = particle(effect.particle());
         ServerLevel level = ModWorldKeys.level(server, at.world());
         if (level == null) throw PlatformRefusals.worldUnavailable();
@@ -309,6 +311,63 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         Component line = formatted(text);
         return living.players().deliver(player, (ServerPlayer online) -> online.sendSystemMessage(line, true)) ? 1 : 0;
     }
+    /** Each player's behavior boss bars by id, and the players shown a behavior sidebar; players gone offline are dropped as these change. */
+    private final java.util.Map<UUID, java.util.Map<String, net.minecraft.server.level.ServerBossEvent>> bossBars = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Set<UUID> sidebars = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final String SIDEBAR = "animus_sidebar";
+
+    @Override public int bossBar(UUID player, BossBar bar) {
+        bossBars.entrySet().removeIf((java.util.Map.Entry<UUID, java.util.Map<String, net.minecraft.server.level.ServerBossEvent>> entry) -> {
+            if (living.players().owned(entry.getKey()).isPresent()) return false;
+            entry.getValue().values().forEach(net.minecraft.server.level.ServerBossEvent::removeAllPlayers);
+            return true;
+        });
+        Optional<ServerPlayer> online = living.players().owned(player);
+        if (online.isEmpty()) return 0;
+        java.util.Map<String, net.minecraft.server.level.ServerBossEvent> mine = bossBars.computeIfAbsent(player, (UUID ignored) -> new java.util.concurrent.ConcurrentHashMap<>());
+        if (bar.remove()) {
+            net.minecraft.server.level.ServerBossEvent shown = mine.remove(bar.id());
+            if (shown != null) shown.removeAllPlayers();
+            return 1;
+        }
+        net.minecraft.server.level.ServerBossEvent shown = mine.computeIfAbsent(bar.id(), (String ignored) -> {
+            net.minecraft.server.level.ServerBossEvent created = new net.minecraft.server.level.ServerBossEvent(UUID.randomUUID(), Component.empty(),
+                    net.minecraft.world.BossEvent.BossBarColor.WHITE, net.minecraft.world.BossEvent.BossBarOverlay.PROGRESS);
+            created.setProgress(0);
+            return created;
+        });
+        bar.title().ifPresent((String title) -> shown.setName(formatted(title)));
+        bar.progress().ifPresent((double progress) -> shown.setProgress((float) progress));
+        bar.color().ifPresent((String color) -> shown.setColor(net.minecraft.world.BossEvent.BossBarColor.valueOf(color.toUpperCase(java.util.Locale.ROOT))));
+        bar.style().ifPresent((String style) -> shown.setOverlay(style.equals("solid") ? net.minecraft.world.BossEvent.BossBarOverlay.PROGRESS
+                : net.minecraft.world.BossEvent.BossBarOverlay.valueOf("NOTCHED_" + style.substring(style.indexOf('_') + 1))));
+        if (!shown.getPlayers().contains(online.get())) {
+            shown.removeAllPlayers();
+            shown.addPlayer(online.get());
+        }
+        return 1;
+    }
+
+    /** A sidebar is sent to the one player as packets of an objective no server scoreboard holds, so no other player sees it. */
+    @Override public int sidebar(UUID player, Optional<Sidebar> sidebar) {
+        sidebars.removeIf((UUID known) -> living.players().owned(known).isEmpty());
+        Optional<ServerPlayer> online = living.players().owned(player);
+        if (online.isEmpty()) return 0;
+        net.minecraft.world.scores.Scoreboard scratch = new net.minecraft.world.scores.Scoreboard();
+        net.minecraft.world.scores.Objective objective = scratch.addObjective(SIDEBAR, net.minecraft.world.scores.criteria.ObjectiveCriteria.DUMMY,
+                formatted(sidebar.map(Sidebar::title).orElse("")), net.minecraft.world.scores.criteria.ObjectiveCriteria.RenderType.INTEGER, false, null);
+        net.minecraft.server.network.ServerGamePacketListenerImpl connection = online.get().connection;
+        if (sidebars.remove(player)) connection.send(new net.minecraft.network.protocol.game.ClientboundSetObjectivePacket(objective, net.minecraft.network.protocol.game.ClientboundSetObjectivePacket.METHOD_REMOVE));
+        if (sidebar.isEmpty()) return 1;
+        connection.send(new net.minecraft.network.protocol.game.ClientboundSetObjectivePacket(objective, net.minecraft.network.protocol.game.ClientboundSetObjectivePacket.METHOD_ADD));
+        connection.send(new net.minecraft.network.protocol.game.ClientboundSetDisplayObjectivePacket(net.minecraft.world.scores.DisplaySlot.SIDEBAR, objective));
+        List<String> lines = sidebar.get().lines();
+        for (int line = 0; line < lines.size(); line++)
+            connection.send(new net.minecraft.network.protocol.game.ClientboundSetScorePacket("line" + line, SIDEBAR, lines.size() - line, Optional.of(formatted(lines.get(line))), Optional.empty()));
+        sidebars.add(player);
+        return 1;
+    }
+
     @Override public int playSoundAtPlayer(UUID player, Audience audience, SoundEffect sound) {
         Holder<SoundEvent> event = sound(sound.sound());
         Optional<WorldPosition> at = playerCenter(player);
@@ -320,7 +379,8 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     }
     @Override public int spawnParticleAtPlayer(UUID player, Audience audience, ParticleEffect effect) {
         SimpleParticleType particle = particle(effect.particle());
-        Optional<WorldPosition> at = playerCenter(player);
+        Optional<WorldPosition> at = effect.height().isPresent() ? playerFeet(player).map((WorldPosition feet) ->
+                new WorldPosition(feet.world(), new Vec3(feet.point().x(), feet.point().y() + effect.height().getAsDouble(), feet.point().z()))) : playerCenter(player);
         if (at.isEmpty()) return 0;
         ServerLevel level = ModWorldKeys.level(server, at.get().world());
         if (level == null) throw PlatformRefusals.worldUnavailable();
@@ -363,7 +423,15 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
             throw new CapabilityRefusal(Outcome.Status.FAILED, "teleport-blocked",
                     "The NPC cannot stand there: the destination must be loaded, clear and supported, and the NPC must not ride or carry anyone");
     }
-    @Override public int giveItem(UUID player, ItemGift gift) {
+    /**
+     * One of the gift's items: from its data, the item text an inventory read gave, or else its key with its name, lore
+     * and enchantments. An unknown item or enchantment, or data the server cannot read, is refused.
+     */
+    private ItemStack template(ItemGift gift) {
+        if (gift.data().isPresent()) {
+            try { return new net.minecraft.commands.arguments.item.ItemParser(server.registryAccess()).parse(new com.mojang.brigadier.StringReader(gift.data().get())).createItemStack(1); }
+            catch (com.mojang.brigadier.exceptions.CommandSyntaxException unreadable) { throw new CapabilityRefusal(art.arcane.animus.api.Outcome.Status.INVALID, "item-data", "The item data does not describe an item this server knows"); }
+        }
         ItemStack template = stack(gift.item());
         gift.name().ifPresent((String name) -> template.set(DataComponents.CUSTOM_NAME, itemText(name)));
         if (!gift.lore().isEmpty()) {
@@ -371,11 +439,112 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
             for (String line : gift.lore()) if (lines.size() < ItemLore.MAX_LINES) lines.add(itemText(line));
             template.set(DataComponents.LORE, new ItemLore(lines));
         }
+        if (gift.enchantments().isEmpty()) return template;
+        net.minecraft.core.Registry<net.minecraft.world.item.enchantment.Enchantment> enchantments = server.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT);
+        for (java.util.Map.Entry<String, Integer> entry : gift.enchantments().entrySet()) {
+            Identifier id = Identifier.tryParse(entry.getKey());
+            Optional<Holder.Reference<net.minecraft.world.item.enchantment.Enchantment>> enchantment = id == null ? Optional.empty()
+                    : enchantments.get(net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.ENCHANTMENT, id));
+            if (enchantment.isEmpty()) throw PlatformRefusals.unknownEnchantment(entry.getKey());
+            template.enchant(enchantment.get(), entry.getValue());
+        }
+        return template;
+    }
+    @Override public int giveItem(UUID player, ItemGift gift) {
+        ItemStack template = template(gift);
         Optional<ServerPlayer> online = living.players().owned(player);
         if (online.isEmpty()) return 0;
         int limit = Math.max(1, template.getMaxStackSize());
         for (int remaining = gift.amount(); remaining > 0; remaining -= limit) give(online.get(), template.copyWithCount(Math.min(remaining, limit)));
         return gift.amount();
+    }
+    @Override public List<HeldItem> inventory(UUID player) {
+        Optional<ServerPlayer> online = living.players().owned(player);
+        if (online.isEmpty()) return List.of();
+        Inventory inventory = online.get().getInventory();
+        List<ItemStack> stacks = new ArrayList<>();
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) stacks.add(inventory.getItem(slot));
+        return held(stacks, server.registryAccess());
+    }
+
+    /** The filled slots among the stacks, each with its key and components as data when it has any. */
+    static List<HeldItem> held(List<ItemStack> stacks, net.minecraft.core.HolderLookup.Provider registries) {
+        List<HeldItem> held = new ArrayList<>();
+        for (int slot = 0; slot < stacks.size(); slot++) {
+            ItemStack stack = stacks.get(slot);
+            if (stack.isEmpty()) continue;
+            Component name = stack.get(DataComponents.CUSTOM_NAME);
+            String key = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+            held.add(new HeldItem(slot, key, stack.getCount(), name == null ? Optional.empty() : Optional.of(name.getString()), data(key, stack, registries)));
+        }
+        return held;
+    }
+
+    /** The item's key and changed components in command syntax, which the item parser reads back; none for an unchanged item. */
+    static Optional<String> data(String key, ItemStack stack, net.minecraft.core.HolderLookup.Provider registries) {
+        net.minecraft.core.component.DataComponentPatch patch = stack.getComponentsPatch();
+        if (patch.isEmpty()) return Optional.empty();
+        Optional<net.minecraft.nbt.Tag> encoded = net.minecraft.core.component.DataComponentPatch.CODEC.encodeStart(registries.createSerializationContext(net.minecraft.nbt.NbtOps.INSTANCE), patch).result();
+        if (encoded.isEmpty() || !(encoded.get() instanceof net.minecraft.nbt.CompoundTag components)) return Optional.empty();
+        List<String> parts = new ArrayList<>();
+        for (java.util.Map.Entry<String, net.minecraft.nbt.Tag> entry : components.entrySet())
+            parts.add(entry.getKey().startsWith("!") ? entry.getKey() : entry.getKey() + "=" + entry.getValue());
+        String text = key + "[" + String.join(",", parts) + "]";
+        return text.length() <= MAXIMUM_ITEM_DATA ? Optional.of(text) : Optional.empty();
+    }
+
+    @Override public Optional<BlockHit> rayTrace(UUID player, double range) {
+        Optional<ServerPlayer> online = living.players().owned(player);
+        if (online.isEmpty()) return Optional.empty();
+        net.minecraft.world.phys.HitResult hit = online.get().pick(range, 1.0f, false);
+        if (hit.getType() != net.minecraft.world.phys.HitResult.Type.BLOCK || !(hit instanceof net.minecraft.world.phys.BlockHitResult block)) return Optional.empty();
+        net.minecraft.core.BlockPos pos = block.getBlockPos();
+        net.minecraft.world.level.block.state.BlockState state = online.get().level().getBlockState(pos);
+        if (state.isAir()) return Optional.empty();
+        return Optional.of(new BlockHit(art.arcane.animus.core.behavior.SnapshotFacts.location(pos.getX(), pos.getY(), pos.getZ(), ModWorldKeys.key(online.get().level())),
+                BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString()));
+    }
+
+    @Override public Optional<String> blockAt(String location) {
+        String[] parts = location.split(",", -1);
+        if (parts.length < 4) return Optional.empty();
+        ServerLevel level = ModWorldKeys.resolve(server, parts[3].strip()).map((String key) -> ModWorldKeys.level(server, key)).orElse(null);
+        if (level == null) return Optional.empty();
+        try {
+            net.minecraft.core.BlockPos pos = net.minecraft.core.BlockPos.containing(Double.parseDouble(parts[0]), Double.parseDouble(parts[1]), Double.parseDouble(parts[2]));
+            if (!level.isLoaded(pos)) return Optional.empty();
+            return Optional.of(BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()).toString());
+        } catch (NumberFormatException unreadable) { return Optional.empty(); }
+    }
+
+    @Override public void explode(NpcHandle npc, Explosion explosion) {
+        NpcRuntime.ActiveNpc active = requireVoice(npc);
+        WorldPosition at = explosion.point().isPresent() ? new WorldPosition(active.state().position().world(), explosion.point().get()) : bodyCenter(active);
+        String world = explosion.world().flatMap((String reference) -> ModWorldKeys.resolve(server, reference)).orElse(at.world());
+        ServerLevel level = ModWorldKeys.level(server, world);
+        if (level == null) throw PlatformRefusals.worldUnavailable();
+        level.explode(null, at.point().x(), at.point().y(), at.point().z(), explosion.power(), explosion.fire(),
+                explosion.breakBlocks() ? net.minecraft.world.level.Level.ExplosionInteraction.TNT : net.minecraft.world.level.Level.ExplosionInteraction.NONE);
+    }
+
+    @Override public void lookClose(NpcHandle npc, boolean enabled, java.util.OptionalDouble range, Optional<Boolean> lineOfSight) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        PlatformRefusals.mapped(() -> { living.setLookClose(active.id(), enabled, range, lineOfSight); return true; });
+    }
+    @Override public boolean canFit(UUID player, ItemGift gift) {
+        ItemStack template = template(gift);
+        Optional<ServerPlayer> online = living.players().owned(player);
+        if (online.isEmpty()) return false;
+        Inventory inventory = online.get().getInventory();
+        long room = 0;
+        int limit = Math.max(1, template.getMaxStackSize());
+        for (int slot = 0; slot < Inventory.INVENTORY_SIZE; slot++) {
+            ItemStack held = inventory.getItem(slot);
+            if (held.isEmpty()) room += limit;
+            else if (ItemStack.isSameItemSameComponents(held, template)) room += Math.max(0, limit - held.getCount());
+            if (room >= gift.amount()) return true;
+        }
+        return false;
     }
     /** Main inventory and off hand only; worn armour is never taken. */
     @Override public int takeItem(UUID player, String item, int amount) {
@@ -448,6 +617,7 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         WorldPosition feet = position(online.get());
         return Optional.of(new WorldPosition(feet.world(), new Vec3(feet.point().x(), feet.point().y() + online.get().getBbHeight() / 2, feet.point().z())));
     }
+    private Optional<WorldPosition> playerFeet(UUID player) { return living.players().owned(player).map(VanillaBehaviorPlatform::position); }
     /** The audience player in the same world, or every player within the radius of the point. */
     private int deliverAt(WorldPosition at, Audience audience, Consumer<ServerPlayer> action) {
         if (audience.player().isPresent()) {

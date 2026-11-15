@@ -194,6 +194,11 @@ public final class ServerTriggerDispatcher {
         @Override public Map<String, Object> context() { return event.context(); }
         @Override public Optional<BehaviorProgram.Value> flag(String scope, String name) { return read(scope, name, event.player()); }
         @Override public Optional<BehaviorProgram.Value> playerFlag(UUID player, String name) { return read("player", name, Optional.of(player)); }
+        @Override public Optional<BehaviorProgram.Value> npcFlag(UUID npc, String name) {
+            BehaviorProgram.Value value = reads.state().read(art.arcane.animus.core.behavior.BehaviorFlags.subject(art.arcane.animus.core.behavior.BehaviorFlags.FLAGS, behavior, npc, Optional.empty()), name,
+                    art.arcane.animus.core.behavior.BehaviorFlags.declaration("npc"), UNSET, BehaviorProgram.Type.ANY);
+            return value == UNSET ? Optional.empty() : Optional.of(value);
+        }
         private Optional<BehaviorProgram.Value> read(String scope, String name, Optional<UUID> player) {
             BehaviorProgram.Value value = reads.state().read(subject(art.arcane.animus.core.behavior.BehaviorFlags.FLAGS, player), name, art.arcane.animus.core.behavior.BehaviorFlags.declaration(scope), UNSET, BehaviorProgram.Type.ANY);
             return value == UNSET ? Optional.empty() : Optional.of(value);

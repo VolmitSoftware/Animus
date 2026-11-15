@@ -5,7 +5,31 @@
   "entry": "main",
   "routines": {
     "main": {
-      "type": "return"
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "!(has_flag('player', 'vip'))",
+          "then": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "action",
+                "capability": "animus:message",
+                "arguments": {
+                  "text": "VIP only."
+                }
+              },
+              {
+                "type": "return"
+              }
+            ]
+          }
+        },
+        {
+          "type": "return"
+        }
+      ]
     }
   }
 }

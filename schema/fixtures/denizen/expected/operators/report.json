@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "converterVersion": 9,
+  "importId": "b9715c42835a6004623be6bf2129584afbdff52ad1a822e0625df1cec632685d",
+  "notice": "Data conversion only. Apply lists the generated behaviors on their NPCs and turns the server behaviors on, except held behaviors, whose guard did not convert.",
+  "sources": {
+    "scripts/clerk.dsc": "99fb688fce3f14336457a72a838682766b9199694b954227b895cbfabe018efb",
+    "citizens": "7114074798655652d310570635ff08e6363448f29f50b744ee9f3e8e91a58a19"
+  },
+  "behaviors": 1,
+  "containers": {
+    "assignment": {
+      "total": 1,
+      "converted": 1,
+      "partial": 0,
+      "preserved": 0
+    },
+    "interact": {
+      "total": 1,
+      "converted": 1,
+      "partial": 0,
+      "preserved": 0
+    }
+  },
+  "commands": {
+    "define": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "else": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "execute": {
+      "converted": 2,
+      "preserved": 0
+    },
+    "flag": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "if": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "narrate": {
+      "converted": 3,
+      "preserved": 0
+    },
+    "trigger": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "wait": {
+      "converted": 1,
+      "preserved": 0
+    }
+  },
+  "events": {
+    "click trigger": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "interact script": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "on assignment": {
+      "converted": 1,
+      "preserved": 0
+    }
+  },
+  "tags": {
+    "&6": {
+      "mapped": 2,
+      "unmapped": 0
+    },
+    "&7": {
+      "mapped": 3,
+      "unmapped": 0
+    },
+    "[definition]": {
+      "mapped": 2,
+      "unmapped": 0
+    },
+    "npc": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "npc.has_flag": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "server.npcs_flagged": {
+      "mapped": 1,
+      "unmapped": 0
+    }
+  },
+  "flags": {
+    "imported": {
+      "global": 0,
+      "npc": 0,
+      "player": 0,
+      "relationship": 0
+    },
+    "preserved": 0
+  },
+  "bindings": {
+    "citizens-0": [
+      "denizen:interact/clerk_interact"
+    ]
+  },
+  "npcUuids": {
+    "citizens-0": "00000000-0000-4000-8000-0000000c1e2c"
+  },
+  "behaviorStatus": {
+    "denizen:interact/clerk_interact": "complete"
+  },
+  "heldBehaviors": {},
+  "commandBehaviors": [
+    "denizen:interact/clerk_interact"
+  ],
+  "serverBehaviors": [],
+  "guis": [],
+  "sounds": {},
+  "issues": [],
+  "preserved": [],
+  "documents": {
+    "behaviors/denizen/interact/clerk_interact.json": "5357d2c514a3b99ccd0466115cbcc4e0b4d9a6259b5ae7d29f17ff54f5bc000f"
+  }
+}

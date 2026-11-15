@@ -19,11 +19,17 @@ public final class SnapshotFacts implements BehaviorFacts {
     public static final int REFRESH_TICKS = 10;
     public static final int MAXIMUM_PLAYERS = 16384;
     private final Map<UUID, Map<String, Object>> players = new ConcurrentHashMap<>();
-    private final Function<UUID, Optional<Map<String, Object>>> npcs;
+    private final NpcSource npcs;
     private volatile Map<String, Object> server = Map.of();
     private volatile Function<String, Optional<String>> worlds = (String reference) -> Optional.empty();
 
-    public SnapshotFacts(Function<UUID, Optional<Map<String, Object>>> npcs) { this.npcs = Objects.requireNonNull(npcs); }
+    /** NPC facts by UUID, and the NPCs the runtime knows; a plain lookup lists none. */
+    @FunctionalInterface
+    public interface NpcSource extends Function<UUID, Optional<Map<String, Object>>> {
+        default java.util.List<UUID> all() { return java.util.List.of(); }
+    }
+
+    public SnapshotFacts(NpcSource npcs) { this.npcs = Objects.requireNonNull(npcs); }
 
     /** Replaces the player's snapshot. Values must be Boolean, Long, Double or String. */
     public void player(UUID player, Map<String, Object> facts) {
@@ -43,6 +49,7 @@ public final class SnapshotFacts implements BehaviorFacts {
     @Override public Optional<Map<String, Object>> player(UUID player) { return Optional.ofNullable(players.get(player)); }
     @Override public Optional<Map<String, Object>> npc(UUID npc) { return npcs.apply(npc).map(this::canonicalWorld); }
     @Override public Map<String, Object> server() { return server; }
+    @Override public java.util.List<UUID> npcs() { return npcs.all(); }
     @Override public Optional<String> world(String reference) {
         if (reference == null || reference.isBlank()) return Optional.empty();
         try { return worlds.apply(reference); }
@@ -116,41 +123,56 @@ public final class SnapshotFacts implements BehaviorFacts {
         return Map.of("online_players", onlinePlayers, "players", java.util.List.copyOf(listed), "max_players", maxPlayers, "tick", tick, "time_millis", timeMillis);
     }
 
+    /** The most NPCs {@link #npcs()} lists. */
+    public static final int MAXIMUM_LISTED_NPCS = 1024;
+
     /**
      * NPC facts from the definitions and the runtime's NPC state: a definition's NPC is known even while it is not
-     * presented, with spawned false, health 0 and no position facts. The UUID index is rebuilt only when the definitions
-     * snapshot changes.
+     * presented, with spawned false, health 0 and no position facts; {@code behaviors} lists its behavior ids. The UUID
+     * index and the NPC list are rebuilt only when the definitions snapshot changes.
      */
-    public static Function<UUID, Optional<Map<String, Object>>> npcs(java.util.function.Supplier<Map<String, art.arcane.animus.core.npc.NpcDefinition>> definitions,
-                                                                     Function<UUID, Optional<art.arcane.animus.core.virtual.VirtualNpcState.Snapshot>> states) {
+    public static NpcSource npcs(java.util.function.Supplier<Map<String, art.arcane.animus.core.npc.NpcDefinition>> definitions,
+                                 Function<UUID, Optional<art.arcane.animus.core.virtual.VirtualNpcState.Snapshot>> states) {
         Objects.requireNonNull(definitions); Objects.requireNonNull(states);
-        record Indexed(Map<String, art.arcane.animus.core.npc.NpcDefinition> source, Map<UUID, art.arcane.animus.core.npc.NpcDefinition> byUuid) {}
-        java.util.concurrent.atomic.AtomicReference<Indexed> cache = new java.util.concurrent.atomic.AtomicReference<>(new Indexed(Map.of(), Map.of()));
-        return (UUID npc) -> {
+        record Indexed(Map<String, art.arcane.animus.core.npc.NpcDefinition> source, Map<UUID, art.arcane.animus.core.npc.NpcDefinition> byUuid, java.util.List<UUID> listed) {}
+        java.util.concurrent.atomic.AtomicReference<Indexed> cache = new java.util.concurrent.atomic.AtomicReference<>(new Indexed(Map.of(), Map.of(), java.util.List.of()));
+        java.util.function.Supplier<Indexed> current = () -> {
             Map<String, art.arcane.animus.core.npc.NpcDefinition> source = definitions.get();
             Indexed indexed = cache.get();
-            if (indexed.source() != source) {
-                Map<UUID, art.arcane.animus.core.npc.NpcDefinition> byUuid = new java.util.HashMap<>();
-                for (art.arcane.animus.core.npc.NpcDefinition definition : source.values()) byUuid.put(definition.uuid(), definition);
-                indexed = new Indexed(source, Map.copyOf(byUuid));
-                cache.set(indexed);
+            if (indexed.source() == source) return indexed;
+            Map<UUID, art.arcane.animus.core.npc.NpcDefinition> byUuid = new java.util.HashMap<>();
+            java.util.List<UUID> listed = new java.util.ArrayList<>();
+            for (art.arcane.animus.core.npc.NpcDefinition definition : new java.util.TreeMap<>(source).values()) {
+                byUuid.put(definition.uuid(), definition);
+                if (listed.size() < MAXIMUM_LISTED_NPCS) listed.add(definition.uuid());
             }
-            art.arcane.animus.core.npc.NpcDefinition definition = indexed.byUuid().get(npc);
-            if (definition == null) return Optional.empty();
-            Optional<art.arcane.animus.core.virtual.VirtualNpcState.Snapshot> state = states.apply(npc);
-            if (state.isEmpty()) {
-                Map<String, Object> facts = new LinkedHashMap<>();
-                facts.put("name", definition.name());
-                facts.put("id", definition.id());
-                facts.put("citizens_id", definition.citizensId().orElse(definition.id()));
-                facts.put("uuid", npc.toString());
-                facts.put("spawned", false);
-                facts.put("health", 0.0);
+            Indexed rebuilt = new Indexed(source, Map.copyOf(byUuid), java.util.List.copyOf(listed));
+            cache.set(rebuilt);
+            return rebuilt;
+        };
+        return new NpcSource() {
+            @Override public java.util.List<UUID> all() { return current.get().listed(); }
+            @Override public Optional<Map<String, Object>> apply(UUID npc) {
+                art.arcane.animus.core.npc.NpcDefinition definition = current.get().byUuid().get(npc);
+                if (definition == null) return Optional.empty();
+                Optional<art.arcane.animus.core.virtual.VirtualNpcState.Snapshot> state = states.apply(npc);
+                Map<String, Object> facts;
+                if (state.isEmpty()) {
+                    facts = new LinkedHashMap<>();
+                    facts.put("name", definition.name());
+                    facts.put("id", definition.id());
+                    facts.put("citizens_id", definition.citizensId().orElse(definition.id()));
+                    facts.put("uuid", npc.toString());
+                    facts.put("spawned", false);
+                    facts.put("health", 0.0);
+                } else {
+                    art.arcane.animus.core.virtual.VirtualNpcState.Snapshot snapshot = state.get();
+                    facts = npc(definition.name(), definition.id(), definition.citizensId().orElse(definition.id()), npc, snapshot.active(), snapshot.health(), snapshot.position().world(),
+                            snapshot.position().point().x(), snapshot.position().point().y(), snapshot.position().point().z());
+                }
+                facts.put("behaviors", java.util.List.copyOf(definition.behaviors()));
                 return Optional.of(facts);
             }
-            art.arcane.animus.core.virtual.VirtualNpcState.Snapshot snapshot = state.get();
-            return Optional.of(npc(definition.name(), definition.id(), definition.citizensId().orElse(definition.id()), npc, snapshot.active(), snapshot.health(), snapshot.position().world(),
-                    snapshot.position().point().x(), snapshot.position().point().y(), snapshot.position().point().z()));
         };
     }
 

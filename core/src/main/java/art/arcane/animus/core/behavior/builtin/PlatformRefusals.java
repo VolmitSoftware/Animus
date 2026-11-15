@@ -40,6 +40,9 @@ public final class PlatformRefusals {
     public static CapabilityRefusal unknownItem(String key) {
         return new CapabilityRefusal(Outcome.Status.INVALID, "unknown-item", "Unknown item: " + key);
     }
+    public static CapabilityRefusal unknownEnchantment(String key) {
+        return new CapabilityRefusal(Outcome.Status.INVALID, "unknown-enchantment", "Unknown enchantment: " + key);
+    }
     public static CapabilityRefusal unknownParticle(String key) {
         return new CapabilityRefusal(Outcome.Status.INVALID, "unknown-particle", "Unknown particle: " + key);
     }

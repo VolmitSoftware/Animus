@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/smith_reward",
+  "entry": "main",
+  "variables": {
+    "d_target": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_2": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_3": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_4": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_5": {
+      "type": "any",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "players(d_target)"
+          },
+          "as": "t_1",
+          "maximum": 100,
+          "body": {
+            "type": "action",
+            "capability": "animus:set-flag",
+            "arguments": {
+              "name": "smith-visits",
+              "scope": "player",
+              "value": null,
+              "expireSeconds": 86400,
+              "player": null
+            },
+            "expressions": {
+              "/value": "(num(player_flag(t_1, 'smith-visits', 0)) + 1)",
+              "/player": "t_1"
+            }
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "players(d_target)"
+          },
+          "as": "t_2",
+          "maximum": 100,
+          "body": {
+            "type": "action",
+            "capability": "animus:set-flag",
+            "arguments": {
+              "name": "smith-last",
+              "scope": "player",
+              "value": null,
+              "player": null
+            },
+            "expressions": {
+              "/value": "random(1, 3)",
+              "/player": "t_2"
+            }
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "players(d_target)"
+          },
+          "as": "t_3",
+          "maximum": 100,
+          "body": {
+            "type": "action",
+            "capability": "animus:spawn-particle",
+            "arguments": {
+              "particle": "minecraft:happy_villager",
+              "count": 6,
+              "spread": 0.4,
+              "height": 2.0,
+              "at": "player",
+              "player": null
+            },
+            "expressions": {
+              "/player": "t_3"
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:spawn-particle",
+          "arguments": {
+            "particle": "minecraft:heart",
+            "count": 3,
+            "height": 2.5,
+            "at": "player"
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "players(d_target)"
+          },
+          "as": "t_4",
+          "maximum": 100,
+          "body": {
+            "type": "action",
+            "capability": "animus:play-sound",
+            "arguments": {
+              "sound": "minecraft:entity.player.levelup",
+              "volume": 0.6,
+              "at": "player",
+              "atPlayer": null,
+              "audience": "nearby"
+            },
+            "expressions": {
+              "/atPlayer": "t_4"
+            }
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "players(server.players)"
+          },
+          "as": "t_5",
+          "maximum": 100,
+          "body": {
+            "type": "action",
+            "capability": "animus:set-flag",
+            "arguments": {
+              "name": "smith_event_seen",
+              "scope": "player",
+              "player": null
+            },
+            "expressions": {
+              "/player": "t_5"
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:combat-control",
+          "arguments": {
+            "operation": "target",
+            "target": null
+          },
+          "expressions": {
+            "/target": "get(players(d_target), 0, '')"
+          }
+        }
+      ]
+    }
+  }
+}

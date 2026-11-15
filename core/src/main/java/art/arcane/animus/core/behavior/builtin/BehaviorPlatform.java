@@ -9,6 +9,7 @@ import art.arcane.animus.core.recording.Playback;
 import art.arcane.animus.core.virtual.Vec3;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalDouble;
@@ -49,8 +50,9 @@ public interface BehaviorPlatform {
     record SoundEffect(String sound, float volume, float pitch) {
         public SoundEffect { Objects.requireNonNull(sound); }
     }
-    record ParticleEffect(String particle, int count, double spread) {
-        public ParticleEffect { Objects.requireNonNull(particle); }
+    /** {@code height} is blocks above the anchor's feet; empty shows the particles at the middle of its body. */
+    record ParticleEffect(String particle, int count, double spread, java.util.OptionalDouble height) {
+        public ParticleEffect { Objects.requireNonNull(particle); Objects.requireNonNull(height); }
     }
     /** Who an {@code animus:message} reaches: one player, everyone online, the players of a world, or the console. */
     enum MessageTarget { PLAYER, ALL, WORLD, CONSOLE, NEARBY }
@@ -58,9 +60,42 @@ public interface BehaviorPlatform {
     record Title(Optional<String> title, Optional<String> subtitle, int fadeIn, int stay, int fadeOut) {
         public Title { Objects.requireNonNull(title); Objects.requireNonNull(subtitle); }
     }
-    /** An item resource key such as minecraft:bread, 1..6400 of it, with an optional display name and lore lines. */
-    record ItemGift(String item, int amount, Optional<String> name, List<String> lore) {
-        public ItemGift { Objects.requireNonNull(item); Objects.requireNonNull(name); lore = List.copyOf(lore); }
+    /**
+     * An item resource key such as minecraft:bread, 1..6400 of it, with an optional display name, lore lines and
+     * enchantments, which map enchantment keys such as minecraft:sharpness to levels 1..255.
+     */
+    record ItemGift(String item, int amount, Optional<String> name, List<String> lore, Map<String, Integer> enchantments, Optional<String> data) {
+        public ItemGift { Objects.requireNonNull(item); Objects.requireNonNull(name); lore = List.copyOf(lore); enchantments = Map.copyOf(enchantments); Objects.requireNonNull(data); }
+        public ItemGift(String item, int amount, Optional<String> name, List<String> lore) { this(item, amount, name, lore, Map.of(), Optional.empty()); }
+    }
+    /** The most characters of item data an inventory read or event carries for one item; a larger item goes without it. */
+    int MAXIMUM_ITEM_DATA = 3800;
+    /**
+     * A boss bar a behavior shows one player, by its id: shown or updated with an optional title (dialogue colour codes),
+     * progress 0..1, colour and style, or removed. A new bar starts empty, white and solid, titled with nothing.
+     */
+    record BossBar(String id, boolean remove, Optional<String> title, OptionalDouble progress, Optional<String> color, Optional<String> style) {
+        public BossBar { Objects.requireNonNull(id); Objects.requireNonNull(title); Objects.requireNonNull(progress); Objects.requireNonNull(color); Objects.requireNonNull(style); }
+    }
+    /** A sidebar for one player: a title and up to 15 lines, top first, in dialogue colour codes. */
+    record Sidebar(String title, List<String> lines) {
+        public Sidebar { Objects.requireNonNull(title); lines = List.copyOf(lines); }
+    }
+    /**
+     * One filled slot of an inventory: the slot number, the item key, how many, the custom name as plain text, and the
+     * platform's own text for the whole item, its key and components, which gives the same item back.
+     */
+    record HeldItem(int slot, String item, int amount, Optional<String> name, Optional<String> data) {
+        public HeldItem { Objects.requireNonNull(item); Objects.requireNonNull(name); Objects.requireNonNull(data); }
+        public HeldItem(int slot, String item, int amount, Optional<String> name) { this(slot, item, amount, name, Optional.empty()); }
+    }
+    /** The block a player looks at: its location written x,y,z,world as the location facts write it, and its block key. */
+    record BlockHit(String location, String block) {
+        public BlockHit { Objects.requireNonNull(location); Objects.requireNonNull(block); }
+    }
+    /** An explosion at a point of the NPC's world or the named world, or with no point at the NPC; fire and broken blocks only where settings allow. */
+    record Explosion(Optional<String> world, Optional<Vec3> point, float power, boolean fire, boolean breakBlocks) {
+        public Explosion { Objects.requireNonNull(world); Objects.requireNonNull(point); }
     }
     /** A written book. Pages use the dialogue colour codes. */
     record Book(String title, String author, List<String> pages) {
@@ -178,6 +213,10 @@ public interface BehaviorPlatform {
     default int messageNearby(NpcHandle npc, double radius, String text) { throw refused("Messages"); }
     /** Shows a title to the player. Returns 1, or 0 when the player is offline. */
     default int title(UUID player, Title title) { throw refused("Titles"); }
+    /** Shows, updates or removes one of the player's behavior boss bars. Returns 1, or 0 when the player is offline. */
+    default int bossBar(UUID player, BossBar bar) { throw refused("Boss bars"); }
+    /** Shows the player a sidebar, or with none removes the one a behavior showed. Returns 1, or 0 when the player is offline. */
+    default int sidebar(UUID player, Optional<Sidebar> sidebar) { throw refused("Sidebars"); }
     /** Shows action bar text to the player. Returns 1, or 0 when the player is offline. */
     default int actionbar(UUID player, String text) { throw refused("Action bar text"); }
     /** Plays a sound at the player's position for the audience. Returns the number of viewers reached. */
@@ -190,6 +229,18 @@ public interface BehaviorPlatform {
     default void teleportNpc(NpcHandle npc, Destination to) { throw refused("Teleporting NPCs"); }
     /** Gives items, dropping what does not fit at the player's feet. Returns the amount given, 0 when the player is offline. */
     default int giveItem(UUID player, ItemGift gift) { throw refused("Giving items"); }
+    /** The filled slots of the player's inventory, storage first, then armour and the off hand; none when the player is offline. */
+    default List<HeldItem> inventory(UUID player) { throw refused("Reading inventories"); }
+    /** The block the player looks at within range blocks, or none. An offline player looks at nothing. */
+    default Optional<BlockHit> rayTrace(UUID player, double range) { throw refused("Finding the block a player looks at"); }
+    /** The block key at a location written x,y,z,world as the location facts write it, or none in a world or chunk not loaded. */
+    default Optional<String> blockAt(String location) { throw refused("Reading blocks"); }
+    /** Sets off an explosion. Protection plugins decide what it may break, as for any explosion. */
+    default void explode(NpcHandle npc, Explosion explosion) { throw refused("Explosions"); }
+    /** Turns the NPC's look-close on or off until a restart or a definition change, with a range and line of sight when given. */
+    default void lookClose(NpcHandle npc, boolean enabled, OptionalDouble range, Optional<Boolean> lineOfSight) { throw refused("Look-close changes"); }
+    /** Whether the whole gift fits in the player's storage slots without dropping any. An offline player fits nothing. */
+    default boolean canFit(UUID player, ItemGift gift) { throw refused("Checking inventory space"); }
     /** Removes up to amount matching items. Returns the amount taken, never more than the player held. */
     default int takeItem(UUID player, String item, int amount) { throw refused("Taking items"); }
     /** Whether the player holds the whole cost now. An offline player holds nothing. */

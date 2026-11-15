@@ -190,6 +190,13 @@ const Map<String, String> serverOnlyCapabilities = <String, String>{
   'animus:take-item': 'Takes items from the player',
   'animus:give-book': 'Gives the player a book',
   'animus:teleport': 'Teleports the player',
+  'animus:read-inventory': "Reads the player's inventory",
+  'animus:bossbar': 'Changes a boss bar',
+  'animus:sidebar': 'Changes the sidebar',
+  'animus:ray-trace': 'Finds the block the player looks at',
+  'animus:read-block': 'Reads a block',
+  'animus:explode': 'Sets off an explosion',
+  'animus:look-close': "Changes the NPC's look-close",
 };
 
 /// Conditions a server answers; the dry run assumes them.
@@ -197,6 +204,7 @@ const Map<String, String> assumedConditions = <String, String>{
   'animus:has-permission': 'the player has a permission',
   'animus:npc-state': 'the NPC is spawned and its health is in range',
   'animus:player-in-range': 'a player is in range',
+  'animus:can-fit': "the item fits in the player's inventory",
 };
 
 /// The most steps one session records, so a long repeat cannot hang the page.
@@ -308,6 +316,7 @@ String? _number(Object? value) {
 }
 
 String _ticks(Object? value) {
+  if (value is Map && value['expression'] is String) return '${value['expression']} ticks';
   final num ticks = value is num ? value : 0;
   final double seconds = ticks / 20;
   final String shown = seconds == seconds.roundToDouble() ? '${seconds.toInt()}' : seconds.toStringAsFixed(1);

@@ -223,13 +223,13 @@ final class BukkitServerBehaviors implements Listener, AutoCloseable {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true) public void inventoryOpen(InventoryOpenEvent event) {
         ServerTriggerDispatcher dispatcher = listening(TriggerKind.PLAYER_INVENTORY_OPEN);
         if (dispatcher == null || !(event.getPlayer() instanceof Player player)) return;
-        if (dispatcher.decide(ServerEvent.inventory(TriggerKind.PLAYER_INVENTORY_OPEN, player.getUniqueId(), inventoryType(event.getView())))) event.setCancelled(true);
+        if (dispatcher.decide(inventoryEvent(TriggerKind.PLAYER_INVENTORY_OPEN, player, event.getView()))) event.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.MONITOR) public void inventoryClose(InventoryCloseEvent event) {
         ServerTriggerDispatcher dispatcher = listening(TriggerKind.PLAYER_INVENTORY_CLOSE);
         if (dispatcher == null || !(event.getPlayer() instanceof Player player)) return;
-        dispatcher.publish(ServerEvent.inventory(TriggerKind.PLAYER_INVENTORY_CLOSE, player.getUniqueId(), inventoryType(event.getView())));
+        dispatcher.publish(inventoryEvent(TriggerKind.PLAYER_INVENTORY_CLOSE, player, event.getView()));
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true) public void inventoryClick(InventoryClickEvent event) {
@@ -363,6 +363,15 @@ final class BukkitServerBehaviors implements Listener, AutoCloseable {
     }
 
     private static String inventoryType(InventoryView view) { return view.getTopInventory().getType().name().toLowerCase(Locale.ROOT); }
+
+    /** An inventory opening or closing with the top inventory's filled slots and the block that holds it, if any. */
+    private static ServerEvent inventoryEvent(TriggerKind kind, Player player, InventoryView view) {
+        org.bukkit.inventory.Inventory top = view.getTopInventory();
+        Location holder = top.getLocation();
+        String location = holder == null || holder.getWorld() == null ? ""
+                : art.arcane.animus.core.behavior.SnapshotFacts.location(holder.getBlockX(), holder.getBlockY(), holder.getBlockZ(), holder.getWorld().getName());
+        return ServerEvent.inventory(kind, player.getUniqueId(), inventoryType(view), BukkitBehaviorPlatform.held(top.getContents()), location);
+    }
 
     /** The item's namespaced key; minecraft:air for none. */
     static String itemKey(ItemStack stack) {

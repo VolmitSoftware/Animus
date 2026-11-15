@@ -69,6 +69,7 @@ final RegExp _literalId = RegExp(r'^[a-z0-9_.-]+(:[a-z0-9_./-]+)?$');
 String _named(String value, String Function(String id) name) => _literalId.hasMatch(value) ? name(value) : value;
 
 String _ticks(Object? value) {
+  if (value is Map && value['expression'] is String) return '${value['expression']} ticks';
   if (value is! num) return '$value ticks';
   final double seconds = value / 20;
   return '$value ticks (${seconds == seconds.roundToDouble() ? seconds.toInt() : seconds.toStringAsFixed(1)}s)';
@@ -100,7 +101,19 @@ String _action(JsonMap node, DocumentNames names) {
     'animus:choices' => 'Ask: ${shown('prompt')}',
     'animus:navigate' => arguments['route'] != null ? 'Walk route ${document(DocumentKind.route, 'route')}' : 'Walk to ${argument('x')}, ${argument('y')}, ${argument('z')}',
     'animus:command' => 'Run command /${argument('command')}${arguments['asOperator'] == true ? ' as operator' : ''}',
-    'animus:give-item' => 'Give ${arguments.containsKey('amount') ? '${argument('amount')} ' : ''}${item('item')}',
+    'animus:give-item' => 'Give ${arguments.containsKey('amount') ? '${argument('amount')} ' : ''}${arguments.containsKey('stack') ? 'item ${argument('stack')}' : item('item')}',
+    'animus:read-inventory' => 'Read the inventory${node['result'] is String ? ' into ${node['result']}' : ''}',
+    'animus:bossbar' => arguments['operation'] == 'remove' ? 'Remove boss bar ${argument('id')}' : 'Boss bar ${argument('id')}${arguments.containsKey('title') ? ': ${shown('title')}' : ''}',
+    'animus:sidebar' => switch (arguments['operation']) {
+        'remove' => 'Remove the sidebar',
+        'add' => 'Add sidebar lines',
+        'set_line' => 'Set sidebar line ${argument('line')}',
+        _ => 'Sidebar: ${shown('title')}',
+      },
+    'animus:ray-trace' => 'Find the block the player looks at${node['result'] is String ? ' into ${node['result']}' : ''}',
+    'animus:read-block' => 'Read the block at ${argument('location')}${node['result'] is String ? ' into ${node['result']}' : ''}',
+    'animus:explode' => 'Explosion of power ${arguments.containsKey('power') ? argument('power') : '1'}',
+    'animus:look-close' => arguments['enabled'] == false ? 'Turn look-close off' : 'Turn look-close on',
     'animus:take-item' => 'Take ${arguments.containsKey('amount') ? '${argument('amount')} ' : ''}${item('item')}',
     'animus:open-gui' => 'Open GUI ${document(DocumentKind.inventory, 'gui')}',
     'animus:open-shop' => 'Open shop ${document(DocumentKind.shop, 'shop')}',
@@ -131,6 +144,7 @@ String _condition(JsonMap node) {
     'animus:has-permission' => 'If the player has permission ${argumentWords(node, 'permission')}',
     'animus:player-in-range' => 'If a player is within ${argumentWords(node, 'radius')} blocks',
     'animus:npc-state' => 'If the NPC is spawned and healthy',
+    'animus:can-fit' => 'If the item fits in the inventory',
     final String? id => 'If ${capabilityWords(id).toLowerCase()}',
   };
 }
@@ -151,7 +165,7 @@ String nodeSummary(Object? raw, {JsonMap variables = const <String, Object?>{}, 
     'while' => 'While ${asString(node['expression']) ?? '?'}',
     'break' => 'Leave the loop',
     'continue' => 'Start the next pass',
-    'call' => 'Call routine ${asString(node['routine']) ?? '?'}${node['result'] is String ? ' into ${node['result']}' : ''}',
+    'call' => 'Call routine ${asString(node['routine']) ?? '?'}${node.containsKey('player') || node.containsKey('npc') ? ' for ${node.containsKey('npc') ? 'another NPC' : 'another player'}' : ''}${node['result'] is String ? ' into ${node['result']}' : ''}',
     'return' => node.containsKey('value') ? 'Return ${operandWords(node['value'])}' : 'Return',
     'set' => 'Set ${asString(node['variable']) ?? '?'} to ${operandWords(node['value'], type: asString(asMap(variables[node['variable']])['type']))}',
     null => 'A step with no type',

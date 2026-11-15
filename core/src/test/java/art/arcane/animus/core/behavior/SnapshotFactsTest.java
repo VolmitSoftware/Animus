@@ -1,5 +1,7 @@
 package art.arcane.animus.core.behavior;
 
+import art.arcane.animus.core.npc.NpcDefinition;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -36,5 +38,20 @@ class SnapshotFactsTest {
         facts.worlds((String reference) -> { throw new IllegalStateException("unloading"); });
         assertEquals("skylands", facts.npc(NPC).orElseThrow().get("world"));
         assertEquals(Optional.empty(), facts.world("world"));
+    }
+
+    @Test void theRuntimeListsItsNpcsAndTheirBehaviors() throws Exception {
+        UUID other = UUID.fromString("00000000-0000-0000-0000-00000000000b");
+        Map<String, NpcDefinition> definitions = Map.of("guard", definition("guard", NPC, "[\"denizen:assignment/guard\"]"), "smith", definition("smith", other, "[]"));
+        SnapshotFacts facts = new SnapshotFacts(SnapshotFacts.npcs(() -> definitions, (UUID id) -> Optional.empty()));
+        assertEquals(List.of(NPC, other), facts.npcs().stream().sorted().toList());
+        assertEquals(List.of("denizen:assignment/guard"), facts.npc(NPC).orElseThrow().get("behaviors"));
+        assertEquals(List.of(), facts.npc(other).orElseThrow().get("behaviors"));
+        assertEquals(List.of(), new SnapshotFacts((UUID id) -> Optional.empty()).npcs(), "a lookup alone lists no NPCs");
+    }
+
+    private static NpcDefinition definition(String id, UUID uuid, String behaviors) throws Exception {
+        return NpcDefinition.parse("{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"" + uuid + "\",\"id\":\"" + id + "\",\"group\":\"test\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":false,\"behaviors\":"
+                + behaviors + ",\"position\":{\"world\":\"world\",\"x\":0,\"y\":61,\"z\":0,\"yaw\":0,\"pitch\":0}}");
     }
 }

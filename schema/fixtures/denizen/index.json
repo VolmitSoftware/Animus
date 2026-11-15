@@ -6,7 +6,9 @@
     {"name": "minimal", "folder": "minimal/Denizen"},
     {"name": "sentinel", "folder": "sentinel/Denizen"},
     {"name": "events", "folder": "events/Denizen", "citizens": "events/saves.yml"},
-    {"name": "guards", "folder": "guards/Denizen", "citizens": "guards/saves.yml"}
+    {"name": "guards", "folder": "guards/Denizen", "citizens": "guards/saves.yml"},
+    {"name": "coverage", "folder": "coverage/Denizen", "citizens": "coverage/saves.yml"},
+    {"name": "operators", "folder": "operators/Denizen", "citizens": "operators/saves.yml"}
   ],
   "invalid": "invalid"
 }

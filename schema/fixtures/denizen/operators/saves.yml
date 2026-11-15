@@ -1,0 +1,11 @@
+# Synthetic: one clerk with an assignment, made by staff for the server. Not taken from any server.
+npc:
+  '0':
+    name: Clerk
+    uuid: 00000000-0000-4000-8000-0000000c1e2c
+    traits:
+      type: PLAYER
+      spawned: true
+      location: {world: world, x: 6.5, y: 64.0, z: 6.5, yaw: 180.0, pitch: 0.0}
+      owner: {owner: SERVER}
+      assignment: {assignment: clerk_assignment}

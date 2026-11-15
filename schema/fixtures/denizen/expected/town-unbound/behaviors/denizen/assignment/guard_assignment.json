@@ -352,7 +352,7 @@
             "type": "set",
             "variable": "d_count",
             "value": {
-              "expression": "(num(d_count) - 1)"
+              "expression": "(num((same(text(d_count), '') ? 0 : d_count)) - 1)"
             }
           }
         },

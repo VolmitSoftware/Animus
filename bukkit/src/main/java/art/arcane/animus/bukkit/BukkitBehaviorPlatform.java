@@ -301,6 +301,7 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     @Override public int spawnParticle(NpcHandle npc, Audience audience, ParticleEffect effect) {
         NpcRuntime.ActiveNpc active = requireVoice(npc);
         Location at = bodyCenter(active);
+        if (effect.height().isPresent()) at.setY(active.state().bounds().min().y() + effect.height().getAsDouble());
         Particle particle = particle(effect.particle());
         return deliver(living.players(), living.hidden(), active, audience, position(at), true,
                 (Player viewer) -> viewer.spawnParticle(particle, at, effect.count(), effect.spread(), effect.spread(), effect.spread()));
@@ -459,6 +460,66 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         return online.isPresent() ? 1 : 0;
     }
 
+    /** Each player's behavior boss bars by id, and their behavior sidebars; players gone offline are dropped as bars change. */
+    private final java.util.Map<UUID, java.util.Map<String, org.bukkit.boss.BossBar>> bossBars = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Map<UUID, org.bukkit.scoreboard.Scoreboard> sidebars = new java.util.concurrent.ConcurrentHashMap<>();
+
+    @Override public int bossBar(UUID player, BossBar bar) {
+        bossBars.entrySet().removeIf((java.util.Map.Entry<UUID, java.util.Map<String, org.bukkit.boss.BossBar>> entry) -> {
+            if (here(entry.getKey()).isPresent()) return false;
+            entry.getValue().values().forEach(org.bukkit.boss.BossBar::removeAll);
+            return true;
+        });
+        Optional<Player> online = here(player);
+        if (online.isEmpty()) return 0;
+        java.util.Map<String, org.bukkit.boss.BossBar> mine = bossBars.computeIfAbsent(player, (UUID ignored) -> new java.util.concurrent.ConcurrentHashMap<>());
+        if (bar.remove()) {
+            org.bukkit.boss.BossBar shown = mine.remove(bar.id());
+            if (shown != null) shown.removeAll();
+            return 1;
+        }
+        org.bukkit.boss.BossBar shown = mine.computeIfAbsent(bar.id(), (String ignored) -> {
+            org.bukkit.boss.BossBar created = server.createBossBar("", org.bukkit.boss.BarColor.WHITE, org.bukkit.boss.BarStyle.SOLID);
+            created.setProgress(0);
+            return created;
+        });
+        bar.title().ifPresent((String title) -> shown.setTitle(RichText.colorize(fill(online.get(), title))));
+        bar.progress().ifPresent(shown::setProgress);
+        bar.color().ifPresent((String color) -> shown.setColor(org.bukkit.boss.BarColor.valueOf(color.toUpperCase(java.util.Locale.ROOT))));
+        bar.style().ifPresent((String style) -> shown.setStyle(org.bukkit.boss.BarStyle.valueOf(style.toUpperCase(java.util.Locale.ROOT))));
+        if (!shown.getPlayers().contains(online.get())) {
+            shown.removeAll();
+            shown.addPlayer(online.get());
+        }
+        return 1;
+    }
+
+    @Override public int sidebar(UUID player, Optional<Sidebar> sidebar) {
+        sidebars.keySet().removeIf((UUID known) -> here(known).isEmpty());
+        Optional<Player> online = here(player);
+        if (online.isEmpty()) return 0;
+        if (sidebar.isEmpty()) {
+            org.bukkit.scoreboard.Scoreboard ours = sidebars.remove(player);
+            if (ours != null && online.get().getScoreboard() == ours) online.get().setScoreboard(server.getScoreboardManager().getMainScoreboard());
+            return 1;
+        }
+        org.bukkit.scoreboard.Scoreboard board = sidebars.computeIfAbsent(player, (UUID ignored) -> server.getScoreboardManager().getNewScoreboard());
+        org.bukkit.scoreboard.Objective old = board.getObjective("animus");
+        if (old != null) old.unregister();
+        org.bukkit.scoreboard.Objective objective = board.registerNewObjective("animus", org.bukkit.scoreboard.Criteria.DUMMY, RichText.colorize(fill(online.get(), sidebar.get().title())));
+        objective.setDisplaySlot(org.bukkit.scoreboard.DisplaySlot.SIDEBAR);
+        java.util.Set<String> used = new java.util.HashSet<>();
+        int score = sidebar.get().lines().size();
+        for (String line : sidebar.get().lines()) {
+            // Sidebar lines are score entries, which must differ; repeated lines take invisible reset codes.
+            String entry = RichText.colorize(fill(online.get(), line));
+            while (!used.add(entry)) entry = entry + "\u00a7r";
+            objective.getScore(entry).setScore(score--);
+        }
+        online.get().setScoreboard(board);
+        return 1;
+    }
+
     @Override public int playSoundAtPlayer(UUID player, Audience audience, SoundEffect sound) {
         Optional<Player> online = here(player);
         if (online.isEmpty()) return 0;
@@ -470,7 +531,7 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         Particle particle = particle(effect.particle());
         Optional<Player> online = here(player);
         if (online.isEmpty()) return 0;
-        Location at = online.get().getLocation().add(0, 1, 0);
+        Location at = online.get().getLocation().add(0, effect.height().orElse(1), 0);
         return atPlayer(online.get(), audience, at,
                 (Player viewer) -> viewer.spawnParticle(particle, at, effect.count(), effect.spread(), effect.spread(), effect.spread()));
     }
@@ -553,19 +614,35 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         }
     }
 
+    /**
+     * One of the gift's items: from its data, the server's own text for an item as an inventory read gave it, or else
+     * its key with its name, lore and enchantments. An unknown item or enchantment, or data the server cannot read, is refused.
+     */
+    private ItemStack template(ItemGift gift) {
+        if (gift.data().isPresent()) {
+            try { return server.getItemFactory().createItemStack(gift.data().get()); }
+            catch (IllegalArgumentException unreadable) { throw new CapabilityRefusal(Outcome.Status.INVALID, "item-data", "The item data does not describe an item this server knows"); }
+        }
+        ItemStack template = new ItemStack(material(gift.item()));
+        if (gift.name().isEmpty() && gift.lore().isEmpty() && gift.enchantments().isEmpty()) return template;
+        ItemMeta meta = template.getItemMeta();
+        if (meta == null) return template;
+        gift.name().ifPresent((String name) -> meta.setDisplayName(RichText.colorize(name)));
+        if (!gift.lore().isEmpty()) meta.setLore(gift.lore().stream().map(RichText::colorize).toList());
+        for (java.util.Map.Entry<String, Integer> entry : gift.enchantments().entrySet()) {
+            NamespacedKey key = NamespacedKey.fromString(entry.getKey());
+            org.bukkit.enchantments.Enchantment enchantment = key == null ? null : Registry.ENCHANTMENT.get(key);
+            if (enchantment == null) throw PlatformRefusals.unknownEnchantment(entry.getKey());
+            meta.addEnchant(enchantment, entry.getValue(), true);
+        }
+        template.setItemMeta(meta);
+        return template;
+    }
+
     @Override public int giveItem(UUID player, ItemGift gift) {
-        Material material = material(gift.item());
+        ItemStack template = template(gift);
         Optional<Player> online = here(player);
         if (online.isEmpty()) return 0;
-        ItemStack template = new ItemStack(material);
-        if (gift.name().isPresent() || !gift.lore().isEmpty()) {
-            ItemMeta meta = template.getItemMeta();
-            if (meta != null) {
-                gift.name().ifPresent((String name) -> meta.setDisplayName(RichText.colorize(name)));
-                if (!gift.lore().isEmpty()) meta.setLore(gift.lore().stream().map(RichText::colorize).toList());
-                template.setItemMeta(meta);
-            }
-        }
         int amount = Math.clamp(gift.amount(), 1, MAXIMUM_GIFT);
         for (int count : stacks(amount, template.getMaxStackSize())) {
             ItemStack stack = template.clone();
@@ -573,6 +650,77 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
             hand(online.get(), stack);
         }
         return amount;
+    }
+
+    @Override public java.util.List<HeldItem> inventory(UUID player) {
+        Optional<Player> online = here(player);
+        if (online.isEmpty()) return java.util.List.of();
+        return held(online.get().getInventory().getContents());
+    }
+
+    /** The filled slots of an inventory's contents, each with its key and components as data when it has any. */
+    static java.util.List<HeldItem> held(ItemStack[] slots) {
+        java.util.List<HeldItem> held = new java.util.ArrayList<>();
+        for (int slot = 0; slot < slots.length; slot++) {
+            ItemStack stack = slots[slot];
+            if (stack == null || stack.getType().isAir() || stack.getAmount() <= 0) continue;
+            ItemMeta meta = stack.hasItemMeta() ? stack.getItemMeta() : null;
+            Optional<String> name = meta != null && meta.hasDisplayName() ? Optional.ofNullable(org.bukkit.ChatColor.stripColor(meta.getDisplayName())) : Optional.empty();
+            String key = stack.getType().getKey().toString();
+            Optional<String> data = meta == null ? Optional.empty() : Optional.of(key + meta.getAsComponentString()).filter((String text) -> text.length() <= MAXIMUM_ITEM_DATA);
+            held.add(new HeldItem(slot, key, stack.getAmount(), name, data));
+        }
+        return held;
+    }
+
+    @Override public Optional<BlockHit> rayTrace(UUID player, double range) {
+        Optional<Player> online = here(player);
+        if (online.isEmpty()) return Optional.empty();
+        org.bukkit.block.Block block = online.get().getTargetBlockExact((int) Math.ceil(range));
+        if (block == null || block.getType().isAir()) return Optional.empty();
+        return Optional.of(new BlockHit(art.arcane.animus.core.behavior.SnapshotFacts.location(block.getX(), block.getY(), block.getZ(), block.getWorld().getName()), block.getType().getKey().toString()));
+    }
+
+    @Override public Optional<String> blockAt(String location) {
+        String[] parts = location.split(",", -1);
+        if (parts.length < 4) return Optional.empty();
+        World world = server.getWorld(parts[3].strip());
+        if (world == null) return Optional.empty();
+        try {
+            int x = (int) Math.floor(Double.parseDouble(parts[0])), y = (int) Math.floor(Double.parseDouble(parts[1])), z = (int) Math.floor(Double.parseDouble(parts[2]));
+            if (!world.isChunkLoaded(x >> 4, z >> 4)) return Optional.empty();
+            return Optional.of(world.getBlockAt(x, y, z).getType().getKey().toString());
+        } catch (NumberFormatException unreadable) { return Optional.empty(); }
+    }
+
+    @Override public void explode(NpcHandle npc, Explosion explosion) {
+        NpcRuntime.ActiveNpc active = requireVoice(npc);
+        Location at = explosion.point().isPresent() ? new Location(location(active).getWorld(), explosion.point().get().x(), explosion.point().get().y(), explosion.point().get().z()) : bodyCenter(active);
+        if (explosion.world().isPresent()) {
+            World world = server.getWorld(explosion.world().get());
+            if (world == null) throw PlatformRefusals.worldUnavailable();
+            at.setWorld(world);
+        }
+        at.getWorld().createExplosion(at.getX(), at.getY(), at.getZ(), explosion.power(), explosion.fire(), explosion.breakBlocks());
+    }
+
+    @Override public void lookClose(NpcHandle npc, boolean enabled, java.util.OptionalDouble range, Optional<Boolean> lineOfSight) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        PlatformRefusals.mapped(() -> { living.setLookClose(active.id(), enabled, range, lineOfSight); return true; });
+    }
+
+    @Override public boolean canFit(UUID player, ItemGift gift) {
+        ItemStack template = template(gift);
+        Optional<Player> online = here(player);
+        if (online.isEmpty()) return false;
+        long room = 0;
+        int limit = template.getMaxStackSize();
+        for (ItemStack stack : online.get().getInventory().getStorageContents()) {
+            if (stack == null || stack.getType().isAir()) room += limit;
+            else if (stack.isSimilar(template)) room += Math.max(0, limit - stack.getAmount());
+            if (room >= gift.amount()) return true;
+        }
+        return false;
     }
 
     @Override public int takeItem(UUID player, String item, int amount) {

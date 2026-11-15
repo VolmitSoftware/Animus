@@ -104,6 +104,8 @@ JsonMap defaultNode(String type, CompletionCatalog catalog, {String? routine, Js
       };
     case 'repeat':
       return <String, Object?>{'type': type, 'count': 1, 'body': defaultNode('sequence', catalog)};
+    case 'wait':
+      return <String, Object?>{'type': type, 'ticks': 1};
     case 'action' || 'condition':
       final CapabilitySpec? capability = _firstCapability(type, catalog, server: server);
       return <String, Object?>{
@@ -379,7 +381,7 @@ JsonMap renameVariable(JsonMap document, String from, String to, CompletionCatal
     for (final String key in const <String>['variable', 'as', 'index', 'key', 'result']) {
       if (out[key] == from) out[key] = to;
     }
-    for (final String key in const <String>['value', 'list', 'count']) {
+    for (final String key in const <String>['value', 'list', 'count', 'ticks']) {
       if (out.containsKey(key)) out[key] = operand(out[key]);
     }
     if (out['expression'] is String) out['expression'] = renameInExpression(out['expression']! as String, from, to);

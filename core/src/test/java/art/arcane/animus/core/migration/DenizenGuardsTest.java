@@ -117,7 +117,7 @@ class DenizenGuardsTest {
         }
     }
 
-    @Test void injectingATaskThatStopsIsKeptBecauseAnimusWouldEndOnlyTheTask() throws IOException {
+    @Test void injectingATaskThatStopsRunsItsLinesInPlaceSoTheStopEndsTheScript() throws IOException {
         DenizenConverter.Output output = convert("""
                 check:
                   type: task
@@ -130,8 +130,21 @@ class DenizenGuardsTest {
                   - inject check
                   - execute as_server "give <player.name> diamond 1"
                 """);
-        assertEquals(List.of("return"), types(main(output)));
-        assertTrue(reasonAt(output, "a.dsc:9").contains("inject"), reasonAt(output, "a.dsc:9"));
+        assertEquals(List.of("condition", "action"), types(main(output)));
+        assertEquals("return", main(output).getAsJsonArray("steps").get(0).getAsJsonObject().getAsJsonObject("then").get("type").getAsString(), "the stop ends the script that injected it");
+        assertFalse(output.report().getAsJsonObject("heldBehaviors").has("denizen:task/t"));
+        DenizenConverter.Output passed = convert("""
+                check:
+                  type: task
+                  definitions: who
+                  script:
+                  - stop
+                t:
+                  type: task
+                  script:
+                  - inject check def:<player>
+                """);
+        assertTrue(reasonAt(passed, "a.dsc:9").contains("inject"), "definitions passed to an inject that stops are kept");
         DenizenConverter.Output run = convert("""
                 check:
                   type: task
@@ -188,11 +201,12 @@ class DenizenGuardsTest {
         assertEquals(1, new DenizenImporter.Preview(output.id(), java.nio.file.Path.of("."), output.report()).held());
     }
 
-    @Test void executeAsOpRunsAsThePlayerAndIsReported() throws IOException {
+    @Test void executeAsOpRunsAsThePlayerMadeAnOperatorForTheLine() throws IOException {
         DenizenConverter.Output output = convert(TASK + "  - execute as_op \"warp vip\"\n");
         JsonObject command = main(output);
         assertEquals("animus:command", command.get("capability").getAsString());
         assertEquals("player", command.getAsJsonObject("arguments").get("as").getAsString());
-        assertTrue(output.report().getAsJsonArray("issues").toString().contains("a.dsc:4: execute as_op"), output.report().get("issues").toString());
+        assertTrue(command.getAsJsonObject("arguments").get("asOperator").getAsBoolean());
+        assertFalse(output.report().getAsJsonArray("issues").toString().contains("execute as_op"), output.report().get("issues").toString());
     }
 }

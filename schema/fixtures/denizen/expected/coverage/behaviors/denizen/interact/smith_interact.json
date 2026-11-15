@@ -1,0 +1,683 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:interact/smith_interact",
+  "entry": "task-smith_reward",
+  "variables": {
+    "d_count": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_helper": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_helpers": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_line": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_lines": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_loud": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_note": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_notes": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_pause": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_smith": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_target": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_tune": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_10": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_11": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_12": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_13": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_2": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_3": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_4": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_5": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_6": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_7": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_8": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_9": {
+      "type": "any",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "task-smith_reward": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "players(d_target)"
+          },
+          "as": "t_1",
+          "maximum": 100,
+          "body": {
+            "type": "action",
+            "capability": "animus:set-flag",
+            "arguments": {
+              "name": "smith-visits",
+              "scope": "player",
+              "value": null,
+              "expireSeconds": 86400,
+              "player": null
+            },
+            "expressions": {
+              "/value": "(num(player_flag(t_1, 'smith-visits', 0)) + 1)",
+              "/player": "t_1"
+            }
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "players(d_target)"
+          },
+          "as": "t_2",
+          "maximum": 100,
+          "body": {
+            "type": "action",
+            "capability": "animus:set-flag",
+            "arguments": {
+              "name": "smith-last",
+              "scope": "player",
+              "value": null,
+              "player": null
+            },
+            "expressions": {
+              "/value": "random(1, 3)",
+              "/player": "t_2"
+            }
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "players(d_target)"
+          },
+          "as": "t_3",
+          "maximum": 100,
+          "body": {
+            "type": "action",
+            "capability": "animus:spawn-particle",
+            "arguments": {
+              "particle": "minecraft:happy_villager",
+              "count": 6,
+              "spread": 0.4,
+              "height": 2.0,
+              "at": "player",
+              "player": null
+            },
+            "expressions": {
+              "/player": "t_3"
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:spawn-particle",
+          "arguments": {
+            "particle": "minecraft:heart",
+            "count": 3,
+            "height": 2.5,
+            "at": "player"
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "players(d_target)"
+          },
+          "as": "t_4",
+          "maximum": 100,
+          "body": {
+            "type": "action",
+            "capability": "animus:play-sound",
+            "arguments": {
+              "sound": "minecraft:entity.player.levelup",
+              "volume": 0.6,
+              "at": "player",
+              "atPlayer": null,
+              "audience": "nearby"
+            },
+            "expressions": {
+              "/atPlayer": "t_4"
+            }
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "players(server.players)"
+          },
+          "as": "t_5",
+          "maximum": 100,
+          "body": {
+            "type": "action",
+            "capability": "animus:set-flag",
+            "arguments": {
+              "name": "smith_event_seen",
+              "scope": "player",
+              "player": null
+            },
+            "expressions": {
+              "/player": "t_5"
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:combat-control",
+          "arguments": {
+            "operation": "target",
+            "target": null
+          },
+          "expressions": {
+            "/target": "get(players(d_target), 0, '')"
+          }
+        }
+      ]
+    },
+    "task-smith_forge": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "capability": "animus:can-afford",
+          "arguments": {
+            "items": [
+              {
+                "item": {
+                  "id": "minecraft:iron_ingot"
+                },
+                "amount": 3
+              }
+            ],
+            "match": "material"
+          },
+          "then": {
+            "type": "sequence",
+            "steps": []
+          },
+          "else": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "action",
+                "capability": "animus:message",
+                "arguments": {
+                  "text": "&cBring me three iron ingots."
+                }
+              },
+              {
+                "type": "return"
+              }
+            ]
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:take-item",
+          "arguments": {
+            "item": "minecraft:iron_ingot",
+            "amount": 3
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:can-afford",
+          "arguments": {
+            "items": [
+              {
+                "item": {
+                  "id": null
+                },
+                "amount": 1
+              }
+            ],
+            "match": "material"
+          },
+          "expressions": {
+            "/items/0/item/id": "(contains(lower(replace(text(flag('player', 'smith-metal', 'gold_ingot')), 'i@', '')), ':') ? lower(replace(text(flag('player', 'smith-metal', 'gold_ingot')), 'i@', '')) : 'minecraft:' + lower(replace(text(flag('player', 'smith-metal', 'gold_ingot')), 'i@', '')))"
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:message",
+            "arguments": {
+              "text": "&6That metal will do."
+            }
+          }
+        },
+        {
+          "type": "call",
+          "routine": "proc-smith_helpers",
+          "result": "t_10"
+        },
+        {
+          "type": "set",
+          "variable": "d_helpers",
+          "value": {
+            "expression": "t_10"
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "d_helpers"
+          },
+          "as": "d_helper",
+          "maximum": 1024,
+          "body": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "action",
+                "capability": "animus:message",
+                "arguments": {
+                  "text": null
+                },
+                "templates": {
+                  "/text": "{{ get(npc_info(d_helper), 'name', '') }} lends a hand at forge {{ npc_flag(d_helper, 'forge', '') }}."
+                }
+              },
+              {
+                "type": "action",
+                "capability": "animus:set-flag",
+                "arguments": {
+                  "name": "forge_uses",
+                  "scope": "npc",
+                  "value": null,
+                  "npc": null
+                },
+                "expressions": {
+                  "/value": "(num(npc_flag(d_helper, 'forge_uses', 0)) + 1)",
+                  "/npc": "d_helper"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "set",
+          "variable": "t_11",
+          "value": []
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "npcs()"
+          },
+          "as": "t_12",
+          "maximum": 1024,
+          "body": {
+            "type": "condition",
+            "expression": "(contains(get(npc_info(t_12), 'behaviors', []), 'denizen:assignment/smith_assignment') || contains(get(npc_info(t_12), 'behaviors', []), 'denizen:interact/smith_interact'))",
+            "then": {
+              "type": "set",
+              "variable": "t_11",
+              "value": {
+                "expression": "append(t_11, t_12)"
+              }
+            }
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "t_11"
+          },
+          "as": "d_smith",
+          "maximum": 1024,
+          "body": {
+            "type": "action",
+            "capability": "animus:command",
+            "arguments": {
+              "command": null
+            },
+            "templates": {
+              "/command": "say Smith #{{ get(npc_info(d_smith), 'citizens_id', '') }} finished an order"
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:give-item",
+          "arguments": {
+            "item": "minecraft:iron_sword"
+          }
+        }
+      ]
+    },
+    "proc-smith_helpers": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "set",
+          "variable": "t_6",
+          "value": []
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "npcs()"
+          },
+          "as": "t_7",
+          "maximum": 1024,
+          "body": {
+            "type": "condition",
+            "expression": "npc_has_flag(t_7, 'forge')",
+            "then": {
+              "type": "set",
+              "variable": "t_6",
+              "value": {
+                "expression": "append(t_6, t_7)"
+              }
+            }
+          }
+        },
+        {
+          "type": "set",
+          "variable": "t_8",
+          "value": []
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "t_6"
+          },
+          "as": "t_9",
+          "maximum": 1024,
+          "body": {
+            "type": "condition",
+            "expression": "get(npc_info(t_9), 'spawned', false)",
+            "then": {
+              "type": "set",
+              "variable": "t_8",
+              "value": {
+                "expression": "append(t_8, t_9)"
+              }
+            }
+          }
+        },
+        {
+          "type": "return",
+          "value": {
+            "expression": "t_8"
+          }
+        }
+      ]
+    },
+    "task-smith_song": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "set",
+          "variable": "d_notes",
+          "value": {
+            "expression": "['block_note_block_bell', 'block.note_block.chime']"
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "d_notes"
+          },
+          "as": "d_note",
+          "body": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "set",
+                "variable": "t_13",
+                "value": {
+                  "expression": "lower(text(d_note))"
+                }
+              },
+              {
+                "type": "action",
+                "capability": "animus:play-sound",
+                "arguments": {
+                  "sound": null,
+                  "volume": 0.8,
+                  "pitch": null,
+                  "at": "player"
+                },
+                "expressions": {
+                  "/sound": "(contains(t_13, ':') ? t_13 : 'minecraft:' + (contains(t_13, '.') ? t_13 : first(split(t_13, '_')) + '.' + join(slice(split(t_13, '_'), 1, len(split(t_13, '_')) - 1), '_') + '.' + last(split(t_13, '_'))))",
+                  "/pitch": "clamp((0.8 + random_decimal() * (1.2 - 0.8)), 0.5, 2)"
+                }
+              },
+              {
+                "type": "wait",
+                "ticks": {
+                  "expression": "clamp(round(num(d_pause) * 1), 0, 72000)"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": "&r"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": null,
+            "scope": "player",
+            "value": "played",
+            "expireSeconds": null
+          },
+          "expressions": {
+            "/name": "replace(lower(text(d_tune)), '.', '-')",
+            "/expireSeconds": "clamp(ceil(round(num(d_pause) * 20) / 20), 1, 31536000)"
+          }
+        },
+        {
+          "type": "wait",
+          "ticks": {
+            "expression": "clamp(round(random(1, 2) * 20), 0, 72000)"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "&eThat was {{ d_tune }}."
+          }
+        }
+      ]
+    },
+    "s0-click": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "distance(player.location, npc.location) > 6",
+          "then": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "action",
+                "capability": "animus:message",
+                "arguments": {
+                  "text": "&7Come closer."
+                }
+              },
+              {
+                "type": "return"
+              }
+            ]
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:animate",
+          "arguments": {
+            "animation": "swing"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:play-sound",
+          "arguments": {
+            "sound": "minecraft:block.anvil.use",
+            "volume": null,
+            "pitch": 2.0,
+            "at": "player"
+          },
+          "expressions": {
+            "/volume": "clamp(num((same(text(d_loud), '') ? 1 : d_loud)), 0, 4)"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_lines",
+          "value": {
+            "expression": "append((same(text(d_lines), '') ? [] : d_lines), ('&6Fine work, ' + player.name + '.'))"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_lines",
+          "value": {
+            "expression": "append((same(text(d_lines), '') ? [] : d_lines), ('&7Come back tomorrow.'))"
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "d_lines"
+          },
+          "as": "d_line",
+          "body": {
+            "type": "action",
+            "capability": "animus:message",
+            "arguments": {
+              "text": null
+            },
+            "templates": {
+              "/text": "{{ d_line }}"
+            }
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_count",
+          "value": {
+            "expression": "(num((same(text(d_count), '') ? 0 : d_count)) + 1)"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "Visits today: {{ d_count }}"
+          }
+        },
+        {
+          "type": "call",
+          "routine": "task-smith_reward",
+          "arguments": {
+            "d_target": {
+              "expression": "player.uuid"
+            }
+          }
+        },
+        {
+          "type": "call",
+          "routine": "task-smith_forge"
+        },
+        {
+          "type": "call",
+          "routine": "task-smith_song",
+          "arguments": {
+            "d_pause": 4,
+            "d_tune": "anvil_song"
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "routine": "s0-click"
+    }
+  ]
+}

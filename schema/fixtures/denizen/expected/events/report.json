@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 8,
-  "importId": "ac40852e748a60aa3259d5d86b77d43b3f0174e8999c84df9084693a84045aad",
+  "converterVersion": 9,
+  "importId": "f9873e8c418b52f01a82926b2d1ffe7f64e9c4c81ab42fffa4bb3d80af7d55ae",
   "notice": "Data conversion only. Apply lists the generated behaviors on their NPCs and turns the server behaviors on, except held behaviors, whose guard did not convert.",
   "sources": {
     "scripts/events.dsc": "53524fbb9ceff17a581c6c2205fadc4456b9c5871152a955e56d5969aed806d8",
@@ -513,7 +513,7 @@
     }
   ],
   "documents": {
-    "behaviors/denizen/assignment/npc_story.json": "cb424340f3794a0e91062e52d96e4dd3a31585e03595572b124f277160bd7335",
+    "behaviors/denizen/assignment/npc_story.json": "2aa7dd13513e3ce00a9081acae3c343e50cc7d63799f1b9a4d64d54907148880",
     "behaviors/denizen/task/broadcasts.json": "77c650872e21a4c92354f2cca80208e3489af577ff1fe6fb4859c658eb09faf3",
     "behaviors/denizen/world-npc/combat.json": "00635bb196904d0cb3543be0cf61e291d930140ddd3a577feba3262abe5a3fd8",
     "behaviors/denizen/world-npc/npc_keys.json": "e0e37a6dc493894a056c5de4fe361225616a92eef6cc831a1fa0f22572dc4845",

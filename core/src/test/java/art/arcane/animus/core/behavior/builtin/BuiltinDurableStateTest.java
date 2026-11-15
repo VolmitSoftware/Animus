@@ -95,6 +95,26 @@ class BuiltinDurableStateTest {
         assertTrue(flag("{\"name\":\"event\",\"scope\":\"global\"}", OTHER_NPC, null, "town:other"));
     }
 
+    @Test void flagsCanBeSetAndComparedForANamedPlayer() throws Exception {
+        String named = ",\"player\":\"" + OTHER_PLAYER + "\"";
+        assertEquals(Outcome.Status.OK, action("set-flag", "{\"name\":\"rewarded\",\"scope\":\"player\"" + named + "}", NPC, PLAYER, "town:greeter").status());
+        assertTrue(flag("{\"name\":\"rewarded\",\"scope\":\"player\"}", NPC, OTHER_PLAYER, "town:greeter"));
+        assertFalse(flag("{\"name\":\"rewarded\",\"scope\":\"player\"}", NPC, PLAYER, "town:greeter"));
+        assertTrue(flag("{\"name\":\"rewarded\"" + named + "}", NPC, PLAYER, "town:greeter"));
+        assertEquals(Outcome.Status.OK, action("set-flag", "{\"name\":\"seen\",\"scope\":\"relationship\",\"value\":3" + named + "}", NPC, null, "town:greeter").status(), "no triggering player is needed");
+        assertTrue(flag("{\"name\":\"seen\",\"scope\":\"relationship\",\"value\":3}", NPC, OTHER_PLAYER, "town:greeter"));
+        assertEquals(Outcome.Status.INVALID, action("set-flag", "{\"name\":\"open\",\"scope\":\"global\"" + named + "}", NPC, PLAYER, "town:greeter").status());
+    }
+
+    @Test void flagsCanBeSetAndComparedForANamedNpc() throws Exception {
+        String named = ",\"npc\":\"" + OTHER_NPC.uuid() + "\"";
+        assertEquals(Outcome.Status.OK, action("set-flag", "{\"name\":\"post\",\"scope\":\"npc\",\"value\":\"gate\"" + named + "}", NPC, PLAYER, "town:greeter").status());
+        assertTrue(flag("{\"name\":\"post\",\"scope\":\"npc\",\"value\":\"gate\"}", OTHER_NPC, null, "town:greeter"));
+        assertFalse(flag("{\"name\":\"post\",\"scope\":\"npc\",\"value\":\"gate\"}", NPC, null, "town:greeter"));
+        assertTrue(flag("{\"name\":\"post\",\"scope\":\"npc\",\"value\":\"gate\"" + named + "}", NPC, null, "town:greeter"));
+        assertEquals(Outcome.Status.INVALID, action("set-flag", "{\"name\":\"open\",\"scope\":\"player\"" + named + "}", NPC, PLAYER, "town:greeter").status());
+    }
+
     @Test void purgeSelectorsReachBuiltinState() throws Exception {
         action("set-quest-state", "{\"name\":\"main\",\"value\":2}", NPC, PLAYER, "town:greeter");
         action("set-quest-state", "{\"name\":\"main\",\"value\":2}", NPC, OTHER_PLAYER, "town:greeter");

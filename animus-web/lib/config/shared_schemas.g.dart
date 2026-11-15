@@ -1167,7 +1167,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:animate",
-          "description": "Shows a vanilla animation: an arm swing, the hurt flash or a critical hit once, or a pose or held-item use that lasts until something changes it."
+          "description": "Shows a vanilla animation on the NPC, or another NPC named by npc: an arm swing, the hurt flash or a critical hit once, or a pose or held-item use that lasts until something changes it."
+        },
+        {
+          "const": "animus:bossbar",
+          "description": "Shows the triggering player, or the player named by player, a boss bar by its id, or updates it: title, progress from 0 to 1, color and style. operation remove takes it away. A new bar starts empty, white and solid."
         },
         {
           "const": "animus:build",
@@ -1194,16 +1198,24 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Completes the player's active Animus quest, with its rewards unless rewards is false. Reports stage."
         },
         {
+          "const": "animus:explode",
+          "description": "Sets off an explosion of power (0-16, default 1) at x, y, z of the NPC's world, or of world, or with no position at the NPC, or another NPC named by npc. fire and breakBlocks start fires and break blocks only when behaviors.actions explosionsDamageBlocks allows it; protection plugins decide as for any explosion."
+        },
+        {
           "const": "animus:give-book",
           "description": "Gives the triggering player, or the player named by player, a written book. Pages use the dialogue colour codes. Reports given."
         },
         {
           "const": "animus:give-item",
-          "description": "Gives the triggering player, or the player named by player, amount of an item (1 by default), with an optional name and lore. Reports given."
+          "description": "Gives the triggering player, or the player named by player, amount of an item (1 by default), with an optional name, lore and enchantments. Reports given."
         },
         {
           "const": "animus:look",
-          "description": "Turns the NPC toward a position or the triggering player."
+          "description": "Turns the NPC, or another NPC named by npc, toward a position or the triggering player."
+        },
+        {
+          "const": "animus:look-close",
+          "description": "Turns the NPC's look-close, or another NPC's named by npc, on or off until a restart or a definition change, with an optional range (1-64) and lineOfSight."
         },
         {
           "const": "animus:message",
@@ -1231,7 +1243,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:play-sound",
-          "description": "Plays a sound at the NPC, or with at: player at the player, for the triggering player or nearby players. Server behaviors play at the player."
+          "description": "Plays a sound at the NPC, or with at: player at the player (atPlayer names another player to play it at), for the triggering player or nearby players. Server behaviors play at the player."
         },
         {
           "const": "animus:pose",
@@ -1240,6 +1252,18 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         {
           "const": "animus:quest-objective",
           "description": "Adds amount (1 by default) to a custom objective of the player's active Animus quest stage. Reports count."
+        },
+        {
+          "const": "animus:ray-trace",
+          "description": "Finds the block the triggering player, or the player named by player, looks at within range blocks (1-128, default 50) into result: location, written x,y,z,world, and block, or nothing for either when the player looks at no block."
+        },
+        {
+          "const": "animus:read-block",
+          "description": "Reads the block at location, written x,y,z,world as the location facts write it, into result: block, its key, or nothing when the location is empty text or its world or chunk is not loaded. A server run reads it where the triggering player is owned."
+        },
+        {
+          "const": "animus:read-inventory",
+          "description": "Reads the filled slots of the triggering player's inventory, or the player named by player, into result: items, a list of maps with slot, item, amount and, for a renamed item, its name as plain text."
         },
         {
           "const": "animus:resume-patrol",
@@ -1263,15 +1287,19 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:set-flag",
-          "description": "Sets a flag to value (true by default: any JSON value), optionally for expireSeconds; clear: true unsets it."
+          "description": "Sets a flag to value (true by default: any JSON value), optionally for expireSeconds; clear: true unsets it. A player or relationship flag belongs to the triggering player, or the player named by player; an NPC or relationship flag to this NPC, or the NPC named by npc."
         },
         {
           "const": "animus:set-quest-state",
           "description": "Sets a quest stage to value, or to a random stage from zero to below random."
         },
         {
+          "const": "animus:sidebar",
+          "description": "Shows the triggering player, or the player named by player, a sidebar with a title and up to 15 lines, top first. operation add adds lines below the last sidebar shown, set_line replaces line (1-15), and remove takes it away."
+        },
+        {
           "const": "animus:spawn-particle",
-          "description": "Shows a particle effect at the NPC, or with at: player at the player, to the triggering player or nearby players. Server behaviors show it at the player."
+          "description": "Shows a particle effect at the NPC, or with at: player at the player (atPlayer names another player to show it at), to the triggering player or nearby players, at the middle of the body or height blocks above the feet. Server behaviors show it at the player."
         },
         {
           "const": "animus:start-quest",
@@ -1306,12 +1334,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "True when the triggering player, or the player named by player, holds the money, experience levels and items of the cost. False when there is no triggering player."
         },
         {
+          "const": "animus:can-fit",
+          "description": "True when amount of an item (1 by default), with its name, lore and enchantments, fits in the storage slots of the triggering player, or the player named by player, without dropping any. False when there is no triggering player."
+        },
+        {
           "const": "animus:commands-allowed",
           "description": "True when the running behavior is on the command allow-list, so animus:command would run. Checks it before taking a cost for a command."
         },
         {
           "const": "animus:flag-state",
-          "description": "Compares a flag with value (true by default) by exact JSON equality. An unset or expired flag is false: it equals false and nothing else."
+          "description": "Compares a flag with value (true by default) by exact JSON equality. An unset or expired flag is false: it equals false and nothing else. A player or relationship flag belongs to the triggering player, or the player named by player; an NPC or relationship flag to this NPC, or the NPC named by npc."
         },
         {
           "const": "animus:has-permission",
@@ -1920,6 +1952,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "pattern": "\\S",
             "maxLength": 4096
           }
+        },
+        "result": {
+          "$ref": "#/$defs/identifier",
+          "description": "A declared variable that receives the capability's result, a map such as the items an inventory read gives."
         }
       },
       "required": [
@@ -2237,12 +2273,128 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         "use_item",
                         "stop_using_item"
                       ]
+                    },
+                    "npc": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
                     }
                   },
                   "required": [
                     "animation"
                   ],
-                  "description": "Shows a vanilla animation: an arm swing, the hurt flash or a critical hit once, or a pose or held-item use that lasts until something changes it."
+                  "description": "Shows a vanilla animation on the NPC, or another NPC named by npc: an arm swing, the hurt flash or a critical hit once, or a pose or held-item use that lasts until something changes it."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:bossbar"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "operation": {
+                      "enum": [
+                        "show",
+                        "remove"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "progress": {
+                      "type": "number",
+                      "minimum": 0.0,
+                      "maximum": 1.0
+                    },
+                    "color": {
+                      "enum": [
+                        "pink",
+                        "blue",
+                        "red",
+                        "green",
+                        "yellow",
+                        "purple",
+                        "white"
+                      ]
+                    },
+                    "style": {
+                      "enum": [
+                        "solid",
+                        "segmented_6",
+                        "segmented_10",
+                        "segmented_12",
+                        "segmented_20"
+                      ]
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "description": "Shows the triggering player, or the player named by player, a boss bar by its id, or updates it: title, progress from 0 to 1, color and style. operation remove takes it away. A new bar starts empty, white and solid."
                 }
               },
               "required": [
@@ -2914,6 +3066,101 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "if": {
             "properties": {
               "capability": {
+                "const": "animus:explode"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "minimum": -3.0E+7,
+                      "maximum": 3.0E+7
+                    },
+                    "y": {
+                      "type": "number",
+                      "minimum": -3.0E+7,
+                      "maximum": 3.0E+7
+                    },
+                    "z": {
+                      "type": "number",
+                      "minimum": -3.0E+7,
+                      "maximum": 3.0E+7
+                    },
+                    "world": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "power": {
+                      "type": "number",
+                      "minimum": 0.0,
+                      "maximum": 16.0
+                    },
+                    "fire": {
+                      "type": "boolean"
+                    },
+                    "breakBlocks": {
+                      "type": "boolean"
+                    },
+                    "npc": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "description": "Sets off an explosion of power (0-16, default 1) at x, y, z of the NPC's world, or of world, or with no position at the NPC, or another NPC named by npc. fire and breakBlocks start fires and break blocks only when behaviors.actions explosionsDamageBlocks allows it; protection plugins decide as for any explosion."
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
                 "const": "animus:give-book"
               }
             },
@@ -3077,16 +3324,88 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         "maxLength": 256
                       }
                     },
+                    "enchantments": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "maxProperties": 32,
+                      "additionalProperties": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 255
+                      }
+                    },
+                    "stack": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "item": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "amount": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 6400
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        },
+                        "lore": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 16,
+                          "items": {
+                            "type": "string",
+                            "maxLength": 256
+                          }
+                        },
+                        "enchantments": {
+                          "type": "object",
+                          "minProperties": 1,
+                          "maxProperties": 32,
+                          "additionalProperties": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 255
+                          }
+                        },
+                        "slot": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 255
+                        },
+                        "data": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 3800
+                        }
+                      },
+                      "required": [
+                        "item"
+                      ]
+                    },
                     "player": {
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 36
                     }
                   },
-                  "required": [
-                    "item"
+                  "anyOf": [
+                    {
+                      "required": [
+                        "item"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "stack"
+                      ]
+                    }
                   ],
-                  "description": "Gives the triggering player, or the player named by player, amount of an item (1 by default), with an optional name and lore. Reports given."
+                  "description": "Gives the triggering player, or the player named by player, amount of an item (1 by default), with an optional name, lore and enchantments. Reports given."
                 }
               },
               "required": [
@@ -3164,6 +3483,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     },
                     "target": {
                       "const": "player"
+                    },
+                    "npc": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
                     }
                   },
                   "oneOf": [
@@ -3180,7 +3504,88 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       ]
                     }
                   ],
-                  "description": "Turns the NPC toward a position or the triggering player."
+                  "description": "Turns the NPC, or another NPC named by npc, toward a position or the triggering player."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:look-close"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "range": {
+                      "type": "number",
+                      "minimum": 1.0,
+                      "maximum": 64.0
+                    },
+                    "lineOfSight": {
+                      "type": "boolean"
+                    },
+                    "npc": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "required": [
+                    "enabled"
+                  ],
+                  "description": "Turns the NPC's look-close, or another NPC's named by npc, on or off until a restart or a definition change, with an optional range (1-64) and lineOfSight."
                 }
               },
               "required": [
@@ -3819,6 +4224,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         "player"
                       ]
                     },
+                    "atPlayer": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    },
+                    "npc": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    },
                     "player": {
                       "type": "string",
                       "minLength": 1,
@@ -3828,7 +4243,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   "required": [
                     "sound"
                   ],
-                  "description": "Plays a sound at the NPC, or with at: player at the player, for the triggering player or nearby players. Server behaviors play at the player."
+                  "description": "Plays a sound at the NPC, or with at: player at the player (atPlayer names another player to play it at), for the triggering player or nearby players. Server behaviors play at the player."
                 }
               },
               "required": [
@@ -3990,6 +4405,208 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "required": [
                 "arguments"
               ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:ray-trace"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "range": {
+                      "type": "number",
+                      "minimum": 1.0,
+                      "maximum": 128.0
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "description": "Finds the block the triggering player, or the player named by player, looks at within range blocks (1-128, default 50) into result: location, written x,y,z,world, and block, or nothing for either when the player looks at no block."
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:read-block"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "location": {
+                      "type": "string",
+                      "maxLength": 128
+                    }
+                  },
+                  "required": [
+                    "location"
+                  ],
+                  "description": "Reads the block at location, written x,y,z,world as the location facts write it, into result: block, its key, or nothing when the location is empty text or its world or chunk is not loaded. A server run reads it where the triggering player is owned."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:read-inventory"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "description": "Reads the filled slots of the triggering player's inventory, or the player named by player, into result: items, a list of maps with slot, item, amount and, for a renamed item, its name as plain text."
+                }
+              }
             }
           }
         },
@@ -4482,12 +5099,22 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     },
                     "clear": {
                       "const": true
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    },
+                    "npc": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
                     }
                   },
                   "required": [
                     "name"
                   ],
-                  "description": "Sets a flag to value (true by default: any JSON value), optionally for expireSeconds; clear: true unsets it."
+                  "description": "Sets a flag to value (true by default: any JSON value), optionally for expireSeconds; clear: true unsets it. A player or relationship flag belongs to the triggering player, or the player named by player; an NPC or relationship flag to this NPC, or the NPC named by npc."
                 }
               },
               "required": [
@@ -4600,6 +5227,97 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "if": {
             "properties": {
               "capability": {
+                "const": "animus:sidebar"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "operation": {
+                      "enum": [
+                        "show",
+                        "add",
+                        "set_line",
+                        "remove"
+                      ]
+                    },
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "lines": {
+                      "type": "array",
+                      "minItems": 0,
+                      "maxItems": 15,
+                      "items": {
+                        "type": "string",
+                        "maxLength": 128
+                      }
+                    },
+                    "line": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 15
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "description": "Shows the triggering player, or the player named by player, a sidebar with a title and up to 15 lines, top first. operation add adds lines below the last sidebar shown, set_line replaces line (1-15), and remove takes it away."
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
                 "const": "animus:spawn-particle"
               }
             },
@@ -4663,6 +5381,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       "minimum": 0.0,
                       "maximum": 8.0
                     },
+                    "height": {
+                      "type": "number",
+                      "minimum": -16.0,
+                      "maximum": 16.0
+                    },
                     "audience": {
                       "enum": [
                         "trigger",
@@ -4680,6 +5403,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         "player"
                       ]
                     },
+                    "atPlayer": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    },
+                    "npc": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    },
                     "player": {
                       "type": "string",
                       "minLength": 1,
@@ -4689,7 +5422,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   "required": [
                     "particle"
                   ],
-                  "description": "Shows a particle effect at the NPC, or with at: player at the player, to the triggering player or nearby players. Server behaviors show it at the player."
+                  "description": "Shows a particle effect at the NPC, or with at: player at the player (atPlayer names another player to show it at), to the triggering player or nearby players, at the middle of the body or height blocks above the feet. Server behaviors show it at the player."
                 }
               },
               "required": [
@@ -5491,6 +6224,172 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "if": {
             "properties": {
               "capability": {
+                "const": "animus:can-fit"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "item": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "amount": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 6400
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "lore": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 16,
+                      "items": {
+                        "type": "string",
+                        "maxLength": 256
+                      }
+                    },
+                    "enchantments": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "maxProperties": 32,
+                      "additionalProperties": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 255
+                      }
+                    },
+                    "stack": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "item": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "amount": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 6400
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        },
+                        "lore": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 16,
+                          "items": {
+                            "type": "string",
+                            "maxLength": 256
+                          }
+                        },
+                        "enchantments": {
+                          "type": "object",
+                          "minProperties": 1,
+                          "maxProperties": 32,
+                          "additionalProperties": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 255
+                          }
+                        },
+                        "slot": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 255
+                        },
+                        "data": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 3800
+                        }
+                      },
+                      "required": [
+                        "item"
+                      ]
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "anyOf": [
+                    {
+                      "required": [
+                        "item"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "stack"
+                      ]
+                    }
+                  ],
+                  "description": "True when amount of an item (1 by default), with its name, lore and enchantments, fits in the storage slots of the triggering player, or the player named by player, without dropping any. False when there is no triggering player."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
                 "const": "animus:commands-allowed"
               }
             },
@@ -5612,12 +6511,22 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     },
                     "value": {
                       "description": "Any JSON value: true, false, a number, text, a list or a map"
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    },
+                    "npc": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
                     }
                   },
                   "required": [
                     "name"
                   ],
-                  "description": "Compares a flag with value (true by default) by exact JSON equality. An unset or expired flag is false: it equals false and nothing else."
+                  "description": "Compares a flag with value (true by default) by exact JSON equality. An unset or expired flag is false: it equals false and nothing else. A player or relationship flag belongs to the triggering player, or the player named by player; an NPC or relationship flag to this NPC, or the NPC named by npc."
                 }
               },
               "required": [
@@ -6066,10 +6975,17 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "const": "wait"
         },
         "ticks": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 72000,
-          "description": "Behavior ticks, about 50 ms each."
+          "description": "Behavior ticks, about 50 ms each: 1 to 72000, or an operand computed when the wait starts, held to 0 to 72000.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 72000
+            },
+            {
+              "$ref": "#/$defs/operand"
+            }
+          ]
         }
       },
       "required": [
@@ -6243,7 +7159,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "node-call": {
       "type": "object",
-      "description": "Runs another routine of this document.",
+      "description": "Runs another routine of this document, optionally for another player or NPC.",
       "additionalProperties": false,
       "properties": {
         "type": {
@@ -6267,6 +7183,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "result": {
           "$ref": "#/$defs/identifier",
           "description": "A declared variable that receives the routine's return value."
+        },
+        "player": {
+          "$ref": "#/$defs/operand",
+          "description": "A player UUID the routine runs for: its player facts, player flags and actions address that player."
+        },
+        "npc": {
+          "$ref": "#/$defs/operand",
+          "description": "An NPC UUID the routine runs for: its NPC facts, NPC flags and actions address that NPC."
         }
       },
       "required": [
@@ -9346,7 +10270,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:animate",
       "kind": "action",
-      "description": "Shows a vanilla animation: an arm swing, the hurt flash or a critical hit once, or a pose or held-item use that lasts until something changes it.",
+      "description": "Shows a vanilla animation on the NPC, or another NPC named by npc: an arm swing, the hurt flash or a critical hit once, or a pose or held-item use that lasts until something changes it.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -9369,6 +10293,79 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "use_item",
             "stop_using_item"
           ]
+        },
+        "npc": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
+      "id": "animus:bossbar",
+      "kind": "action",
+      "description": "Shows the triggering player, or the player named by player, a boss bar by its id, or updates it: title, progress from 0 to 1, color and style. operation remove takes it away. A new bar starts empty, white and solid.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "operation": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "show",
+            "remove"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "title": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "progress": {
+          "type": "number",
+          "required": false,
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "color": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "pink",
+            "blue",
+            "red",
+            "green",
+            "yellow",
+            "purple",
+            "white"
+          ]
+        },
+        "style": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "solid",
+            "segmented_6",
+            "segmented_10",
+            "segmented_12",
+            "segmented_20"
+          ]
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
         }
       }
     },
@@ -9522,6 +10519,61 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         ],
         [
           "items"
+        ]
+      ]
+    },
+    {
+      "id": "animus:can-fit",
+      "kind": "condition",
+      "description": "True when amount of an item (1 by default), with its name, lore and enchantments, fits in the storage slots of the triggering player, or the player named by player, without dropping any. False when there is no triggering player.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "item": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "amount": {
+          "type": "integer",
+          "required": false,
+          "minimum": 1,
+          "maximum": 6400
+        },
+        "name": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "lore": {
+          "type": "array",
+          "required": false
+        },
+        "enchantments": {
+          "type": "object",
+          "required": false
+        },
+        "stack": {
+          "type": "object",
+          "required": false
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      },
+      "oneOfRequired": [
+        [
+          "item"
+        ],
+        [
+          "stack"
         ]
       ]
     },
@@ -9722,9 +10774,64 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     },
     {
+      "id": "animus:explode",
+      "kind": "action",
+      "description": "Sets off an explosion of power (0-16, default 1) at x, y, z of the NPC's world, or of world, or with no position at the NPC, or another NPC named by npc. fire and breakBlocks start fires and break blocks only when behaviors.actions explosionsDamageBlocks allows it; protection plugins decide as for any explosion.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "x": {
+          "type": "number",
+          "required": false,
+          "minimum": -3.0E+7,
+          "maximum": 3.0E+7
+        },
+        "y": {
+          "type": "number",
+          "required": false,
+          "minimum": -3.0E+7,
+          "maximum": 3.0E+7
+        },
+        "z": {
+          "type": "number",
+          "required": false,
+          "minimum": -3.0E+7,
+          "maximum": 3.0E+7
+        },
+        "world": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "power": {
+          "type": "number",
+          "required": false,
+          "minimum": 0.0,
+          "maximum": 16.0
+        },
+        "fire": {
+          "type": "boolean",
+          "required": false
+        },
+        "breakBlocks": {
+          "type": "boolean",
+          "required": false
+        },
+        "npc": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
       "id": "animus:flag-state",
       "kind": "condition",
-      "description": "Compares a flag with value (true by default) by exact JSON equality. An unset or expired flag is false: it equals false and nothing else.",
+      "description": "Compares a flag with value (true by default) by exact JSON equality. An unset or expired flag is false: it equals false and nothing else. A player or relationship flag belongs to the triggering player, or the player named by player; an NPC or relationship flag to this NPC, or the NPC named by npc.",
       "privileged": false,
       "available": true,
       "reason": "available",
@@ -9750,6 +10857,18 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "any",
           "required": false,
           "description": "Any JSON value: true, false, a number, text, a list or a map"
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        },
+        "npc": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
         }
       }
     },
@@ -9789,7 +10908,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:give-item",
       "kind": "action",
-      "description": "Gives the triggering player, or the player named by player, amount of an item (1 by default), with an optional name and lore. Reports given.",
+      "description": "Gives the triggering player, or the player named by player, amount of an item (1 by default), with an optional name, lore and enchantments. Reports given.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -9797,7 +10916,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "arguments": {
         "item": {
           "type": "string",
-          "required": true,
+          "required": false,
           "minLength": 1,
           "maxLength": 128
         },
@@ -9817,13 +10936,29 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "array",
           "required": false
         },
+        "enchantments": {
+          "type": "object",
+          "required": false
+        },
+        "stack": {
+          "type": "object",
+          "required": false
+        },
         "player": {
           "type": "string",
           "required": false,
           "minLength": 1,
           "maxLength": 36
         }
-      }
+      },
+      "oneOfRequired": [
+        [
+          "item"
+        ],
+        [
+          "stack"
+        ]
+      ]
     },
     {
       "id": "animus:has-permission",
@@ -9845,7 +10980,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:look",
       "kind": "action",
-      "description": "Turns the NPC toward a position or the triggering player.",
+      "description": "Turns the NPC, or another NPC named by npc, toward a position or the triggering player.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -9873,6 +11008,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "string",
           "required": false,
           "const": "player"
+        },
+        "npc": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
         }
       },
       "oneOfRequired": [
@@ -9885,6 +11026,37 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "z"
         ]
       ]
+    },
+    {
+      "id": "animus:look-close",
+      "kind": "action",
+      "description": "Turns the NPC's look-close, or another NPC's named by npc, on or off until a restart or a definition change, with an optional range (1-64) and lineOfSight.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "enabled": {
+          "type": "boolean",
+          "required": true
+        },
+        "range": {
+          "type": "number",
+          "required": false,
+          "minimum": 1.0,
+          "maximum": 64.0
+        },
+        "lineOfSight": {
+          "type": "boolean",
+          "required": false
+        },
+        "npc": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
     },
     {
       "id": "animus:message",
@@ -10177,7 +11349,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:play-sound",
       "kind": "action",
-      "description": "Plays a sound at the NPC, or with at: player at the player, for the triggering player or nearby players. Server behaviors play at the player.",
+      "description": "Plays a sound at the NPC, or with at: player at the player (atPlayer names another player to play it at), for the triggering player or nearby players. Server behaviors play at the player.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -10222,6 +11394,18 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "npc",
             "player"
           ]
+        },
+        "atPlayer": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        },
+        "npc": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
         },
         "player": {
           "type": "string",
@@ -10394,6 +11578,62 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     },
     {
+      "id": "animus:ray-trace",
+      "kind": "action",
+      "description": "Finds the block the triggering player, or the player named by player, looks at within range blocks (1-128, default 50) into result: location, written x,y,z,world, and block, or nothing for either when the player looks at no block.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "range": {
+          "type": "number",
+          "required": false,
+          "minimum": 1.0,
+          "maximum": 128.0
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
+      "id": "animus:read-block",
+      "kind": "action",
+      "description": "Reads the block at location, written x,y,z,world as the location facts write it, into result: block, its key, or nothing when the location is empty text or its world or chunk is not loaded. A server run reads it where the triggering player is owned.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "location": {
+          "type": "string",
+          "required": true,
+          "maxLength": 128
+        }
+      }
+    },
+    {
+      "id": "animus:read-inventory",
+      "kind": "action",
+      "description": "Reads the filled slots of the triggering player's inventory, or the player named by player, into result: items, a list of maps with slot, item, amount and, for a renamed item, its name as plain text.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
       "id": "animus:resume-patrol",
       "kind": "action",
       "description": "Restarts the route or recording the NPC's definition declares; a stopped recording continues where it stopped. Reports resumed or nothing-to-resume.",
@@ -10555,7 +11795,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:set-flag",
       "kind": "action",
-      "description": "Sets a flag to value (true by default: any JSON value), optionally for expireSeconds; clear: true unsets it.",
+      "description": "Sets a flag to value (true by default: any JSON value), optionally for expireSeconds; clear: true unsets it. A player or relationship flag belongs to the triggering player, or the player named by player; an NPC or relationship flag to this NPC, or the NPC named by npc.",
       "privileged": false,
       "available": true,
       "reason": "available",
@@ -10592,6 +11832,18 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "string",
           "required": false,
           "const": true
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        },
+        "npc": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
         }
       }
     },
@@ -10643,9 +11895,52 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       ]
     },
     {
+      "id": "animus:sidebar",
+      "kind": "action",
+      "description": "Shows the triggering player, or the player named by player, a sidebar with a title and up to 15 lines, top first. operation add adds lines below the last sidebar shown, set_line replaces line (1-15), and remove takes it away.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "operation": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "show",
+            "add",
+            "set_line",
+            "remove"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "lines": {
+          "type": "array",
+          "required": false
+        },
+        "line": {
+          "type": "integer",
+          "required": false,
+          "minimum": 1,
+          "maximum": 15
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
       "id": "animus:spawn-particle",
       "kind": "action",
-      "description": "Shows a particle effect at the NPC, or with at: player at the player, to the triggering player or nearby players. Server behaviors show it at the player.",
+      "description": "Shows a particle effect at the NPC, or with at: player at the player (atPlayer names another player to show it at), to the triggering player or nearby players, at the middle of the body or height blocks above the feet. Server behaviors show it at the player.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -10669,6 +11964,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "minimum": 0.0,
           "maximum": 8.0
         },
+        "height": {
+          "type": "number",
+          "required": false,
+          "minimum": -16.0,
+          "maximum": 16.0
+        },
         "audience": {
           "type": "string",
           "required": false,
@@ -10690,6 +11991,18 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "npc",
             "player"
           ]
+        },
+        "atPlayer": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        },
+        "npc": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
         },
         "player": {
           "type": "string",
@@ -12413,6 +13726,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player opens an inventory. Runs read context.inventory_type. cancel keeps it closed.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "inventory_type",
+        "inventory_items",
+        "inventory_location"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -12455,6 +13773,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player closes an inventory. Runs read context.inventory_type.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "inventory_type",
+        "inventory_items",
+        "inventory_location"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -13283,6 +14606,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "type": "templates",
             "required": false,
             "description": "Fills null placeholders in arguments with template text, keyed by JSON Pointer."
+          },
+          "result": {
+            "type": "variable",
+            "required": false,
+            "description": "A declared variable that receives the capability's result, a map such as the items an inventory read gives."
           }
         }
       },
@@ -13338,9 +14666,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "ticks": {
             "type": "integer",
             "required": true,
-            "minimum": 1,
-            "maximum": 72000,
-            "description": "Behavior ticks, about 50 ms each."
+            "description": "Behavior ticks, about 50 ms each: 1 to 72000, or an operand computed when the wait starts, held to 0 to 72000."
           }
         }
       },
@@ -13451,7 +14777,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         }
       },
       "call": {
-        "description": "Runs another routine of this document.",
+        "description": "Runs another routine of this document, optionally for another player or NPC.",
         "fields": {
           "routine": {
             "type": "routine",
@@ -13467,6 +14793,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "type": "variable",
             "required": false,
             "description": "A declared variable that receives the routine's return value."
+          },
+          "player": {
+            "type": "value",
+            "required": false,
+            "description": "A player UUID the routine runs for: its player facts, player flags and actions address that player."
+          },
+          "npc": {
+            "type": "value",
+            "required": false,
+            "description": "An NPC UUID the routine runs for: its NPC facts, NPC flags and actions address that NPC."
           }
         }
       },
@@ -13576,7 +14912,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "x",
           "y",
           "z",
-          "location"
+          "location",
+          "behaviors"
         ],
         "server": [
           "online_players",
@@ -13631,7 +14968,23 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "players",
         "player_info",
         "player_flag",
-        "player_has_flag"
+        "player_has_flag",
+        "npcs",
+        "npc_info",
+        "npc_flag",
+        "npc_has_flag",
+        "distance",
+        "duration_seconds",
+        "duration_text",
+        "flag_expiry",
+        "player_flag_expiry",
+        "type_of",
+        "has_player",
+        "offset",
+        "players_near",
+        "within",
+        "now",
+        "player_named"
       ],
       "standardFunctions": [
         "abs",

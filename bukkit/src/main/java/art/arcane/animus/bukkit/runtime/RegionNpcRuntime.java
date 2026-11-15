@@ -649,6 +649,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     @Override public void setEquipment(String id, EquipmentSlot slot, ItemStack item) { navigable(id).setEquipment(slot, item); }
     @Override public void rest(String id, NpcPose pose) { navigable(id).rest(pose); }
     @Override public void setAttribute(String id, String attribute, java.util.OptionalDouble value) { navigable(id).setAttribute(attribute, value); }
+    @Override public void setLookClose(String id, boolean enabled, java.util.OptionalDouble range, java.util.Optional<Boolean> lineOfSight) { navigable(id).setLookClose(enabled, range, lineOfSight); }
     @Override public void playAnimation(String id, String animation, double speed, Optional<String> loop, int layer) { navigable(id).playAnimation(animation, speed, loop, layer); }
     @Override public void stopAnimation(String id, java.util.OptionalInt layer, int fadeTicks) { navigable(id).stopAnimation(layer, fadeTicks); }
 

@@ -235,6 +235,14 @@ public final class TriggerDispatcher implements TriggerSink {
             BehaviorProgram.Value value = reads.state().read(BehaviorFlags.subject(BehaviorFlags.FLAGS, behavior, event.npc(), Optional.of(player)), name, BehaviorFlags.declaration("player"), UNSET, BehaviorProgram.Type.ANY);
             return value == UNSET ? Optional.empty() : Optional.of(value);
         }
+        @Override public java.util.OptionalLong flagExpiry(String scope, String name) { return reads.state().expiry(subject(BehaviorFlags.FLAGS), name, BehaviorFlags.declaration(scope)); }
+        @Override public java.util.OptionalLong playerFlagExpiry(UUID player, String name) {
+            return reads.state().expiry(BehaviorFlags.subject(BehaviorFlags.FLAGS, behavior, event.npc(), Optional.of(player)), name, BehaviorFlags.declaration("player"));
+        }
+        @Override public Optional<BehaviorProgram.Value> npcFlag(UUID npc, String name) {
+            BehaviorProgram.Value value = reads.state().read(BehaviorFlags.subject(BehaviorFlags.FLAGS, behavior, npc, Optional.empty()), name, BehaviorFlags.declaration("npc"), UNSET, BehaviorProgram.Type.ANY);
+            return value == UNSET ? Optional.empty() : Optional.of(value);
+        }
         private BehaviorState.Subject subject(String kind) { return BehaviorFlags.subject(kind, behavior, event.npc(), event.player()); }
     }
 

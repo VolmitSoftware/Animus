@@ -189,6 +189,11 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
      */
     void setAttribute(String id, String attribute, java.util.OptionalDouble value);
     /**
+     * Turns the running NPC's look-close on, at a range and line of sight when given, or off. The change lasts until the
+     * definition is applied again, as an attribute change does.
+     */
+    void setLookClose(String id, boolean enabled, java.util.OptionalDouble range, java.util.Optional<Boolean> lineOfSight);
+    /**
      * Plays an animation of the NPC's rig on a layer (0-3) at a speed (0.25-4), optionally overriding its loop mode
      * ({@code once}, {@code loop}, {@code pingpong} or {@code hold}). Throws {@link IllegalStateException} when the NPC
      * has no rig and {@link IllegalArgumentException} for an unknown animation.

@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/smith_board",
+  "entry": "main",
+  "variables": {
+    "d_crew": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:bossbar",
+          "arguments": {
+            "id": "smith_heat",
+            "title": "&6Forge heat",
+            "progress": 0.4,
+            "color": "red",
+            "style": "segmented_10"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:bossbar",
+          "arguments": {
+            "id": "smith_heat",
+            "progress": null
+          },
+          "expressions": {
+            "/progress": "clamp(random_decimal(), 0, 1)"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:bossbar",
+          "arguments": {
+            "id": "smith_heat",
+            "operation": "remove"
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "players(d_crew)"
+          },
+          "as": "t_1",
+          "maximum": 100,
+          "body": {
+            "type": "action",
+            "capability": "animus:sidebar",
+            "arguments": {
+              "title": "&eSmithy",
+              "lines": null,
+              "player": null
+            },
+            "expressions": {
+              "/lines": "slice(split(join(['Iron', 'Gold', 'Coal'], '|'), '|'), 0, 15)",
+              "/player": "t_1"
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:sidebar",
+          "arguments": {
+            "operation": "remove"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -86,6 +86,33 @@ class OwnedNpcAttackTest {
         refused("{\"behaviors\":[\"town:warp\"]}", PermissionNodes.OWNED_SERVER, "teleport players (behavior town:warp)");
     }
 
+    @Test void effectsAtAnotherPlayerActionsOnAnotherNpcAndExplosionsAreRefused() throws IOException {
+        write("behaviors/town/spot.json", behavior("town:spot", "{\"type\":\"action\",\"capability\":\"animus:spawn-particle\",\"arguments\":{\"particle\":\"minecraft:heart\",\"at\":\"player\",\"atPlayer\":\"0000000b-0000-4000-8000-0000000000b2\"}}"));
+        refused("{\"behaviors\":[\"town:spot\"]}", PermissionNodes.OWNED_PLAYERS, "show effects at another player (behavior town:spot)");
+        String mayor = runtime.npcs().find("mayor").orElseThrow().uuid().toString();
+        write("behaviors/town/mark.json", behavior("town:mark", "{\"type\":\"action\",\"capability\":\"animus:set-flag\",\"arguments\":{\"name\":\"seen\",\"scope\":\"npc\",\"npc\":\"" + mayor + "\"}}"));
+        refused("{\"behaviors\":[\"town:mark\"]}", PermissionNodes.OWNED_SERVER, "act on another NPC (behavior town:mark)");
+        write("behaviors/town/blast.json", behavior("town:blast", "{\"type\":\"action\",\"capability\":\"animus:explode\",\"arguments\":{\"power\":2}}"));
+        refused("{\"behaviors\":[\"town:blast\"]}", PermissionNodes.OWNED_SERVER, "set off explosions (behavior town:blast)");
+        write("behaviors/town/peek.json", behavior("town:peek", "{\"type\":\"condition\",\"capability\":\"animus:flag-state\",\"arguments\":{\"name\":\"seen\",\"scope\":\"npc\",\"npc\":\"" + mayor + "\"}}"));
+        admin.edit("stall", "{\"behaviors\":[\"town:peek\"]}");
+    }
+
+    @Test void aRoutineRunForAnotherPlayerOrNpcIsRefused() throws IOException {
+        String mayor = runtime.npcs().find("mayor").orElseThrow().uuid().toString();
+        write("behaviors/town/proxy.json", routineFor("town:proxy", "\"npc\":\"" + mayor + "\""));
+        refused("{\"behaviors\":[\"town:proxy\"]}", PermissionNodes.OWNED_SERVER, "run a routine for another NPC (behavior town:proxy)");
+        write("behaviors/town/stand-in.json", routineFor("town:stand-in", "\"player\":{\"expression\":\"player_named('Sam')\"}"));
+        refused("{\"behaviors\":[\"town:stand-in\"]}", PermissionNodes.OWNED_PLAYERS, "run a routine for another player (behavior town:stand-in)");
+        write("behaviors/town/own.json", routineFor("town:own", "\"arguments\":{}"));
+        admin.edit("stall", "{\"behaviors\":[\"town:own\"]}");
+    }
+
+    private static String routineFor(String id, String extra) {
+        return "{\"schemaVersion\":1,\"id\":\"" + id + "\",\"entry\":\"main\",\"routines\":{\"main\":{\"type\":\"call\",\"routine\":\"hello\"," + extra + "},"
+                + "\"hello\":{\"type\":\"action\",\"capability\":\"animus:say\",\"arguments\":{\"text\":\"Hi\"}}},\"triggers\":[{\"id\":\"click\",\"event\":\"interaction\",\"routine\":\"main\"}]}";
+    }
+
     @Test void aPlainBehaviorNeedsNothing() throws IOException {
         admin.edit("stall", "{\"behaviors\":[\"town:greet\"]}");
         assertEquals(List.of("town:greet"), runtime.npcs().find("stall").orElseThrow().behaviors());

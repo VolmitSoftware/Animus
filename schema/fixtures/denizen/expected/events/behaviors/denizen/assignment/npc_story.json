@@ -9,7 +9,7 @@
       "steps": [
         {
           "type": "condition",
-          "expression": "has_flag('player', ('story_done_' + text(npc.citizens_id)))",
+          "expression": "has_flag('player', replace(lower(('story_done_' + text(npc.citizens_id))), '.', '-'))",
           "then": {
             "type": "return"
           }
@@ -29,7 +29,7 @@
             "scope": "player"
           },
           "expressions": {
-            "/name": "('story_done_' + text(npc.citizens_id))"
+            "/name": "replace(lower(('story_done_' + text(npc.citizens_id))), '.', '-')"
           }
         }
       ]

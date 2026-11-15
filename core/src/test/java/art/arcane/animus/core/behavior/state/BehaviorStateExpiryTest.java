@@ -125,4 +125,19 @@ class BehaviorStateExpiryTest {
             assertEquals(1, state.problems().size());
         }
     }
+
+    @Test
+    void anExpiryReadsBackUntilItPasses() throws Exception {
+        AtomicLong millis = new AtomicLong(1_000);
+        try (DocumentStore documents = new DocumentStore(root)) {
+            BehaviorStateStore state = BehaviorStateStore.open(documents, Limits.defaults(), System::nanoTime, millis::get);
+            state.write(SUBJECT, Map.of("cooldown", integer(1), "kept", integer(2)), Map.of("cooldown", NPC_PERSISTENT, "kept", NPC_PERSISTENT), Map.of("cooldown", 9_000L));
+            assertEquals(OptionalLong.of(9_000L), state.expiry(SUBJECT, "cooldown", NPC_PERSISTENT));
+            assertEquals(OptionalLong.empty(), state.expiry(SUBJECT, "kept", NPC_PERSISTENT), "a key without an expiry has none");
+            assertEquals(OptionalLong.empty(), state.expiry(SUBJECT, "missing", NPC_PERSISTENT));
+            millis.set(9_000);
+            assertEquals(OptionalLong.empty(), state.expiry(SUBJECT, "cooldown", NPC_PERSISTENT), "an expired key has no expiry left");
+            state.close();
+        }
+    }
 }

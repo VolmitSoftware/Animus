@@ -280,6 +280,10 @@ class BehaviorNodeView extends StatelessWidget {
     switch (type) {
       case 'action':
         out.add(CapabilityFields(context: ctx, node: value, steps: steps, kind: 'action'));
+        // Only a capability that reads something gives a result worth keeping.
+        if (value.containsKey('result') || const <String>{'animus:read-inventory', 'animus:ray-trace', 'animus:read-block'}.contains(value['capability'])) {
+          out.add(_variablePicker(value, _field(spec, 'result'), ctx.variables.keys.toList(), optional: true));
+        }
       case 'condition':
         out.add(_conditionMode(value));
         if (value.containsKey('expression')) {
@@ -289,6 +293,8 @@ class BehaviorNodeView extends StatelessWidget {
         }
       case 'while':
         out.add(_expressionRow(value, _field(spec, 'expression')));
+      case 'wait':
+        out.add(_ticksRow(value, _field(spec, 'ticks')));
       case 'repeat':
         out.add(_countRow(value, _field(spec, 'count')));
         out.add(_loopVariable(value, _field(spec, 'index'), const <String>['integer', 'decimal', 'any']));
@@ -306,9 +312,12 @@ class BehaviorNodeView extends StatelessWidget {
         out.add(_routineRow(value, _field(spec, 'routine')));
         out.add(CallArguments(context: ctx, node: value, steps: steps));
         out.add(_variablePicker(value, _field(spec, 'result'), ctx.variables.keys.toList(), optional: true));
+        out.add(_operandRow(value, _field(spec, 'player'), 'string', label: 'For player'));
+        out.add(_operandRow(value, _field(spec, 'npc'), 'string', label: 'For NPC'));
     }
     const Set<String> custom = <String>{
-      'capability', 'arguments', 'bindings', 'expressions', 'templates', 'expression', 'count', 'index', 'list', 'as', 'key', 'variable', 'value', 'routine', 'result',
+      'capability', 'arguments', 'bindings', 'expressions', 'templates', 'expression', 'count', 'ticks', 'index', 'list', 'as', 'key', 'variable', 'value', 'routine', 'result',
+      'player', 'npc',
     };
     final bool customType = _customTypes.contains(type);
     for (final FieldSpec field in spec?.fields ?? const <FieldSpec>[]) {
@@ -332,7 +341,7 @@ class BehaviorNodeView extends StatelessWidget {
     return out;
   }
 
-  static const Set<String> _customTypes = <String>{'action', 'condition', 'while', 'repeat', 'foreach', 'set', 'return', 'call'};
+  static const Set<String> _customTypes = <String>{'action', 'condition', 'while', 'wait', 'repeat', 'foreach', 'set', 'return', 'call'};
 
   Widget _conditionMode(JsonMap value) {
     final bool expression = value.containsKey('expression');
@@ -403,6 +412,21 @@ class BehaviorNodeView extends StatelessWidget {
         value: count is num ? count : null,
         label: 'Times ${_label.toLowerCase()} repeats',
         onChanged: (num? next) => ctx.write(<JsonStep>[...steps, 'count'], (next ?? 0).round().clamp(0, 128)),
+      ),
+    );
+  }
+
+  Widget _ticksRow(JsonMap value, FieldSpec field) {
+    final Object? ticks = value['ticks'];
+    return _operandRow(
+      value,
+      field,
+      'integer',
+      label: 'Ticks',
+      literal: NumberInput(
+        value: ticks is num ? ticks : null,
+        label: 'Ticks to wait',
+        onChanged: (num? next) => ctx.write(<JsonStep>[...steps, 'ticks'], (next ?? 1).round().clamp(1, 72000)),
       ),
     );
   }

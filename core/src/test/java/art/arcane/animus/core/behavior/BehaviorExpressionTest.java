@@ -25,6 +25,11 @@ class BehaviorExpressionTest {
         public Optional<Value> flag(String scope,String name){return Optional.ofNullable(flags.get(scope+"/"+name));}
         public long quest(String scope,String name){return quests.getOrDefault(scope+"/"+name,0L);}
         public RandomGenerator random(){return random;}
+        final Map<String,Value> npcFlags=new HashMap<>();
+        @Override public Optional<Value> npcFlag(UUID npc,String name){return Optional.ofNullable(npcFlags.get(npc+"/"+name));}
+        final Map<String,Long> expiries=new HashMap<>();
+        @Override public OptionalLong flagExpiry(String scope,String name){Long at=expiries.get(scope+"/"+name);return at==null?OptionalLong.empty():OptionalLong.of(at);}
+        @Override public OptionalLong playerFlagExpiry(UUID player,String name){Long at=expiries.get(player+"/"+name);return at==null?OptionalLong.empty():OptionalLong.of(at);}
     }
     static Object eval(String source,Env env){return BehaviorExpression.compile(source,env.variables.keySet(),"$.f").evaluate(env);}
     static Object eval(String source){return eval(source,new Env());}
@@ -145,5 +150,99 @@ class BehaviorExpressionTest {
         assertEquals(Map.of(),eval("player_info('"+other+"')",env));
         assertEquals(false,eval("player_has_flag('"+other+"', 'vip')",env),"the default environment reads no other player");
         assertEquals("none",eval("player_flag('"+other+"', 'vip', 'none')",env));
+    }
+    @Test void npcListsInfoAndOtherNpcsFlagsReadTheRuntime(){
+        UUID guard=UUID.fromString("00000000-0000-0000-0000-0000000000c3"),gone=UUID.fromString("00000000-0000-0000-0000-0000000000c4");
+        Env env=new Env();
+        env.npcFlags.put(guard+"/post",text("gate"));
+        env.facts=new BehaviorFacts(){
+            public Optional<Map<String,Object>> player(UUID id){return Optional.empty();}
+            public Optional<Map<String,Object>> npc(UUID id){return id.equals(guard)?Optional.of(Map.of("name","Guard","citizens_id","12","spawned",true,"behaviors",List.of("denizen:assignment/guard"))):Optional.empty();}
+            public Map<String,Object> server(){return Map.of();}
+            @Override public List<UUID> npcs(){return List.of(guard,gone);}
+        };
+        assertEquals(List.of(guard.toString(),gone.toString()),eval("npcs()",env));
+        assertEquals("12",eval("get(npc_info('"+guard+"'), 'citizens_id', '')",env));
+        assertEquals(List.of("denizen:assignment/guard"),eval("get(npc_info('"+guard+"'), 'behaviors', [])",env));
+        assertEquals(Map.of(),eval("npc_info('"+gone+"')",env));
+        assertEquals(Map.of(),eval("npc_info('no npc')",env));
+        assertEquals("gate",eval("npc_flag('"+guard+"', 'post')",env));
+        assertEquals(true,eval("npc_has_flag('"+guard+"', 'post')",env));
+        assertEquals("none",eval("npc_flag('"+gone+"', 'post', 'none')",env));
+        assertEquals(false,eval("npc_has_flag('"+gone+"', 'post')",env));
+        assertEquals(List.of(),eval("npcs()",new Env()),"the default facts list no NPCs");
+    }
+    @Test void distanceMeasuresBetweenLocationsInOneWorld(){
+        assertEquals(5.0,eval("distance('0,64,0,world', '3.00,64.00,4.00,world')"));
+        assertEquals(5.0,eval("distance('0,64,0', '3,64,4,world')"),"a location without a world is in any world");
+        assertEquals(1.0E9,eval("distance('0,64,0,world', '0,64,0,world_nether')"),"another world is far away");
+        assertTrue(failure("distance('here', '0,64,0')",new Env()).getMessage().contains("location"));
+    }
+    @Test void durationsReadDenizenTextAndFormatAsDenizenDoes(){
+        assertEquals(600.0,eval("duration_seconds('10m')"));
+        assertEquals(1.5,eval("duration_seconds('30t')"));
+        assertEquals(90000.0,eval("duration_seconds('d@1d1h')"),"parts add up");
+        assertEquals(45.0,eval("duration_seconds(45)"));
+        assertEquals(45.0,eval("duration_seconds('45')"));
+        assertTrue(failure("duration_seconds('soon')",new Env()).getMessage().contains("duration"));
+        assertEquals("2h 30m",eval("duration_text(9000)"));
+        assertEquals("1d 3h",eval("duration_text(97300)"),"no minutes once a day is shown");
+        assertEquals("5m 7s",eval("duration_text(307)"));
+        assertEquals("12m",eval("duration_text(725)"),"no seconds from ten minutes on");
+        assertEquals("0s",eval("duration_text(0)"));
+    }
+    @Test void typeOfNamesTheKindOfAValue(){
+        assertEquals("list",eval("type_of([1, 2])"));
+        Env env=new Env();env.variables.put("held",new Value(Type.MAP,Map.of("item",text("minecraft:bread"))));
+        assertEquals("map",eval("type_of(held)",env));
+        assertEquals("text",eval("type_of('bread')"));
+        assertEquals("number",eval("type_of(3)"));
+        assertEquals("boolean",eval("type_of(true)"));
+    }
+    @Test void locationsOffsetFindNearbyPlayersAndTestAreas(){
+        UUID near=UUID.fromString("00000000-0000-0000-0000-0000000000b1"),far=UUID.fromString("00000000-0000-0000-0000-0000000000b2"),away=UUID.fromString("00000000-0000-0000-0000-0000000000b3");
+        Env env=new Env();
+        Map<UUID,String> places=Map.of(PLAYER,"10.00,64.00,3.00,town",near,"11.00,64.00,0.00,town",far,"40.00,64.00,0.00,town",away,"10.00,64.00,0.00,mine");
+        env.facts=new BehaviorFacts(){
+            public Optional<Map<String,Object>> player(UUID id){return Optional.ofNullable(places.get(id)).map((String at)->Map.of("location",at));}
+            public Optional<Map<String,Object>> npc(UUID id){return Optional.empty();}
+            public Map<String,Object> server(){return Map.of("players",List.of(PLAYER.toString(),near.toString(),far.toString(),away.toString()));}
+        };
+        assertEquals("10.00,66.50,0.00,town",eval("offset('10,64,0,town', 0, 2.5, 0)",env));
+        assertEquals(List.of(near.toString(),PLAYER.toString()),eval("players_near('10,64,0,town', 5)",env),"nearest first, the same world only");
+        assertEquals(true,eval("has_player()",env));
+        env.player=Optional.empty();
+        assertEquals(false,eval("has_player()",env));
+        env.variables.put("hall",new Value(Type.MAP,Map.of("world",text("town"),"shape",text("cuboid"),"bounds",new Value(Type.LIST,List.of(integer(0),integer(60),integer(0),integer(10),integer(70),integer(10))))));
+        assertEquals(true,eval("within('10.9,65,0.5,town', hall)",env),"the corner blocks are inside");
+        assertEquals(false,eval("within('11,65,0,town', hall)",env));
+        assertEquals(false,eval("within('5,65,5,mine', hall)",env));
+        env.variables.put("pond",new Value(Type.MAP,Map.of("world",text("town"),"shape",text("ellipsoid"),"bounds",new Value(Type.LIST,List.of(integer(0),integer(60),integer(0),integer(4),integer(2),integer(4))))));
+        assertEquals(true,eval("within('3,60,0,town', pond)",env));
+        assertEquals(false,eval("within('3,61.5,2,town', pond)",env));
+    }
+    @Test void playersAreFoundByNameAsDenizenMatchesThem(){
+        UUID bob=UUID.fromString("00000000-0000-0000-0000-0000000000c1"),bobby=UUID.fromString("00000000-0000-0000-0000-0000000000c2"),bo=UUID.fromString("00000000-0000-0000-0000-0000000000c3");
+        Map<UUID,String> names=Map.of(bob,"Bob",bobby,"Bobby",bo,"bo");
+        Env env=new Env();
+        env.facts=new BehaviorFacts(){
+            public Optional<Map<String,Object>> player(UUID id){return Optional.ofNullable(names.get(id)).map((String name)->Map.of("name",name));}
+            public Optional<Map<String,Object>> npc(UUID id){return Optional.empty();}
+            public Map<String,Object> server(){return Map.of("players",List.of(bobby.toString(),bob.toString(),bo.toString()));}
+        };
+        assertEquals(bob.toString(),eval("player_named('BOB')",env),"an exact name wins");
+        assertEquals(bobby.toString(),eval("player_named('bobb')",env));
+        assertEquals(bo.toString(),eval("player_named('b')",env),"the shortest name that starts with it");
+        assertEquals("",eval("player_named('zed')",env));
+        assertTrue((Double)eval("now()",env)>1.7e12);
+    }
+    @Test void flagExpiriesReadTheirEpochMillisOrZero(){
+        Env env=new Env();env.expiries.put("player/cooldown",90_000L);
+        assertEquals(90_000.0,eval("flag_expiry('player', 'cooldown')",env));
+        assertEquals(0.0,eval("flag_expiry('player', 'other')",env));
+        UUID other=UUID.fromString("00000000-0000-0000-0000-0000000000b2");
+        env.expiries.put(other+"/cooldown",5_000L);
+        assertEquals(5_000.0,eval("player_flag_expiry('"+other+"', 'cooldown')",env));
+        assertEquals(0.0,eval("player_flag_expiry('nobody', 'cooldown')",env));
     }
 }

@@ -1,0 +1,279 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/smith_forge",
+  "entry": "main",
+  "variables": {
+    "d_helper": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_helpers": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_smith": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_2": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_3": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_4": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_5": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_6": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_7": {
+      "type": "any",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "capability": "animus:can-afford",
+          "arguments": {
+            "items": [
+              {
+                "item": {
+                  "id": "minecraft:iron_ingot"
+                },
+                "amount": 3
+              }
+            ],
+            "match": "material"
+          },
+          "then": {
+            "type": "sequence",
+            "steps": []
+          },
+          "else": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "action",
+                "capability": "animus:message",
+                "arguments": {
+                  "text": "&cBring me three iron ingots."
+                }
+              },
+              {
+                "type": "return"
+              }
+            ]
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:take-item",
+          "arguments": {
+            "item": "minecraft:iron_ingot",
+            "amount": 3
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:can-afford",
+          "arguments": {
+            "items": [
+              {
+                "item": {
+                  "id": null
+                },
+                "amount": 1
+              }
+            ],
+            "match": "material"
+          },
+          "expressions": {
+            "/items/0/item/id": "(contains(lower(replace(text(flag('player', 'smith-metal', 'gold_ingot')), 'i@', '')), ':') ? lower(replace(text(flag('player', 'smith-metal', 'gold_ingot')), 'i@', '')) : 'minecraft:' + lower(replace(text(flag('player', 'smith-metal', 'gold_ingot')), 'i@', '')))"
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:message",
+            "arguments": {
+              "text": "&6That metal will do."
+            }
+          }
+        },
+        {
+          "type": "call",
+          "routine": "proc-smith_helpers",
+          "result": "t_5"
+        },
+        {
+          "type": "set",
+          "variable": "d_helpers",
+          "value": {
+            "expression": "t_5"
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "d_helpers"
+          },
+          "as": "d_helper",
+          "maximum": 1024,
+          "body": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "action",
+                "capability": "animus:message",
+                "arguments": {
+                  "text": null
+                },
+                "templates": {
+                  "/text": "{{ get(npc_info(d_helper), 'name', '') }} lends a hand at forge {{ npc_flag(d_helper, 'forge', '') }}."
+                }
+              },
+              {
+                "type": "action",
+                "capability": "animus:set-flag",
+                "arguments": {
+                  "name": "forge_uses",
+                  "scope": "npc",
+                  "value": null,
+                  "npc": null
+                },
+                "expressions": {
+                  "/value": "(num(npc_flag(d_helper, 'forge_uses', 0)) + 1)",
+                  "/npc": "d_helper"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "set",
+          "variable": "t_6",
+          "value": []
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "npcs()"
+          },
+          "as": "t_7",
+          "maximum": 1024,
+          "body": {
+            "type": "condition",
+            "expression": "(contains(get(npc_info(t_7), 'behaviors', []), 'denizen:assignment/smith_assignment') || contains(get(npc_info(t_7), 'behaviors', []), 'denizen:interact/smith_interact'))",
+            "then": {
+              "type": "set",
+              "variable": "t_6",
+              "value": {
+                "expression": "append(t_6, t_7)"
+              }
+            }
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "t_6"
+          },
+          "as": "d_smith",
+          "maximum": 1024,
+          "body": {
+            "type": "action",
+            "capability": "animus:command",
+            "arguments": {
+              "command": null
+            },
+            "templates": {
+              "/command": "say Smith #{{ get(npc_info(d_smith), 'citizens_id', '') }} finished an order"
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:give-item",
+          "arguments": {
+            "item": "minecraft:iron_sword"
+          }
+        }
+      ]
+    },
+    "proc-smith_helpers": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "set",
+          "variable": "t_1",
+          "value": []
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "npcs()"
+          },
+          "as": "t_2",
+          "maximum": 1024,
+          "body": {
+            "type": "condition",
+            "expression": "npc_has_flag(t_2, 'forge')",
+            "then": {
+              "type": "set",
+              "variable": "t_1",
+              "value": {
+                "expression": "append(t_1, t_2)"
+              }
+            }
+          }
+        },
+        {
+          "type": "set",
+          "variable": "t_3",
+          "value": []
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "t_1"
+          },
+          "as": "t_4",
+          "maximum": 1024,
+          "body": {
+            "type": "condition",
+            "expression": "get(npc_info(t_4), 'spawned', false)",
+            "then": {
+              "type": "set",
+              "variable": "t_3",
+              "value": {
+                "expression": "append(t_3, t_4)"
+              }
+            }
+          }
+        },
+        {
+          "type": "return",
+          "value": {
+            "expression": "t_3"
+          }
+        }
+      ]
+    }
+  }
+}

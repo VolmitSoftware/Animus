@@ -176,6 +176,7 @@ _Mapped _denizenEvent(String key, Map<String, _Note> notes, bool npcEntity, bool
           trigger.addString('inventory', w[2]);
         }
         context['inventory'] = 'inventory_type';
+        context[_inventoryContents] = 'inventory_items';
       } else if (w.length >= 3 &&
           w[0] == 'player' &&
           w[1] == 'clicks' &&

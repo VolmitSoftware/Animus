@@ -66,10 +66,9 @@ void main() {
       final Map<String, Object?> node = behavior.resolve(<String, Object?>{r'$ref': r'#/$defs/node'});
       final List<FieldSpec> wait = behavior.fields(node, <String, Object?>{'type': 'wait'});
       final FieldSpec ticks = _field(wait, 'ticks');
-      expect(ticks.kind, FieldKind.integer);
+      expect(ticks.kind, FieldKind.any, reason: 'a literal number of ticks or an operand computed as the wait starts');
       expect(ticks.required, isTrue);
-      expect(ticks.minimum, 1);
-      expect(ticks.maximum, 72000);
+      expect(ticks.description, contains('72000'));
       final FieldSpec type = _field(wait, 'type');
       expect(type.kind, FieldKind.choice);
       expect(type.options.map((FieldOption option) => option.value), containsAll(<String>['sequence', 'action', 'set']));

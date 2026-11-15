@@ -1,0 +1,21 @@
+# Synthetic Citizens save for the Denizen coverage fixture. Not taken from any server.
+npc:
+  7:
+    name: Smith
+    uuid: 00000000-0000-4000-8000-000000000007
+    traits:
+      type: PLAYER
+      spawned: true
+      location: {world: world, x: 7.5, y: 64.0, z: 7.5, yaw: 0.0, pitch: 0.0}
+      assignment:
+        assignment: smith_assignment
+  8:
+    name: Apprentice
+    uuid: 00000000-0000-4000-8000-000000000008
+    traits:
+      type: PLAYER
+      spawned: true
+      location: {world: world, x: 9.5, y: 64.0, z: 7.5, yaw: 0.0, pitch: 0.0}
+      denizen_flags:
+        full_flag_data:
+          forge: north

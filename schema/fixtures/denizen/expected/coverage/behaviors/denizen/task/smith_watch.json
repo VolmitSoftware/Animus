@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/smith_watch",
+  "entry": "main",
+  "variables": {
+    "d_crowd": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_forge": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_glow": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_visitor": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "set",
+          "variable": "t_1",
+          "value": {
+            "world": "world",
+            "shape": "cuboid",
+            "bounds": [
+              0,
+              60,
+              0,
+              12,
+              72,
+              12
+            ]
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_forge",
+          "value": {
+            "expression": "t_1"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_glow",
+          "value": {
+            "expression": "offset(npc.location, 0, 2.5, 0)"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "d_crowd",
+          "value": {
+            "expression": "players_near(npc.location, 6)"
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "within(get(player_info(d_visitor), 'location', ''), d_forge)",
+          "then": {
+            "type": "action",
+            "capability": "animus:message",
+            "arguments": {
+              "text": "&7Mind the anvil."
+            }
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "!(has_player())",
+          "then": {
+            "type": "return"
+          }
+        }
+      ]
+    }
+  }
+}

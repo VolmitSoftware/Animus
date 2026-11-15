@@ -1183,6 +1183,12 @@ final class RegionActor implements RegionOwner.Body {
         }
         publish(true);
     }
+    /** A runtime look-close change; see {@link NpcRuntime#setLookClose}. */
+    void setLookClose(boolean enabled, OptionalDouble range, Optional<Boolean> lineOfSight) {
+        lookClose = enabled ? LookClose.changed(lookClose == null ? LookClose.parse(spec.definition().json()).orElse(null) : lookClose, range, lineOfSight) : null;
+        nextLook = 0;
+        publish(true);
+    }
     WorldPosition position() { return state.snapshot().position(); }
 
     // ---- Builds, on the owner ----

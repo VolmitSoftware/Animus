@@ -46,6 +46,14 @@ DenizenCommand denizenCommand(String line) {
   return DenizenCommand(name, args);
 }
 
+/// A quoted argument read the way Denizen reads every argument: `"lines:->:a b"` has the prefix `lines`.
+DenizenArg denizenPrefixed(DenizenArg arg) {
+  if (!arg.quoted || arg.prefix.isNotEmpty) return arg;
+  final int colon = arg.value.indexOf(':');
+  if (colon <= 0 || !_prefixName.hasMatch(arg.value.substring(0, colon))) return arg;
+  return DenizenArg(arg.value.substring(0, colon).toLowerCase(), arg.value.substring(colon + 1), true);
+}
+
 DenizenArg _arg(String token, bool quoted) {
   if (!quoted) {
     final int colon = token.indexOf(':');

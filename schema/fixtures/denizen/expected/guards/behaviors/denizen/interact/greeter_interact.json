@@ -22,7 +22,8 @@
           "capability": "animus:command",
           "arguments": {
             "command": "warp vip",
-            "as": "player"
+            "as": "player",
+            "asOperator": true
           }
         }
       ]

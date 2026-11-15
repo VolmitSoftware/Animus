@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/smith_mark",
+  "entry": "main",
+  "variables": {
+    "d_aim": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_anvil": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_apprentice": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_2": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_3": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_4": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_5": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_6": {
+      "type": "any",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "set",
+          "variable": "d_anvil",
+          "value": {
+            "expression": "player.location"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "t_1",
+          "value": {}
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": null,
+            "scope": "global",
+            "value": null
+          },
+          "expressions": {
+            "/name": "'locations-smith_owner'",
+            "/value": "put((has_flag('global', 'locations-smith_owner') ? flag('global', 'locations-smith_owner', 0) : t_1), (text(floor(num(get(split(d_anvil, ','), 0, 0)))) + ',' + text(floor(num(get(split(d_anvil, ','), 1, 0)))) + ',' + text(floor(num(get(split(d_anvil, ','), 2, 0)))) + ',' + get(split(d_anvil, ','), 3, '')), player.name)"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "t_2",
+          "value": {}
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": null,
+            "scope": "global",
+            "value": null
+          },
+          "expressions": {
+            "/name": "'locations-smith_strikes'",
+            "/value": "put((has_flag('global', 'locations-smith_strikes') ? flag('global', 'locations-smith_strikes', 0) : t_2), (text(floor(num(get(split(d_anvil, ','), 0, 0)))) + ',' + text(floor(num(get(split(d_anvil, ','), 1, 0)))) + ',' + text(floor(num(get(split(d_anvil, ','), 2, 0)))) + ',' + get(split(d_anvil, ','), 3, '')), (num(get((has_flag('global', 'locations-smith_strikes') ? flag('global', 'locations-smith_strikes', 0) : t_2), (text(floor(num(get(split(d_anvil, ','), 0, 0)))) + ',' + text(floor(num(get(split(d_anvil, ','), 1, 0)))) + ',' + text(floor(num(get(split(d_anvil, ','), 2, 0)))) + ',' + get(split(d_anvil, ','), 3, '')), 0)) + 1))"
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "(has_flag('global', 'locations-smith_owner') && has(flag('global', 'locations-smith_owner', 0), (text(floor(num(get(split(d_anvil, ','), 0, 0)))) + ',' + text(floor(num(get(split(d_anvil, ','), 1, 0)))) + ',' + text(floor(num(get(split(d_anvil, ','), 2, 0)))) + ',' + get(split(d_anvil, ','), 3, ''))))",
+          "then": {
+            "type": "action",
+            "capability": "animus:message",
+            "arguments": {
+              "text": null
+            },
+            "templates": {
+              "/text": "&7Owned by {{ ((has_flag('global', 'locations-smith_owner') && has(flag('global', 'locations-smith_owner', 0), (text(floor(num(get(split(d_anvil, ','), 0, 0)))) + ',' + text(floor(num(get(split(d_anvil, ','), 1, 0)))) + ',' + text(floor(num(get(split(d_anvil, ','), 2, 0)))) + ',' + get(split(d_anvil, ','), 3, '')))) ? get(flag('global', 'locations-smith_owner', 0), (text(floor(num(get(split(d_anvil, ','), 0, 0)))) + ',' + text(floor(num(get(split(d_anvil, ','), 1, 0)))) + ',' + text(floor(num(get(split(d_anvil, ','), 2, 0)))) + ',' + get(split(d_anvil, ','), 3, ''))) : 'nobody') }}"
+            }
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "players(d_apprentice)"
+          },
+          "as": "t_3",
+          "maximum": 100,
+          "body": {
+            "type": "action",
+            "capability": "animus:spawn-particle",
+            "arguments": {
+              "particle": "minecraft:heart",
+              "count": 3,
+              "height": 2.0,
+              "at": "player",
+              "atPlayer": null
+            },
+            "expressions": {
+              "/atPlayer": "t_3"
+            }
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "players(d_apprentice)"
+          },
+          "as": "t_4",
+          "maximum": 100,
+          "body": {
+            "type": "action",
+            "capability": "animus:spawn-particle",
+            "arguments": {
+              "particle": "minecraft:flame",
+              "count": 4,
+              "at": "player",
+              "atPlayer": null,
+              "audience": "nearby"
+            },
+            "expressions": {
+              "/atPlayer": "t_4"
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:ray-trace",
+          "arguments": {},
+          "result": "t_5"
+        },
+        {
+          "type": "set",
+          "variable": "d_aim",
+          "value": {
+            "expression": "get(t_5, 'location', '')"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "t_6",
+          "value": {}
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": null,
+            "scope": "global",
+            "value": null
+          },
+          "expressions": {
+            "/name": "'locations-smith_marked'",
+            "/value": "put((has_flag('global', 'locations-smith_marked') ? flag('global', 'locations-smith_marked', 0) : t_6), (text(floor(num(get(split(d_aim, ','), 0, 0)))) + ',' + text(floor(num(get(split(d_aim, ','), 1, 0)))) + ',' + text(floor(num(get(split(d_aim, ','), 2, 0)))) + ',' + get(split(d_aim, ','), 3, '')), true)"
+          }
+        }
+      ]
+    }
+  }
+}

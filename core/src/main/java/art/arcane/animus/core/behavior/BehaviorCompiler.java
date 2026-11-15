@@ -134,7 +134,7 @@ public final class BehaviorCompiler {
         keys(obj,path,kind.jsonName(),kind.keys());
         return switch(kind){
             case SEQUENCE->new Sequence(path,children(obj.get("steps"),path+".steps",depth,0,MAX_STEPS));
-            case ACTION->new Action(path,capability(text(obj,"capability",path),path+".capability"),arguments(obj,path));
+            case ACTION->new Action(path,capability(text(obj,"capability",path),path+".capability"),arguments(obj,path),obj.has("result")?declared(text(obj,"result",path),path+".result"):null);
             case CONDITION->{
                 if(obj.has("expression")){
                     for(String field:List.of("capability","arguments","bindings","expressions","templates"))if(obj.has(field))throw new Invalid(path+"."+field,"an expression condition takes no "+field);
@@ -143,7 +143,7 @@ public final class BehaviorCompiler {
                 }
                 yield new Condition(path,capability(text(obj,"capability",path),path+".capability"),arguments(obj,path),node(obj.get("then"),path+".then",depth+1),obj.has("else")?node(obj.get("else"),path+".else",depth+1):empty(path+".else"));
             }
-            case WAIT->new Wait(path,integer(obj,"ticks",path,1,MAX_WAIT_TICKS));
+            case WAIT->obj.get("ticks")!=null&&obj.get("ticks").isJsonObject()?new Wait(path,0,operand(obj.get("ticks"),Type.INTEGER,path+".ticks")):new Wait(path,integer(obj,"ticks",path,1,MAX_WAIT_TICKS),null);
             case REPEAT->{
                 int maximum=obj.has("maximum")?integer(obj,"maximum",path,1,MAX_LOOP):MAX_REPEAT;
                 JsonElement count=obj.get("count");Operand computed=null;int literal=0;
@@ -180,7 +180,8 @@ public final class BehaviorCompiler {
                     for(var argument:given.entrySet()){String field=path+".arguments."+argument.getKey();declared(argument.getKey(),field);arguments.put(argument.getKey(),operand(argument.getValue(),types.get(argument.getKey()),field));}
                 }
                 String result=obj.has("result")?declared(text(obj,"result",path),path+".result"):null;
-                Call call=new Call(path,routine,arguments,result);references.add(call);yield call;
+                Operand player=obj.has("player")?operand(obj.get("player"),Type.STRING,path+".player"):null,npc=obj.has("npc")?operand(obj.get("npc"),Type.STRING,path+".npc"):null;
+                Call call=new Call(path,routine,arguments,result,player,npc);references.add(call);yield call;
             }
             case SET->{String name=text(obj,"variable",path);if(!variables.containsKey(name))throw new Invalid(path+".variable","unknown declared variable"+schemaHint(name,new ArrayList<>(variables.keySet())));
                 yield new SetValue(path,name,operand(obj.get("value"),types.get(name),path+".value"));}

@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/smith_song",
+  "entry": "main",
+  "variables": {
+    "d_note": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_notes": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_pause": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_tune": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "set",
+          "variable": "d_notes",
+          "value": {
+            "expression": "['block_note_block_bell', 'block.note_block.chime']"
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "d_notes"
+          },
+          "as": "d_note",
+          "body": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "set",
+                "variable": "t_1",
+                "value": {
+                  "expression": "lower(text(d_note))"
+                }
+              },
+              {
+                "type": "action",
+                "capability": "animus:play-sound",
+                "arguments": {
+                  "sound": null,
+                  "volume": 0.8,
+                  "pitch": null,
+                  "at": "player"
+                },
+                "expressions": {
+                  "/sound": "(contains(t_1, ':') ? t_1 : 'minecraft:' + (contains(t_1, '.') ? t_1 : first(split(t_1, '_')) + '.' + join(slice(split(t_1, '_'), 1, len(split(t_1, '_')) - 1), '_') + '.' + last(split(t_1, '_'))))",
+                  "/pitch": "clamp((0.8 + random_decimal() * (1.2 - 0.8)), 0.5, 2)"
+                }
+              },
+              {
+                "type": "wait",
+                "ticks": {
+                  "expression": "clamp(round(num(d_pause) * 1), 0, 72000)"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": "&r"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": null,
+            "scope": "player",
+            "value": "played",
+            "expireSeconds": null
+          },
+          "expressions": {
+            "/name": "replace(lower(text(d_tune)), '.', '-')",
+            "/expireSeconds": "clamp(ceil(round(num(d_pause) * 20) / 20), 1, 31536000)"
+          }
+        },
+        {
+          "type": "wait",
+          "ticks": {
+            "expression": "clamp(round(random(1, 2) * 20), 0, 72000)"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "&eThat was {{ d_tune }}."
+          }
+        }
+      ]
+    }
+  }
+}

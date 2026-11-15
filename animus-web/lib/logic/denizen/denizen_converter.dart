@@ -7,6 +7,7 @@ library;
 
 import 'dart:collection';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../data_folder_export.dart';
@@ -24,7 +25,7 @@ part 'denizen_commands.dart';
 part 'denizen_events.dart';
 part 'denizen_expressions.dart';
 
-const int denizenConverterVersion = 8;
+const int denizenConverterVersion = 9;
 
 /// The author a converted book gets when its Denizen author is blank.
 const String _blankBookAuthor = 'Server';
@@ -218,12 +219,18 @@ class _Doc {
 
   /// Sources (`file:line`) of guards and stops that did not convert; any one holds the behavior back from binding.
   final Set<String> held = <String>{};
+
+  /// Definitions last given an NPC (`e`) or a list of NPCs (`N`), by lowercase name.
+  final SplayTreeMap<String, String> kinds = SplayTreeMap<String, String>();
 }
 
 /// Where the commands being converted come from and what they may read.
 class _Scope {
   _Scope(this.doc, this.calling, this.record, this.container, this.interact, this.step, this.definitions, this.loops, this.saves, this.context)
       : server = doc.server;
+
+  _Scope._server(this.doc, this.calling, this.record, this.server, this.container, this.interact, this.step, this.definitions, this.loops, this.saves,
+      this.context);
 
   _Scope.of(_Doc doc, bool record, DenizenContainer container, _Interact? interact, int step, Map<String, String> context)
       : this(doc, <String>{}, record, container, interact, step, SplayTreeMap<String, String>(), const <String>[], SplayTreeMap<String, String>(), context);
@@ -256,10 +263,16 @@ class _Scope {
   bool cancellable = false;
 
   /// The scope of another script run from this one: same document, its own definitions, no loops and no event context.
-  _Scope inContainer(DenizenContainer other) => _Scope(doc, calling, false, other, null, -1, SplayTreeMap<String, String>(), const <String>[],
+  _Scope inContainer(DenizenContainer other) => _Scope._server(doc, calling, false, server, other, null, -1, SplayTreeMap<String, String>(), const <String>[],
       SplayTreeMap<String, String>(), const <String, String>{});
 
-  _Scope loop(Map<String, String> inner, List<String> kinds) => _Scope(doc, calling, record, container, interact, step, inner, kinds, saves, context);
+  _Scope loop(Map<String, String> inner, List<String> kinds) => _Scope._server(doc, calling, record, server, container, interact, step, inner, kinds, saves, context);
+
+  /// The lines of an injected task, run in this scope's place with its definitions, loops and saves.
+  _Scope injected(DenizenContainer task) => _Scope._server(doc, calling, record, server, task, interact, step, definitions, loops, saves, context);
+
+  /// This scope as the routine of a task run for an NPC: it has an NPC, though its document is a server behavior.
+  _Scope withNpc() => _Scope._server(doc, calling, record, false, container, interact, step, definitions, loops, saves, context);
 }
 
 /// The Animus flag or quest name for a Denizen flag: lowercase, sub-flag dots as dashes. Null when it cannot be one.
@@ -1034,6 +1047,29 @@ class _Converter {
     commands.block(script.items, 0, scope);
     otherKeys(container, <String>['type', 'script', 'definitions', 'debug'], 'procedure');
     if (outcomesOf(container).isEmpty) record(container, container.line, 'container', 'procedure', container.name, true, '');
+  }
+
+  /// What a procedure's routine returns when every determine gives an NPC or a list of NPCs.
+  final SplayTreeMap<String, String> _returnKinds = SplayTreeMap<String, String>();
+
+  /// Records the kind a procedure's determine returns; procedures that return different kinds return anything.
+  void returned(DenizenContainer procedure, String kind) {
+    final String routine = procedureName(procedure);
+    final String? known = _returnKinds[routine];
+    _returnKinds[routine] = known == null || known == kind ? kind : 'a';
+  }
+
+  String returnKind(String routine) {
+    final String? kind = _returnKinds[routine];
+    return kind == null || kind != 'e' && kind != 'N' ? 'a' : kind;
+  }
+
+  /// The behaviors an assignment's NPCs have: the assignment's own and its interact scripts'. Null when there is no such
+  /// assignment.
+  List<String>? assignmentBehaviors(String name) {
+    final DenizenContainer? container = containers[name.toLowerCase()];
+    if (container == null || container.type != 'assignment') return null;
+    return <String>[behaviorId('assignment', container), for (final DenizenContainer listed in interactList(container)) behaviorId('interact', listed)];
   }
 
   String procedureName(DenizenContainer procedure) {

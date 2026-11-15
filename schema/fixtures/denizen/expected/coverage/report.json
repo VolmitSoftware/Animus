@@ -1,0 +1,389 @@
+{
+  "schemaVersion": 1,
+  "converterVersion": 9,
+  "importId": "88a8bbc4539c0f713c134e3eac7ee980147decbdd91d9e5fea16dcfc5ef92265",
+  "notice": "Data conversion only. Apply lists the generated behaviors on their NPCs and turns the server behaviors on, except held behaviors, whose guard did not convert.",
+  "sources": {
+    "scripts/smith.dsc": "594b1499c5ee8be5983e8c926512ddaa1039df3ee111e0525e844351046e36a6",
+    "citizens": "a4d74ac1e363d90b300853e730e13edd1827a3d3abce45f98f20ca1639a043bb"
+  },
+  "behaviors": 13,
+  "containers": {
+    "assignment": {
+      "total": 1,
+      "converted": 1,
+      "partial": 0,
+      "preserved": 0
+    },
+    "command": {
+      "total": 1,
+      "converted": 1,
+      "partial": 0,
+      "preserved": 0
+    },
+    "data": {
+      "total": 1,
+      "converted": 1,
+      "partial": 0,
+      "preserved": 0
+    },
+    "interact": {
+      "total": 1,
+      "converted": 1,
+      "partial": 0,
+      "preserved": 0
+    },
+    "procedure": {
+      "total": 1,
+      "converted": 1,
+      "partial": 0,
+      "preserved": 0
+    },
+    "task": {
+      "total": 10,
+      "converted": 10,
+      "partial": 0,
+      "preserved": 0
+    },
+    "world": {
+      "total": 1,
+      "converted": 1,
+      "partial": 0,
+      "preserved": 0
+    }
+  },
+  "commands": {
+    "actionbar": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "adjust": {
+      "converted": 2,
+      "preserved": 0
+    },
+    "animate": {
+      "converted": 2,
+      "preserved": 0
+    },
+    "bossbar": {
+      "converted": 3,
+      "preserved": 0
+    },
+    "define": {
+      "converted": 26,
+      "preserved": 0
+    },
+    "determine": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "else": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "execute": {
+      "converted": 2,
+      "preserved": 0
+    },
+    "explode": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "flag": {
+      "converted": 11,
+      "preserved": 0
+    },
+    "foreach": {
+      "converted": 9,
+      "preserved": 0
+    },
+    "give": {
+      "converted": 4,
+      "preserved": 0
+    },
+    "if": {
+      "converted": 13,
+      "preserved": 0
+    },
+    "look": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "lookclose": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "narrate": {
+      "converted": 20,
+      "preserved": 0
+    },
+    "note": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "playeffect": {
+      "converted": 5,
+      "preserved": 0
+    },
+    "playsound": {
+      "converted": 3,
+      "preserved": 0
+    },
+    "random": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "repeat": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "run": {
+      "converted": 6,
+      "preserved": 0
+    },
+    "sidebar": {
+      "converted": 4,
+      "preserved": 0
+    },
+    "stop": {
+      "converted": 4,
+      "preserved": 0
+    },
+    "take": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "teleport": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "trigger": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "wait": {
+      "converted": 2,
+      "preserved": 0
+    }
+  },
+  "events": {
+    "click trigger": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "interact script": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "on assignment": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player closes inventory": {
+      "converted": 1,
+      "preserved": 0
+    }
+  },
+  "tags": {
+    "&6": {
+      "mapped": 6,
+      "unmapped": 0
+    },
+    "&7": {
+      "mapped": 9,
+      "unmapped": 0
+    },
+    "&c": {
+      "mapped": 2,
+      "unmapped": 0
+    },
+    "&e": {
+      "mapped": 3,
+      "unmapped": 0
+    },
+    "[definition]": {
+      "mapped": 58,
+      "unmapped": 0
+    },
+    "context.args": {
+      "mapped": 2,
+      "unmapped": 0
+    },
+    "context.inventory": {
+      "mapped": 2,
+      "unmapped": 0
+    },
+    "cuboid.if_null": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "duration.formatted": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "element.color_gradient": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "item": {
+      "mapped": 2,
+      "unmapped": 0
+    },
+    "list": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "npc": {
+      "mapped": 2,
+      "unmapped": 0
+    },
+    "npc.id": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "npc.location": {
+      "mapped": 3,
+      "unmapped": 0
+    },
+    "player": {
+      "mapped": 6,
+      "unmapped": 0
+    },
+    "player.cursor_on": {
+      "mapped": 2,
+      "unmapped": 0
+    },
+    "player.exists": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "player.flag_expiration": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "player.inventory": {
+      "mapped": 4,
+      "unmapped": 0
+    },
+    "player.is_op": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "player.location": {
+      "mapped": 5,
+      "unmapped": 0
+    },
+    "player.name": {
+      "mapped": 2,
+      "unmapped": 0
+    },
+    "player.uuid": {
+      "mapped": 3,
+      "unmapped": 0
+    },
+    "proc": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "script.data_key": {
+      "mapped": 3,
+      "unmapped": 0
+    },
+    "server.match_player": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "server.npcs": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "server.npcs_assigned": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "server.npcs_flagged": {
+      "mapped": 2,
+      "unmapped": 0
+    },
+    "server.online_players": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "util.random": {
+      "mapped": 3,
+      "unmapped": 0
+    },
+    "util.random_decimal": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "util.time_now": {
+      "mapped": 2,
+      "unmapped": 0
+    }
+  },
+  "flags": {
+    "imported": {
+      "global": 0,
+      "npc": 1,
+      "player": 0,
+      "relationship": 0
+    },
+    "preserved": 0
+  },
+  "bindings": {
+    "citizens-7": [
+      "denizen:interact/smith_interact"
+    ]
+  },
+  "npcUuids": {
+    "citizens-7": "00000000-0000-4000-8000-000000000007"
+  },
+  "behaviorStatus": {
+    "denizen:command/smith_command": "complete",
+    "denizen:interact/smith_interact": "complete",
+    "denizen:task/smith_board": "complete",
+    "denizen:task/smith_clock": "complete",
+    "denizen:task/smith_crew": "complete",
+    "denizen:task/smith_forge": "complete",
+    "denizen:task/smith_mark": "complete",
+    "denizen:task/smith_quote": "complete",
+    "denizen:task/smith_reward": "complete",
+    "denizen:task/smith_song": "complete",
+    "denizen:task/smith_supplies": "complete",
+    "denizen:task/smith_watch": "complete",
+    "denizen:world/smith_chest": "complete"
+  },
+  "heldBehaviors": {},
+  "commandBehaviors": [
+    "denizen:interact/smith_interact",
+    "denizen:task/smith_forge"
+  ],
+  "serverBehaviors": [
+    "denizen:command/smith_command",
+    "denizen:world/smith_chest"
+  ],
+  "guis": [],
+  "sounds": {
+    "block_anvil_use": "minecraft:block.anvil.use",
+    "entity_player_levelup": "minecraft:entity.player.levelup"
+  },
+  "issues": [],
+  "preserved": [],
+  "documents": {
+    "behaviors/denizen/command/smith_command.json": "c27c68949d0a272118ee3d858ecf2ce8a5afc7c738e21d9a71f2dfb4b2829696",
+    "behaviors/denizen/interact/smith_interact.json": "952ee546adf57d43772dc0cd4ea7ffc90bfb49e846016e2c3ee1e47e10aa9323",
+    "behaviors/denizen/task/smith_board.json": "8a65126080a68b920497dc5fb4cdc324bef458fff340422184d2725289b544ed",
+    "behaviors/denizen/task/smith_clock.json": "8c3262596a8b37bc560d7501252c43b516dd4f73f0d1319ff354868be525aa77",
+    "behaviors/denizen/task/smith_crew.json": "0d150d79f9de569a9d26afbc28d3674ab3dc34ae368bd575a08933da27cbae65",
+    "behaviors/denizen/task/smith_forge.json": "5bea00d2cf7b77607b4e49b8876044ebd842b9aea3017619122555457e47174d",
+    "behaviors/denizen/task/smith_mark.json": "e07dbf73cb510444c8557252fe1e3c1b17f71777032ac5e512edc8a957aa143b",
+    "behaviors/denizen/task/smith_quote.json": "3fab249429ec5633a76139bb3e36b590c27b19ef4adaed8b9d40d8851381463b",
+    "behaviors/denizen/task/smith_reward.json": "c79d9c61187ace34e804a0aca024883af9c7dd5e107f5c24c34ba3a8b97726c2",
+    "behaviors/denizen/task/smith_song.json": "c1c18daa7a542e6010f7dc63602c91498a49b61e22d809776d5abdd3704b123b",
+    "behaviors/denizen/task/smith_supplies.json": "a810dd8c28139a8c97b391a90c5f418dfe5e14cffd9d262a2bb0cb985c781cd8",
+    "behaviors/denizen/task/smith_watch.json": "6fef8f68303fd994af66ca544f13a656a3e941b32c6844ab6e87042136f538ab",
+    "behaviors/denizen/world/smith_chest.json": "8f0843441f6aea499ace2aece6bff299ee6fb6c8fe2dc827eb233990b8dbc8ad",
+    "state/behavior-state/npc/00000000-0000-4000-8000-000000000008/animus/flags/denizen.json": "af95f67caae0c178b5770d4bde850b5d6b2ae5b8f21e5b2ee32aa92faaabd77b"
+  }
+}

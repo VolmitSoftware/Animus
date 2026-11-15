@@ -71,5 +71,6 @@ public class FakeNpcRuntime<P> implements NpcRuntime<P, Object> {
     @Override public void bubble(String id, String text, int ticks) {}
     @Override public void setEquipment(String id, EquipmentSlot slot, Object item) {}
     @Override public void setAttribute(String id, String attribute, java.util.OptionalDouble value) {}
+    @Override public void setLookClose(String id, boolean enabled, java.util.OptionalDouble range, java.util.Optional<Boolean> lineOfSight) {}
     @Override public void close() {}
 }

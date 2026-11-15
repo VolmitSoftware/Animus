@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:interact/clerk_interact",
+  "entry": "s0-click",
+  "variables": {
+    "d_minutes": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_2": {
+      "type": "any",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "s0-click": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "set",
+          "variable": "d_minutes",
+          "value": 5
+        },
+        {
+          "type": "condition",
+          "expression": "has_flag('npc', 'clerk_open')",
+          "then": {
+            "type": "action",
+            "capability": "animus:message",
+            "arguments": {
+              "text": "&6Clerk&7: The desk is open."
+            }
+          },
+          "else": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "action",
+                "capability": "animus:set-flag",
+                "arguments": {
+                  "name": "clerk_open",
+                  "scope": "npc",
+                  "value": true,
+                  "expireSeconds": null
+                },
+                "expressions": {
+                  "/expireSeconds": "clamp(ceil(round(num(d_minutes) * 1200) / 20), 1, 31536000)"
+                }
+              },
+              {
+                "type": "action",
+                "capability": "animus:command",
+                "arguments": {
+                  "command": "time set day",
+                  "as": "player",
+                  "asOperator": true
+                }
+              },
+              {
+                "type": "action",
+                "capability": "animus:message",
+                "arguments": {
+                  "text": "&6Clerk&7: Opening the desk."
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "wait",
+          "ticks": {
+            "expression": "clamp(round(num(d_minutes) * 20), 0, 72000)"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "t_1",
+          "value": []
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "npcs()"
+          },
+          "as": "t_2",
+          "maximum": 1024,
+          "body": {
+            "type": "condition",
+            "expression": "npc_has_flag(t_2, 'clerk_open')",
+            "then": {
+              "type": "set",
+              "variable": "t_1",
+              "value": {
+                "expression": "append(t_1, t_2)"
+              }
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "&7{{ len(t_1) }} desks open."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "spawn",
+            "as": "player"
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "routine": "s0-click"
+    }
+  ]
+}

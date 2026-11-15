@@ -39,8 +39,8 @@ class BuiltinCapabilitiesTest {
     private static final Set<String> ACTIONS = Set.of("say", "choices", "command", "navigate", "stop-navigation", "play-recording", "resume-patrol", "look", "pose", "animate", "set-appearance",
             "set-equipment", "set-attribute", "play-sound", "spawn-particle", "combat-control", "build", "set-flag", "set-quest-state", "advance-quest-state", "open-shop", "open-gui",
             "play-animation", "stop-animation", "message", "title", "actionbar", "teleport", "give-item", "take-item", "give-book", "charge",
-            "start-quest", "advance-quest", "complete-quest", "quest-objective");
-    private static final Set<String> CONDITIONS = Set.of("has-permission", "npc-state", "player-in-range", "flag-state", "quest-state", "quest-status", "can-afford", "commands-allowed");
+            "start-quest", "advance-quest", "complete-quest", "quest-objective", "read-inventory", "bossbar", "sidebar", "ray-trace", "explode", "look-close", "read-block");
+    private static final Set<String> CONDITIONS = Set.of("has-permission", "npc-state", "player-in-range", "flag-state", "quest-state", "quest-status", "can-afford", "commands-allowed", "can-fit");
 
     private final RecordingPlatform platform = new RecordingPlatform();
     private final List<String> log = new ArrayList<>();
@@ -61,7 +61,7 @@ class BuiltinCapabilitiesTest {
 
     private static BuiltinActionSettings grants(List<String> behaviors, List<String> namespaces) {
         BuiltinActionSettings defaults = BuiltinActionSettings.DEFAULT;
-        return new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), behaviors, namespaces, defaults.navigationWaits(), List.of());
+        return new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), behaviors, namespaces, defaults.navigationWaits(), List.of(), false);
     }
     private static Key key(String name) { return new Key("animus", name); }
 
@@ -256,6 +256,81 @@ class BuiltinCapabilitiesTest {
         assertEquals(Outcome.Status.OK, action("play-sound", "{\"sound\":\"entity.villager.yes\"}").status());
         assertEquals(Outcome.Status.OK, action("spawn-particle", "{\"particle\":\"flame\",\"count\":2}").status());
         assertEquals(List.of("equipment:MAIN_HAND:minecraft:netherite_axe", "sound:minecraft:entity.villager.yes", "particle:minecraft:flame:2"), platform.calls);
+    }
+
+    @Test void particlesShowAtAHeightAboveTheirAnchor() throws Exception {
+        start();
+        assertEquals(Outcome.Status.OK, action("spawn-particle", "{\"particle\":\"flame\",\"height\":2.5}").status());
+        assertEquals(Outcome.Status.OK, action("spawn-particle", "{\"particle\":\"heart\",\"at\":\"player\",\"height\":1}").status());
+        assertEquals(List.of("particle:minecraft:flame:1:2.5", "particle-at-player:minecraft:heart:1.0"), platform.calls);
+        assertEquals(Outcome.Status.INVALID, action("spawn-particle", "{\"particle\":\"flame\",\"height\":40}").status(), "a height is -16 to 16 blocks");
+    }
+
+    @Test void effectsAtAnotherPlayerStayForThePlayerTheyAreFor() throws Exception {
+        start();
+        UUID other = UUID.randomUUID();
+        assertEquals(Outcome.Status.OK, action("spawn-particle", "{\"particle\":\"heart\",\"at\":\"player\",\"atPlayer\":\"" + other + "\"}").status());
+        assertEquals(Outcome.Status.OK, action("play-sound", "{\"sound\":\"entity.villager.yes\",\"at\":\"player\",\"atPlayer\":\"" + other + "\",\"audience\":\"nearby\"}").status());
+        assertEquals(Outcome.Status.OK, action("spawn-particle", "{\"particle\":\"heart\",\"at\":\"player\"}").status());
+        assertEquals(List.of(other + ">" + PLAYER, other + ">nearby", PLAYER + ">" + PLAYER), platform.places);
+        assertEquals(Outcome.Status.INVALID, action("spawn-particle", "{\"particle\":\"heart\",\"at\":\"npc\",\"atPlayer\":\"" + other + "\"}").status(), "atPlayer needs at: player");
+    }
+
+    @Test void inventoriesReadIntoAResultAndItemsWithEnchantmentsAreGivenAndTestedForSpace() throws Exception {
+        start();
+        platform.held = List.of(new BehaviorPlatform.HeldItem(0, "minecraft:iron_sword", 1, Optional.of("Old Blade")), new BehaviorPlatform.HeldItem(40, "minecraft:bread", 3, Optional.empty()));
+        Outcome<String> read = action("read-inventory", "{}");
+        assertEquals(Outcome.Status.OK, read.status(), read.diagnostics().toString());
+        assertEquals("{\"items\":[{\"slot\":0,\"item\":\"minecraft:iron_sword\",\"amount\":1,\"name\":\"Old Blade\"},{\"slot\":40,\"item\":\"minecraft:bread\",\"amount\":3}]}", read.value().orElseThrow());
+        assertEquals(Outcome.Status.OK, action("give-item", "{\"item\":\"diamond_sword\",\"enchantments\":{\"sharpness\":5,\"minecraft:unbreaking\":3}}").status());
+        assertEquals("give:minecraft:diamond_sword:1::0:{minecraft:sharpness=5, minecraft:unbreaking=3}", platform.calls.getLast());
+        platform.fits = false;
+        assertEquals(Optional.of(false), condition("can-fit", "{\"item\":\"diamond_sword\",\"amount\":2}", Optional.of(PLAYER)).value());
+        assertEquals("fits:minecraft:diamond_sword:2", platform.calls.getLast());
+        assertEquals(Optional.of(false), condition("can-fit", "{\"item\":\"diamond_sword\"}", Optional.empty()).value(), "no player has no room");
+        assertEquals(Outcome.Status.INVALID, action("give-item", "{\"item\":\"diamond_sword\",\"enchantments\":{\"sharpness\":300}}").status(), "a level is 1 to 255");
+        assertEquals(Outcome.Status.INVALID, action("give-item", "{\"item\":\"diamond_sword\",\"enchantments\":{\"Sharp Ness\":3}}").status(), "an enchantment is a resource key");
+        assertEquals(Outcome.Status.OK, action("give-item", "{\"stack\":{\"slot\":0,\"item\":\"minecraft:iron_sword\",\"amount\":1,\"name\":\"Old Blade\"},\"amount\":2}").status());
+        assertEquals("give:minecraft:iron_sword:2:Old Blade:0", platform.calls.getLast(), "an amount next to stack replaces the stack's");
+        assertEquals(Outcome.Status.INVALID, action("give-item", "{\"item\":\"bread\",\"stack\":{\"item\":\"bread\"}}").status(), "an item is given one way");
+        assertEquals(Outcome.Status.INVALID, action("give-item", "{\"amount\":2}").status(), "an item or a stack is needed");
+    }
+
+    @Test void bossBarsAndSidebarsShowUpdateAndGoAway() throws Exception {
+        start();
+        assertEquals(Outcome.Status.OK, action("bossbar", "{\"id\":\"forge\",\"title\":\"&6Forging\",\"progress\":0.25,\"color\":\"yellow\",\"style\":\"segmented_10\"}").status());
+        assertEquals(Outcome.Status.OK, action("bossbar", "{\"id\":\"forge\",\"operation\":\"remove\"}").status());
+        assertEquals(Outcome.Status.OK, action("sidebar", "{\"title\":\"&eTown\",\"lines\":[\"Gold: 5\",\"\"]}").status());
+        assertEquals(Outcome.Status.OK, action("sidebar", "{\"operation\":\"remove\"}").status());
+        assertEquals(List.of("bossbar:forge:show:&6Forging:0.25:yellow:segmented_10", "bossbar:forge:remove", "sidebar:&eTown:2", "sidebar:none"), platform.calls);
+        assertEquals(Outcome.Status.INVALID, action("bossbar", "{\"id\":\"forge\",\"operation\":\"remove\",\"progress\":1}").status(), "a removed bar takes no progress");
+        assertEquals(Outcome.Status.INVALID, action("bossbar", "{\"id\":\"Forge Bar\"}").status(), "an id is lowercase");
+        assertEquals(Outcome.Status.INVALID, action("sidebar", "{\"lines\":[\"a\"]}").status(), "a shown sidebar needs a title");
+    }
+
+    @Test void rayTracesExplosionsLookCloseAndSidebarLinesReachThePlatform() throws Exception {
+        start();
+        platform.hit = Optional.of(new BehaviorPlatform.BlockHit("1.00,64.00,2.00,world", "minecraft:stone"));
+        assertEquals("{\"location\":\"1.00,64.00,2.00,world\",\"block\":\"minecraft:stone\"}", action("ray-trace", "{\"range\":20}").value().orElseThrow());
+        platform.hit = Optional.empty();
+        assertEquals("{\"location\":\"\",\"block\":\"\"}", action("ray-trace", "{}").value().orElseThrow());
+        assertEquals("{\"block\":\"minecraft:stone\"}", action("read-block", "{\"location\":\"1.00,64.00,2.00,world\"}").value().orElseThrow());
+        assertEquals(Outcome.Status.OK, action("explode", "{\"x\":1,\"y\":64,\"z\":2,\"power\":3,\"fire\":true,\"breakBlocks\":true}").status());
+        assertEquals("explode:true:3.0:false:false", platform.calls.getLast(), "fire and broken blocks wait for explosionsDamageBlocks");
+        assertEquals(Outcome.Status.INVALID, action("explode", "{\"x\":1}").status(), "x, y and z go together");
+        UUID other = UUID.randomUUID();
+        assertEquals(Outcome.Status.OK, action("look-close", "{\"enabled\":true,\"range\":8,\"lineOfSight\":true,\"npc\":\"" + other + "\"}").status());
+        assertEquals("look-close:true:8.0:true", platform.calls.getLast());
+        assertEquals(List.of(other), platform.acting, "npc names the NPC the capability acts on");
+        assertEquals(Outcome.Status.OK, action("sidebar", "{\"title\":\"Town\",\"lines\":[\"a\"]}").status());
+        assertEquals(Outcome.Status.OK, action("sidebar", "{\"operation\":\"add\",\"lines\":[\"b\",\"c\"]}").status());
+        assertEquals("sidebar:Town:3", platform.calls.getLast());
+        assertEquals(Outcome.Status.OK, action("sidebar", "{\"operation\":\"set_line\",\"line\":5,\"lines\":[\"e\"]}").status());
+        assertEquals("sidebar:Town:5", platform.calls.getLast());
+        assertEquals(Outcome.Status.INVALID, action("sidebar", "{\"operation\":\"set_line\",\"lines\":[\"e\"]}").status(), "set_line needs a line");
+        start(Platform.PAPER, 5000, new BuiltinActionSettings(32, 4, 256, 256, 60, List.of(), List.of(), 8, List.of(), true));
+        assertEquals(Outcome.Status.OK, action("explode", "{\"fire\":true}").status());
+        assertEquals("explode:false:1.0:true:false", platform.calls.getLast());
     }
 
     @Test void setAttributeSetsOrResetsOneAttributeAndChecksItsRange() throws Exception {
@@ -815,7 +890,7 @@ class BuiltinCapabilitiesTest {
     @Test void rawTextGrantReachesThePlaceholderRule() throws Exception {
         BuiltinActionSettings defaults = BuiltinActionSettings.DEFAULT;
         start(Platform.PAPER, 5000, new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(),
-                defaults.choiceLifetimeSeconds(), List.of("town:greeter"), List.of(), defaults.navigationWaits(), List.of("town:greeter")));
+                defaults.choiceLifetimeSeconds(), List.of("town:greeter"), List.of(), defaults.navigationWaits(), List.of("town:greeter"), false));
         Outcome<String> outcome = action("command", "{\"command\":\"say %player_displayname%\"}", Optional.of(PLAYER), false, true, Optional.of("town:greeter"));
         assertEquals(Outcome.Status.OK, outcome.status(), outcome.diagnostics().toString());
         assertTrue(platform.command.rawText());

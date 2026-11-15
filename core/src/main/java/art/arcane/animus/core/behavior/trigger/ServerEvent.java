@@ -35,6 +35,7 @@ public record ServerEvent(TriggerKind kind, Optional<UUID> player, Map<String, O
             case PROJECTILE_HIT -> List.of("projectile", "projectile_uuid", "shooter", "shooter_uuid", "entity", "entity_uuid", "block", "location", "world", "x", "y", "z");
             case ENTITY_SHOOT_BOW -> List.of("shooter", "shooter_uuid", "bow", "projectile", "projectile_uuid", "force", "hand", "location", "world", "x", "y", "z");
             case QUEST_STARTED, QUEST_STAGE, QUEST_COMPLETED -> List.of("quest", "stage", "title");
+            case PLAYER_INVENTORY_OPEN, PLAYER_INVENTORY_CLOSE -> List.of("inventory_type", "inventory_items", "inventory_location");
             default -> List.of();
         };
     }
@@ -52,9 +53,22 @@ public record ServerEvent(TriggerKind kind, Optional<UUID> player, Map<String, O
         return of(TriggerKind.PLAYER_AREA, player, Map.of("phase", phase.name().toLowerCase(java.util.Locale.ROOT), "area", area, "world", world, "cause", cause));
     }
     /** Opening or closing an inventory; the type is a lowercase name such as chest, player or furnace. */
-    public static ServerEvent inventory(TriggerKind kind, UUID player, String type) {
+    public static ServerEvent inventory(TriggerKind kind, UUID player, String type) { return inventory(kind, player, type, List.of(), ""); }
+    /**
+     * Opening or closing an inventory with what it holds: {@code inventory_items} lists its filled slots as maps of slot,
+     * item, amount, name and data, as {@code animus:read-inventory} does, and {@code inventory_location} is the block that
+     * holds it, written x,y,z,world as the location facts write it, or empty text for an inventory of no block.
+     */
+    public static ServerEvent inventory(TriggerKind kind, UUID player, String type, List<art.arcane.animus.core.behavior.builtin.BehaviorPlatform.HeldItem> items, String location) {
         if (kind != TriggerKind.PLAYER_INVENTORY_OPEN && kind != TriggerKind.PLAYER_INVENTORY_CLOSE) throw new IllegalArgumentException(kind.jsonName() + " is not an inventory open or close");
-        return of(kind, player, Map.of("inventory_type", type));
+        List<Object> listed = new java.util.ArrayList<>();
+        for (com.google.gson.JsonElement item : art.arcane.animus.core.behavior.builtin.BuiltinCapabilities.heldItems(items)) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            for (Map.Entry<String, com.google.gson.JsonElement> field : item.getAsJsonObject().entrySet())
+                entry.put(field.getKey(), field.getValue().getAsJsonPrimitive().isNumber() ? (Object) field.getValue().getAsLong() : field.getValue().getAsString());
+            listed.add(Collections.unmodifiableMap(entry));
+        }
+        return of(kind, player, Map.of("inventory_type", type, "inventory_items", List.copyOf(listed), "inventory_location", location));
     }
     /** A click on slot {@code slot} (-1 outside the window); {@code click} is left, right, shift_left, number_key and so on, and {@code item} the clicked item's key. */
     public static ServerEvent inventoryClick(UUID player, String type, String click, long slot, String item) {
