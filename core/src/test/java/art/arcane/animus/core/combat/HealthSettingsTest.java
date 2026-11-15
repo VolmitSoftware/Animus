@@ -110,7 +110,7 @@ class HealthSettingsTest {
     }
 
     @Test void mistakesNameTheField() {
-        assertEquals("$.modules.animus:health.sources[0]: expected players, mobs, npcs, projectiles, fire, lava or fall",
+        assertEquals("$.modules.animus:health.sources[0]: expected players, mobs, npcs, projectiles, explosions, fire, lava or fall",
                 assertThrows(IllegalArgumentException.class, () -> parse("{\"animus:health\":{\"sources\":[\"drowning\"]}}")).getMessage());
         assertEquals("$.modules.animus:health.respawn.afterDeath: expected respawn, permadeath or delete",
                 assertThrows(IllegalArgumentException.class, () -> parse("{\"animus:health\":{\"respawn\":{\"afterDeath\":\"never\"}}}")).getMessage());

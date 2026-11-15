@@ -8,6 +8,7 @@
 //   counts what Simple hides and Show opens it in this tab only; every key
 //   Simple does not show survives its edits byte for byte.
 // - Advanced: rows are labelled in words (no engine keys outside the tips),
+//   weapon switching, a weapon stand-in, a lingering potion, a team rule,
 //   damage, drops and respawn points edit by path, Stay dead and Delete NPC
 //   hide the respawn fields and keep them, Remove health asks first.
 // - Revive clears `dead`.
@@ -152,8 +153,9 @@ async function dummyAdvanced(page, tag) {
     assert.ok(!text.includes(key), `${tag} no engine key "${key}" in the tab's text`);
   }
   assert.ok(!/\b[a-z]+[A-Z][a-zA-Z]*\b/.test(text), `${tag} no camelCase words: ${text.match(/\b[a-z]+[A-Z][a-zA-Z]*\b/)}`);
+  await weapons(page, tag);
 
-  let damage = await openSection(tab, 'damage');
+  let damage = await openSection(await combatTab(page), 'damage');
   await fill(page, damage.getByLabel('Hit range', {exact: true}), '8');
   damage = await openSection(await combatTab(page), 'damage');
   await toggle(damage, 'Safe from ignored').click();
@@ -187,7 +189,7 @@ async function dummyAdvanced(page, tag) {
   assert.equal(module.maximumHealth, 30);
   assert.equal(module.protectFromRange, 8, `${tag} hit range`);
   assert.equal(module.protectedFromIgnored, true, `${tag} safe from ignored`);
-  assert.deepEqual(module.sources, ['players', 'mobs', 'npcs', 'projectiles', 'lava'], `${tag} hurt by lava too`);
+  assert.deepEqual(module.sources, ['players', 'mobs', 'npcs', 'projectiles', 'explosions', 'lava'], `${tag} hurt by lava too`);
   assert.deepEqual(module.death.drops, [{item: {id: 'minecraft:gold_ingot'}, maxCount: 3, chance: 0.5}], `${tag} drop`);
   assert.deepEqual(module.respawn.points, [{world: 'world', x: 4, y: 64, z: -3}], `${tag} respawn point at the NPC`);
 
@@ -223,6 +225,52 @@ async function dummyAdvanced(page, tag) {
   await settle(page);
   assert.equal((await codeOf(page)).modules['animus:health'], undefined, `${tag} health removed`);
   await setMode(page, 'simple');
+}
+
+/** Picks [item] in the item picker [field] by typing its name. */
+async function pickItem(page, field, name, item) {
+  await field.fill(name);
+  const option = page.locator(`[role="option"][data-value="${item}"]`).first();
+  await option.waitFor();
+  await option.click();
+  await settle(page);
+}
+
+/** Advanced: weapon switching, a weapon stand-in, a lingering potion and a team rule. */
+async function weapons(page, tag) {
+  let part = await openSection(await combatTab(page), 'weapons');
+  await toggle(part, 'Switch weapons').click();
+  await settle(page);
+  part = await openSection(await combatTab(page), 'weapons');
+  await pickItem(page, part.getByLabel('Weapon stand-ins', {exact: true}), 'stick', 'minecraft:stick');
+  await pickItem(page, part.getByLabel('Fights as', {exact: true}), 'bow', 'minecraft:bow');
+  await part.getByRole('button', {name: 'Add stand-in'}).click();
+  await settle(page);
+  part = await openSection(await combatTab(page), 'weapons');
+  await part.getByLabel('Item 1 fights as', {exact: true}).waitFor();
+
+  let ranged = await openSection(await combatTab(page), 'ranged');
+  assert.equal(await toggle(ranged, 'Lingering').count(), 0, `${tag} lingering only for a potion`);
+  await choose(ranged.getByRole('combobox', {name: 'Weapon'}), 'potion');
+  await settle(page);
+  ranged = await openSection(await combatTab(page), 'ranged');
+  await toggle(ranged, 'Lingering').click();
+  await settle(page);
+
+  const targets = await openSection(await combatTab(page), 'targets');
+  const team = targets.locator('#animus-at-animus-combat-targets-teams');
+  if (!(await team.isVisible())) await targets.locator('.ui-more > details > summary').first().click();
+  await fill(page, team, 'towny:Riverton');
+  await targets.getByRole('button', {name: 'Add team'}).click();
+  await settle(page);
+  await noSideways(page, `${tag} weapons`);
+  await shot(await openSection(await combatTab(page), 'weapons'), `combat-${tag}-weapons`);
+
+  const combat = (await codeOf(page)).modules['animus:combat'];
+  assert.deepEqual(combat.weapons, {autoswitch: true, redirects: {'minecraft:stick': 'minecraft:bow'}}, `${tag} weapons`);
+  assert.equal(combat.ranged.weapon, 'potion', `${tag} potion`);
+  assert.equal(combat.ranged.lingering, true, `${tag} lingering`);
+  assert.deepEqual(combat.targets.teams, ['towny:Riverton'], `${tag} team rule`);
 }
 
 /** Simple on a fully set NPC: Custom, the in-use line, Show, and nothing lost. */

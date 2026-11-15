@@ -21,6 +21,8 @@ class MockCombatWorld implements CombatWorld {
     final SpatialNpcIndex index = new SpatialNpcIndex(256);
     final Map<UUID, CombatTarget> real = new HashMap<>();
     final Map<UUID, Double> realDamage = new HashMap<>();
+    /** The knockback each real body was dealt with, summed. */
+    final Map<UUID, Double> realKnockback = new HashMap<>();
     final Map<UUID, Vec3> helpers = new HashMap<>();
     final Set<UUID> removedHelpers = new HashSet<>();
     final List<WorldPosition> moves = new ArrayList<>();
@@ -32,6 +34,7 @@ class MockCombatWorld implements CombatWorld {
     final Map<UUID, List<String>> told = new HashMap<>();
     final Map<UUID, List<CombatSettings.Effect>> effects = new HashMap<>();
     final Map<UUID, RangedWeapon> launched = new HashMap<>();
+    final List<UUID> launchOrder = new ArrayList<>();
     final Set<String> permissions = new HashSet<>();
     final Map<UUID, Integer> swings = new HashMap<>();
     final Map<UUID, Boolean> drawn = new HashMap<>();
@@ -169,6 +172,7 @@ class MockCombatWorld implements CombatWorld {
     @Override public DamageOutcome damageReal(UUID attacker, CombatTarget target, double amount, DamageKind kind, double reach, double knockback, boolean victimDrops) {
         if (realStatus != DamageStatus.APPLIED) return new DamageOutcome(realStatus, 0, false);
         realDamage.merge(target.ref().id(), amount, Double::sum);
+        realKnockback.merge(target.ref().id(), knockback, Double::sum);
         return new DamageOutcome(DamageStatus.APPLIED, amount, false);
     }
     @Override public DamageOutcome damageVirtual(UUID npc, TargetRef attacker, double amount) {
@@ -191,6 +195,7 @@ class MockCombatWorld implements CombatWorld {
         UUID helper = UUID.randomUUID();
         helpers.put(helper, from.point());
         launched.put(helper, weapon);
+        launchOrder.add(helper);
         helperLaunches++;
         return Optional.of(helper);
     }
@@ -208,4 +213,16 @@ class MockCombatWorld implements CombatWorld {
         return Optional.of(new WorldPosition(location.world(), new Vec3(location.x(), location.y(), location.z())));
     }
     @Override public void drop(WorldPosition at, List<Drop> items, int xp) { drops.addAll(items); experience += xp; }
+    /** Critical hits shown on each NPC, as "critical", "magic" or "critical+magic". */
+    final Map<UUID, List<String>> criticals = new HashMap<>();
+    /** What each NPC shows in its main hand now; empty for its own item. */
+    final Map<UUID, Optional<art.arcane.animus.core.npc.NpcItem>> held = new HashMap<>();
+    final Map<UUID, Integer> ignited = new HashMap<>();
+    final List<String> potions = new ArrayList<>();
+    @Override public void critical(UUID npc, boolean critical, boolean magic) {
+        criticals.computeIfAbsent(npc, (UUID key) -> new ArrayList<>()).add(critical && magic ? "critical+magic" : critical ? "critical" : "magic");
+    }
+    @Override public void hold(UUID npc, Optional<art.arcane.animus.core.npc.NpcItem> item) { held.put(npc, item); }
+    @Override public void igniteReal(TargetRef target, int ticks) { ignited.merge(target.id(), ticks, Math::max); }
+    @Override public void brokePotion(WorldPosition at, String effect, boolean lingering, double radius, int ticks) { potions.add(effect + (lingering ? " cloud" : " splash")); }
 }

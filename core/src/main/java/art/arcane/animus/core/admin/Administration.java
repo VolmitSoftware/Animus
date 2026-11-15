@@ -65,6 +65,19 @@ public final class Administration {
      * from when trait groups apply, and the group problem, if any.
      */
     public record Inspection(NpcDefinition effective, String stored, String merged, List<String> provenance, Optional<String> problem) {
+        /**
+         * The NPC's fight totals for a combat or health NPC: its imported Sentinel {@code historicalStatistics} plus what
+         * this server counted. Empty for an NPC that never fights.
+         */
+        public Optional<String> fights(art.arcane.animus.core.combat.CombatStatistics statistics) {
+            JsonObject data = effective.json();
+            JsonObject modules = data.has("modules") && data.get("modules").isJsonObject() ? data.getAsJsonObject("modules") : new JsonObject();
+            if (!modules.has(art.arcane.animus.core.combat.CombatSettings.MODULE) && !modules.has(art.arcane.animus.core.combat.HealthSettings.MODULE)) return Optional.empty();
+            JsonObject historical = new JsonObject();
+            if (modules.get(art.arcane.animus.core.combat.CombatSettings.MODULE) instanceof JsonObject combat
+                    && combat.get("historicalStatistics") instanceof JsonObject imported) historical = imported;
+            return Optional.of(art.arcane.animus.core.combat.CombatStatistics.describe(statistics.totals(effective.uuid(), historical)));
+        }
         /** {@code id | name | type | revision | spawned or despawned | trait groups} for the head line. */
         public String summary() {
             JsonObject data = effective.json();

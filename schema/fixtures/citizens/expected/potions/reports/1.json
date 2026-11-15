@@ -1,0 +1,26 @@
+{
+  "citizensId": 1,
+  "presentationWarnings": [],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/equipment/hand/type": "CONVERTED",
+    "/traits/equipment/hand/amount": "CONVERTED",
+    "/traits/equipment/hand/meta/encoded-meta": "REQUIRES_REVIEW",
+    "/traits/sentinel/health": "CONVERTED",
+    "/traits/sentinel/range": "CONVERTED"
+  },
+  "reasons": {
+    "/traits/equipment/hand/meta/encoded-meta": "item meta custom-effects has no item component here; kept in the item's imported data"
+  },
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": []
+}

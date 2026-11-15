@@ -22,8 +22,8 @@ import java.util.UUID;
 /**
  * Validated contents of {@code modules["animus:combat"]} in an NPC definition: targeting, attacks, ranged weapons and
  * movement in a fight. Runtime state such as current health is never stored here. Unknown keys are rejected so that a
- * typo cannot silently weaken a rule. {@code targetableByMobs} lets nearby hostile mobs with nothing else to fight walk up
- * to the NPC and attack it, where the platform can drive real mobs. {@code victimDrops} lets what the NPC kills drop loot.
+ * typo cannot silently weaken a rule. {@code targetableByMobs} lets nearby mobs that would fight a player in its place
+ * target the NPC and attack it, where the platform can drive real mobs. {@code victimDrops} lets what the NPC kills drop loot.
  * <p>
  * {@code health} comes from {@code modules["animus:health"]} ({@link HealthSettings}), the only place health, armor,
  * death and respawn are set; without it the NPC cannot be hurt. An NPC with health but no enabled combat runs
@@ -31,7 +31,7 @@ import java.util.UUID;
  */
 public record CombatSettings(boolean enabled, TargetRules targets, TargetRules ignores, TargetRules avoids,
                              Targeting targeting, Avoidance avoidance, Squad squad, Guard guard, Pursuit pursuit, Melee melee,
-                             Ranged ranged, Greetings greetings, boolean targetableByMobs, boolean victimDrops, HealthSettings health, boolean passive) {
+                             Ranged ranged, Weapons weapons, Greetings greetings, boolean targetableByMobs, boolean victimDrops, HealthSettings health, boolean passive) {
     /** The farthest {@code avoidance.range} may reach, in blocks. */
     public static final double MAXIMUM_AVOIDANCE_RANGE = 64;
     public static final String MODULE = "animus:combat";
@@ -76,12 +76,24 @@ public record CombatSettings(boolean enabled, TargetRules targets, TargetRules i
     }
     /**
      * @param effect  what a potion applies; present exactly when the weapon is a potion
-     * @param useAmmo each shot uses one matching item counted from the stored inventory; the count is runtime state
+     * @param useAmmo   each shot uses one matching item counted from the stored inventory; the count is runtime state
+     * @param lingering a potion leaves a cloud where it breaks that keeps applying its effect, instead of splashing once
      */
     public record Ranged(boolean enabled, RangedWeapon weapon, double damage, double range, double minimumRange, int cooldownTicks, double velocity, double inaccuracy,
-                         boolean safeShot, double knockback, Optional<Effect> effect, boolean fromEquipment, boolean useAmmo) {
+                         boolean safeShot, double knockback, Optional<Effect> effect, boolean fromEquipment, boolean useAmmo, boolean lingering) {
         /** Whether this weapon only helps whoever it reaches. */
         public boolean helpful() { return effect.map(Effect::helpful).orElse(false); }
+    }
+    /**
+     * Which held item fights. With {@code autoswitch} the NPC takes the best melee weapon it carries for a target in reach
+     * and the best ranged one beyond it, and goes back to its own item when the fight ends. {@code redirects} make a held
+     * item fight as another, keeping its enchantments, as Sentinel's weapon redirects do.
+     */
+    public record Weapons(boolean autoswitch, Map<String, String> redirects) {
+        public static final Weapons NONE = new Weapons(false, Map.of());
+        public Weapons { redirects = Map.copyOf(redirects); }
+        /** The item a held item fights as. */
+        public String effective(String held) { return redirects.getOrDefault(held, held); }
     }
     /** Lines said to players who come within range: {@code hostile} to players it would target, {@code friendly} to the rest. */
     public record Greetings(Optional<String> friendly, Optional<String> hostile, double range, int cooldownTicks) {
@@ -113,7 +125,7 @@ public record CombatSettings(boolean enabled, TargetRules targets, TargetRules i
             enabled = health.killable();
         }
         return Optional.of(new CombatSettings(enabled, settings.targets(), settings.ignores(), settings.avoids(), settings.targeting(), settings.avoidance(),
-                settings.squad(), settings.guard(), settings.pursuit(), settings.melee(), settings.ranged(), settings.greetings(), settings.targetableByMobs(),
+                settings.squad(), settings.guard(), settings.pursuit(), settings.melee(), settings.ranged(), settings.weapons(), settings.greetings(), settings.targetableByMobs(),
                 settings.victimDrops(), health, passive));
     }
 
@@ -131,11 +143,11 @@ public record CombatSettings(boolean enabled, TargetRules targets, TargetRules i
     public static CombatSettings parseModule(JsonObject module, HealthSettings health) {
         Reader root = new Reader(module, ROOT);
         root.known("enabled", "targets", "ignores", "avoids", "targeting", "avoidance", "squad", "guard", "pursuit",
-                "melee", "ranged", "greetings", "targetableByMobs", "victimDrops", "preservedSettings", "historicalStatistics", "migrationReport");
+                "melee", "ranged", "weapons", "greetings", "targetableByMobs", "victimDrops", "preservedSettings", "historicalStatistics", "migrationReport");
         return new CombatSettings(literalTrue(module, "enabled"),
                 rules(root.child("targets"), Level.SEEKING), rules(root.child("ignores"), Level.IGNORING), rules(root.child("avoids"), Level.SEEKING),
                 targeting(root.child("targeting")), avoidance(root.child("avoidance")), squad(root.child("squad")), guard(root.child("guard")),
-                pursuit(root.child("pursuit")), melee(root.child("melee")), ranged(root.child("ranged")), greetings(root.child("greetings")),
+                pursuit(root.child("pursuit")), melee(root.child("melee")), ranged(root.child("ranged")), weapons(root.child("weapons")), greetings(root.child("greetings")),
                 root.bool("targetableByMobs", false), root.bool("victimDrops", true), health, false);
     }
 
@@ -148,7 +160,7 @@ public record CombatSettings(boolean enabled, TargetRules targets, TargetRules i
     /** Where a rule list sits: target and avoid lists may use scan-wide and event rules; a nested set matches one entity. */
     private enum Level { SEEKING, IGNORING, NESTED }
     private static final List<String> PLAIN_RULES = List.of("categories", "entityTypes", "players", "npcs", "names", "squads", "owner", "patterns", "items",
-            "healthAbove", "healthBelow", "permissions", "groups", "effects");
+            "healthAbove", "healthBelow", "permissions", "groups", "teams", "effects");
     private static final List<String> SCAN_RULES = List.of("together", "events", "chat");
 
     private static TargetRules rules(Reader rules, Level level) {
@@ -172,6 +184,8 @@ public record CombatSettings(boolean enabled, TargetRules targets, TargetRules i
         List<String> effects = rules.ids("effects", "expected namespace:effect");
         List<String> permissions = rules.matching("permissions", "[A-Za-z0-9_.*-]{1,128}", "expected a permission node");
         List<String> groups = rules.matching("groups", "[A-Za-z0-9_.-]{1,64}", "expected a group name");
+        List<String> teams = rules.matching("teams", "(" + String.join("|", TargetRules.TEAM_KINDS) + "):[^\\s:]{1,64}",
+                "expected towny:, nation:, nationenemies:, nationallies:, factions:, factionsenemy:, factionsally: or sbteam: and a name");
         List<TargetRules> all = new ArrayList<>();
         JsonArray allEntries = rules.array("all", MAXIMUM_NESTED_RULES);
         for (int i = 0; i < allEntries.size(); i++) all.add(nested(allEntries.get(i), rules.field("all") + "[" + i + "]"));
@@ -192,7 +206,7 @@ public record CombatSettings(boolean enabled, TargetRules targets, TargetRules i
                 Set.copyOf(rules.strings("npcs")), Set.copyOf(rules.strings("names")), Set.copyOf(rules.strings("squads")), rules.bool("owner", false),
                 new TargetRules.Patterns(patterns.patterns("players"), patterns.patterns("npcs"), patterns.patterns("names")),
                 new TargetRules.Items(items.patterns("mainHand"), items.patterns("offHand"), items.patterns("worn")),
-                percentage(rules, "healthAbove"), percentage(rules, "healthBelow"), Set.copyOf(permissions), Set.copyOf(groups), Set.copyOf(effects),
+                percentage(rules, "healthAbove"), percentage(rules, "healthBelow"), Set.copyOf(permissions), Set.copyOf(groups), Set.copyOf(teams), Set.copyOf(effects),
                 all, together, level == Level.SEEKING ? fights(rules.child("events")) : TargetRules.Fights.NONE, Set.copyOf(chat));
     }
     private static TargetRules nested(JsonElement value, String path) {
@@ -269,7 +283,7 @@ public record CombatSettings(boolean enabled, TargetRules targets, TargetRules i
     }
     private static Ranged ranged(Reader reader) {
         reader.known("enabled", "weapon", "damage", "range", "minimumRange", "cooldownTicks", "velocity", "inaccuracy", "safeShot", "knockback", "effect",
-                "fromEquipment", "useAmmo");
+                "fromEquipment", "useAmmo", "lingering");
         String name = reader.string("weapon", "arrow");
         RangedWeapon weapon = RangedWeapon.parse(name).orElseThrow(() -> new IllegalArgumentException(reader.field("weapon")
                 + ": expected arrow, spectral_arrow, trident, snowball, egg, fireball, small_fireball, wither_skull, llama_spit or potion"));
@@ -282,10 +296,24 @@ public record CombatSettings(boolean enabled, TargetRules targets, TargetRules i
             if (!MinecraftIds.valid(id)) throw new IllegalArgumentException(potion.field("id") + ": expected namespace:effect");
             effect = Optional.of(new Effect(MinecraftIds.normalize(id), potion.integer("amplifier", 0, 0, 9), potion.integer("durationTicks", 200, 1, 72000)));
         } else if (weapon == RangedWeapon.POTION) throw new IllegalArgumentException(reader.field("effect") + ": required for a potion");
+        if (reader.has("lingering") && weapon != RangedWeapon.POTION) throw new IllegalArgumentException(reader.field("lingering") + ": only a potion lingers");
         return new Ranged(reader.bool("enabled", false), weapon, reader.number("damage", 3, .01, 100), reader.number("range", 24, 1, 256),
                 reader.number("minimumRange", 0, 0, 256), reader.integer("cooldownTicks", 40, 1, 1200), reader.number("velocity", 1.6, .5, 4),
-                reader.number("inaccuracy", 0, 0, 16), reader.bool("safeShot", true), reader.number("knockback", .2, 0, 4), effect,
-                reader.bool("fromEquipment", false), reader.bool("useAmmo", false));
+                reader.number("inaccuracy", 0, 0, 16), reader.bool("safeShot", true), reader.number("knockback", .4, 0, 4), effect,
+                reader.bool("fromEquipment", false), reader.bool("useAmmo", false), reader.bool("lingering", false));
+    }
+    private static Weapons weapons(Reader reader) {
+        reader.known("autoswitch", "redirects");
+        Reader map = reader.child("redirects");
+        if (map.object().size() > 64) throw new IllegalArgumentException(map.path() + ": at most 64 entries");
+        Map<String, String> redirects = new HashMap<>();
+        for (String item : map.object().keySet()) {
+            String into = map.string(item, "");
+            if (!MinecraftIds.valid(item)) throw new IllegalArgumentException(map.field(item) + ": expected namespace:item key");
+            if (!MinecraftIds.valid(into)) throw new IllegalArgumentException(map.field(item) + ": expected namespace:item");
+            redirects.put(MinecraftIds.normalize(item), MinecraftIds.normalize(into));
+        }
+        return new Weapons(reader.bool("autoswitch", false), redirects);
     }
     private static Greetings greetings(Reader reader) {
         reader.known("friendly", "hostile", "range", "cooldownTicks");

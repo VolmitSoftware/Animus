@@ -6,6 +6,7 @@ import art.arcane.animus.core.combat.HealthSettings;
 import art.arcane.animus.core.integration.ModelEngineModule;
 import art.arcane.animus.core.combat.RangedWeapon;
 import art.arcane.animus.core.combat.TargetCategory;
+import art.arcane.animus.core.combat.TargetRules;
 import art.arcane.animus.core.control.LookClose;
 import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.gui.GuiBinding;
@@ -995,10 +996,11 @@ public final class NpcSchemaGenerator {
                     "velocity", described(range("number", 0.5, 4), "1.6 by default."),
                     "inaccuracy", range("number", 0, 16),
                     "safeShot", described(type("boolean"), "True by default."),
-                    "knockback", described(range("number", 0, 4), "0.2 by default."),
+                    "knockback", described(range("number", 0, 4), "0.4 by default, as a vanilla arrow; Punch adds 0.6 a level."),
                     "effect", described(effect, "Potion only: the effect it applies."),
                     "fromEquipment", type("boolean"),
-                    "useAmmo", type("boolean"));
+                    "useAmmo", type("boolean"),
+                    "lingering", described(type("boolean"), "Potion only: it leaves a cloud that keeps applying its effect."));
             JsonObject potion = new JsonObject();
             JsonObject isPotion = property("weapon", constant("potion"));
             isPotion.add("required", strings("weapon"));
@@ -1011,12 +1013,19 @@ public final class NpcSchemaGenerator {
             rangedRules.add(potion);
             ranged.add("allOf", rangedRules);
             fields.add("ranged", ranged);
+            JsonObject redirects = described(type("object"), "A held item fights as another, by item id, at most 64.");
+            redirects.addProperty("maxProperties", 64);
+            redirects.add("propertyNames", pattern(NAMESPACED));
+            redirects.add("additionalProperties", pattern(NAMESPACED));
+            fields.add("weapons", section(
+                    "autoswitch", described(type("boolean"), "Take the best carried melee weapon in reach and the best ranged one beyond."),
+                    "redirects", redirects));
             fields.add("greetings", section(
                     "friendly", described(text(TEXT), "Said to players it would not target."),
                     "hostile", described(text(TEXT), "Said to players it would target."),
                     "range", described(range("number", 1, 64), "10 by default."),
                     "cooldownTicks", described(range("integer", 0, 72000), "100 by default.")));
-            fields.add("targetableByMobs", described(type("boolean"), "Nearby hostile mobs may attack the NPC."));
+            fields.add("targetableByMobs", described(type("boolean"), "Nearby mobs that would fight a player may attack the NPC."));
             fields.add("victimDrops", described(type("boolean"), "What it kills drops loot. True by default."));
             for (String kept : List.of("preservedSettings", "historicalStatistics", "migrationReport")) fields.add(kept, described(new JsonObject(), "Kept from an import."));
             combat.add("properties", fields);
@@ -1050,6 +1059,8 @@ public final class NpcSchemaGenerator {
             fields.add("healthBelow", described(range("number", 0, 100), "Percent of maximum health."));
             fields.add("permissions", names(pattern("^[A-Za-z0-9_.*-]{1,128}$")));
             fields.add("groups", names(pattern("^[A-Za-z0-9_.-]{1,64}$")));
+            fields.add("teams", described(names(pattern("^(" + String.join("|", TargetRules.TEAM_KINDS.stream().sorted().toList()) + "):[^\\s:]{1,64}$")),
+                    "Towns, nations, factions and scoreboard teams, as towny:Name or sbteam:Name."));
             fields.add("effects", names(pattern(NAMESPACED)));
             if (level != Level.NESTED) fields.add("all", list(reference("nestedRules"), 0, NESTED_RULES, "Rule sets that must all match one entity."));
             if (level == Level.SEEKING) {

@@ -10,7 +10,7 @@ import 'combat_settings.dart';
 import 'route_model.dart' show snapBlock;
 
 /// Rules edited in "Advanced rules", in the order shown.
-const List<String> combatAdvancedRules = <String>['patterns', 'items', 'permissions', 'groups', 'effects', 'all', 'together', 'events', 'chat'];
+const List<String> combatAdvancedRules = <String>['patterns', 'items', 'permissions', 'groups', 'teams', 'effects', 'all', 'together', 'events', 'chat'];
 
 /// The schema of rule section [section]: `ignoringRules` for ignores,
 /// `seekingRules` for targets and avoids.
@@ -87,7 +87,7 @@ JsonMap withLocationField(JsonMap point, String key, Object? value) =>
     value == null || value == '' ? _without(point, key) : <String, Object?>{...point, key: value};
 
 /// [ranged] with [weapon] (null for the default arrow): a potion gets an
-/// effect when it has none, any other weapon loses it.
+/// effect when it has none, any other weapon loses it and `lingering`.
 JsonMap withRangedWeapon(JsonMap ranged, String? weapon) {
   JsonMap next = weapon == null ? _without(ranged, 'weapon') : <String, Object?>{...ranged, 'weapon': weapon};
   if (weapon == 'potion') {
@@ -98,7 +98,7 @@ JsonMap withRangedWeapon(JsonMap ranged, String? weapon) {
       };
     }
   } else {
-    next = _without(next, 'effect');
+    next = _without(_without(next, 'effect'), 'lingering');
   }
   return next;
 }

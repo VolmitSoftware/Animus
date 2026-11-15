@@ -269,7 +269,8 @@ public final class AnimusCommandTree extends CommandGroup {
                     Administration.Inspection inspection;
                     try { inspection = administration.inspect(id); }
                     catch (IOException | RuntimeException failure) { reply(actor, Palette.error(reason(failure))); return; }
-                    if (!stopping()) actor.reply(() -> { if (!stopping()) inspect(actor, inspection, living().inspect(id)); });
+                    Optional<String> fights = inspection.fights(runtime().combatStatistics());
+                    if (!stopping()) actor.reply(() -> { if (!stopping()) inspect(actor, inspection, living().inspect(id), fights); });
                 });
             } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
         });
@@ -279,12 +280,13 @@ public final class AnimusCommandTree extends CommandGroup {
      * Two lines. A player gets the summary with the id and position as copy chips and the JSON behind a copy chip, then the
      * runtime state with its counters behind {@code [Details]}; the console gets the summary and the full runtime line.
      */
-    static void inspect(CommandActor actor, Administration.Inspection inspection, String runtime) {
+    static void inspect(CommandActor actor, Administration.Inspection inspection, String runtime, Optional<String> fights) {
         String summary = inspection.summary(), id = inspection.effective().qualifiedId(), position = inspection.position();
         String problem = inspection.problem().map((String text) -> " | trait group problem: " + text).orElse("");
         if (actor.player().isEmpty()) {
             actor.tell(summary + (position.isEmpty() ? "" : " | " + position) + problem);
             actor.tell(runtime);
+            fights.ifPresent((String line) -> actor.tell("Fights: " + line));
             return;
         }
         ChatLine head = ChatLine.reply("").copyable(id).text(Palette.GREY + summary.substring(id.length()));
@@ -296,6 +298,7 @@ public final class AnimusCommandTree extends CommandGroup {
         List<String> details = new ArrayList<>(List.of(runtime));
         details.addAll(inspection.provenance());
         actor.rich(ChatLine.reply(split < 0 ? runtime : runtime.substring(0, split)).details("Details", details));
+        fights.ifPresent((String line) -> actor.tell("Fights: " + line));
     }
 
     @Director(description = "Merge a JSON object into an NPC's definition; null removes a field")

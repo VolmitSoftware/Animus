@@ -32,6 +32,7 @@ const List<String> combatRootKeys = <String>[
   'pursuit',
   'melee',
   'ranged',
+  'weapons',
   'greetings',
   'targetableByMobs',
   'victimDrops',
@@ -65,7 +66,9 @@ const Map<String, List<String>> combatSectionKeys = <String, List<String>>{
     'effect',
     'fromEquipment',
     'useAmmo',
+    'lingering',
   ],
+  'weapons': <String>['autoswitch', 'redirects'],
   'greetings': <String>['friendly', 'hostile', 'range', 'cooldownTicks'],
 };
 
@@ -84,8 +87,15 @@ const List<String> combatPlainRules = <String>[
   'healthBelow',
   'permissions',
   'groups',
+  'teams',
   'effects',
 ];
+
+/// The plugins a `teams` rule reads, by prefix: Towny towns and nations, Factions, scoreboard teams.
+const List<String> combatTeamKinds = <String>['towny', 'nation', 'nationenemies', 'nationallies', 'factions', 'factionsenemy', 'factionsally', 'sbteam'];
+
+/// The most `weapons.redirects` a module may list.
+const int combatMaxRedirects = 64;
 
 /// Rules only `targets` and `avoids` may use.
 const List<String> combatScanRules = <String>['together', 'events', 'chat'];
@@ -208,7 +218,7 @@ const List<CombatRange> combatRanges = <CombatRange>[
   CombatRange('ranged', 'cooldownTicks', 40, 1, 1200, integer: true),
   CombatRange('ranged', 'velocity', 1.6, 0.5, 4),
   CombatRange('ranged', 'inaccuracy', 0, 0, 16),
-  CombatRange('ranged', 'knockback', 0.2, 0, 4),
+  CombatRange('ranged', 'knockback', 0.4, 0, 4),
   CombatRange('greetings', 'range', 10, 1, 64),
   CombatRange('greetings', 'cooldownTicks', 100, 0, 72000, integer: true),
   // Nested objects, by their own section name.
@@ -227,6 +237,7 @@ const Map<String, Map<String, bool>> combatBooleans = <String, Map<String, bool>
   'pursuit': <String, bool>{'closeChase': true, 'rangedChase': false, 'returnToPost': true, 'teleportWhenStuck': false},
   'melee': <String, bool>{'enabled': true, 'fromEquipment': false},
   'ranged': <String, bool>{'enabled': false, 'safeShot': true, 'fromEquipment': false, 'useAmmo': false},
+  'weapons': <String, bool>{'autoswitch': false},
 };
 
 CombatRange? combatRange(String section, String key) {
@@ -364,9 +375,33 @@ List<Diagnostic> validateCombat(Object? settings) {
       } else if (weapon == 'potion') {
         check.error(reader.field('effect'), 'required for a potion');
       }
+      if (reader.object.containsKey('lingering') && weapon != 'potion') {
+        check.error(reader.field('lingering'), 'only a potion lingers');
+      } else {
+        reader.boolean('lingering');
+      }
     }
     reader.numbers('ranged');
     reader.booleans('ranged');
+  });
+  _section(root, 'weapons', (_Reader reader) {
+    final _Reader? map = reader.child('redirects');
+    if (map != null) {
+      if (map.object.length > combatMaxRedirects) {
+        check.error(map.path, 'at most $combatMaxRedirects entries');
+      } else {
+        for (final String item in map.object.keys) {
+          final String? into = map.string(item);
+          if (into == null) continue;
+          if (!validMinecraftId(item)) {
+            check.error(map.field(item), 'expected namespace:item key');
+          } else if (!validMinecraftId(into)) {
+            check.error(map.field(item), 'expected namespace:item');
+          }
+        }
+      }
+    }
+    reader.booleans('weapons');
   });
   _section(root, 'greetings', (_Reader reader) {
     for (final String key in const <String>['friendly', 'hostile']) {
@@ -394,6 +429,7 @@ bool combatRulesScan(Map<String, Object?> rules) {
         'squads',
         'permissions',
         'groups',
+        'teams',
         'effects',
         'all',
         'together',
@@ -407,6 +443,9 @@ bool combatRulesScan(Map<String, Object?> rules) {
 
 final RegExp _permission = RegExp(r'^[A-Za-z0-9_.*-]{1,128}$');
 final RegExp _group = RegExp(r'^[A-Za-z0-9_.-]{1,64}$');
+
+/// Java's `\s` is ASCII whitespace only.
+final RegExp _team = RegExp('^(${combatTeamKinds.join('|')}):[^ \\t\\n\\x0B\\f\\r:]{1,64}\$');
 final RegExp _region = RegExp(r"^[A-Za-z0-9_,'+/-]{1,64}$");
 final RegExp _uuid = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
 
@@ -483,6 +522,11 @@ void _rules(_Reader rules, _Level level) {
   rules.ids('effects', 'expected namespace:effect');
   rules.matching('permissions', _permission, 'expected a permission node');
   rules.matching('groups', _group, 'expected a group name');
+  rules.matching(
+    'teams',
+    _team,
+    'expected towny:, nation:, nationenemies:, nationallies:, factions:, factionsenemy:, factionsally: or sbteam: and a name',
+  );
   if (!refused.contains('all')) {
     final List<Object?>? all = rules.array('all', 16);
     for (int index = 0; index < (all?.length ?? 0); index++) {

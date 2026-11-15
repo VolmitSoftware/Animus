@@ -20,6 +20,9 @@ import java.util.UUID;
  * @param healthBelow percentage of maximum health a target must be under
  * @param permissions permission nodes a player has
  * @param groups      permission groups a player is in
+ * @param teams       towns, nations, factions and scoreboard teams a player belongs to, written {@code towny:Riverton},
+ *                    {@code nation:North}, {@code nationenemies:North}, {@code nationallies:North}, {@code factions:Red},
+ *                    {@code factionsenemy:Red}, {@code factionsally:Red} or {@code sbteam:blue}; read through the plugin that keeps them
  * @param effects     status effect ids a target has
  * @param all         rule sets that one target must match completely
  * @param together    groups of rule sets that several distinct targets must match at once
@@ -28,8 +31,10 @@ import java.util.UUID;
  */
 public record TargetRules(Set<TargetCategory> categories, Set<String> entityTypes, Set<String> players, Set<String> npcs, Set<String> names,
                           Set<String> squads, boolean owner, Patterns patterns, Items items, OptionalDouble healthAbove, OptionalDouble healthBelow,
-                          Set<String> permissions, Set<String> groups, Set<String> effects, List<TargetRules> all, List<List<TargetRules>> together,
+                          Set<String> permissions, Set<String> groups, Set<String> teams, Set<String> effects, List<TargetRules> all, List<List<TargetRules>> together,
                           Fights events, Set<String> chat) {
+    /** The plugin teams a {@code teams} rule names, by prefix. */
+    public static final Set<String> TEAM_KINDS = Set.of("towny", "nation", "nationenemies", "nationallies", "factions", "factionsenemy", "factionsally", "sbteam");
     /** Name patterns by kind of target. */
     public record Patterns(List<NamePattern> players, List<NamePattern> npcs, List<NamePattern> names) {
         public static final Patterns NONE = new Patterns(List.of(), List.of(), List.of());
@@ -62,10 +67,12 @@ public record TargetRules(Set<TargetCategory> categories, Set<String> entityType
         Optional<UUID> owner();
         /** Whether this online player has the permission node. Called on the owner thread. */
         boolean permitted(TargetRef player, String node);
+        /** Whether this online player belongs to the plugin team, such as {@code towny} and {@code Riverton}; false where that plugin is absent. */
+        default boolean member(TargetRef player, String kind, String name) { return false; }
     }
 
     public static final TargetRules NONE = new TargetRules(Set.of(), Set.of(), Set.of(), Set.of(), Set.of(), Set.of(), false, Patterns.NONE, Items.NONE,
-            OptionalDouble.empty(), OptionalDouble.empty(), Set.of(), Set.of(), Set.of(), List.of(), List.of(), Fights.NONE, Set.of());
+            OptionalDouble.empty(), OptionalDouble.empty(), Set.of(), Set.of(), Set.of(), Set.of(), List.of(), List.of(), Fights.NONE, Set.of());
 
     public TargetRules {
         categories = Set.copyOf(categories);
@@ -76,6 +83,7 @@ public record TargetRules(Set<TargetCategory> categories, Set<String> entityType
         squads = Set.copyOf(squads);
         permissions = Set.copyOf(permissions);
         groups = Set.copyOf(groups);
+        teams = Set.copyOf(teams);
         effects = Set.copyOf(effects);
         all = List.copyOf(all);
         together = together.stream().map(List::copyOf).toList();
@@ -89,7 +97,7 @@ public record TargetRules(Set<TargetCategory> categories, Set<String> entityType
     public boolean scans() {
         return !categories.isEmpty() || !entityTypes.isEmpty() || !players.isEmpty() || !npcs.isEmpty() || !names.isEmpty() || !squads.isEmpty() || owner
                 || !patterns.empty() || !items.empty() || healthAbove.isPresent() || healthBelow.isPresent() || !permissions.isEmpty() || !groups.isEmpty()
-                || !effects.isEmpty() || !all.isEmpty() || !together.isEmpty();
+                || !teams.isEmpty() || !effects.isEmpty() || !all.isEmpty() || !together.isEmpty();
     }
 
     /** Any one rule matches. {@code together} groups are checked by the caller over a whole scan. */
@@ -117,6 +125,7 @@ public record TargetRules(Set<TargetCategory> categories, Set<String> entityType
         if (target.ref().kind() == TargetKind.PLAYER) {
             for (String node : permissions) if (context.permitted(target.ref(), node)) return true;
             for (String group : groups) if (context.permitted(target.ref(), groupNode(group))) return true;
+            for (String team : teams) if (member(context, target, team)) return true;
         }
         return false;
     }
@@ -146,7 +155,13 @@ public record TargetRules(Set<TargetCategory> categories, Set<String> entityType
         for (TargetRules part : all) if (!part.matchesAll(target, context)) return false;
         for (String node : permissions) if (kind != TargetKind.PLAYER || !context.permitted(target.ref(), node)) return false;
         for (String group : groups) if (kind != TargetKind.PLAYER || !context.permitted(target.ref(), groupNode(group))) return false;
+        for (String team : teams) if (kind != TargetKind.PLAYER || !member(context, target, team)) return false;
         return true;
+    }
+
+    private static boolean member(Context context, CombatTarget target, String team) {
+        int colon = team.indexOf(':');
+        return colon > 0 && context.member(target.ref(), team.substring(0, colon), team.substring(colon + 1));
     }
 
     /** The permission node a group rule checks. Permission plugins grant {@code group.<name>} to group members. */

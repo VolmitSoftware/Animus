@@ -23,7 +23,7 @@ import java.util.UUID;
  * than inheriting Animus defaults. A value that cannot be converted exactly is kept in preservedSettings.
  */
 final class SentinelMapping {
-    enum Disposition { CONVERTED, UNSUPPORTED, STATISTIC, UNKNOWN }
+    enum Disposition { CONVERTED, STATISTIC, UNKNOWN }
 
     /** @param health the {@code animus:health} module; empty when the Sentinel record is not an object */
     record Result(JsonObject module, Optional<JsonObject> health, List<String> notes) {
@@ -34,8 +34,7 @@ final class SentinelMapping {
             "reaction_slowdown", "runaway", "chaseRange", "speed", "close_chase", "ranged_chase", "squad", "guard_distance_minimum", "guard_selection_range", "guardedNPC", "guardingUpper",
             "guardingLower", "avoidReturnPoint", "disable_teleporting", "damage", "attackRate", "attackRateRanged", "range", "reach", "safeShot", "accuracy", "projectileRange", "health", "armor",
             "invincible", "protected", "protectFromRange", "allow_knockback", "healRate", "drops", "dropChances", "enemyDrops", "death_xp", "respawnTime", "spawnPoint",
-            "worldguard_region", "needsAmmo", "weapon_damage_map", "warning_text", "greeting_text", "greet_range", "greet_rate");
-    private static final Set<String> UNSUPPORTED = Set.of("autoswitch", "weapon_redirect_map");
+            "worldguard_region", "needsAmmo", "weapon_damage_map", "warning_text", "greeting_text", "greet_range", "greet_rate", "autoswitch", "weapon_redirect_map");
     private static final String GUARD_REFERENCE = "/traits/sentinel/guardedNPC";
     private static final double WALKING_SPEED = 4.3;
     private static final Map<String, String> CATEGORIES = Map.of("PLAYER", "players", "PLAYERS", "players", "NPC", "npcs", "NPCS", "npcs",
@@ -47,14 +46,17 @@ final class SentinelMapping {
             Map.entry("JUMP", "jump_boost"), Map.entry("CONFUSION", "nausea"), Map.entry("DAMAGE_RESISTANCE", "resistance"));
     private static final Map<String, String> FIGHTS = Map.of("pvp", "player_hurts_player", "pve", "player_hurts_mob", "eve", "mob_hurts_mob",
             "pvnpc", "player_hurts_npc", "pvsentinel", "player_hurts_npc", "npcvnpc", "npc_hurts_npc");
-    private static final Map<String, String> HELD_WEAPONS = Map.of("bow", "arrow", "crossbow", "arrow", "trident", "trident", "blaze_rod", "fireball",
-            "snowball", "snowball", "snow_ball", "snowball", "egg", "egg", "spectral_arrow", "spectral_arrow", "wither_skeleton_skull", "wither_skull");
+    private static final Map<String, String> HELD_WEAPONS = Map.ofEntries(Map.entry("bow", "arrow"), Map.entry("crossbow", "arrow"), Map.entry("trident", "trident"),
+            Map.entry("blaze_rod", "fireball"), Map.entry("snowball", "snowball"), Map.entry("snow_ball", "snowball"), Map.entry("egg", "egg"),
+            Map.entry("spectral_arrow", "spectral_arrow"), Map.entry("wither_skeleton_skull", "wither_skull"), Map.entry("white_dye", "llama_spit"),
+            Map.entry("splash_potion", "potion"), Map.entry("lingering_potion", "potion"), Map.entry("potion", "potion"));
+    /** Sentinel target prefixes from Towny, Factions and scoreboard teams, kept as Animus {@code teams} rules. */
+    private static final Set<String> TEAMS = art.arcane.animus.core.combat.TargetRules.TEAM_KINDS;
     private static final Map<String, String> LABEL_KINDS = Map.of("player", "byPlayerName", "npc", "byNpcName", "entityname", "byEntityName", "helditem", "byHeldItem",
             "offhand", "byOffhandItem", "equipped", "byEquippedItem", "group", "byGroup");
 
     static Disposition disposition(String field) {
         if (CONVERTED.contains(field)) return Disposition.CONVERTED;
-        if (UNSUPPORTED.contains(field)) return Disposition.UNSUPPORTED;
         return field.startsWith("stats_") ? Disposition.STATISTIC : Disposition.UNKNOWN;
     }
 
@@ -221,7 +223,7 @@ final class SentinelMapping {
                 return add(rules, "effects", "minecraft:" + EFFECT_ALIASES.getOrDefault(upper, upper.toLowerCase(Locale.ROOT)));
             }
             case "permission" -> { return rest.matches("[A-Za-z0-9_.*-]{1,128}") && add(rules, "permissions", rest); }
-            default -> { return false; }
+            default -> { return TEAMS.contains(prefix) && rest.matches("[^\\s:]{1,64}") && add(rules, "teams", prefix + ":" + rest); }
         }
     }
 
@@ -307,7 +309,6 @@ final class SentinelMapping {
         private final JsonObject health = new JsonObject();
         private final JsonObject preserved = new JsonObject();
         private final JsonArray converted = new JsonArray();
-        private final JsonArray unsupported = new JsonArray();
         private final JsonArray unknown = new JsonArray();
         private final List<String> notes = new ArrayList<>();
         private boolean assist;
@@ -323,10 +324,6 @@ final class SentinelMapping {
             for (Map.Entry<String, JsonElement> field : source.entrySet()) {
                 switch (disposition(field.getKey())) {
                     case STATISTIC -> statistics.add(field.getKey(), field.getValue().deepCopy());
-                    case UNSUPPORTED -> {
-                        preserved.add(field.getKey(), field.getValue().deepCopy());
-                        unsupported.add(field.getKey());
-                    }
                     case UNKNOWN -> {
                         preserved.add(field.getKey(), field.getValue().deepCopy());
                         unknown.add(field.getKey());
@@ -351,7 +348,6 @@ final class SentinelMapping {
             module.add("historicalStatistics", statistics);
             JsonObject report = new JsonObject();
             report.add("converted", converted);
-            report.add("unsupported", unsupported);
             report.add("unknown", unknown);
             JsonArray noteList = new JsonArray();
             notes.forEach(noteList::add);
@@ -544,9 +540,15 @@ final class SentinelMapping {
                 melee.addProperty("enabled", false);
             }
             weaponDamage(melee);
-            Optional<String> weapon = heldWeapon();
-            ranged.addProperty("enabled", weapon.isPresent());
+            JsonObject weapons = section("weapons");
+            boolean switching = flag("autoswitch", false);
+            weapons.addProperty("autoswitch", switching);
+            JsonObject redirects = redirects();
+            if (!redirects.isEmpty()) weapons.add("redirects", redirects);
+            Optional<String> weapon = heldWeapon(redirects);
+            ranged.addProperty("enabled", weapon.isPresent() || switching);
             weapon.ifPresent((String name) -> ranged.addProperty("weapon", name));
+            if (weapon.isPresent() && weapon.get().equals("potion")) heldPotion(ranged, redirects);
             ranged.addProperty("cooldownTicks", ticks("attackRateRanged", 30, 1, 1200));
             ranged.addProperty("range", number("projectileRange", 100, 1, 256));
             ranged.addProperty("inaccuracy", number("accuracy", 0, 0, 16));
@@ -573,15 +575,86 @@ final class SentinelMapping {
             }
             if (!converted.isEmpty()) melee.add("weaponDamage", converted);
         }
-        /** The ranged weapon the imported held item fires, as Sentinel chooses it. Potions need their effect and are not converted. */
-        private Optional<String> heldWeapon() {
-            if (equipment == null || !equipment.isJsonObject()) return Optional.empty();
+        /** Sentinel's {@code weapon_redirect_map} as item ids: the held item on the left fights as the one on the right. */
+        private JsonObject redirects() {
+            JsonObject converted = new JsonObject();
+            JsonElement map = source.get("weapon_redirect_map");
+            if (map == null || map.isJsonNull()) return converted;
+            if (!map.isJsonObject() || map.getAsJsonObject().size() > 64) {
+                keep("weapon_redirect_map", "not a map of at most 64 items");
+                return converted;
+            }
+            for (Map.Entry<String, JsonElement> entry : map.getAsJsonObject().entrySet()) {
+                String from = item(entry.getKey()), into = text(entry.getValue()) == null ? null : item(text(entry.getValue()));
+                if (from == null || into == null) {
+                    keep("weapon_redirect_map", "an entry is not an item mapped to an item");
+                    return new JsonObject();
+                }
+                converted.addProperty(from, into);
+            }
+            return converted;
+        }
+        private static String item(String material) {
+            String id = "minecraft:" + material.toLowerCase(Locale.ROOT).replace("minecraft:", "");
+            return id.matches("[a-z0-9_.-]+:[a-z0-9_./-]+") ? id : null;
+        }
+        /** The imported held item's id, or null. */
+        private String heldType() {
+            if (equipment == null || !equipment.isJsonObject()) return null;
             JsonElement hand = equipment.getAsJsonObject().get("hand");
-            if (hand == null || !hand.isJsonObject()) return Optional.empty();
+            if (hand == null || !hand.isJsonObject()) return null;
             String type = text(hand.getAsJsonObject().get("type"));
             if (type == null) type = text(hand.getAsJsonObject().get("id"));
+            return type == null ? null : item(type);
+        }
+        /** The ranged weapon the imported held item fires after its redirect, as Sentinel chooses it. */
+        private Optional<String> heldWeapon(JsonObject redirects) {
+            String type = heldType();
             if (type == null) return Optional.empty();
-            return Optional.ofNullable(HELD_WEAPONS.get(type.toLowerCase(Locale.ROOT).replace("minecraft:", "")));
+            if (redirects.has(type)) type = redirects.get(type).getAsString();
+            return Optional.ofNullable(HELD_WEAPONS.get(type.replace("minecraft:", "")));
+        }
+        /** A held splash or lingering potion throws its own effect; one Animus cannot read is kept, and the NPC throws nothing. */
+        private void heldPotion(JsonObject ranged, JsonObject redirects) {
+            String type = heldType();
+            String effective = redirects.has(type) ? redirects.get(type).getAsString() : type;
+            JsonObject hand = equipment.getAsJsonObject().getAsJsonObject("hand");
+            Optional<art.arcane.animus.core.combat.CombatSettings.Effect> effect = potionEffect(itemMeta(hand.get("meta")));
+            if (effect.isEmpty()) {
+                ranged.addProperty("enabled", false);
+                ranged.remove("weapon");
+                notes.add("hand: the held potion's effect could not be read, so the NPC throws nothing");
+                return;
+            }
+            JsonObject applied = new JsonObject();
+            applied.addProperty("id", effect.get().id());
+            applied.addProperty("amplifier", effect.get().amplifier());
+            applied.addProperty("durationTicks", effect.get().durationTicks());
+            ranged.add("effect", applied);
+            if (effective.equals("minecraft:lingering_potion")) ranged.addProperty("lingering", true);
+        }
+        /**
+         * A saved item's meta as a map. Citizens' ItemStorage writes it as base64 of Bukkit's object stream, on {@code meta}
+         * itself or, in older saves, under {@code meta.encoded-meta}; a plain map is read as it is.
+         */
+        private static JsonObject itemMeta(JsonElement meta) {
+            if (meta == null) return new JsonObject();
+            Optional<String> encoded = CitizensItems.encoded(meta);
+            if (encoded.isEmpty()) return meta instanceof JsonObject map ? map : new JsonObject();
+            return encoded.flatMap(JavaSerialized::decode).filter(JsonElement::isJsonObject).map(JsonElement::getAsJsonObject).orElseGet(JsonObject::new);
+        }
+        /** The potion's own effect, else its first custom effect at its level and length. */
+        private static Optional<art.arcane.animus.core.combat.CombatSettings.Effect> potionEffect(JsonObject meta) {
+            String potion = text(meta.get("potion-type"));
+            if (potion != null) return art.arcane.animus.core.combat.PotionEffects.of(potion.contains(":") ? potion.toLowerCase(Locale.ROOT) : "minecraft:" + potion.toLowerCase(Locale.ROOT));
+            if (!(meta.get("custom-effects") instanceof JsonArray custom) || custom.isEmpty() || !(custom.get(0) instanceof JsonObject first)) return Optional.empty();
+            String id = text(first.get("effect"));
+            String effect = id == null ? null : id.contains(":") ? id.toLowerCase(Locale.ROOT) : "minecraft:" + id.toLowerCase(Locale.ROOT);
+            if (effect == null || !effect.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) return Optional.empty();
+            int duration = first.get("duration") instanceof JsonPrimitive ticks && ticks.isNumber() ? ticks.getAsInt() : 0;
+            int amplifier = first.get("amplifier") instanceof JsonPrimitive level && level.isNumber() ? level.getAsInt() : 0;
+            if (duration < 1 || amplifier < 0) return Optional.empty();
+            return Optional.of(new art.arcane.animus.core.combat.CombatSettings.Effect(effect, Math.min(9, amplifier), Math.min(72000, duration)));
         }
         /** Sentinel's defense becomes the health module; an NPC that is not invincible is killable. */
         private void defense() {

@@ -73,6 +73,9 @@
         "safeShot": true,
         "useAmmo": false
       },
+      "weapons": {
+        "autoswitch": false
+      },
       "victimDrops": false,
       "greetings": {
         "range": 10.0,
@@ -87,7 +90,6 @@
           "guardingUpper",
           "guardingLower"
         ],
-        "unsupported": [],
         "unknown": [],
         "notes": [
           "guardedNPC: this NPC also guards a player, which takes precedence"

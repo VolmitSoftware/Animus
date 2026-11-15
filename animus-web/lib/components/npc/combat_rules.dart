@@ -30,6 +30,18 @@ const Map<String, List<String>> _rareLists = <String, List<String>>{
   'items': combatItemKeys,
 };
 
+/// What each `teams` prefix names, offered while typing a team rule.
+const Map<String, String> _teamKinds = <String, String>{
+  'towny': 'Towny town',
+  'nation': 'Towny nation',
+  'nationenemies': 'enemy of a Towny nation',
+  'nationallies': 'ally of a Towny nation',
+  'factions': 'Factions faction',
+  'factionsenemy': 'enemy of a faction',
+  'factionsally': 'ally of a faction',
+  'sbteam': 'scoreboard team',
+};
+
 /// One rule section ([name] is `targets`, `ignores` or `avoids`).
 class CombatRules extends StatelessWidget {
   const CombatRules({
@@ -124,6 +136,21 @@ class CombatRules extends StatelessWidget {
       ];
     }
     if (field.key == 'events' && (value == null || value is Map<String, Object?>)) return _events(field, asMap(value));
+    if (field.key == 'teams') {
+      return <Widget>[
+        StringListField(
+          form: form,
+          steps: at,
+          words: combatWords('rule.teams'),
+          noun: 'team',
+          placeholder: 'towny:Riverton',
+          docs: Docs.combatTeams,
+          suggestions: <FieldOption>[
+            for (final String kind in combatTeamKinds) FieldOption('$kind:', description: _teamKinds[kind]),
+          ],
+        ),
+      ];
+    }
     if (field.kind == FieldKind.array && field.key != 'all' && field.key != 'together') {
       return <Widget>[
         StringListField(

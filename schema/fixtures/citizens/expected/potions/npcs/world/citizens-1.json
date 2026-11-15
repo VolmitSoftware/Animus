@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000a01",
+  "id": "citizens-1",
+  "group": "world",
+  "name": "Mist",
+  "type": "minecraft:player",
+  "spawned": true,
+  "migration": {
+    "importId": "59c0cbe662034e0f491ec16806338d57765c635715db4e886a750f3fe298f535",
+    "citizensId": 1,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 4.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "equipment": {
+    "main_hand": {
+      "id": "minecraft:lingering_potion",
+      "count": 1,
+      "imported": {
+        "type": "LINGERING_POTION",
+        "amount": 1,
+        "meta": {
+          "encoded-meta": "rO0ABXNyABpvcmcuYnVra2l0LnV0aWwuaW8uV3JhcHBlcvJQR+zxEm8FAgABTAADbWFwdAAPTGphdmEvdXRpbC9NYXA7eHBzcgA1Y29tLmdvb2dsZS5jb21tb24uY29sbGVjdC5JbW11dGFibGVNYXAkU2VyaWFsaXplZEZvcm0AAAAAAAAAAAIAAkwABGtleXN0ABJMamF2YS9sYW5nL09iamVjdDtMAAZ2YWx1ZXNxAH4ABHhwdXIAE1tMamF2YS5sYW5nLk9iamVjdDuQzlifEHMpbAIAAHhwAAAAA3QAAj09dAAJbWV0YS10eXBldAAOY3VzdG9tLWVmZmVjdHN1cQB+AAYAAAADdAAISXRlbU1ldGF0AAZQT1RJT05zcgA2Y29tLmdvb2dsZS5jb21tb24uY29sbGVjdC5JbW11dGFibGVMaXN0JFNlcmlhbGl6ZWRGb3JtAAAAAAAAAAACAAFbAAhlbGVtZW50c3QAE1tMamF2YS9sYW5nL09iamVjdDt4cHVxAH4ABgAAAAFzcQB+AABzcQB+AAN1cQB+AAYAAAAHcQB+AAh0AAZlZmZlY3R0AAhkdXJhdGlvbnQACWFtcGxpZmllcnQAB2FtYmllbnR0AA1oYXMtcGFydGljbGVzdAAIaGFzLWljb251cQB+AAYAAAAHdAAMUG90aW9uRWZmZWN0dAAQbWluZWNyYWZ0OnBvaXNvbnNyABFqYXZhLmxhbmcuSW50ZWdlchLioKT3gYc4AgABSQAFdmFsdWV4cgAQamF2YS5sYW5nLk51bWJlcoaslR0LlOCLAgAAeHAAAAOEc3EAfgAeAAAAAXNyABFqYXZhLmxhbmcuQm9vbGVhbs0gcoDVnPruAgABWgAFdmFsdWV4cABzcQB+ACIBcQB+ACQ="
+        }
+      }
+    }
+  },
+  "modules": {
+    "animus:combat": {
+      "enabled": true,
+      "targeting": {
+        "scanRange": 16.0,
+        "reactionTicks": 0,
+        "memoryTicks": 0,
+        "retainTarget": false,
+        "fightBack": true,
+        "lineOfSight": "required"
+      },
+      "avoidance": {
+        "range": 10.0,
+        "fleeWhenAttacked": false
+      },
+      "guard": {
+        "followDistance": 7.0,
+        "pointRange": 4.0
+      },
+      "pursuit": {
+        "leashRange": 100.0,
+        "giveUpRange": 100.0,
+        "speed": 4.3,
+        "closeChase": true,
+        "rangedChase": false,
+        "teleportWhenStuck": true,
+        "returnToPost": true
+      },
+      "melee": {
+        "reach": 3.0,
+        "cooldownTicks": 30,
+        "fromEquipment": true
+      },
+      "ranged": {
+        "fromEquipment": true,
+        "enabled": true,
+        "weapon": "potion",
+        "effect": {
+          "id": "minecraft:poison",
+          "amplifier": 1,
+          "durationTicks": 900
+        },
+        "lingering": true,
+        "cooldownTicks": 30,
+        "range": 100.0,
+        "inaccuracy": 0.0,
+        "safeShot": true,
+        "useAmmo": false
+      },
+      "weapons": {
+        "autoswitch": false
+      },
+      "victimDrops": false,
+      "greetings": {
+        "range": 10.0,
+        "cooldownTicks": 100
+      },
+      "preservedSettings": {},
+      "historicalStatistics": {},
+      "migrationReport": {
+        "converted": [
+          "health",
+          "range"
+        ],
+        "unknown": [],
+        "notes": []
+      }
+    },
+    "animus:health": {
+      "killable": true,
+      "maximumHealth": 20.0,
+      "armorFromEquipment": true,
+      "knockback": true,
+      "regenerate": true,
+      "regenerateTicks": 100,
+      "protectedFromIgnored": false,
+      "protectFromRange": 0.0,
+      "death": {
+        "experience": 0
+      },
+      "respawn": {
+        "delayTicks": 100
+      }
+    },
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 4.5,
+        "y": 64,
+        "z": 0.5
+      },
+      "equipment": {
+        "hand": {
+          "type": "LINGERING_POTION",
+          "amount": 1,
+          "meta": {
+            "encoded-meta": "rO0ABXNyABpvcmcuYnVra2l0LnV0aWwuaW8uV3JhcHBlcvJQR+zxEm8FAgABTAADbWFwdAAPTGphdmEvdXRpbC9NYXA7eHBzcgA1Y29tLmdvb2dsZS5jb21tb24uY29sbGVjdC5JbW11dGFibGVNYXAkU2VyaWFsaXplZEZvcm0AAAAAAAAAAAIAAkwABGtleXN0ABJMamF2YS9sYW5nL09iamVjdDtMAAZ2YWx1ZXNxAH4ABHhwdXIAE1tMamF2YS5sYW5nLk9iamVjdDuQzlifEHMpbAIAAHhwAAAAA3QAAj09dAAJbWV0YS10eXBldAAOY3VzdG9tLWVmZmVjdHN1cQB+AAYAAAADdAAISXRlbU1ldGF0AAZQT1RJT05zcgA2Y29tLmdvb2dsZS5jb21tb24uY29sbGVjdC5JbW11dGFibGVMaXN0JFNlcmlhbGl6ZWRGb3JtAAAAAAAAAAACAAFbAAhlbGVtZW50c3QAE1tMamF2YS9sYW5nL09iamVjdDt4cHVxAH4ABgAAAAFzcQB+AABzcQB+AAN1cQB+AAYAAAAHcQB+AAh0AAZlZmZlY3R0AAhkdXJhdGlvbnQACWFtcGxpZmllcnQAB2FtYmllbnR0AA1oYXMtcGFydGljbGVzdAAIaGFzLWljb251cQB+AAYAAAAHdAAMUG90aW9uRWZmZWN0dAAQbWluZWNyYWZ0OnBvaXNvbnNyABFqYXZhLmxhbmcuSW50ZWdlchLioKT3gYc4AgABSQAFdmFsdWV4cgAQamF2YS5sYW5nLk51bWJlcoaslR0LlOCLAgAAeHAAAAOEc3EAfgAeAAAAAXNyABFqYXZhLmxhbmcuQm9vbGVhbs0gcoDVnPruAgABWgAFdmFsdWV4cABzcQB+ACIBcQB+ACQ="
+          }
+        }
+      },
+      "sentinel": {
+        "health": 20,
+        "range": 16
+      }
+    }
+  }
+}

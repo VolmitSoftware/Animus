@@ -14,9 +14,9 @@ void main() {
   group('combat target rules', () {
     test('should offer every advanced rule the section allows, from the NPC schema', () {
       List<String> keys(String section) => <String>[for (final FieldSpec field in combatAdvancedRuleFields(npc, section)) field.key];
-      expect(keys('targets'), <String>['patterns', 'items', 'permissions', 'groups', 'effects', 'all', 'together', 'events', 'chat']);
+      expect(keys('targets'), <String>['patterns', 'items', 'permissions', 'groups', 'teams', 'effects', 'all', 'together', 'events', 'chat']);
       expect(keys('avoids'), keys('targets'));
-      expect(keys('ignores'), <String>['patterns', 'items', 'permissions', 'groups', 'effects', 'all']);
+      expect(keys('ignores'), <String>['patterns', 'items', 'permissions', 'groups', 'teams', 'effects', 'all']);
     });
 
     test('should type each advanced rule as the schema does', () {
@@ -27,6 +27,7 @@ void main() {
       expect(fields['all']!.kind, FieldKind.array);
       expect(fields['together']!.kind, FieldKind.array);
       expect(fields['chat']!.kind, FieldKind.array);
+      expect(fields['teams']!.kind, FieldKind.array);
       expect(npc.resolve(fields['all']!.schema['items'])['properties'], isA<Map<String, Object?>>());
     });
 
@@ -90,6 +91,16 @@ void main() {
       });
       expect(withRangedWeapon(potion, 'trident'), <String, Object?>{'damage': 4, 'weapon': 'trident'});
       expect(withRangedWeapon(potion, null), <String, Object?>{'damage': 4});
+    });
+
+    test('should drop lingering with the potion and keep it while the weapon stays a potion', () {
+      final JsonMap lingering = <String, Object?>{
+        ...withRangedWeapon(const <String, Object?>{}, 'potion'),
+        'lingering': true,
+      };
+      expect(withRangedWeapon(lingering, 'potion'), lingering);
+      expect(withRangedWeapon(lingering, 'snowball'), <String, Object?>{'weapon': 'snowball'});
+      expect(_paths(<String, Object?>{'ranged': lingering}), isEmpty);
     });
 
     test('should write the effect fields and read them back', () {

@@ -76,6 +76,9 @@
         "safeShot": true,
         "useAmmo": false
       },
+      "weapons": {
+        "autoswitch": false
+      },
       "victimDrops": false,
       "greetings": {
         "range": 10.0,
@@ -92,7 +95,6 @@
           "guardingLower",
           "respawnTime"
         ],
-        "unsupported": [],
         "unknown": [],
         "notes": [
           "guardingUpper: not half of a UUID"

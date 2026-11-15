@@ -59,6 +59,35 @@ final class RouteNavigator<P, I> {
         value.route = route; order.add(route, service.tickNumber); value.navigationStatus = "queued; route=" + route.id;
         return route.id;
     }
+    /** A chase walk whose goal moved less than this keeps its plan. */
+    static final double CHASE_KEEP = 1;
+    /**
+     * A combat chase toward a moving goal. A chase already walking keeps walking its path while the new goal is planned,
+     * and takes the new path once it is ready; a goal that moved less than {@link #CHASE_KEEP} keeps the current plan.
+     * Anything else starts as {@link #navigate} does.
+     */
+    UUID chase(PersistedNpcService<P, I>.Value value, WorldPosition destination, double blocksPerSecond) {
+        Route old = value.route;
+        if (old == null || !old.chase || !current(old) || !old.goal.world().equals(destination.world())) {
+            UUID started = navigate(value, destination, MovementProfile.Mode.WALK, blocksPerSecond);
+            value.route.chase = true;
+            return started;
+        }
+        if (old.goal.point().distance(destination.point()) < CHASE_KEEP && old.speed == blocksPerSecond) return old.id;
+        MovementProfile.Mode legMode = value.movement.legMode(MovementProfile.Mode.WALK, null);
+        validateDestination(value, destination, legMode, blocksPerSecond);
+        Route next = new Route(value, destination, legMode, blocksPerSecond, null, null);
+        next.chase = true;
+        if (old.execution != null && !old.execution.finished() && !old.execution.cancelled()) {
+            next.execution = old.execution;
+            next.segment = old.segment;
+            next.replanning = true;
+        }
+        if (old.plan != null) old.plan.cancel();
+        order.remove(old);
+        value.route = next; order.add(next, service.tickNumber); status(next, "replanning", "chase goal moved");
+        return next.id;
+    }
     /** Stops every route, read and recording of the NPC; true when one was running. */
     boolean stop(PersistedNpcService<P, I>.Value value) {
         boolean running = value.route != null || value.routeReadQueued || value.routeTask != null || value.recording != null
@@ -407,7 +436,7 @@ final class RouteNavigator<P, I> {
         }
         TickBudget budget = service.budget;
         try {
-            if (route.execution == null) {
+            if (route.execution == null || route.replanning) {
                 if (route.plan == null) {
                     BlockPos feet = BlockPos.containing(value.state.snapshot().position().point());
                     BlockPos goal = BlockPos.containing(route.goal.point());
@@ -415,16 +444,34 @@ final class RouteNavigator<P, I> {
                     // A segment of a long leg needs only the terrain it captures; an unloaded chunk there makes its plan wait.
                     if (!service.host.chunkLoaded(world, Math.floorDiv(feet.x(), 16), Math.floorDiv(feet.z(), 16))
                             || (request.direct() && !service.host.chunkLoaded(world, Math.floorDiv(goal.x(), 16), Math.floorDiv(goal.z(), 16)))) {
-                        suspend(route, "unavailable terrain; no chunk loading requested");
-                    } else if (service.falls.beforeLeg(route)) {
+                        if (route.replanning) route.replanning = false;
+                        else suspend(route, "unavailable terrain; no chunk loading requested");
+                    } else if (!route.replanning && service.falls.beforeLeg(route)) {
                         return RouteScheduler.Result.KEEP;
                     } else if (budget.planStarts <= 0) {
-                        status(route, "queued", "waiting for a planning turn");
-                        return RouteScheduler.Result.YIELD;
+                        // A chase still walking its old path keeps walking until a planning turn is free.
+                        if (!route.replanning) {
+                            status(route, "queued", "waiting for a planning turn");
+                            return RouteScheduler.Result.YIELD;
+                        }
                     } else {
                         budget.planStarts--;
                         route.plan = service.navigation.plan(world, request.bounds(), feet, request.aim(), route.profile(), request.limits());
-                        route.result = route.plan.future().toCompletableFuture(); status(route, "planning", "");
+                        route.result = route.plan.future().toCompletableFuture(); status(route, "planning", route.replanning ? "walking the last path meanwhile" : "");
+                    }
+                } else if (route.result.isDone() && route.replanning) {
+                    PathPlanner.Result planned = route.result.join(); route.capture = route.plan.capture().orElse(null); route.plan = null; route.result = null;
+                    route.replanning = false;
+                    // A plan that leads nowhere keeps the path already walked; the chase asks again on its next turn.
+                    if (planned.status() != PathPlanner.Status.UNAVAILABLE_TERRAIN) {
+                        LongLeg.Next next = route.longLeg.planned(planned);
+                        if (next == LongLeg.Next.FINAL || next == LongLeg.Next.SEGMENT || next == LongLeg.Next.ARRIVE) {
+                            route.segment = next == LongLeg.Next.SEGMENT;
+                            Vec3 at = value.state.snapshot().position().point();
+                            Vec3 end = next == LongLeg.Next.FINAL ? route.goal.point() : planned.path().getLast().point();
+                            route.execution = new PathExecution(at, RouteRules.ahead(planned.path(), at), end, route.profile());
+                            status(route, "moving", RouteRules.moving(route.segment));
+                        }
                     }
                 } else if (route.result.isDone()) {
                     PathPlanner.Result planned = route.result.join(); route.capture = route.plan.capture().orElse(null); route.plan = null; route.result = null;
@@ -618,6 +665,8 @@ final class RouteNavigator<P, I> {
         long deadline = Long.MAX_VALUE; final long progressStart;
         /** Segment: the path being walked ends part way along a long leg. */
         boolean awake = true, segment;
+        /** A combat chase; replanning: it walks the previous chase path while its new goal is planned. */
+        boolean chase, replanning;
         /** The style a route or manual leg walks in; a recording's walk and playback have none. */
         final StyledLeg styled;
         Route(PersistedNpcService<P, I>.Value value, WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg, MovementStyle style) {

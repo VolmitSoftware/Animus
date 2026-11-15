@@ -8,6 +8,7 @@ import art.arcane.animus.core.combat.RangedWeapon;
 import art.arcane.animus.core.combat.TargetCategory;
 import art.arcane.animus.core.combat.TargetKind;
 import art.arcane.animus.core.combat.TargetRef;
+import art.arcane.animus.core.combat.VanillaMelee;
 import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.core.runtime.RuntimeCombatWorld;
 import art.arcane.animus.core.virtual.Hitbox;
@@ -192,12 +193,13 @@ final class VanillaCombatWorld extends RuntimeCombatWorld<ServerPlayer, ItemStac
         double after = victim.isDeadOrDying() ? 0 : victim.getHealth() + victim.getAbsorptionAmount();
         double applied = Math.max(0, before - after);
         if (applied <= 0) return new DamageOutcome(DamageStatus.NO_CHANGE, 0, false);
-        if (knockback > 0 && !victim.isRemoved() && !victim.isDeadOrDying()) {
-            net.minecraft.world.phys.Vec3 at = victim.position();
-            double dx = at.x() - origin.x(), dz = at.z() - origin.z(), length = Math.hypot(dx, dz);
-            if (length > .01) {
-                net.minecraft.world.phys.Vec3 motion = victim.getDeltaMovement();
-                victim.setDeltaMovement(motion.x() + dx / length * knockback, Math.max(motion.y(), .25), motion.z() + dz / length * knockback);
+        if (VanillaMelee.extraKnockback(knockback) > 0 && !victim.isRemoved() && !victim.isDeadOrDying()) {
+            net.minecraft.world.phys.Vec3 at = victim.position(), motion = victim.getDeltaMovement();
+            Vec3 moving = new Vec3(motion.x(), motion.y(), motion.z());
+            Vec3 pushed = VanillaMelee.pushed(moving, at.x() - origin.x(), at.z() - origin.z(), knockback, kind == DamageKind.PROJECTILE,
+                    victim.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE));
+            if (!pushed.equals(moving)) {
+                victim.setDeltaMovement(pushed.x(), pushed.y(), pushed.z());
                 BodyMotion.resendVelocity(victim);
             }
         }

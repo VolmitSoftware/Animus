@@ -149,8 +149,7 @@
     "mysteryField": 1
   },
   "sentinelMapping": {
-    "converted": 82,
-    "unsupported": 2,
+    "converted": 84,
     "statistics": 7,
     "unknown": 1
   },
@@ -253,7 +252,7 @@
   },
   "documents": {
     "skins/691014b63e57a786cbb87c31de13fbd36e77d9ef739f496ea946be1695951b09.json": "691014b63e57a786cbb87c31de13fbd36e77d9ef739f496ea946be1695951b09",
-    "npcs/world/citizens-0.json": "24cccb2f1d37a616fa55ce9b4df77cdc97e07485508cbec23a26e84b2c1b7477",
+    "npcs/world/citizens-0.json": "165c744d74e60f695fd9d116e6bb3c4f28a4939bf88fb267c84ab23461590beb",
     "behaviors/citizens/text-1.json": "02e3b0edda950f99714e3c8164ff0327fc45cad1dcef69f2fb738875a8e34fd9",
     "npcs/world_nether/citizens-1.json": "a11a07165abe1b58596924976f48b9aff994ee4229c9f28a286da6ac47fc751e",
     "npcs/world/citizens-2.json": "de8ff774e0d203b6fbbd589f999578bf659f6eba65a9ae37a912718818730b2b",
@@ -266,10 +265,10 @@
     "npcs/world/citizens-8.json": "c2104dea3924f3247ce4bc7752d211d14284b2aaf58fadc3ac4756ae7fcb1c1c",
     "npcs/world/citizens-9.json": "4a8ea07d8b080f0ae084b738f12363d5ca662e9dbeeaa08083cd774ff9f727df",
     "npcs/world/citizens-10.json": "26b2434619e92b6098ad473205a06f02f8e27c3c61bbd77d45f974eb6b458534",
-    "npcs/world/citizens-11.json": "be64abf7dbabcf5bc39aaeaace9aea689e27b909d658f4d812dbf1cd594935ec",
-    "npcs/world/citizens-12.json": "4bcf21be9acd82a6b58ce836fc2a9d9e255d44ea5bfa5d08bd8d571455116ff3",
-    "npcs/world/citizens-13.json": "8bf0f2b46c2c5494ed68623338b94872a52c9abe208eaf8ccf6e5d6dc0405822",
-    "npcs/world/citizens-14.json": "dc9e4060a7904de01a1f18863dca35676fbb3bb98d04d66c36cce5e47f707afe",
+    "npcs/world/citizens-11.json": "608513b98c96577d7574b57c18d506930ad75dd780e534b7cc22dd1c0568d6f8",
+    "npcs/world/citizens-12.json": "ad52fcaee64abc8c78d35c6e0ee6d612aa6a505e1dfcc641450bdda16a1d6186",
+    "npcs/world/citizens-13.json": "c6527f415e2351711cf131dd939f99aca338c9d41d9dd034a2071e0dede421dc",
+    "npcs/world/citizens-14.json": "a9ae155d76a710a459718d0b08f437385354162dc9156c2552b816a25be6f497",
     "npcs/citizens/citizens-15.json": "71f176eb457e2b303fdb62f72ebd1b1d7b4686305b5de2b75a4d553e13808dab",
     "npcs/world/citizens-16.json": "6e17d6f3406f6f785d9263a26c4c823b1f7dbdc54bf5e223a9d2f2c5e56d8013",
     "npcs/world/citizens-17.json": "9be709445b61e75f99ca1962b3471d6e51fb4929acc8259b0ec44a0cf8f1f1d0",

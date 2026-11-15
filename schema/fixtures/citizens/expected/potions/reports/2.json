@@ -1,0 +1,28 @@
+{
+  "citizensId": 2,
+  "presentationWarnings": [
+    "/traits/equipment/hand: the item's name, enchantments and other data could not be read, so it shows as a plain minecraft:splash_potion; set the item again in the editor if it matters"
+  ],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/equipment/hand/type": "CONVERTED",
+    "/traits/equipment/hand/amount": "CONVERTED",
+    "/traits/equipment/hand/meta": "REQUIRES_REVIEW",
+    "/traits/sentinel/health": "CONVERTED",
+    "/traits/sentinel/range": "CONVERTED"
+  },
+  "reasons": {
+    "/traits/equipment/hand/meta": "the item meta could not be read; the item shows without it"
+  },
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": []
+}

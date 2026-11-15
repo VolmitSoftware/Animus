@@ -74,6 +74,7 @@ final class TargetRulesScreen<P, S> extends ToolScreen<P, S> {
         kinds.add(new Rule("Squads", List.of("squads"), Type.LIST, "minecraft:bell", "north", "Squads of other NPCs", Adds.TYPED));
         kinds.add(new Rule("Permissions", List.of("permissions"), Type.LIST, "minecraft:tripwire_hook", "town.outlaw", "Permission nodes a player has", Adds.TYPED));
         kinds.add(new Rule("Permission groups", List.of("groups"), Type.LIST, "minecraft:chest", "outlaws", "Permission groups a player is in", Adds.TYPED));
+        kinds.add(new Rule("Teams", List.of("teams"), Type.LIST, "minecraft:white_banner", "towny:Riverton", "A town, faction or scoreboard team", Adds.TYPED));
         kinds.add(new Rule("Effects", List.of("effects"), Type.LIST, "minecraft:potion", "minecraft:glowing", "Status effects the target has", Adds.TYPED));
         kinds.add(new Rule("Player name pattern", List.of("patterns", "players"), Type.LIST, "minecraft:paper", "^Guest", "A regular expression found in the name", Adds.TYPED));
         kinds.add(new Rule("NPC name pattern", List.of("patterns", "npcs"), Type.LIST, "minecraft:paper", "^bandit", "A regular expression found in the id or name", Adds.TYPED));

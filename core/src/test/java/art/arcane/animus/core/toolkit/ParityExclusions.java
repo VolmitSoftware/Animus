@@ -38,7 +38,9 @@ final class ParityExclusions {
             // Rule groups that must all match are lists of lists; single rules are edited in game.
             "modules.animus:combat.targets.together*",
             "modules.animus:combat.avoids.together*",
-            // Kept from an import and never read, so there is nothing to edit.
+            // An item fighting as another item is a map of item ids; the web editor edits it, the Combat screen turns switching on.
+            "modules.animus:combat.weapons.redirects.*",
+            // Kept from an import: the record, Sentinel's fight counts that /animus inspect adds to, and the report.
             "modules.animus:combat.preservedSettings",
             "modules.animus:combat.historicalStatistics",
             "modules.animus:combat.migrationReport",

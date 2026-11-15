@@ -91,7 +91,7 @@ class CombatScreensTest extends ToolkitHarness {
         select("guard");
         open(CombatScreen::new);
         assertEquals(Map.ofEntries(Map.entry(4, "guard"), Map.entry(10, "Fights"), Map.entry(11, "Attacks"), Map.entry(12, "Can be hurt"), Map.entry(13, "Health"), Map.entry(14, "Guard me"),
-                Map.entry(15, "Mobs can attack it"), Map.entry(18, "Rules"), Map.entry(19, "Targets"), Map.entry(20, "Ignores"), Map.entry(21, "Avoids"),
+                Map.entry(15, "Mobs can attack it"), Map.entry(16, "Switch weapons"), Map.entry(18, "Rules"), Map.entry(19, "Targets"), Map.entry(20, "Ignores"), Map.entry(21, "Avoids"),
                 Map.entry(27, "Live"), Map.entry(28, "Status"), Map.entry(29, "Engage"), Map.entry(30, "Disengage"), Map.entry(31, "Release"), Map.entry(32, "Guard me now"), Map.entry(33, "Server status"),
                 Map.entry(36, "Settings"), Map.entry(37, "Targeting"), Map.entry(38, "Avoidance"), Map.entry(39, "Squad"), Map.entry(40, "Guard"), Map.entry(41, "Pursuit"),
                 Map.entry(42, "Melee"), Map.entry(43, "Ranged"), Map.entry(44, "Greetings"), Map.entry(45, "Back"), Map.entry(53, "Help")), buttons());
@@ -99,6 +99,18 @@ class CombatScreensTest extends ToolkitHarness {
         assertTrue(lore("Status").contains("Shows in chat"), lore("Status"));
         assertTrue(lore("Server status").contains("Shows in chat"), lore("Server status"));
         assertTrue(lore(CombatScreen.SECTIONS).contains("Now: defaults"), lore(CombatScreen.SECTIONS));
+    }
+
+    @Test void switchWeaponsSavesAtOnceInAdvanced() {
+        advanced();
+        select("guard");
+        open(CombatScreen::new);
+        assertTrue(lore("Switch weapons").contains("Now: off"), lore("Switch weapons"));
+        click("Switch weapons", Click.LEFT);
+        assertTrue(combat("guard").weapons().autoswitch());
+        assertTrue(lore("Switch weapons").contains("Now: on"), lore("Switch weapons"));
+        click("Switch weapons", Click.LEFT);
+        assertFalse(module("guard").has("weapons") && module("guard").getAsJsonObject("weapons").has("autoswitch"));
     }
 
     @Test void fightsAndMobsSaveAtOnceWithUndo() {

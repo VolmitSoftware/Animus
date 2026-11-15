@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000a02",
+  "id": "citizens-2",
+  "group": "world",
+  "name": "Smudged",
+  "type": "minecraft:player",
+  "spawned": true,
+  "migration": {
+    "importId": "59c0cbe662034e0f491ec16806338d57765c635715db4e886a750f3fe298f535",
+    "citizensId": 2,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 8.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "equipment": {
+    "main_hand": {
+      "id": "minecraft:splash_potion",
+      "count": 1,
+      "imported": {
+        "type": "splash_potion",
+        "amount": 1,
+        "meta": "rO0ABXNyAA"
+      }
+    }
+  },
+  "modules": {
+    "animus:combat": {
+      "enabled": true,
+      "targeting": {
+        "scanRange": 16.0,
+        "reactionTicks": 0,
+        "memoryTicks": 0,
+        "retainTarget": false,
+        "fightBack": true,
+        "lineOfSight": "required"
+      },
+      "avoidance": {
+        "range": 10.0,
+        "fleeWhenAttacked": false
+      },
+      "guard": {
+        "followDistance": 7.0,
+        "pointRange": 4.0
+      },
+      "pursuit": {
+        "leashRange": 100.0,
+        "giveUpRange": 100.0,
+        "speed": 4.3,
+        "closeChase": true,
+        "rangedChase": false,
+        "teleportWhenStuck": true,
+        "returnToPost": true
+      },
+      "melee": {
+        "reach": 3.0,
+        "cooldownTicks": 30,
+        "fromEquipment": true
+      },
+      "ranged": {
+        "fromEquipment": true,
+        "enabled": false,
+        "cooldownTicks": 30,
+        "range": 100.0,
+        "inaccuracy": 0.0,
+        "safeShot": true,
+        "useAmmo": false
+      },
+      "weapons": {
+        "autoswitch": false
+      },
+      "victimDrops": false,
+      "greetings": {
+        "range": 10.0,
+        "cooldownTicks": 100
+      },
+      "preservedSettings": {},
+      "historicalStatistics": {},
+      "migrationReport": {
+        "converted": [
+          "health",
+          "range"
+        ],
+        "unknown": [],
+        "notes": [
+          "hand: the held potion's effect could not be read, so the NPC throws nothing"
+        ]
+      }
+    },
+    "animus:health": {
+      "killable": true,
+      "maximumHealth": 20.0,
+      "armorFromEquipment": true,
+      "knockback": true,
+      "regenerate": true,
+      "regenerateTicks": 100,
+      "protectedFromIgnored": false,
+      "protectFromRange": 0.0,
+      "death": {
+        "experience": 0
+      },
+      "respawn": {
+        "delayTicks": 100
+      }
+    },
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 8.5,
+        "y": 64,
+        "z": 0.5
+      },
+      "equipment": {
+        "hand": {
+          "type": "splash_potion",
+          "amount": 1,
+          "meta": "rO0ABXNyAA"
+        }
+      },
+      "sentinel": {
+        "health": 20,
+        "range": 16
+      }
+    }
+  }
+}

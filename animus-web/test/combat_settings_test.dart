@@ -20,7 +20,7 @@ const String _documented = '''
   "guard": {"player": "00000000-0000-0000-0000-000000000001", "followDistance": 7, "pointRange": 4, "assist": false, "catchUpDistance": 24, "replanDistance": 1.5},
   "pursuit": {"closeChase": true, "rangedChase": false, "speed": 4, "giveUpRange": 32, "leashRange": 64, "returnToPost": true, "teleportWhenStuck": false, "replanTicks": 20, "region": "castle"},
   "melee": {"enabled": true, "damage": 4, "reach": 3, "cooldownTicks": 20, "knockback": 0.4, "fromEquipment": false, "weaponDamage": {"minecraft:stick": 6}},
-  "ranged": {"enabled": true, "weapon": "arrow", "damage": 3, "range": 24, "minimumRange": 4, "cooldownTicks": 40, "velocity": 1.6, "inaccuracy": 0, "safeShot": true, "knockback": 0.2, "fromEquipment": false, "useAmmo": false},
+  "ranged": {"enabled": true, "weapon": "arrow", "damage": 3, "range": 24, "minimumRange": 4, "cooldownTicks": 40, "velocity": 1.6, "inaccuracy": 0, "safeShot": true, "knockback": 0.4, "fromEquipment": false, "useAmmo": false},
   "greetings": {"friendly": "Welcome to town.", "hostile": "Leave now.", "range": 10, "cooldownTicks": 100},
   "targetableByMobs": false,
   "victimDrops": true
@@ -301,6 +301,71 @@ void main() {
       }),
       <String>[r'$.modules.animus:combat.guard.player: expected canonical UUID'],
     );
+  });
+
+  test('should check weapon switching, weapon stand-ins, lingering potions and team rules', () {
+    expect(
+      _errors(<String, Object?>{
+        'weapons': <String, Object?>{
+          'autoswitch': true,
+          'redirects': <String, Object?>{'minecraft:stick': 'minecraft:bow', 'blaze_rod': 'diamond_sword'},
+        },
+        'ranged': <String, Object?>{
+          'weapon': 'potion',
+          'effect': <String, Object?>{'id': 'minecraft:poison'},
+          'lingering': true,
+        },
+        'targets': <String, Object?>{
+          'teams': <Object?>['towny:Riverton', 'nationenemies:North', 'factions:Red', 'sbteam:blue'],
+        },
+      }),
+      isEmpty,
+    );
+    expect(
+      _errors(<String, Object?>{
+        'weapons': <String, Object?>{
+          'autoswitch': 'yes',
+          'swap': true,
+          'redirects': <String, Object?>{'Stick': 'minecraft:bow', 'minecraft:egg': ':bow', 'minecraft:bow': 4},
+        },
+        'ranged': <String, Object?>{'lingering': true},
+        'ignores': <String, Object?>{
+          'teams': <Object?>['towny:Riverton', 'guild:Red', 'towny:two words', 'sbteam:'],
+        },
+      }),
+      unorderedEquals(<String>[
+        r'$.modules.animus:combat.weapons.autoswitch: expected boolean',
+        r'$.modules.animus:combat.weapons.swap: unknown setting',
+        r'$.modules.animus:combat.weapons.redirects.Stick: expected namespace:item key',
+        r'$.modules.animus:combat.weapons.redirects.minecraft:egg: expected namespace:item',
+        r'$.modules.animus:combat.weapons.redirects.minecraft:bow: expected string of at most 256 characters',
+        r'$.modules.animus:combat.ranged.lingering: only a potion lingers',
+        for (final int index in <int>[1, 2, 3])
+          '\$.modules.animus:combat.ignores.teams[$index]: '
+              'expected towny:, nation:, nationenemies:, nationallies:, factions:, factionsenemy:, factionsally: or sbteam: and a name',
+      ]),
+    );
+    expect(
+      _errors(<String, Object?>{
+        'weapons': <String, Object?>{
+          'redirects': <String, Object?>{for (int index = 0; index < 65; index++) 'minecraft:item_$index': 'minecraft:bow'},
+        },
+      }),
+      <String>[r'$.modules.animus:combat.weapons.redirects: at most 64 entries'],
+    );
+    expect(
+      _errors(<String, Object?>{
+        'ranged': <String, Object?>{
+          'weapon': 'potion',
+          'effect': <String, Object?>{'id': 'minecraft:poison'},
+          'lingering': 'yes',
+        },
+      }),
+      <String>[r'$.modules.animus:combat.ranged.lingering: expected boolean'],
+    );
+    expect(combatRulesScan(<String, Object?>{
+      'teams': <Object?>['towny:Riverton'],
+    }), isTrue);
   });
 
   test('should share ranges and paths with the editor', () {

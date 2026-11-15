@@ -1,6 +1,6 @@
 package art.arcane.animus.bukkit.combat;
 
-import art.arcane.animus.core.combat.AttackProfile;
+import art.arcane.animus.core.combat.VanillaMelee;
 import art.arcane.animus.core.combat.TargetKind;
 import art.arcane.animus.core.combat.TargetRef;
 import java.io.IOException;
@@ -10,7 +10,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
-import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Arrow;
 import org.bukkit.entity.Entity;
@@ -32,10 +31,27 @@ class CombatHitsTest {
             Path.of("src/main/java/art/arcane/animus/bukkit/runtime/RegionCombat.java"),
             Path.of("../adapters/mod-common/src/main/java/art/arcane/animus/mod/ModCombat.java"));
 
-    @Test void playerHitUsesTheSharedChargedFormula() {
-        assertEquals(AttackProfile.charged(6, .75), CombatHits.attackDamage(attack(6), .75f), 1e-9);
-        assertEquals(4.5, CombatHits.attackDamage(attack(4.5), 1f), 1e-9);
-        assertEquals(.2, CombatHits.attackDamage(null, 0f), 1e-9, "no attack attribute hits for 1 at full charge");
+    @Test void aSwingCarriesWhatDecidesACriticalHit() {
+        VanillaMelee.Swing swing = CombatHits.swing(player(.5f, false, false), 8, 0, 0, null);
+        assertEquals(8, swing.attackDamage(), 1e-9);
+        assertEquals(1, swing.charge(), 1e-9);
+        assertTrue(VanillaMelee.player(swing, VanillaMelee.Weapon.EMPTY, java.util.Set.of(VanillaMelee.Group.OTHER), new java.util.Random(1)).orElseThrow().critical());
+        VanillaMelee.Swing sprinting = CombatHits.swing(player(.5f, false, true), 8, 0, 0, null);
+        assertFalse(VanillaMelee.player(sprinting, VanillaMelee.Weapon.EMPTY, java.util.Set.of(VanillaMelee.Group.OTHER), new java.util.Random(1)).orElseThrow().critical(),
+                "a sprinting hit is never critical");
+        VanillaMelee.Swing standing = CombatHits.swing(player(0, true, false), 8, 0, 0, null);
+        assertFalse(VanillaMelee.player(standing, VanillaMelee.Weapon.EMPTY, java.util.Set.of(VanillaMelee.Group.OTHER), new java.util.Random(1)).orElseThrow().critical());
+    }
+    private static Player player(float fall, boolean onGround, boolean sprinting) {
+        return proxy(Player.class, (String name) -> switch (name) {
+            case "getAttackCooldown" -> 1f;
+            case "getFallDistance" -> fall;
+            case "isOnGround" -> onGround;
+            case "isSprinting" -> sprinting;
+            case "isClimbing", "isInWater", "isInsideVehicle", "isGliding" -> false;
+            case "getActivePotionEffects" -> java.util.List.of();
+            default -> null;
+        });
     }
 
     /** Paper resets the charge on the punch packet that follows an attack, before the virtual NPC hit is read on the main thread. */
@@ -43,7 +59,6 @@ class CombatHitsTest {
         long now = 1_000_000_000L;
         CombatHits.Swing swing = new CombatHits.Swing(1, now - 20_000_000L);
         assertEquals(1, CombatHits.charge(.04, swing, now), 1e-9, "the reset after the swing does not weaken the hit");
-        assertEquals(8, CombatHits.attackDamage(attack(8), CombatHits.charge(.04, swing, now)), 1e-9, "a full netherite sword hit");
         assertEquals(.04, CombatHits.charge(.04, new CombatHits.Swing(1, now - CombatHits.SWING_NANOS - 1), now), 1e-9, "an old swing does not count");
         assertEquals(.04, CombatHits.charge(.04, null, now), 1e-9);
         assertEquals(.9, CombatHits.charge(.9, new CombatHits.Swing(.3, now), now), 1e-9, "the live charge counts when it is higher");
@@ -65,7 +80,7 @@ class CombatHitsTest {
         for (Path listener : LISTENERS) {
             String source = Files.readString(listener);
             assertFalse(source.contains("charge * charge"), listener + " computes the charged damage itself");
-            assertTrue(source.contains("AttackProfile.charged(") || source.contains("CombatHits.attackDamage("), listener + " must use the shared formula");
+            assertTrue(source.contains("CombatHits.swing(") || source.contains("new VanillaMelee.Swing("), listener + " must hand the swing to the shared vanilla rules");
         }
         for (Path listener : LISTENERS.subList(0, 2)) {
             String source = Files.readString(listener);
@@ -74,7 +89,6 @@ class CombatHitsTest {
         }
     }
 
-    private static AttributeInstance attack(double value) { return proxy(AttributeInstance.class, (String name) -> "getValue".equals(name) ? value : null); }
     private static <T extends Entity> T entity(Class<T> type, UUID id, Object shooter) {
         return proxy(type, (String name) -> switch (name) {
             case "getUniqueId" -> id;

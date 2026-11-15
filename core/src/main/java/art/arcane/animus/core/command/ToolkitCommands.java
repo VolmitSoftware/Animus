@@ -123,7 +123,7 @@ final class ToolkitCommands extends CommandGroup {
         };
     }
 
-    /** The same two lines {@code /animus inspect} answers. */
+    /** The same lines {@code /animus inspect} answers. */
     private void inspect(CommandActor actor, String id) {
         Administration administration = new Administration(runtime());
         try {
@@ -131,7 +131,8 @@ final class ToolkitCommands extends CommandGroup {
                 Administration.Inspection inspection;
                 try { inspection = administration.inspect(id); }
                 catch (IOException | RuntimeException failure) { reply(actor, Palette.error(String.valueOf(failure.getMessage()))); return; }
-                if (!stopping()) actor.reply(() -> { if (!stopping()) AnimusCommandTree.inspect(actor, inspection, living().inspect(id)); });
+                java.util.Optional<String> fights = inspection.fights(runtime().combatStatistics());
+                if (!stopping()) actor.reply(() -> { if (!stopping()) AnimusCommandTree.inspect(actor, inspection, living().inspect(id), fights); });
             });
         } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }

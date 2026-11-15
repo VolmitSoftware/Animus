@@ -81,6 +81,12 @@ final class CombatFiles {
                 (String who) -> who + (on ? ": mobs can attack " : ": mobs no longer attack ") + (ids.size() == 1 ? "it" : "them"));
     }
 
+    /** Turns weapon switching on or off: the best carried melee weapon in reach and the best ranged one beyond it. */
+    String switching(List<String> ids, boolean on) throws IOException {
+        return change(COMBAT, ids, new Changes(Map.of(List.of("weapons", "autoswitch"), on ? Optional.of(new JsonPrimitive(true)) : Optional.empty())),
+                (String who) -> who + (on ? ": switches weapons" : ": keeps its own weapon"));
+    }
+
     /** Makes the NPCs guard {@code player}, dropping any NPC they guarded, or with empty stops them guarding a player. */
     String guard(List<String> ids, Optional<UUID> player) throws IOException {
         Map<List<String>, Optional<JsonElement>> values = new HashMap<>();

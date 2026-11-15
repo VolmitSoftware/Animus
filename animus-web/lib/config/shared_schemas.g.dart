@@ -21508,7 +21508,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   "type": "number",
                   "minimum": 0,
                   "maximum": 4,
-                  "description": "0.2 by default."
+                  "description": "0.4 by default, as a vanilla arrow; Punch adds 0.6 a level."
                 },
                 "effect": {
                   "type": "object",
@@ -21541,6 +21541,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 },
                 "useAmmo": {
                   "type": "boolean"
+                },
+                "lingering": {
+                  "type": "boolean",
+                  "description": "Potion only: it leaves a cloud that keeps applying its effect."
                 }
               },
               "allOf": [
@@ -21569,6 +21573,29 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   }
                 }
               ]
+            },
+            "weapons": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "autoswitch": {
+                  "type": "boolean",
+                  "description": "Take the best carried melee weapon in reach and the best ranged one beyond."
+                },
+                "redirects": {
+                  "type": "object",
+                  "description": "A held item fights as another, by item id, at most 64.",
+                  "maxProperties": 64,
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
+                  },
+                  "additionalProperties": {
+                    "type": "string",
+                    "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
+                  }
+                }
+              }
             },
             "greetings": {
               "type": "object",
@@ -21602,7 +21629,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             },
             "targetableByMobs": {
               "type": "boolean",
-              "description": "Nearby hostile mobs may attack the NPC."
+              "description": "Nearby mobs that would fight a player may attack the NPC."
             },
             "victimDrops": {
               "type": "boolean",
@@ -21666,13 +21693,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             },
             "sources": {
               "type": "array",
-              "description": "What can hurt it. Every attack by default; fire, lava and fall only when listed.",
+              "description": "What can hurt it. Every attack and explosions by default; fire, lava and fall only when listed.",
               "items": {
                 "enum": [
                   "players",
                   "mobs",
                   "npcs",
                   "projectiles",
+                  "explosions",
                   "fire",
                   "lava",
                   "fall"
@@ -22807,6 +22835,15 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "pattern": "^[A-Za-z0-9_.-]{1,64}$"
           }
         },
+        "teams": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "pattern": "^(factions|factionsally|factionsenemy|nation|nationallies|nationenemies|sbteam|towny):[^\\s:]{1,64}$"
+          },
+          "description": "Towns, nations, factions and scoreboard teams, as towny:Name or sbteam:Name."
+        },
         "effects": {
           "type": "array",
           "maxItems": 256,
@@ -23017,6 +23054,15 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "pattern": "^[A-Za-z0-9_.-]{1,64}$"
           }
         },
+        "teams": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "pattern": "^(factions|factionsally|factionsenemy|nation|nationallies|nationenemies|sbteam|towny):[^\\s:]{1,64}$"
+          },
+          "description": "Towns, nations, factions and scoreboard teams, as towny:Name or sbteam:Name."
+        },
         "effects": {
           "type": "array",
           "maxItems": 256,
@@ -23177,6 +23223,15 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "type": "string",
             "pattern": "^[A-Za-z0-9_.-]{1,64}$"
           }
+        },
+        "teams": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "pattern": "^(factions|factionsally|factionsenemy|nation|nationallies|nationenemies|sbteam|towny):[^\\s:]{1,64}$"
+          },
+          "description": "Towns, nations, factions and scoreboard teams, as towny:Name or sbteam:Name."
         },
         "effects": {
           "type": "array",

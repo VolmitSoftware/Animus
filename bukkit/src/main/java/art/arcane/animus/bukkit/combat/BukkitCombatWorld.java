@@ -17,6 +17,7 @@ import art.arcane.animus.core.combat.RangedWeapon;
 import art.arcane.animus.core.combat.TargetCategory;
 import art.arcane.animus.core.combat.TargetKind;
 import art.arcane.animus.core.combat.TargetRef;
+import art.arcane.animus.core.combat.VanillaMelee;
 import art.arcane.animus.core.virtual.Hitbox;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
@@ -78,11 +79,13 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
     private final Plugin plugin;
     private final NamespacedKey helperKey;
     private final Set<UUID> suppressedDrops = new HashSet<>();
+    private final PluginTeams teams;
 
     public BukkitCombatWorld(Plugin plugin, PersistedNpcService<Player, ItemStack> living) {
         super(living, new BukkitTerrain(plugin.getServer()));
         this.plugin = plugin;
         helperKey = new NamespacedKey(plugin, "combat_helper");
+        teams = new PluginTeams(plugin.getServer());
     }
 
     /** Whether this entity is a combat helper launched by an NPC. */
@@ -205,12 +208,21 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
         double after = victim.isDead() ? 0 : victim.getHealth() + victim.getAbsorptionAmount();
         double applied = Math.max(0, before - after);
         if (applied <= 0) return new DamageOutcome(DamageStatus.NO_CHANGE, 0, false);
-        if (knockback > 0 && victim.isValid() && !victim.isDead()) {
-            Location at = victim.getLocation();
-            Vector away = new Vector(at.getX() - origin.x(), 0, at.getZ() - origin.z());
-            if (away.lengthSquared() > .0001) victim.setVelocity(victim.getVelocity().add(away.normalize().multiply(knockback)).setY(Math.max(victim.getVelocity().getY(), .25)));
-        }
+        if (VanillaMelee.extraKnockback(knockback) > 0) push(victim, origin, knockback, kind == DamageKind.PROJECTILE, knockbackResistance(victim));
         return new DamageOutcome(DamageStatus.APPLIED, applied, victim.isDead() || victim.getHealth() <= 0);
+    }
+    /** Pushes a real body an NPC struck away from {@code origin} by what the hit adds to vanilla's own push (see {@link VanillaMelee#pushed}). */
+    static void push(LivingEntity victim, Vec3 origin, double knockback, boolean projectile, double resistance) {
+        if (!victim.isValid() || victim.isDead()) return;
+        Location at = victim.getLocation();
+        Vector velocity = victim.getVelocity();
+        Vec3 before = new Vec3(velocity.getX(), velocity.getY(), velocity.getZ());
+        Vec3 after = VanillaMelee.pushed(before, at.getX() - origin.x(), at.getZ() - origin.z(), knockback, projectile, resistance);
+        if (!after.equals(before)) victim.setVelocity(new Vector(after.x(), after.y(), after.z()));
+    }
+    private static double knockbackResistance(LivingEntity victim) {
+        AttributeInstance resistance = victim.getAttribute(Attribute.KNOCKBACK_RESISTANCE);
+        return resistance == null ? 0 : resistance.getValue();
     }
     @Override public boolean applyEffect(UUID attacker, CombatTarget target, CombatSettings.Effect effect) {
         return effect(plugin.getServer().getEntity(target.ref().id()), effect);
@@ -221,6 +233,41 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
         PotionEffectType type = key == null ? null : Registry.EFFECT.get(key);
         if (!(entity instanceof LivingEntity victim) || !victim.isValid() || victim.isDead() || type == null) return false;
         return victim.addPotionEffect(new PotionEffect(type, effect.durationTicks(), effect.amplifier()));
+    }
+    @Override public void igniteReal(TargetRef target, int ticks) { ignite(plugin.getServer().getEntity(target.id()), ticks); }
+    /** On the entity's owner: Fire Aspect or Flame sets it burning for at least this long. */
+    public static void ignite(Entity entity, int ticks) {
+        if (entity instanceof LivingEntity victim && victim.isValid() && !victim.isDead() && ticks > 0) victim.setFireTicks(Math.max(victim.getFireTicks(), ticks));
+    }
+    @Override public void brokePotion(WorldPosition at, String effect, boolean lingering, double radius, int ticks) {
+        World world = world(at.world());
+        Vec3 point = at.point();
+        if (world == null || !world.isChunkLoaded(((int) Math.floor(point.x())) >> 4, ((int) Math.floor(point.z())) >> 4)) return;
+        brokePotion(world, point, effect, lingering, radius, ticks);
+    }
+    /**
+     * On the owner of the chunk: a potion's breaking look, its colour splash and glass sound, and for a lingering one a
+     * cloud that carries no effect of its own, since the engine applies the effect.
+     */
+    public static void brokePotion(World world, Vec3 point, String effect, boolean lingering, double radius, int ticks) {
+        NamespacedKey key = NamespacedKey.fromString(effect);
+        PotionEffectType type = key == null ? null : Registry.EFFECT.get(key);
+        org.bukkit.Color colour = type == null ? org.bukkit.Color.PURPLE : type.getColor();
+        Location place = location(world, point);
+        world.playEffect(place, org.bukkit.Effect.POTION_BREAK, colour.asRGB());
+        if (!lingering) return;
+        world.spawn(place, org.bukkit.entity.AreaEffectCloud.class, (org.bukkit.entity.AreaEffectCloud cloud) -> {
+            cloud.setPersistent(false);
+            cloud.setRadius((float) radius);
+            cloud.setDuration(ticks);
+            cloud.setRadiusPerTick((float) (-radius / ticks));
+            cloud.setColor(colour);
+            cloud.setWaitTime(0);
+        });
+    }
+    @Override public boolean member(TargetRef player, String kind, String name) {
+        Player online = player.kind() == TargetKind.PLAYER ? plugin.getServer().getPlayer(player.id()) : null;
+        return online != null && teams.member(online, kind, name);
     }
     @Override public boolean permitted(TargetRef player, String node) {
         if (player.kind() != TargetKind.PLAYER) return false;

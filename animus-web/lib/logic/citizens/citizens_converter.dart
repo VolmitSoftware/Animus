@@ -253,7 +253,6 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
         for (final String field in reviewedSentinel.keys.toList()) {
           _increment(sentinelMapping, switch (sentinelDisposition(field)) {
             Disposition.converted => 'converted',
-            Disposition.unsupported => 'unsupported',
             Disposition.statistic => 'statistics',
             Disposition.unknown => 'unknown',
           });
@@ -546,8 +545,7 @@ FieldNote _rule(String path, JElement value) {
   if (trait == 'sentinel' && parts.length > 1) {
     return switch (sentinelDisposition(parts[1])) {
       Disposition.converted => const FieldNote(statusConverted, ''),
-      Disposition.statistic => const FieldNote(unsupportedPreserved, "Sentinel's record of past fights; history, not a setting"),
-      Disposition.unsupported => const FieldNote(unsupportedPreserved, 'Sentinel setting with no animus:combat equivalent; kept in the combat review data'),
+      Disposition.statistic => const FieldNote(statusConverted, "Sentinel's record of past fights; Animus keeps counting from it"),
       Disposition.unknown => const FieldNote(requiresIntegration, 'Sentinel field this converter does not know; kept in the combat review data'),
     };
   }

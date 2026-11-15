@@ -81,6 +81,8 @@ final class ViewerPresenter<P, I> {
     void resyncsDue() { if (!resyncs.isEmpty() && resyncs.values().removeIf((Long due) -> due <= service.tickNumber)) readmit(); }
     /** The player's failures and resync wait are forgotten and every player is considered again. */
     void reset(P player) { UUID id = service.host.id(player); disconnect(player); viewerFailures.remove(id); resyncs.remove(id); readmit(); }
+    /** A teleport keeps a watched viewer and its bodies; a player whose watch failed or waits to resync is admitted again. */
+    void teleported(P player) { if (!viewers.containsKey(service.host.id(player))) reset(player); }
     /** Forgets every viewer; their bodies leave their clients. Each viewer's triggers are forgotten too. */
     void forgetAll() {
         for (Viewer viewer : List.copyOf(viewers.values())) {
@@ -200,6 +202,11 @@ final class ViewerPresenter<P, I> {
                     sent++;
                     if (!current(viewer)) return sent;
                 }
+                if (body.spawnFinished && body.bound && sent < packetBudget && body.deliveredCrits != body.value.crits) {
+                    if (!critical(viewer, body)) return sent;
+                    sent++;
+                    if (!current(viewer)) return sent;
+                }
                 if (body.spawnFinished && body.bound && sent < packetBudget && body.deliveredAttackSwings != body.value.attackSwings) {
                     if (!attackSwing(viewer, body)) return sent;
                     sent++;
@@ -282,7 +289,7 @@ final class ViewerPresenter<P, I> {
             presented.labels = label.rows(); presented.labelledAt = service.tickNumber; presented.deliveredBubbleRevision = value.bubbleRevision;
             presented.placeholdered = service.runtime.placeholders().active() && NpcPresentation.placeholdered(value.spec, name);
             if (mirror != null && mirror.equipment()) presented.deliveredEquipmentRevision = -1;
-            presented.deliveredSwings = value.swings; presented.deliveredGestures = value.gestures; presented.deliveredAttackSwings = value.attackSwings; presented.deliveredAttributeRevision = value.attributeRevision;
+            presented.deliveredSwings = value.swings; presented.deliveredGestures = value.gestures; presented.deliveredAttackSwings = value.attackSwings; presented.deliveredCrits = value.crits; presented.deliveredAttributeRevision = value.attributeRevision;
             viewer.presentationOrder.addLast(presented); viewer.cosmeticOrder.addLast(presented);
             viewer.nativeIds += body.entityIds().length; viewer.pendingSpawns++;
             presented.deliveredPoseRevision = value.poseRevision;
@@ -384,6 +391,15 @@ final class ViewerPresenter<P, I> {
      * One swing for every attack since this viewer's last, admitted like a move: an attack is feedback for a hit the
      * viewer may feel, so it neither waits for cosmetic budget nor goes stale. A failed send is recorded and not retried.
      */
+    /** The critical hit and enchanted sparkle of the latest hit, admitted like an attack swing for the same reason. */
+    private boolean critical(Viewer viewer, Presented body) {
+        if (!admit(viewer, PresentationPressure.Tier.AUTHORITATIVE)) return false;
+        body.deliveredCrits = body.value.crits;
+        int kind = body.value.critKind;
+        if ((kind & PersistedNpcService.CRITICAL) != 0) sendCosmetic(viewer, body, "critical hit", () -> service.packets.gesture(viewer.player, body.body, 4));
+        if ((kind & PersistedNpcService.MAGIC) != 0) sendCosmetic(viewer, body, "enchanted hit", () -> service.packets.gesture(viewer.player, body.body, 5));
+        return true;
+    }
     private boolean attackSwing(Viewer viewer, Presented body) {
         if (!admit(viewer, PresentationPressure.Tier.AUTHORITATIVE)) return false;
         body.deliveredAttackSwings = body.value.attackSwings;
@@ -783,7 +799,7 @@ final class ViewerPresenter<P, I> {
     final class Presented {
         final PersistedNpcService<P, I>.Value value; final BodyTransport.Body body;
         boolean bound, retired, spawnFinished, despawnFinished, moving, equipping, looking;
-        long deliveredPoseRevision, deliveredEquipmentRevision, deliveredLookRevision, deliveredSwings, deliveredGestures, deliveredAttackSwings, deliveredAttributeRevision;
+        long deliveredPoseRevision, deliveredEquipmentRevision, deliveredLookRevision, deliveredSwings, deliveredGestures, deliveredAttackSwings, deliveredCrits, deliveredAttributeRevision;
         boolean attributing;
         List<Integer> sentRoster = List.of();
         int sentDragonPhase = DragonBody.PHASE_HOVERING;

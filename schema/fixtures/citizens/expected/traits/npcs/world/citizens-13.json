@@ -69,6 +69,9 @@
         "safeShot": true,
         "useAmmo": false
       },
+      "weapons": {
+        "autoswitch": false
+      },
       "victimDrops": false,
       "greetings": {
         "range": 10.0,
@@ -80,7 +83,6 @@
       "historicalStatistics": {},
       "migrationReport": {
         "converted": [],
-        "unsupported": [],
         "unknown": [],
         "notes": [
           "guardedNPC: the guarded NPC is not part of this import"

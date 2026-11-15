@@ -385,6 +385,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     @Override public UUID navigate(String id, WorldPosition destination, MovementProfile.Mode mode, double blocksPerSecond) {
         return routes.navigate(navigable(id), destination, mode, blocksPerSecond);
     }
+    /** A combat chase toward a moving goal; see {@link RouteNavigator#chase}. */
+    public UUID chase(String id, WorldPosition destination, double blocksPerSecond) { return routes.chase(navigable(id), destination, blocksPerSecond); }
     @Override public boolean stopNavigation(String id) {
         if (!available()) throw new IllegalStateException(down());
         owner(); Value value = value(id);
@@ -582,6 +584,31 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (!available()) return;
         owner(); Value value = value(id);
         if (value != null) { value.attackSwings++; value.foughtAt = tickNumber; }
+    }
+    /**
+     * Shows a critical hit, the enchanted hit sparkle, or both on the NPC for everyone who sees it, as feedback for a hit
+     * like an attack swing.
+     */
+    public void critical(String id, boolean critical, boolean magic) {
+        if (!available() || !critical && !magic) return;
+        owner(); Value value = value(id);
+        if (value == null) return;
+        value.crits++; value.critKind = (critical ? CRITICAL : 0) | (magic ? MAGIC : 0); value.foughtAt = tickNumber;
+    }
+    static final int CRITICAL = 1, MAGIC = 2;
+    /**
+     * Shows this item in the NPC's main hand for everyone who sees it, or the definition's own main-hand item again when
+     * empty. The definition is not changed; the next publication shows its own items again.
+     */
+    public void holdItem(String id, Optional<art.arcane.animus.core.npc.NpcItem> item) {
+        if (!available() || !packets.equipmentAvailable()) return;
+        owner(); Value value = value(id);
+        if (value == null || !BodyRules.equipmentSlots(value.spec.type()).contains(EquipmentSlot.MAIN_HAND)) return;
+        I shown = item.map((art.arcane.animus.core.npc.NpcItem held) -> host.item(held, "combat.mainHand", new ArrayList<>()))
+                .orElseGet(() -> NpcPresentation.equipment(value.spec, host::copy).get(EquipmentSlot.MAIN_HAND));
+        if (shown == null) value.equipment.remove(EquipmentSlot.MAIN_HAND);
+        else value.equipment.put(EquipmentSlot.MAIN_HAND, shown);
+        value.equipmentRevision++;
     }
     /** Raises or lowers the NPC's bow for everyone who sees it. */
     public void drawing(String id, boolean drawing) {
@@ -938,13 +965,16 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (triggers != null) triggers.forget(id);
         views.readmit();
     }
-    /** An accepted teleport. The dismount teleport keeps the world and nearby presentation. */
+    /**
+     * An accepted teleport ends the player's ride. Inside one world the client keeps its entities, so the NPCs it shows stay
+     * shown under the same ids and a hit lands at once; those left out of range leave as they would on foot. A world change
+     * resets the view through {@link #changedWorld}. The ride service's own dismount teleport is ignored.
+     */
     public void teleported(P player) {
         if (!available()) return;
-        // Rebuilding presentation after the dismount teleport would flicker every body.
         if (riders.restoring()) return;
         riders.playerLeaving(player, "teleport");
-        views.reset(player);
+        views.teleported(player);
     }
     public void changedWorld(P player) { if (available()) { riders.playerLeaving(player, "world-changed"); views.reset(player); } }
     public void respawned(P player) { if (available()) { riders.playerLeaving(player, "respawn"); views.reset(player); } }
@@ -1002,6 +1032,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         NpcPose lookPose; int lookMotion; long lookRevision; BodyLook look;
         /** Attacks so far, sent with moves; and whether a fight holds the bow drawn, shown through {@link #look}. */
         long attackSwings; boolean drawing, burning;
+        /** Critical hits shown so far and what the last one showed: {@link #CRITICAL}, {@link #MAGIC} or both. */
+        long crits; int critKind;
         /** How far an idle fall has carried the body, for fall damage. */
         final FallTracker fall = new FallTracker();
         /** Who dealt the health change being applied now, for its damage and death triggers; cleared once they fire. */

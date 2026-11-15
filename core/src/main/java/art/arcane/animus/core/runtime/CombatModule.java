@@ -55,6 +55,9 @@ public final class CombatModule implements AutoCloseable {
     private record Candidate(String id, CombatSettings settings, CombatLoadout loadout) {}
     private static final int DEFINITIONS_PER_TICK = 64;
     private static final int ACTIVATIONS_PER_TICK = 16;
+    /** How often changed fight counts are written: every thirty seconds. */
+    private static final int STATISTICS_FLUSH_TICKS = 600;
+    private long ticks;
     private final AnimusRuntime runtime;
     private static final String DISABLED = "disabled in config.toml";
     private final PersistedNpcService<?, ?> living;
@@ -102,6 +105,7 @@ public final class CombatModule implements AutoCloseable {
 
     private void start(CombatBudgets budgets) {
         engine = new CombatEngine(budgets, world, adapter, new SplittableRandom(), warnings);
+        engine.statistics(runtime.combatStatistics().sink());
         living.onLanding((UUID npc, Double damage) -> { if (engine != null) engine.environment(npc, HealthSettings.DamageSource.FALL, damage); });
         protection = engine.protection();
         observed = null; pass = null; refused = 0;
@@ -251,6 +255,7 @@ public final class CombatModule implements AutoCloseable {
             engine.tick();
             for (UUID npc : engine.drainDeletions()) deleteDead(npc);
             for (UUID npc : engine.drainPermadeaths()) markDead(npc);
+            if (++ticks % STATISTICS_FLUSH_TICKS == 0) runtime.combatStatistics().flush(files());
         } finally { metrics.stop(Subsystem.COMBAT, started); }
     }
     /** Combat NPCs waiting for a slot; owner thread. */

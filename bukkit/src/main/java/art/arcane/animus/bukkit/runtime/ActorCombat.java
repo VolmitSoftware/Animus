@@ -68,6 +68,7 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
     ActorCombat(RegionActor actor, RegionCombat combat, CombatSettings settings, CombatLoadout loadout) {
         this.actor = actor; this.combat = combat; this.settings = settings; this.loadout = loadout;
         engine = new CombatEngine(combat.budgets, this, combat.protection, new SplittableRandom(), combat::warn, allowance(combat.allowance()));
+        engine.statistics(combat.statistics);
         engine.register(actor.uuid, actor.id, settings, loadout);
         refreshIndexes();
     }
@@ -104,6 +105,7 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         for (UUID npc : engine.drainDeletions()) combat.deleteDead(npc);
         for (UUID npc : engine.drainPermadeaths()) combat.markDead(npc);
         refreshIndexes();
+        combat.flushStatistics();
         return !engine.drained();
     }
     /** A status line for commands and the publication. */
@@ -130,6 +132,12 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         combat.watching(actor, engine.watches());
     }
 
+    /** A message from the explosion's owner: vanilla explosion damage for this NPC's body there. */
+    void exploded(Optional<TargetRef> source, WorldPosition from, double damage) {
+        WorldPosition at = actor.state.snapshot().position();
+        if (!at.world().equals(from.world()) || at.point().distance(from.point()) > 14 + HIT_SLACK) return;
+        engine.exploded(actor.uuid, source, from, damage);
+    }
     /** A message from another owner: a hit on this NPC. Checked against where this NPC stands now. */
     void struck(TargetRef attacker, WorldPosition from, double amount, double knockback, DamageKind kind) {
         WorldPosition at = actor.state.snapshot().position();
@@ -144,11 +152,13 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         if (!engine.helperHitReal(helper, struck)) engine.helperHitBlock(helper);
     }
     void helperGone(UUID helper) { if (engine.retire(helper)) { helpers.remove(helper); helperPositions.remove(helper); } }
-    void playerAttack(Player player, double amount) {
+    /** A player's hit, on the player's region, which owns this NPC; vanilla's attack sounds play at the player. */
+    void playerAttack(Player player, art.arcane.animus.core.combat.VanillaMelee.Swing swing, art.arcane.animus.core.combat.VanillaMelee.Weapon weapon) {
         Location at = player.getLocation();
         TargetRef attacker = new TargetRef(TargetKind.PLAYER, player.getUniqueId());
         BukkitCombatWorld.observe(player, combat::helper).ifPresent((CombatTarget target) -> delivered.put(attacker, target));
-        engine.playerAttack(actor.uuid, attacker, RegionViewer.position(at), amount);
+        engine.playerAttack(actor.uuid, attacker, RegionViewer.position(at), swing, weapon).strike()
+                .ifPresent((art.arcane.animus.core.combat.VanillaMelee.Strike strike) -> art.arcane.animus.bukkit.combat.CombatHits.sounds(player, strike));
     }
 
     /**
@@ -220,6 +230,12 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
     @Override public double yaw(UUID npc) { return npc.equals(actor.uuid) ? actor.yaw : 0; }
     @Override public void swing(UUID npc) { if (npc.equals(actor.uuid)) actor.attackSwing(); }
     @Override public void drawing(UUID npc, boolean drawing) { if (npc.equals(actor.uuid)) actor.drawing(drawing); }
+    @Override public void hold(UUID npc, Optional<art.arcane.animus.core.npc.NpcItem> item) { if (npc.equals(actor.uuid)) actor.holdItem(item); }
+    /** One gesture shows per hit here, so a critical hit shows its own particles and an enchanted hit alone its sparkle. */
+    @Override public void critical(UUID npc, boolean critical, boolean magic) {
+        if (npc.equals(actor.uuid) && (critical || magic))
+            actor.animate(critical ? art.arcane.animus.core.npc.NpcAnimation.CRIT : art.arcane.animus.core.npc.NpcAnimation.MAGIC_CRIT);
+    }
     @Override public void knockback(UUID npc, Vec3 direction, double strength) { if (npc.equals(actor.uuid)) actor.combatKnockback(direction, strength); }
     @Override public void heal(UUID npc, double amount) {
         if (npc.equals(actor.uuid)) { actor.combatHeal(amount); return; }
@@ -339,6 +355,23 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         if (entity == null) return false;
         if (combat.owns(entity)) return BukkitCombatWorld.effect(entity, effect);
         return combat.onEntity(entity, () -> BukkitCombatWorld.effect(entity, effect));
+    }
+    @Override public void igniteReal(TargetRef target, int ticks) {
+        Entity entity = entity(target.id());
+        if (entity == null) return;
+        if (combat.owns(entity)) BukkitCombatWorld.ignite(entity, ticks);
+        else combat.onEntity(entity, () -> BukkitCombatWorld.ignite(entity, ticks));
+    }
+    @Override public void brokePotion(WorldPosition at, String effect, boolean lingering, double radius, int ticks) {
+        World world = combat.world(at.world());
+        Vec3 point = at.point();
+        int chunkX = ((int) Math.floor(point.x())) >> 4, chunkZ = ((int) Math.floor(point.z())) >> 4;
+        if (world == null || !combat.owns(world, chunkX, chunkZ, chunkX, chunkZ) || !world.isChunkLoaded(chunkX, chunkZ)) return;
+        BukkitCombatWorld.brokePotion(world, point, effect, lingering, radius, ticks);
+    }
+    @Override public boolean member(TargetRef player, String kind, String name) {
+        Player online = player.kind() == TargetKind.PLAYER ? combat.online(player.id()) : null;
+        return online != null && combat.owns(online) && combat.teams.member(online, kind, name);
     }
     @Override public boolean permitted(TargetRef player, String node) {
         if (player.kind() != TargetKind.PLAYER) return false;

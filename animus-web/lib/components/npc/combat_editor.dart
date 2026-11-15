@@ -1,12 +1,13 @@
 /// The Advanced part of `animus:combat` in the Combat tab: who it fights in
 /// detail (Targets, Ignores, Avoids), then how (Targeting, Melee, Ranged,
-/// Pursuit, Avoidance, Guard, Squad, Greetings). Every section is closed
+/// Weapons, Pursuit, Avoidance, Guard, Squad, Greetings). Every section is closed
 /// until it holds a value; each row is labelled in words, ticks also read as
 /// time, and the engine key is only in the row's (i) tip. Keys the module
 /// does not know stay under "Other fields".
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
+import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../config/docs_links.dart';
@@ -21,6 +22,7 @@ import '../../logic/suggest/field_profiles.dart';
 import '../../model/animus_document.dart';
 import '../../ui/field.dart';
 import '../../ui/icon_button.dart';
+import '../../ui/stack.dart';
 import '../inspect/typed_values_editor.dart';
 import '../mc/item_picker.dart';
 import 'combat_fields.dart';
@@ -114,6 +116,10 @@ class CombatSettingsPart extends StatelessWidget {
           switchField(form, const <JsonStep>['victimDrops'], combatWords('victimDrops'), fallback: true),
         ], also: 'victimDrops'),
         _ranged(),
+        _section('weapons', <Widget>[
+          ..._switches('weapons', docs: Docs.combatWeaponSwitching),
+          _WeaponStandIns(form: form),
+        ], docs: Docs.combatWeaponSwitching),
         _section('pursuit', <Widget>[
           for (final String key in const <String>['speed', 'giveUpRange', 'leashRange', 'replanTicks']) _number('pursuit', key),
           ..._switches('pursuit'),
@@ -148,7 +154,7 @@ class CombatSettingsPart extends StatelessWidget {
       ]);
 
   /// Section [name]; [also] is a root key it shows, which opens it too.
-  Widget _section(String name, List<Widget> children, {String? also}) {
+  Widget _section(String name, List<Widget> children, {String? also, DocLink docs = Docs.combat}) {
     final Object? value = form.read(<JsonStep>[name]);
     final KeyWords words = combatWords(name);
     final int set = asMap(value).length + (also != null && form.map.containsKey(also) ? 1 : 0);
@@ -156,7 +162,7 @@ class CombatSettingsPart extends StatelessWidget {
       key: ValueKey<String>('combat:$name'),
       title: words.label,
       tip: words.tip,
-      docs: Docs.combat,
+      docs: docs,
       count: set == 0 ? null : set,
       open: form.problems(<JsonStep>[name], nested: true).isNotEmpty,
       part: name,
@@ -184,15 +190,16 @@ class CombatSettingsPart extends StatelessWidget {
     );
   }
 
-  List<Widget> _switches(String section) => <Widget>[
+  List<Widget> _switches(String section, {DocLink? docs}) => <Widget>[
         for (final MapEntry<String, bool> entry in (combatBooleans[section] ?? const <String, bool>{}).entries)
-          switchField(form, <JsonStep>[section, entry.key], combatWords('$section.${entry.key}'), fallback: entry.value),
+          switchField(form, <JsonStep>[section, entry.key], combatWords('$section.${entry.key}'), fallback: entry.value, docs: docs),
       ];
 
   Widget _ranged() {
     const List<JsonStep> at = <JsonStep>['ranged'];
     final Object? weapon = form.read(const <JsonStep>['ranged', 'weapon']);
     final Object? effect = form.read(const <JsonStep>['ranged', 'effect']);
+    final bool lingering = weapon == 'potion' || form.read(const <JsonStep>['ranged', 'lingering']) != null;
     return _section('ranged', <Widget>[
       ..._switches('ranged').take(1),
       choiceField(
@@ -210,6 +217,8 @@ class CombatSettingsPart extends StatelessWidget {
         _number('effect', 'durationTicks', steps: const <JsonStep>['ranged', 'effect', 'durationTicks']),
       ] else if (effect != null)
         keptField(form, const <JsonStep>['ranged', 'effect'], combatWords('ranged.effect')),
+      if (lingering)
+        switchField(form, const <JsonStep>['ranged', 'lingering'], combatWords('ranged.lingering'), fallback: false, unsetAtDefault: true, docs: Docs.combatPotions),
       for (final String key in const <String>['damage', 'range', 'minimumRange', 'cooldownTicks', 'velocity', 'inaccuracy', 'knockback']) _number('ranged', key),
       ..._switches('ranged').skip(1),
     ]);
@@ -242,6 +251,108 @@ class CombatSettingsPart extends StatelessWidget {
       origin: origin,
       problems: (int index) => form.problems(at, nested: true),
       onChanged: (List<Object?> next) => form.put(at, next.isEmpty ? null : next.first),
+    );
+  }
+}
+
+/// `weapons.redirects`: held items that fight as another item, each on two
+/// lines (the held item, then what it fights as and its button) so both ids
+/// stay readable on a phone, and two more lines to add one.
+class _WeaponStandIns extends StatefulWidget {
+  const _WeaponStandIns({required this.form});
+
+  final ModuleForm form;
+
+  @override
+  State<_WeaponStandIns> createState() => _WeaponStandInsState();
+}
+
+class _WeaponStandInsState extends State<_WeaponStandIns> {
+  static const List<JsonStep> _at = <JsonStep>['weapons', 'redirects'];
+  String _held = '';
+  String _into = '';
+
+  /// A held item over the item it fights as and the pair's button.
+  static Widget _pair(Widget held, Widget into, Widget button, {Key? key}) => fieldStack(key: key, <Widget>[
+        held,
+        Row(gapSize: Gap.sm, children: <Widget>[mutedText('fights as'), Expanded(child: into), button]),
+      ]);
+
+  @override
+  Widget build(BuildContext context) {
+    final ModuleForm form = component.form;
+    final KeyWords words = combatWords('weapons.redirects');
+    final Object? raw = form.read(_at);
+    if (raw != null && raw is! Map<String, Object?>) return keptField(form, _at, words);
+    final JsonMap map = asMap(raw);
+    final List<String> items = map.keys.toList();
+    final String id = fieldId(form, _at);
+    final bool ready = _held.isNotEmpty && _into.isNotEmpty && !map.containsKey(_held) && map.length < combatMaxRedirects;
+    void add() {
+      if (!ready) return;
+      form.put(_at, <String, Object?>{...map, _held: _into});
+      setState(() {
+        _held = '';
+        _into = '';
+      });
+    }
+
+    return Field(
+      label: words.label,
+      tip: fieldTip(words, _at, 'Up to $combatMaxRedirects.'),
+      docs: Docs.combatWeaponSwitching,
+      forId: id,
+      problems: form.problems(_at, nested: true),
+      child: dom.div(styles: stackStyles(gap: Gap.md), <Widget>[
+        for (int index = 0; index < items.length; index++)
+          _pair(
+            key: ValueKey<String>('stand-in-$index'),
+            ItemPicker(
+              value: items[index],
+              label: 'Held item ${index + 1}',
+              preferred: _commonWeapons,
+              onChanged: (String next) {
+                final String item = next.trim();
+                if (item.isEmpty || (item != items[index] && map.containsKey(item))) return;
+                form.put(_at, renameKey(map, items[index], item));
+              },
+            ),
+            map[items[index]] is String
+                ? ItemPicker(
+                    value: map[items[index]]! as String,
+                    label: 'Item ${index + 1} fights as',
+                    preferred: _commonWeapons,
+                    onChanged: (String next) => form.put(<JsonStep>[..._at, items[index]], next.trim().isEmpty ? null : next.trim()),
+                  )
+                : TypedValueEditor(
+                    value: map[items[index]],
+                    label: 'Item ${index + 1} fights as',
+                    onChanged: (Object? next) => form.put(<JsonStep>[..._at, items[index]], next),
+                  ),
+            AppIconButton(icon: ArcaneIcon.x(), label: 'Remove ${items[index]}', onPressed: () => form.put(_at, asMap(writeIn(map, <JsonStep>[items[index]], null)))),
+          ),
+        _pair(
+          ItemPicker(
+            id: id,
+            value: _held,
+            label: words.label,
+            placeholder: 'minecraft:stick',
+            preferred: <String>[
+              for (final String item in _commonWeapons)
+                if (!map.containsKey(item)) item,
+            ],
+            onChanged: (String next) => setState(() => _held = next.trim()),
+          ),
+          ItemPicker(
+            value: _into,
+            label: 'Fights as',
+            placeholder: 'minecraft:bow',
+            preferred: _commonWeapons,
+            onChanged: (String next) => setState(() => _into = next.trim()),
+          ),
+          AppIconButton(icon: ArcaneIcon.plus(), label: 'Add stand-in', disabled: !ready, onPressed: add),
+        ),
+      ]),
     );
   }
 }

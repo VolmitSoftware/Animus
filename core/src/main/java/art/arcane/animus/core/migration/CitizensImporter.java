@@ -225,7 +225,6 @@ public final class CitizensImporter {
                             for (String field : new ArrayList<>(reviewedSentinel.keySet())) {
                                 increment(sentinelMapping, switch (SentinelMapping.disposition(field)) {
                                     case CONVERTED -> "converted";
-                                    case UNSUPPORTED -> "unsupported";
                                     case STATISTIC -> "statistics";
                                     case UNKNOWN -> "unknown";
                                 });
@@ -674,8 +673,7 @@ public final class CitizensImporter {
         if (parts.length == 1 && (value.isJsonObject() || value.isJsonArray())) return new Note(Status.CONVERTED, "");
         if (trait.equals("sentinel") && parts.length > 1) return switch (SentinelMapping.disposition(parts[1])) {
             case CONVERTED -> new Note(Status.CONVERTED, "");
-            case STATISTIC -> new Note(Status.UNSUPPORTED_PRESERVED, "Sentinel's record of past fights; history, not a setting");
-            case UNSUPPORTED -> new Note(Status.UNSUPPORTED_PRESERVED, "Sentinel setting with no animus:combat equivalent; kept in the combat review data");
+            case STATISTIC -> new Note(Status.CONVERTED, "Sentinel's record of past fights; Animus keeps counting from it");
             case UNKNOWN -> new Note(Status.REQUIRES_INTEGRATION, "Sentinel field this converter does not know; kept in the combat review data");
         };
         if (trait.equals("assignment") || trait.equals("triggers") || trait.startsWith("denizen") || trait.equals("constants"))

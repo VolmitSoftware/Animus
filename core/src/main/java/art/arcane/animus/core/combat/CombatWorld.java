@@ -12,7 +12,7 @@ import java.util.UUID;
 public interface CombatWorld {
     enum Visibility { CLEAR, BLOCKED, UNAVAILABLE }
     enum MoveStatus { ACCEPTED, BUSY, REJECTED }
-    enum DamageKind { MELEE, PROJECTILE }
+    enum DamageKind { MELEE, PROJECTILE, EXPLOSION }
     /** What the NPC's body touches: lava over water over fire, or nothing that hurts or quenches it. */
     enum Contact { NONE, FIRE, WATER, LAVA }
     /** {@code SCHEDULED}: handed to the target's owner, which applies it later and reports the fight itself. */
@@ -65,6 +65,17 @@ public interface CombatWorld {
     default void swing(UUID npc) {}
     /** Shows the NPC drawing its bow, crossbow or trident while true, as a player holding use does. */
     default void drawing(UUID npc, boolean drawing) {}
+    /** Shows this item in the NPC's main hand, or its definition's own item again when empty. The definition is not changed. */
+    default void hold(UUID npc, Optional<art.arcane.animus.core.npc.NpcItem> item) {}
+    /** Shows a critical hit on the NPC, the enchanted hit sparkle, or both, as vanilla shows them on a struck body. */
+    default void critical(UUID npc, boolean critical, boolean magic) {}
+    /** Sets a real entity burning for this long, as Fire Aspect does; the platform's own fire rules apply. */
+    default void igniteReal(TargetRef target, int ticks) {}
+    /**
+     * Shows a thrown potion breaking here, and for a lingering one its cloud of this radius for this long. Only the look:
+     * the engine alone applies the effect.
+     */
+    default void brokePotion(WorldPosition at, String effect, boolean lingering, double radius, int ticks) {}
     /** Horizontal facing in degrees; yaw 0 faces positive Z. */
     double yaw(UUID npc);
     void knockback(UUID npc, Vec3 direction, double strength);
@@ -87,6 +98,11 @@ public interface CombatWorld {
     boolean applyEffect(UUID attacker, CombatTarget target, CombatSettings.Effect effect);
     /** Whether an online player has this permission node. False for anything else. */
     boolean permitted(TargetRef player, String node);
+    /**
+     * Whether an online player belongs to a plugin team of this kind ({@link TargetRules#TEAM_KINDS}). False for anything
+     * else, and where the plugin that keeps that team is not installed or not reachable.
+     */
+    default boolean member(TargetRef player, String kind, String name) { return false; }
     /** Shows a line above one online player's hotbar. */
     default void actionBar(UUID player, String text) {}
     /** Credits a kill of this NPC to the player who dealt the last blow, as a mob kill counts. Other killers are ignored. */

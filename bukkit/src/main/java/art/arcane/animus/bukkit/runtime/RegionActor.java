@@ -478,11 +478,18 @@ final class RegionActor implements RegionOwner.Body {
     String displayName() { return displayName; }
     String navigationStatus() { return navigation(); }
     /** Combat movement: a walking leg towards the goal, at most 30 blocks across and 7 up or down per request. */
+    /**
+     * A chase on the navigation planner, walked in segments when the goal is farther than one plan reaches. A chase whose
+     * goal moved less than a block keeps its plan; otherwise it plans again from where the NPC stands.
+     */
     CombatWorld.MoveStatus combatMove(WorldPosition goal, double speed) {
         if (seated || riding.active() || !navigable()) return CombatWorld.MoveStatus.REJECTED;
         Vec3 origin = state.snapshot().position().point(), delta = goal.point().subtract(origin);
-        Vec3 clamped = new Vec3(origin.x() + clamp(delta.x(), 30), Math.floor(origin.y() + clamp(delta.y(), 7)), origin.z() + clamp(delta.z(), 30));
-        try { navigate(new WorldPosition(goal.world(), clamped), MovementProfile.Mode.WALK, speed); return CombatWorld.MoveStatus.ACCEPTED; }
+        WorldPosition feet = new WorldPosition(goal.world(), new Vec3(goal.point().x(), Math.floor(origin.y() + clamp(delta.y(), 7)), goal.point().z()));
+        Route current = route;
+        if (current != null && current.leg == null && current.recording == null && current.speed == speed && current.goal.world().equals(feet.world())
+                && current.goal.point().distance(feet.point()) < 1) return CombatWorld.MoveStatus.ACCEPTED;
+        try { navigate(feet, MovementProfile.Mode.WALK, speed); return CombatWorld.MoveStatus.ACCEPTED; }
         catch (IllegalArgumentException refused) { return CombatWorld.MoveStatus.REJECTED; }
         catch (IllegalStateException busy) { return CombatWorld.MoveStatus.BUSY; }
     }
@@ -902,6 +909,16 @@ final class RegionActor implements RegionOwner.Body {
         bubble = text;
         bubbleUntil = bubbleTicks + Math.max(1, ticks);
         bubbleRevision++;
+        publish(true);
+    }
+    /** A combat weapon switch: this item in the main hand, or the definition's own again when empty. The definition is not changed. */
+    void holdItem(java.util.Optional<art.arcane.animus.core.npc.NpcItem> item) {
+        if (!host.packets.equipmentAvailable() || !BodyRules.equipmentSlots(spec.type()).contains(EquipmentSlot.MAIN_HAND)) return;
+        ItemStack shown = item.isPresent() ? DefinitionItems.stack(item.get(), "combat.mainHand", new ArrayList<>())
+                : NpcPresentation.equipment(spec, ItemStack::clone).get(EquipmentSlot.MAIN_HAND);
+        if (shown == null) equipment.remove(EquipmentSlot.MAIN_HAND);
+        else equipment.put(EquipmentSlot.MAIN_HAND, shown);
+        equipmentRevision++;
         publish(true);
     }
     void setEquipment(EquipmentSlot slot, ItemStack item) {

@@ -6,8 +6,10 @@ import art.arcane.animus.core.navigation.BodyTerrain;
 import art.arcane.animus.core.navigation.LongLeg;
 import art.arcane.animus.core.navigation.MotionValidator;
 import art.arcane.animus.core.navigation.MovementProfile;
+import art.arcane.animus.core.navigation.PathPlanner;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
+import java.util.List;
 
 /** Stateless route and body rules shared by every runtime: the single owner thread and Folia's region owners. */
 public final class RouteRules {
@@ -35,6 +37,20 @@ public final class RouteRules {
      * One route leg in the NPC's own world. A leg of any length is planned as a {@link LongLeg}, one bounded capture at
      * a time.
      */
+    /**
+     * The planned steps from the first one ahead of where the body stands now. A chase plans while the body keeps walking,
+     * so the plan's first column can lie behind it.
+     */
+    static List<PathPlanner.Step> ahead(List<PathPlanner.Step> path, Vec3 at) {
+        int nearest = 0;
+        double best = Double.POSITIVE_INFINITY;
+        for (int i = 0; i < Math.min(path.size(), 6); i++) {
+            double distance = path.get(i).point().distance(at);
+            if (distance < best) { best = distance; nearest = i; }
+        }
+        int from = Math.min(nearest + 1, path.size() - 1);
+        return from == 0 ? path : path.subList(from, path.size());
+    }
     public static void validateLeg(WorldPosition origin, WorldPosition destination, MovementProfile.Mode mode, double speed, double hullWidth, double hullHeight) {
         if (!Double.isFinite(speed) || speed < 1 || speed > MAXIMUM_SPEED) throw new IllegalArgumentException("Navigation speed must be 1..10 blocks/second");
         if (!origin.world().equals(destination.world())) throw new IllegalArgumentException("Navigation requires the same world");

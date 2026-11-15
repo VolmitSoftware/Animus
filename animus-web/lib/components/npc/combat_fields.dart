@@ -147,14 +147,16 @@ Widget numberField(
 }
 
 /// An on/off value that reads [fallback] while unset. With [unsetAtDefault]
-/// switching back to [fallback] removes the key instead of writing it.
-Widget switchField(ModuleForm form, List<JsonStep> steps, KeyWords words, {required bool fallback, bool unsetAtDefault = false}) {
+/// switching back to [fallback] removes the key instead of writing it;
+/// [docs] links the row's (i) to its wiki heading.
+Widget switchField(ModuleForm form, List<JsonStep> steps, KeyWords words, {required bool fallback, bool unsetAtDefault = false, DocLink? docs}) {
   final Object? value = form.read(steps);
   if (value != null && value is! bool) return keptField(form, steps, words);
   return Field(
     key: ValueKey<String>('field:${form.key}:${steps.join('.')}'),
     label: words.label,
     tip: fieldTip(words, steps, 'Default ${fallback ? 'on' : 'off'}.'),
+    docs: docs,
     problems: form.problems(steps),
     child: combatSwitch(
       value: (value as bool?) ?? fallback,
@@ -395,12 +397,14 @@ class StringListField extends StatefulWidget {
     this.suggestions = const <FieldOption>[],
     this.placeholder,
     this.profile = FieldProfile.none,
+    this.docs,
     super.key,
   });
 
   final ModuleForm form;
   final List<JsonStep> steps;
   final KeyWords words;
+  final DocLink? docs;
 
   /// One entry, for the buttons: "mob type" gives "Add mob type".
   final String noun;
@@ -436,6 +440,7 @@ class _StringListFieldState extends State<StringListField> {
     return Field(
       label: field.words.label,
       tip: fieldTip(field.words, field.steps),
+      docs: field.docs,
       forId: id,
       problems: field.form.problems(field.steps, nested: true),
       child: fieldStack(<Widget>[

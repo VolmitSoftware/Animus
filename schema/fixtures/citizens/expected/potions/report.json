@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "converterVersion": 21,
+  "fieldPathFormat": "json-pointer",
+  "importId": "59c0cbe662034e0f491ec16806338d57765c635715db4e886a750f3fe298f535",
+  "sourceSha256": "65b3044d4ecd34be4a1e531a6540f0678d6d7ae738fe23599f177d7304f30d98",
+  "worldMap": {},
+  "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs spawn as Citizens had them, and converted patrols, schedules, combat, riding, shops and builds are on.",
+  "records": 3,
+  "valid": 3,
+  "skins": 0,
+  "behaviors": 0,
+  "shops": 0,
+  "conversions": {
+    "routes": 0,
+    "routePoints": 0,
+    "routeGuides": 0,
+    "lookClose": 0,
+    "textBehaviors": 0,
+    "commandBehaviors": 0,
+    "skinsKept": 0
+  },
+  "citizensDefaults": {
+    "lookclose": {
+      "enabled": false,
+      "realisticlooking": false,
+      "disablewhilenavigating": true
+    },
+    "inferred": []
+  },
+  "traits": {
+    "type": 3,
+    "location": 3,
+    "equipment": 3,
+    "sentinel": 3
+  },
+  "types": {
+    "player": 3
+  },
+  "sentinelFields": {
+    "health": 3,
+    "range": 3
+  },
+  "sentinelMapping": {
+    "converted": 6
+  },
+  "issues": [],
+  "migrationWarnings": [
+    "citizens-2: /traits/equipment/hand: the item's name, enchantments and other data could not be read, so it shows as a plain minecraft:splash_potion; set the item again in the editor if it matters"
+  ],
+  "remappedLocations": 0,
+  "resolvedReferences": 0,
+  "unresolvedReferences": 0,
+  "sourceFields": {},
+  "idMap": {
+    "0": "0a1b2c3d-0000-4000-8000-000000000a00",
+    "1": "0a1b2c3d-0000-4000-8000-000000000a01",
+    "2": "0a1b2c3d-0000-4000-8000-000000000a02"
+  },
+  "documents": {
+    "npcs/world/citizens-0.json": "efe0b952cc380761933c533b75ccccb7424aaa76853e354d651e3301f22966c2",
+    "npcs/world/citizens-1.json": "a9cde820b14e42c9a1e2102b19d792599aa8876d5f15679bad03a935301a20ac",
+    "npcs/world/citizens-2.json": "2b78b4146ae77a61a5cefe0a7925edfbae665ec992ca0a68b3c82d639c17149b"
+  }
+}

@@ -18,12 +18,12 @@ import java.util.function.Function;
 
 /**
  * Combat for the selection. Simple shows six controls that save at once: Fights, Attacks, Can be hurt, Health, Guard
- * me and Mobs can attack it. Advanced adds three labelled rows: the rule lists, the live {@code /animus combat} actions
- * and the eight setting sections. File changes go to every selected NPC in one transaction and ask once above {@link #BULK}.
+ * me and Mobs can attack it. Advanced adds Switch weapons beside them and three labelled rows: the rule lists, the live
+ * {@code /animus combat} actions and the eight setting sections. File changes go to every selected NPC in one transaction and ask once above {@link #BULK}.
  * A control whose NPCs differ reads Mixed, and a change from there sets all of them to one stated value after asking.
  */
 final class CombatScreen<P, S> extends ToolScreen<P, S> {
-    static final int HEADER = 4, FIGHTS = 10, ATTACKS = 11, HURT = 12, HEALTH = 13, GUARD = 14, MOBS = 15,
+    static final int HEADER = 4, FIGHTS = 10, ATTACKS = 11, HURT = 12, HEALTH = 13, GUARD = 14, MOBS = 15, SWITCH = 16,
             RULES = 18, TARGETS = 19, IGNORES = 20, AVOIDS = 21,
             LIVE = 27, STATUS = 28, ENGAGE = 29, DISENGAGE = 30, RELEASE = 31, GUARD_NOW = 32, SERVER = 33,
             SETTINGS = 36, SECTIONS = 37;
@@ -60,8 +60,11 @@ final class CombatScreen<P, S> extends ToolScreen<P, S> {
         health(npcs);
         guard(npcs);
         long mobs = npcs.stream().filter((NpcDefinition npc) -> CombatFiles.literalTrue(combat(npc), "targetableByMobs")).count();
-        toggle(MOBS, "Mobs can attack it", "Hostile mobs nearby may attack it", mobs, npcs.size(), (Boolean on) -> (CombatFiles files, List<String> chosen) -> files.mobs(chosen, on));
+        toggle(MOBS, "Mobs can attack it", "Mobs that would fight a player may attack it", mobs, npcs.size(), (Boolean on) -> (CombatFiles files, List<String> chosen) -> files.mobs(chosen, on));
         if (!advanced()) return;
+        long switching = npcs.stream().filter((NpcDefinition npc) -> CombatFiles.at(combat(npc), List.of("weapons", "autoswitch"))
+                .map((JsonElement value) -> value.isJsonPrimitive() && value.getAsJsonPrimitive().isBoolean() && value.getAsBoolean()).orElse(false)).count();
+        toggle(SWITCH, "Switch weapons", "Best carried weapon for the range", switching, npcs.size(), (Boolean on) -> (CombatFiles files, List<String> chosen) -> files.switching(chosen, on));
         label(RULES, "Rules", "Who it attacks, ignores and avoids");
         rules(TARGETS, "minecraft:target", "targets", "Who it attacks", first);
         rules(IGNORES, "minecraft:white_wool", "ignores", "Who it never attacks", first);

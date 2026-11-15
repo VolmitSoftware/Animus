@@ -82,12 +82,15 @@ public final class BukkitShots {
         WorldPosition at = position(projectile);
         WorldPosition from = new WorldPosition(at.world(), flight.origin().orElse(at.point()));
         double arrowDamage = 0;
+        int punch = 0;
         if (kind == RealShot.Kind.ARROW && projectile instanceof AbstractArrow arrow) {
             ItemStack weapon = arrow.getWeapon();
             int power = weapon == null ? 0 : weapon.getEnchantmentLevel(Enchantment.POWER);
+            punch = weapon == null ? 0 : weapon.getEnchantmentLevel(Enchantment.PUNCH);
             arrowDamage = RealShot.arrowDamage(arrow.getVelocity().length(), arrow.getDamage(), power, arrow.isCritical(), random);
         }
-        return RealShot.of(kind, shooter, from, arrowDamage, kind == RealShot.Kind.POTION && projectile instanceof ThrownPotion potion ? instant(potion) : Optional.empty());
+        return RealShot.of(kind, shooter, from, arrowDamage, kind == RealShot.Kind.POTION && projectile instanceof ThrownPotion potion ? instant(potion) : Optional.empty())
+                .enchanted(punch, kind == RealShot.Kind.ARROW && projectile.getFireTicks() > 0);
     }
     private static Optional<CombatSettings.Effect> instant(ThrownPotion potion) {
         for (PotionEffect effect : potion.getEffects()) {

@@ -18,6 +18,14 @@ void main() {
       expect(withModuleField(module, const <JsonStep>['respawn', 'points'], <Object?>[]), module);
     });
 
+    test('should count explosions as an attack source, on while sources is unset', () {
+      expect(healthAttackSources, <String>['players', 'mobs', 'npcs', 'projectiles', 'explosions']);
+      expect(healthSources, <String>['players', 'mobs', 'npcs', 'projectiles', 'explosions', 'fire', 'lava', 'fall']);
+      expect(healthSourcesOn(const <String, Object?>{}), contains('explosions'));
+      final JsonMap calm = withHealthSources(const <String, Object?>{}, <String>{'players', 'mobs', 'npcs', 'projectiles'});
+      expect(calm['sources'], <String>['players', 'mobs', 'npcs', 'projectiles'], reason: 'turning explosions off lists the rest');
+    });
+
     test('should treat missing sources as every attack and drop the key when exactly those are on again', () {
       final JsonMap off = withHealthSources(const <String, Object?>{'killable': true}, <String>{'players', 'npcs', 'projectiles'});
       expect(off['sources'], <String>['players', 'npcs', 'projectiles']);
@@ -28,7 +36,7 @@ void main() {
 
     test('should keep environmental sources listed beside every attack, in the schema order', () {
       final JsonMap burning = withHealthSources(const <String, Object?>{'killable': true}, <String>{'lava', ...healthAttackSources});
-      expect(burning['sources'], <String>['players', 'mobs', 'npcs', 'projectiles', 'lava']);
+      expect(burning['sources'], <String>['players', 'mobs', 'npcs', 'projectiles', 'explosions', 'lava']);
       expect(healthSources, containsAll(<String>['fire', 'lava', 'fall']));
       expect(withHealthSources(burning, healthAttackSources.toSet()), <String, Object?>{'killable': true});
       expect(withHealthSources(const <String, Object?>{}, const <String>{}), <String, Object?>{'sources': <String>[]}, reason: 'nothing hurts it');

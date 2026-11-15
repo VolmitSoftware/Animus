@@ -14,6 +14,11 @@ import art.arcane.animus.bukkit.combat.BukkitCombatWorld;
 import art.arcane.animus.bukkit.combat.BukkitShots;
 import art.arcane.animus.bukkit.combat.CombatLimits;
 import art.arcane.animus.bukkit.combat.MobProfile;
+import art.arcane.animus.bukkit.combat.Explosions;
+import art.arcane.animus.bukkit.combat.NpcDecoys;
+import art.arcane.animus.core.combat.CombatEngine;
+import art.arcane.animus.core.combat.CombatWorld;
+import art.arcane.animus.core.combat.VanillaMelee;
 import art.arcane.animus.bukkit.protection.RegionCombatProtection;
 import art.arcane.animus.bukkit.protection.RegionFlags;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
@@ -31,20 +36,16 @@ import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.VirtualNpcState;
 import art.arcane.animus.core.virtual.WorldPosition;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.OptionalDouble;
 import java.util.Set;
 import java.util.SplittableRandom;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
-import org.bukkit.FluidCollisionMode;
 import org.bukkit.World;
-import org.bukkit.util.Vector;
 import org.bukkit.Location;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
@@ -72,7 +73,8 @@ import org.bukkit.scheduler.BukkitTask;
 /**
  * The combat module on Bukkit: runs the core engine for NPCs whose definitions enable combat, and keeps the
  * explicit administrator adapter (one manual hit, mob control). NPCs whose combat sets {@code targetableByMobs} draw
- * idle nearby melee hostile mobs through the same bounded, restorable mob control. Preview services never reach this.
+ * nearby mobs that would fight a player in their place through {@link NpcDecoys}. Explosions reach every combat NPC
+ * that takes them. Preview services never reach this.
  */
 final class RuntimeCombatService implements Listener, AutoCloseable {
     private record Registration(String id, VirtualNpcState state, BukkitCombatBridge.Combatant combatant) {}
@@ -80,11 +82,12 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     private record Flying(Projectile projectile, RealShot.Kind kind, TargetRef shooter, ProjectileFlight flight, long expires) {}
     /** At most this many projectiles are followed at once, each for at most this many ticks. */
     static final int MAXIMUM_FLYING = 2048, FLIGHT_TICKS = 1200;
-    /** How often targetable NPCs look for idle mobs, how far, how many mobs one NPC draws at once, and NPCs per pass. */
-    static final int TARGETABLE_SCAN_TICKS = 20, TARGETABLE_PER_NPC = 3, TARGETABLE_NPCS_PER_PASS = 32;
-    static final double TARGETABLE_RANGE = 16;
-    /** A drawn mob returns to its own AI after this long, so it can choose a player again. */
-    static final int TARGETABLE_LEASE_TICKS = 200;
+    /** How often targetable NPCs look for mobs that would fight them, and how many NPCs one pass visits. */
+    static final int TARGETABLE_SCAN_TICKS = 20, TARGETABLE_NPCS_PER_PASS = 32;
+    /** How long a fight between a player and an NPC turns the player's wolves on the NPC. */
+    static final long FOUGHT_TICKS = 200;
+    /** How far an explosion can reach an NPC: twice the largest vanilla power. */
+    static final double EXPLOSION_REACH = 14;
     private final JavaPlugin plugin;
     private final AnimusRuntime runtime;
     private final PersistedNpcService<Player, ItemStack> living;
@@ -102,6 +105,12 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     private int targetableCursor;
     private Map<String, NpcDefinition> targetableSource;
     private List<NpcDefinition> targetableCache = List.of();
+    private Map<UUID, NpcDefinition> targetableByUuid = Map.of();
+    private final NpcDecoys decoys;
+    /** Marks each projectile that struck an NPC, so a decoy it touches again counts nothing. */
+    private final org.bukkit.NamespacedKey struckKey;
+    /** When each player and NPC last fought, either way round, by NPC; pruned as they age. */
+    private final Map<UUID, Map<UUID, Long>> fought = new HashMap<>();
     /** Folia: combat runs on each NPC's region owner; null elsewhere. */
     private final RegionNpcRuntime regions;
     /** Why region combat cannot run, or null while it runs. */
@@ -123,6 +132,8 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
                 (String message) -> plugin.getLogger().warning(message), (UUID id) -> plugin.getServer().getPlayer(id) != null);
         bridge = new BukkitCombatBridge(plugin, version, folia, CombatLimits.DEFAULT, this::bridgeAllows,
                 module.supported() ? new EngineDefense() : BukkitCombatBridge.Defense.NONE);
+        decoys = folia ? null : new NpcDecoys(plugin, new DecoyHost());
+        struckKey = new org.bukkit.NamespacedKey(plugin, "struck_npc");
         if (module.supported()) {
             plugin.getServer().getPluginManager().registerEvents(this, plugin);
             task = plugin.getServer().getScheduler().runTaskTimer(plugin, this::tick, 1, 1);
@@ -139,7 +150,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         if (!bridge.available()) return "Combat unavailable: " + capability.unavailableReason() + modulePart;
         prune();
         return "Combat ready" + modulePart + " | manual registrations=" + bridge.combatantCount() + " | controlled-mobs=" + bridge.controlledMobCount()
-                + " | mob-types=" + String.join(",", capability.controlledMobTypes())
+                + " | mob-types=" + String.join(",", capability.controlledMobTypes()) + " | decoys=" + decoys.size()
                 + (capability.mobControlUnavailableReason() == null ? "" : " | " + capability.mobControlUnavailableReason());
     }
 
@@ -208,24 +219,21 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     private void tick() {
         module.tick();
         flights();
+        if (!module.running()) { decoys.close(); return; }
+        decoys.tick();
         if (++ticks % TARGETABLE_SCAN_TICKS == 0) drawMobs();
     }
 
-    /**
-     * Each targetable NPC draws nearby melee hostile mobs that have no target of their own and can see it, up to a few at
-     * once. A drawn mob walks to the NPC and attacks it under the NPC's defense, then returns to its own AI.
-     */
+    /** A share of the targetable NPCs draws mobs each pass, so every one is visited within a few seconds. */
     private void drawMobs() {
-        if (!bridge.available() || bridge.capabilities().controlledMobTypes().isEmpty()) return;
-        prune();
         List<NpcDefinition> targetable = targetable();
+        fought.values().forEach((Map<UUID, Long> players) -> players.values().removeIf((Long at) -> ticks - at > FOUGHT_TICKS));
+        fought.values().removeIf(Map::isEmpty);
         if (targetable.isEmpty()) return;
         int passes = Math.min(TARGETABLE_NPCS_PER_PASS, targetable.size());
-        for (int i = 0; i < passes; i++) {
-            NpcDefinition definition = targetable.get(Math.floorMod(targetableCursor++, targetable.size()));
-            try { draw(definition); }
-            catch (RuntimeException refused) { /* Inactive, protected or at the control limit: the next pass tries again. */ }
-        }
+        List<UUID> visit = new ArrayList<>();
+        for (int i = 0; i < passes; i++) visit.add(targetable.get(Math.floorMod(targetableCursor++, targetable.size())).uuid());
+        decoys.draw(visit);
     }
 
     /** Definitions that mobs may target, read again only when the definition snapshot changes. */
@@ -233,64 +241,66 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         Map<String, NpcDefinition> snapshot = runtime.npcs().snapshot();
         if (snapshot != targetableSource) {
             List<NpcDefinition> found = new ArrayList<>();
-            for (NpcDefinition definition : snapshot.values()) if (CombatModule.targetableByMobs(definition)) found.add(definition);
-            targetableCache = List.copyOf(found); targetableSource = snapshot;
+            Map<UUID, NpcDefinition> byUuid = new HashMap<>();
+            for (NpcDefinition definition : snapshot.values()) if (CombatModule.targetableByMobs(definition)) { found.add(definition); byUuid.put(definition.uuid(), definition); }
+            targetableCache = List.copyOf(found); targetableByUuid = Map.copyOf(byUuid); targetableSource = snapshot;
         }
         return targetableCache;
     }
 
-    private void draw(NpcDefinition definition) {
-        if (living.combat(definition.id()).isEmpty()) return;
-        Registration npc = registration(definition.id(), CombatModule::targetableByMobs);
-        UUID npcId = npc.combatant().npcId();
-        int drawn = 0;
-        for (BukkitCombatBridge.MobLease lease : leases.values()) if (lease.npcId().equals(npcId)) drawn++;
-        if (drawn >= TARGETABLE_PER_NPC) return;
-        VirtualNpcState.Snapshot snapshot = npc.state().snapshot();
-        World world;
-        try { world = plugin.getServer().getWorld(UUID.fromString(snapshot.position().world())); }
-        catch (IllegalArgumentException notUuid) { return; }
-        Vec3 at = snapshot.position().point();
-        if (world == null || !world.isChunkLoaded(((int) Math.floor(at.x())) >> 4, ((int) Math.floor(at.z())) >> 4)) return;
-        Location centre = new Location(world, at.x(), at.y() + 1, at.z());
-        List<Mob> idle = new ArrayList<>();
-        for (Entity entity : world.getNearbyEntities(centre, TARGETABLE_RANGE, TARGETABLE_RANGE / 2, TARGETABLE_RANGE))
-            if (entity instanceof Mob mob && bridge.capabilities().controlledMobTypes().contains(mob.getType().getKey().toString())
-                    && mob.getTarget() == null && !leases.containsKey(mob.getUniqueId()) && sees(mob, centre)) idle.add(mob);
-        idle.sort(Comparator.comparingDouble((Mob mob) -> mob.getLocation().distanceSquared(centre)));
-        for (Mob mob : idle) {
-            if (drawn >= TARGETABLE_PER_NPC) return;
-            try {
-                AttributeInstance attack = mob.getAttribute(Attribute.ATTACK_DAMAGE);
-                leases.put(mob.getUniqueId(), npc.combatant().control(mob, drawnProfile(attack == null ? OptionalDouble.empty() : OptionalDouble.of(attack.getValue()))));
-                drawn++;
-            } catch (RuntimeException refused) { /* Protection, ownership or limits refused this mob; try the next. */ }
+    /** What the decoys read: targetable NPCs the engine runs, their body type, protection and who fought whom. */
+    private final class DecoyHost implements NpcDecoys.Host {
+        @Override public Optional<VirtualNpcState.Snapshot> targetable(UUID npc) {
+            RuntimeCombatService.this.targetable();
+            if (!module.running() || !targetableByUuid.containsKey(npc) || !module.engine().registered(npc)) return Optional.empty();
+            return world.npc(npc).filter((VirtualNpcState.Snapshot self) -> self.active() && self.health() > 0);
+        }
+        @Override public String body(UUID npc) {
+            NpcDefinition definition = targetableByUuid.get(npc);
+            com.google.gson.JsonElement type = definition == null ? null : definition.json().get("type");
+            return type != null && type.isJsonPrimitive() ? type.getAsString() : "minecraft:player";
+        }
+        @Override public boolean allows(Mob mob, VirtualNpcState.Snapshot npc) {
+            return module.protection().allows(new ProtectionAdapter.Request(ProtectionAdapter.Action.MOB_ATTACK, new TargetRef(TargetKind.MOB, mob.getUniqueId()),
+                    position(mob.getLocation()), new TargetRef(TargetKind.NPC, npc.npcId()), npc.position(), Set.of(TargetCategory.NPCS)));
+        }
+        @Override public boolean fought(UUID npc, UUID player) {
+            Long at = RuntimeCombatService.this.fought.getOrDefault(npc, Map.of()).get(player);
+            return at != null && ticks - at <= FOUGHT_TICKS;
         }
     }
+    private void foughtBetween(UUID npc, UUID player) { fought.computeIfAbsent(npc, (UUID key) -> new HashMap<>()).put(player, ticks); }
 
-    private static boolean sees(Mob mob, Location target) {
-        Location eye = mob.getEyeLocation();
-        Vector direction = target.toVector().subtract(eye.toVector());
-        double distance = direction.length();
-        return distance < 0.0001 || eye.getWorld().rayTraceBlocks(eye, direction.normalize(), distance, FluidCollisionMode.NEVER, true) == null;
-    }
-
-    /** The mob's own melee damage, a vanilla melee reach and attack interval, and a lease that ends after ten seconds. */
-    static MobProfile drawnProfile(OptionalDouble attackDamage) {
-        double damage = attackDamage.isEmpty() || !Double.isFinite(attackDamage.getAsDouble()) ? AttackProfile.DEFAULT.damage()
-                : Math.max(0.5, Math.min(100, attackDamage.getAsDouble()));
-        return new MobProfile(new AttackProfile(damage, AttackProfile.DEFAULT.reach(), 20), 1.0, TARGETABLE_RANGE, 20, TARGETABLE_LEASE_TICKS);
-    }
     /** Combat NPCs waiting for a slot on the main thread; 0 on Folia, where each region keeps its own queue. */
     int waiting() { return regions != null ? 0 : module.waiting(); }
     int load() { return regions != null ? 0 : module.load(); }
 
+    /**
+     * A player's hit on a combat NPC, worked out as vanilla works it out from the player's state and held weapon, with
+     * vanilla's attack sounds. A sword's sweep also strikes the real mobs and players beside the NPC.
+     */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void playerHit(VirtualNpcInteractionEvent event) {
         if (event.isPreview() || event.getAction() != VirtualNpcInteractionEvent.Action.ATTACK || !module.running() || !module.engine().registered(event.getNpcId())) return;
         Player player = event.getViewer();
-        module.engine().playerAttack(event.getNpcId(), new TargetRef(TargetKind.PLAYER, player.getUniqueId()), position(player.getLocation()),
-                CombatHits.attackDamage(player, swings.remove(player.getUniqueId())));
+        VanillaMelee.Weapon weapon = CombatHits.weapon(player.getInventory().getItemInMainHand());
+        CombatEngine.PlayerHit hit = module.engine().playerAttack(event.getNpcId(), new TargetRef(TargetKind.PLAYER, player.getUniqueId()), position(player.getLocation()),
+                CombatHits.swing(player, swings.remove(player.getUniqueId())), weapon);
+        if (hit.strike().isEmpty()) return;
+        CombatHits.sounds(player, hit.strike().get());
+        if (hit.outcome().status() != CombatWorld.DamageStatus.APPLIED) return;
+        foughtBetween(event.getNpcId(), player.getUniqueId());
+        if (hit.strike().get().sweep() > 0) world.npc(event.getNpcId()).ifPresent((VirtualNpcState.Snapshot struck) -> sweepReal(player, struck, hit.strike().get(), weapon));
+    }
+    /** The real living entities a sweep beside this NPC reaches: within a block of its body and three blocks of the player. */
+    private void sweepReal(Player player, VirtualNpcState.Snapshot struck, VanillaMelee.Strike strike, VanillaMelee.Weapon weapon) {
+        art.arcane.animus.core.virtual.Hitbox reach = struck.bounds().inflated(1, .25, 1);
+        org.bukkit.util.BoundingBox box = new org.bukkit.util.BoundingBox(reach.min().x(), reach.min().y(), reach.min().z(), reach.max().x(), reach.max().y(), reach.max().z());
+        for (Entity entity : player.getWorld().getNearbyEntities(box, (Entity candidate) -> candidate instanceof LivingEntity)) {
+            if (entity == player || world.helper(entity) || decoys.decoy(entity) || entity instanceof org.bukkit.entity.ArmorStand stand && stand.isMarker()
+                    || entity.getLocation().distanceSquared(player.getLocation()) >= 9) continue;
+            ((LivingEntity) entity).damage(VanillaMelee.swept(strike, weapon, VanillaMelee.groups(entity.getType().getKey().toString())), player);
+        }
     }
     @EventHandler(priority = EventPriority.LOWEST)
     public void swing(PlayerAnimationEvent event) { swings.put(event.getPlayer().getUniqueId(), CombatHits.Swing.of(event.getPlayer())); }
@@ -323,6 +333,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
             if (!projectile.isValid() || ticks > next.expires() || projectile instanceof org.bukkit.entity.AbstractArrow arrow && arrow.isInBlock()) { each.remove(); continue; }
             Optional<ProjectileFlight.Hit> hit = next.flight().advance(BukkitShots.position(projectile), BukkitShots.velocity(projectile), scanner, module.engine()::shootable);
             if (hit.isEmpty()) continue;
+            NpcDecoys.firstStrike(projectile, struckKey);
             module.engine().shot(hit.get().npc(), BukkitShots.shot(projectile, next.kind(), next.shooter(), next.flight(), random));
             BukkitShots.land(projectile, next.kind(), hit.get().point(), next.flight().spent());
             if (next.flight().spent()) each.remove();
@@ -331,7 +342,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     @EventHandler(priority = EventPriority.LOWEST)
     public void helperHit(ProjectileHitEvent event) {
         Projectile projectile = event.getEntity();
-        if (!world.helper(projectile)) return;
+        if (!world.helper(projectile) || decoys.decoy(event.getHitEntity())) return;
         event.setCancelled(true);
         TargetRef struck = event.getHitEntity() == null ? null : CombatHits.reference(event.getHitEntity());
         if (module.running() && (struck == null || !module.engine().helperHitReal(projectile.getUniqueId(), struck))) module.engine().helperHitBlock(projectile.getUniqueId());
@@ -340,6 +351,74 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     @EventHandler(priority = EventPriority.LOWEST)
     public void helperDamage(EntityDamageByEntityEvent event) {
         if (world.helper(event.getDamager())) event.setCancelled(true);
+    }
+    /**
+     * Nothing hurts a decoy. A mob's melee hit on one is dealt to its NPC through the NPC's defense, after the API's
+     * mob damage event; projectiles and explosions reach the NPC through their own handlers.
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void decoyDamage(org.bukkit.event.entity.EntityDamageEvent event) {
+        if (!decoys.decoy(event.getEntity())) return;
+        event.setCancelled(true);
+        Optional<UUID> npc = decoys.npc(event.getEntity());
+        if (npc.isEmpty() || !module.running() || !(event instanceof EntityDamageByEntityEvent byEntity) || !(byEntity.getDamager() instanceof Mob mob)) return;
+        if (event.getCause() != org.bukkit.event.entity.EntityDamageEvent.DamageCause.ENTITY_ATTACK
+                && event.getCause() != org.bukkit.event.entity.EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK) return;
+        art.arcane.animus.bukkit.event.VirtualNpcDamagedByMobEvent api = new art.arcane.animus.bukkit.event.VirtualNpcDamagedByMobEvent(npc.get(), mob, event.getDamage());
+        plugin.getServer().getPluginManager().callEvent(api);
+        if (api.isCancelled()) return;
+        AttributeInstance knockback = mob.getAttribute(Attribute.ATTACK_KNOCKBACK);
+        module.engine().realHit(npc.get(), new TargetRef(TargetKind.MOB, mob.getUniqueId()), position(mob.getLocation()), api.getDamage(),
+                VanillaMelee.BASE_KNOCKBACK + (knockback == null ? 0 : knockback.getValue() / 2), CombatWorld.DamageKind.MELEE);
+    }
+    /**
+     * A projectile that touches a decoy struck its NPC: a player's or mob's is a shot by its shooter, as one striking the
+     * body is, and lands as it would on a body. An NPC's own helper passes through, as its flight is followed already.
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void decoyHit(ProjectileHitEvent event) {
+        if (!decoys.decoy(event.getHitEntity())) return;
+        event.setCancelled(true);
+        Projectile projectile = event.getEntity();
+        Optional<UUID> npc = decoys.npc(event.getHitEntity());
+        if (npc.isEmpty() || !module.running() || world.helper(projectile) || !module.engine().shootable(npc.get())) return;
+        if (!NpcDecoys.firstStrike(projectile, struckKey)) return;
+        Optional<RealShot.Kind> kind = BukkitShots.kind(projectile);
+        TargetRef shooter = BukkitShots.shooter(projectile);
+        if (kind.isEmpty() || shooter == null) return;
+        Flying followed = flying.remove(projectile.getUniqueId());
+        ProjectileFlight flight = followed == null ? new ProjectileFlight(BukkitShots.pierce(projectile)) : followed.flight();
+        if (followed == null) flight.launched(BukkitShots.position(projectile));
+        module.engine().shot(npc.get(), BukkitShots.shot(projectile, kind.get(), shooter, flight, random));
+        BukkitShots.land(projectile, kind.get(), BukkitShots.position(projectile).point(), true);
+    }
+    /** An explosion hurts every combat NPC in reach that takes explosions, by vanilla's damage for its power. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void exploded(org.bukkit.event.entity.EntityExplodeEvent event) {
+        if (world.helper(event.getEntity())) return;
+        Entity source = event.getEntity();
+        Entity cause = source instanceof org.bukkit.entity.TNTPrimed tnt ? tnt.getSource() : source;
+        blast(event.getLocation(), Explosions.power(source), Optional.ofNullable(cause == null ? null : CombatHits.reference(cause)));
+    }
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void blockExploded(org.bukkit.event.block.BlockExplodeEvent event) {
+        blast(event.getBlock().getLocation().add(.5, .5, .5), Explosions.BLOCK_POWER, Optional.empty());
+    }
+    private void blast(Location centre, float power, Optional<TargetRef> source) {
+        if (!module.running() || module.engine().size() == 0) return;
+        WorldPosition at = position(centre);
+        art.arcane.animus.core.virtual.SpatialNpcIndex.Scan near = world.nearbyNpcs(at, Math.min(EXPLOSION_REACH, power * 2), null,
+                new art.arcane.animus.core.virtual.SpatialNpcIndex.Budget(64, 256));
+        for (VirtualNpcState.Snapshot npc : near.candidates()) {
+            if (!npc.active() || !module.engine().registered(npc.npcId())) continue;
+            double damage = Explosions.damage(centre.getWorld(), at.point(), power, npc.bounds());
+            if (damage > 0) module.engine().exploded(npc.npcId(), source, at, damage);
+        }
+    }
+    /** An NPC hit a player: the player's wolves may turn on it. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void npcHitPlayer(art.arcane.animus.bukkit.event.VirtualNpcDamageEvent event) {
+        if (event.getTarget() instanceof Player player) foughtBetween(event.getNpcId(), player.getUniqueId());
     }
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void realDamage(EntityDamageByEntityEvent event) {
@@ -443,6 +522,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         if (task != null) task.cancel();
         if (regionManual != null) regionManual.close();
         if (module.supported()) HandlerList.unregisterAll(this);
+        if (decoys != null) decoys.close();
         module.close();
         bridge.close(); registrations.clear(); leases.clear(); flying.clear();
     }

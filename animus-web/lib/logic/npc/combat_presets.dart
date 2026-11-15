@@ -95,6 +95,7 @@ const List<String> combatImportRecords = <String>['preservedSettings', 'historic
 const Map<String, Object> _combatDefaults = <String, Object>{
   'targeting.lineOfSight': 'required',
   'ranged.weapon': 'arrow',
+  'ranged.lingering': false,
   'targetableByMobs': false,
   'victimDrops': true,
 };

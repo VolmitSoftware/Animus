@@ -151,7 +151,7 @@ class CombatEdgeCasesTest {
         UUID statue = combatant(2, 0, "{\"targeting\":{\"fightBack\":false}}", "{}");
         run(3);
         assertTrue(status(hunter).target().isEmpty());
-        assertEquals(CombatWorld.DamageStatus.PROTECTED, engine().playerAttack(statue, player(UUID.randomUUID()), MockCombatWorld.at(1, 64, 0), 5).status());
+        assertEquals(CombatWorld.DamageStatus.PROTECTED, CombatTesting.hit(engine(), statue, player(UUID.randomUUID()), MockCombatWorld.at(1, 64, 0), 5).status());
         assertEquals(20, world.npc(statue).orElseThrow().health());
     }
     @Test void aRespawnedGuardWalksBackToItsPostWithFreshState() {
@@ -164,7 +164,7 @@ class CombatEdgeCasesTest {
         run(4);
         assertEquals(0, status(guard).ammunition());
         world.real.remove(zombie);
-        engine().playerAttack(guard, player(UUID.randomUUID()), MockCombatWorld.at(1, 64, 0), 100);
+        CombatTesting.hit(engine(), guard, player(UUID.randomUUID()), MockCombatWorld.at(1, 64, 0), 100);
         assertEquals(CombatState.DEAD, status(guard).state());
         assertTrue(world.helpers.isEmpty(), "A dead NPC leaves no projectiles");
         run(5);
@@ -215,7 +215,7 @@ class CombatEdgeCasesTest {
         UUID zombie = world.monster("minecraft:zombie", 2, 0);
         protection = (ProtectionAdapter.Request request) -> ProtectionAdapter.Decision.DENY;
         WorldPosition from = MockCombatWorld.at(1, 64, 0);
-        assertEquals(CombatWorld.DamageStatus.PROTECTED, engine().playerAttack(npc, player(UUID.randomUUID()), from, 5).status(), "Real attacks on the NPC ask protection too");
+        assertEquals(CombatWorld.DamageStatus.PROTECTED, CombatTesting.hit(engine(), npc, player(UUID.randomUUID()), from, 5).status(), "Real attacks on the NPC ask protection too");
         run(3);
         assertTrue(world.realDamage.isEmpty());
         assertFalse(world.realDamage.containsKey(zombie));

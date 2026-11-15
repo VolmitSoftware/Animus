@@ -33,7 +33,7 @@ class KillableNpcTest {
     private static TargetRef player(UUID id) { return new TargetRef(TargetKind.PLAYER, id); }
     private double health(UUID npc) { return world.npc(npc).orElseThrow().health(); }
     private CombatWorld.DamageOutcome hit(UUID npc, UUID player, double amount) {
-        return engine.playerAttack(npc, player(player), MockCombatWorld.at(-1, 64, 0), amount);
+        return CombatTesting.hit(engine, npc, player(player), MockCombatWorld.at(-1, 64, 0), amount);
     }
 
     @Test void aPassiveNpcTakesHitsButNeverScansOrFightsBack() {

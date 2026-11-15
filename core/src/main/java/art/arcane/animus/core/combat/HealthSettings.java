@@ -46,13 +46,13 @@ public record HealthSettings(boolean killable, Defense defense, Death death, Res
         public boolean takes(DamageSource source) { return !invincible && sources.contains(source); }
     }
     /**
-     * What may hurt an NPC: player and mob melee, another NPC's melee, projectiles from players, mobs and combat NPCs, and
-     * the environment's fire, lava and falls. The environment counts only where listed.
+     * What may hurt an NPC: player and mob melee, another NPC's melee, projectiles from players, mobs and combat NPCs,
+     * explosions, and the environment's fire, lava and falls. The environment counts only where listed.
      */
     public enum DamageSource {
-        PLAYERS, MOBS, NPCS, PROJECTILES, FIRE, LAVA, FALL;
+        PLAYERS, MOBS, NPCS, PROJECTILES, EXPLOSIONS, FIRE, LAVA, FALL;
         /** Every attack source: what an NPC takes when its module lists none. */
-        public static final Set<DamageSource> ATTACKS = Set.copyOf(EnumSet.of(PLAYERS, MOBS, NPCS, PROJECTILES));
+        public static final Set<DamageSource> ATTACKS = Set.copyOf(EnumSet.of(PLAYERS, MOBS, NPCS, PROJECTILES, EXPLOSIONS));
         public String jsonName() { return name().toLowerCase(Locale.ROOT); }
         public static Optional<DamageSource> parse(String name) {
             for (DamageSource source : values()) if (source.jsonName().equals(name)) return Optional.of(source);
@@ -60,6 +60,7 @@ public record HealthSettings(boolean killable, Defense defense, Death death, Res
         }
         static DamageSource of(TargetKind attacker, CombatWorld.DamageKind kind) {
             if (kind == CombatWorld.DamageKind.PROJECTILE) return PROJECTILES;
+            if (kind == CombatWorld.DamageKind.EXPLOSION) return EXPLOSIONS;
             return switch (attacker) { case PLAYER -> PLAYERS; case MOB -> MOBS; case NPC -> NPCS; };
         }
     }
@@ -136,7 +137,7 @@ public record HealthSettings(boolean killable, Defense defense, Death death, Res
         for (int i = 0; i < names.size(); i++) {
             int index = i;
             sources.add(DamageSource.parse(names.get(i)).orElseThrow(() ->
-                    new IllegalArgumentException(root.field("sources") + "[" + index + "]: expected players, mobs, npcs, projectiles, fire, lava or fall")));
+                    new IllegalArgumentException(root.field("sources") + "[" + index + "]: expected players, mobs, npcs, projectiles, explosions, fire, lava or fall")));
         }
         Optional<String> permission = Optional.empty();
         if (root.has("attackerPermission")) {

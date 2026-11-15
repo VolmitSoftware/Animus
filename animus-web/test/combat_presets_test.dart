@@ -228,6 +228,30 @@ void main() {
         <JsonStep>[healthModule, 'armor'],
       ]);
     });
+
+    test('should count weapon switching, stand-ins and lingering only when they change the NPC', () {
+      expect(combatHiddenSettings(<String, Object?>{
+        combatModule: <String, Object?>{
+          'enabled': true,
+          'weapons': <String, Object?>{'autoswitch': false},
+          'ranged': <String, Object?>{'lingering': false},
+        },
+      }), isEmpty);
+      expect(combatHiddenSettings(<String, Object?>{
+        combatModule: <String, Object?>{
+          'enabled': true,
+          'weapons': <String, Object?>{
+            'autoswitch': true,
+            'redirects': <String, Object?>{'minecraft:stick': 'minecraft:bow'},
+          },
+          'ranged': <String, Object?>{'lingering': true},
+        },
+      }), <List<JsonStep>>[
+        <JsonStep>[combatModule, 'weapons', 'autoswitch'],
+        <JsonStep>[combatModule, 'weapons', 'redirects'],
+        <JsonStep>[combatModule, 'ranged', 'lingering'],
+      ]);
+    });
   });
 
   group('Simple keeps what it does not show', () {

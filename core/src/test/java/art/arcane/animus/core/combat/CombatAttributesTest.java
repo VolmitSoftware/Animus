@@ -66,7 +66,7 @@ class CombatAttributesTest {
         CombatEngine engine = new CombatEngine(art.arcane.animus.core.config.CombatBudgets.DEFAULT, world, ProtectionAdapter.NONE, new java.util.Random(7), (String message) -> {});
         UUID npc = world.npc(0, 0, 20);
         assertTrue(engine.register(npc, "armored", armored, CombatLoadout.NONE));
-        engine.playerAttack(npc, new TargetRef(TargetKind.PLAYER, UUID.randomUUID()), MockCombatWorld.at(1, 64, 0), 10);
+        CombatTesting.hit(engine, npc, new TargetRef(TargetKind.PLAYER, UUID.randomUUID()), MockCombatWorld.at(1, 64, 0), 10);
         assertEquals(20 - CombatAttributes.armored(10, 20, 8), world.npc(npc).orElseThrow().health(), 1e-9);
         assertEquals(0.2, world.knocked.get(npc), 1e-9, "half of the 0.4 a player's hit knocks back");
     }

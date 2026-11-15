@@ -74,6 +74,8 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
             Comparator.comparingLong(Scheduled::wake).thenComparingLong(Scheduled::order));
     private final HelperLedger helpers;
     private final Hazards hazards;
+    private final PotionClouds potions;
+    private CombatStatistics.Sink statistics = CombatStatistics.Sink.NONE;
     private final ArrayDeque<Fight> fights = new ArrayDeque<>();
     private final ArrayDeque<Chat> chats = new ArrayDeque<>();
     private final List<UUID> deletions = new ArrayList<>();
@@ -106,6 +108,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         this.random = Objects.requireNonNull(random, "random");
         helpers = new HelperLedger(budgets.maximumHelpers(), budgets.helpersPerNpc());
         hazards = new Hazards(this, world);
+        potions = new PotionClouds(this, world);
     }
 
     /**
@@ -129,6 +132,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         stopping = true;
         for (CombatBrain brain : waiting) brain.slot(CombatBrain.Slot.NONE);
         waiting.clear();
+        potions.clear();
         for (CombatBrain brain : brains.values()) {
             brain.stand();
             brain.slot(CombatBrain.Slot.NONE);
@@ -194,6 +198,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         if (previous != null && previous.settings().equals(settings) && previous.loadout().equals(loadout)) return true;
         if (previous == null && brains.size() >= MAXIMUM_REGISTERED) return false;
         if (previous != null) unregister(npc);
+        else count(npc, CombatStatistics.Counter.TIMES_SPAWNED, 1);
         CombatBrain brain = new CombatBrain(this, world, npc, handle, settings, loadout);
         brains.put(npc, brain);
         settings.squad().name().ifPresent((String squad) -> squads.computeIfAbsent(squad, (String key) -> new ArrayList<>()).add(brain));
@@ -234,6 +239,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
             return;
         }
         hazards.tick(tick);
+        potions.tick(tick);
         Scheduled due = schedule.peek();
         boolean work = due != null && due.wake() <= tick || helpers.size() > 0 || !fights.isEmpty() || !chats.isEmpty();
         if (!work) return;
@@ -264,6 +270,9 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     }
 
     long now() { return tick; }
+    /** Where this engine counts each NPC's fights; nowhere until a platform names a store. */
+    public void statistics(CombatStatistics.Sink sink) { statistics = Objects.requireNonNull(sink); }
+    void count(UUID npc, CombatStatistics.Counter counter, double amount) { statistics.add(npc, counter, amount); }
     RandomGenerator random() { return random; }
     boolean takeScan() { return scansLeft > 0 && scansLeft-- > 0; }
     boolean takePath() { return pathsLeft > 0 && pathsLeft-- > 0; }
@@ -372,6 +381,20 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
             CombatBrain other = brains.get(snapshot.npcId());
             if (other != null && other != brain) found.add(view(other, snapshot));
             else if (other == null && !snapshot.npcId().equals(brain.npc())) world.peer(snapshot.npcId()).ifPresent(found::add);
+        }
+        return found;
+    }
+
+    CombatBrain brain(UUID npc) { return brains.get(npc); }
+
+    /** Real entities and combat NPCs within the radius, at most {@code limit} of each, for splashes and clouds. */
+    List<CombatTarget> around(WorldPosition center, double radius, int limit) {
+        List<CombatTarget> found = new ArrayList<>(world.nearbyReal(center, radius, limit));
+        SpatialNpcIndex.Scan npcs = world.nearbyNpcs(center, radius, null, new SpatialNpcIndex.Budget(budgets.scanCells(), limit));
+        for (VirtualNpcState.Snapshot snapshot : npcs.candidates()) {
+            CombatBrain other = brains.get(snapshot.npcId());
+            if (other != null && snapshot.active()) found.add(view(other, snapshot));
+            else if (other == null) world.peer(snapshot.npcId()).ifPresent(found::add);
         }
         return found;
     }
@@ -526,6 +549,15 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     /** All damage goes through here: protection first, then defense, then exactly one damage authority. */
     private CombatWorld.DamageOutcome hit(TargetRef attacker, WorldPosition from, CombatTarget target, double amount,
                                           CombatWorld.DamageKind kind, double reach, double knockback, boolean victimDrops) {
+        CombatWorld.DamageOutcome outcome = deliver(attacker, from, target, amount, kind, reach, knockback, victimDrops);
+        if (attacker.kind() == TargetKind.NPC && outcome.status() == CombatWorld.DamageStatus.APPLIED) {
+            count(attacker.id(), CombatStatistics.Counter.DAMAGE_GIVEN, outcome.applied());
+            if (outcome.killed()) count(attacker.id(), CombatStatistics.Counter.KILLS, 1);
+        }
+        return outcome;
+    }
+    private CombatWorld.DamageOutcome deliver(TargetRef attacker, WorldPosition from, CombatTarget target, double amount,
+                                              CombatWorld.DamageKind kind, double reach, double knockback, boolean victimDrops) {
         if (!allowed(attacker, from, target)) return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.PROTECTED, 0, false);
         if (target.ref().kind() != TargetKind.NPC) {
             CombatWorld.DamageOutcome outcome = world.damageReal(attacker.id(), target, amount, kind, reach, knockback, victimDrops);
@@ -557,6 +589,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         if (mitigated <= 0) return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.NO_CHANGE, 0, false);
         CombatWorld.DamageOutcome outcome = world.damageVirtual(defender.npc(), attacker, mitigated);
         if (outcome.status() != CombatWorld.DamageStatus.APPLIED) return outcome;
+        count(defender.npc(), CombatStatistics.Counter.DAMAGE_TAKEN, outcome.applied());
         afterVirtualHit(defender, attacker, from, target, knockback, outcome.killed());
         return outcome;
     }
@@ -596,10 +629,39 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         if (taken > 0 && Math.abs(away.x()) + Math.abs(away.z()) > .0001) world.knockback(defender.npc(), new Vec3(away.x(), 0, away.z()), taken);
     }
 
+    /** One NPC melee hit: its weapon's damage and enchantments against the target's body, as a mob's hit works. */
     CombatWorld.DamageOutcome melee(CombatBrain brain, VirtualNpcState.Snapshot self, CombatTarget target) {
         CombatSettings.Melee melee = brain.settings().melee();
-        return hit(new TargetRef(TargetKind.NPC, brain.npc()), self.position(), target, brain.meleeDamage(), CombatWorld.DamageKind.MELEE,
-                melee.reach(), melee.knockback(), brain.settings().victimDrops());
+        WeaponHand hand = brain.hand();
+        VanillaMelee.Strike strike = VanillaMelee.npc(hand.meleeDamage(), hand.meleeFromWeapon(), melee.knockback(), hand.weapon(), groups(target), random);
+        TargetRef attacker = new TargetRef(TargetKind.NPC, brain.npc());
+        count(brain.npc(), CombatStatistics.Counter.PUNCHES, 1);
+        count(brain.npc(), CombatStatistics.Counter.ATTACK_ATTEMPTS, 1);
+        CombatWorld.DamageOutcome outcome = hit(attacker, self.position(), target, strike.damage(), CombatWorld.DamageKind.MELEE,
+                melee.reach(), strike.knockback(), brain.settings().victimDrops());
+        if (outcome.status() == CombatWorld.DamageStatus.APPLIED && !outcome.killed()) afterStrike(attacker, target, strike);
+        return outcome;
+    }
+
+    /** The enchantment groups of a struck body: an NPC's by its body type, a real entity's by its own. */
+    private Set<VanillaMelee.Group> groups(CombatTarget target) {
+        if (target.ref().kind() != TargetKind.NPC) return VanillaMelee.groups(target.type());
+        CombatBrain other = brains.get(target.ref().id());
+        return VanillaMelee.groups(other == null ? CombatLoadout.PLAYER : other.loadout().body());
+    }
+
+    /** Fire Aspect and Bane of Arthropods after a hit that landed and did not kill. */
+    private void afterStrike(TargetRef attacker, CombatTarget target, VanillaMelee.Strike strike) {
+        if (target.ref().kind() == TargetKind.NPC) {
+            CombatBrain defender = brains.get(target.ref().id());
+            if (defender == null) return;
+            hazards.ignite(defender.npc(), strike.fireTicks());
+            defender.slow(strike.slownessTicks());
+            return;
+        }
+        if (strike.fireTicks() > 0) world.igniteReal(target.ref(), strike.fireTicks());
+        if (strike.slownessTicks() > 0 && attacker.kind() == TargetKind.NPC)
+            world.applyEffect(attacker.id(), target, new CombatSettings.Effect("minecraft:slowness", 3, strike.slownessTicks()));
     }
 
     /** With {@code showHealth}, the player who hit the NPC sees its name and health above the hotbar. */
@@ -614,25 +676,63 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         return tenths == Math.rint(tenths) ? Long.toString((long) tenths) : Double.toString(tenths);
     }
 
-    /** Launches one real helper projectile toward the target and records it before anything can touch it. */
+    /**
+     * Launches real helper projectiles toward the target and records each before anything can touch it. A bow or
+     * crossbow fires full-draw critical arrows with its Power, Punch, Flame and Piercing; Multishot adds two more arrows
+     * ten degrees to either side.
+     */
     boolean shoot(CombatBrain brain, WorldPosition from, CombatTarget target) {
         CombatSettings.Ranged ranged = brain.settings().ranged();
+        WeaponHand hand = brain.hand();
+        RangedWeapon fires = hand.rangedWeapon();
+        VanillaMelee.Weapon weapon = hand.weapon();
         Vec3 aim = CombatGeometry.center(target.bounds());
         Vec3 line = aim.subtract(from.point());
         double distance = line.distance(Vec3.ZERO);
         if (distance < .0001) return false;
         Vec3 direction = line.normalized();
         double spread = ranged.inaccuracy() * .0075;
-        double arc = ranged.weapon().gravity() ? .025 * distance / ranged.velocity() : 0;
+        double arc = fires.gravity() ? .025 * distance / ranged.velocity() : 0;
         Vec3 velocity = new Vec3(
                 direction.x() * ranged.velocity() + random.nextGaussian() * spread,
                 direction.y() * ranged.velocity() + random.nextGaussian() * spread + arc,
                 direction.z() * ranged.velocity() + random.nextGaussian() * spread);
-        Optional<UUID> helper = world.launchHelper(brain.npc(), from, velocity, ranged.weapon());
-        if (helper.isEmpty()) return false;
-        helpers.track(new HelperLedger.Shot(helper.get(), brain.npc(), Optional.of(target.ref()), brain.rangedDamage(), ranged.knockback(),
-                ranged.safeShot(), ranged.effect(), tick + budgets.helperLifetimeTicks(), from.point()));
-        return true;
+        boolean arrows = fires == RangedWeapon.ARROW || fires == RangedWeapon.SPECTRAL_ARROW;
+        double knockback = ranged.knockback() + (arrows ? .6 * weapon.level(VanillaMelee.PUNCH) : 0);
+        HelperLedger.Shot.Flight flight = new HelperLedger.Shot.Flight(arrows && weapon.level(VanillaMelee.FLAME) > 0 ? 100 : 0,
+                arrows ? weapon.level(VanillaMelee.PIERCING) : 0, hand.lingering());
+        int multishot = arrows ? weapon.level(VanillaMelee.MULTISHOT) : 0;
+        boolean launched = false;
+        for (int i = 0; i <= 2 * multishot; i++) {
+            if (i > 0 && !helpers.hasCapacity(brain.npc())) break;
+            double degrees = i == 0 ? 0 : (i % 2 == 1 ? -1 : 1) * 10 * ((i + 1) / 2);
+            Optional<UUID> helper = world.launchHelper(brain.npc(), from, turned(velocity, degrees), fires);
+            if (helper.isEmpty()) continue;
+            double damage = hand.rangedDamage();
+            if (arrows && hand.drawnBow() && ranged.fromEquipment()) damage += random.nextInt((int) damage / 2 + 2);
+            helpers.track(new HelperLedger.Shot(helper.get(), brain.npc(), Optional.of(target.ref()), damage, knockback,
+                    ranged.safeShot(), hand.effect(), tick + budgets.helperLifetimeTicks(), from.point(), flight));
+            launched = true;
+            count(brain.npc(), shotCounter(fires), 1);
+        }
+        if (launched) count(brain.npc(), CombatStatistics.Counter.ATTACK_ATTEMPTS, 1);
+        return launched;
+    }
+    private static CombatStatistics.Counter shotCounter(RangedWeapon weapon) {
+        return switch (weapon) {
+            case ARROW, SPECTRAL_ARROW, TRIDENT -> CombatStatistics.Counter.ARROWS_FIRED;
+            case POTION -> CombatStatistics.Counter.POTIONS_THROWN;
+            case FIREBALL, SMALL_FIREBALL -> CombatStatistics.Counter.FIREBALLS_FIRED;
+            case SNOWBALL -> CombatStatistics.Counter.SNOWBALLS_THROWN;
+            case EGG -> CombatStatistics.Counter.EGGS_THROWN;
+            case WITHER_SKULL -> CombatStatistics.Counter.SKULLS_THROWN;
+            case LLAMA_SPIT -> CombatStatistics.Counter.LLAMA_SPIT_SHOT;
+        };
+    }
+    private static Vec3 turned(Vec3 velocity, double degrees) {
+        if (degrees == 0) return velocity;
+        double radians = Math.toRadians(degrees), cos = Math.cos(radians), sin = Math.sin(radians);
+        return new Vec3(velocity.x() * cos - velocity.z() * sin, velocity.y(), velocity.x() * sin + velocity.z() * cos);
     }
 
     /** Visits at most {@code visits} helpers; returns how many it visited. */
@@ -656,11 +756,23 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     }
 
     /** Whether a shot may land on this participant: a helpful potion reaches friends, anything else only foes. */
-    private static boolean reaches(HelperLedger.Shot shot, CombatBrain owner, TargetRef struck, Optional<String> squad) {
-        if (struck.id().equals(owner.npc())) return false;
+    static boolean reaches(HelperLedger.Shot shot, CombatBrain owner, TargetRef struck, Optional<String> squad) {
+        if (struck.id().equals(owner.npc()) || shot.struck(struck)) return false;
         boolean helpful = shot.effect().map(CombatSettings.Effect::helpful).orElse(false);
         if (!helpful && owner.friendly(struck, squad)) return false;
         return !shot.safeShot() || shot.intended().equals(Optional.of(struck));
+    }
+
+    /**
+     * Whether a potion's splash or cloud reaches this participant. A safe shot spares bystanders: past its intended target
+     * it reaches only participants the NPC's target rules name.
+     */
+    static boolean splashes(HelperLedger.Shot shot, CombatBrain owner, CombatTarget target) {
+        if (target.ref().id().equals(owner.npc()) || shot.struck(target.ref())) return false;
+        boolean helpful = shot.effect().map(CombatSettings.Effect::helpful).orElse(false);
+        if (helpful) return owner.friendly(target.ref(), target.squad());
+        if (owner.friendly(target.ref(), target.squad())) return false;
+        return !shot.safeShot() || shot.intended().equals(Optional.of(target.ref())) || owner.wouldTarget(target);
     }
 
     /** Real projectiles cannot touch virtual bodies, so their flight segment is tested against nearby NPC bounds. */
@@ -688,8 +800,15 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
             struck = seen.get();
         }
         if (struck == null || helpers.claim(shot.helper()).isEmpty()) return false;
-        world.removeHelper(shot.helper());
+        if (!pierce(shot, struck.ref())) world.removeHelper(shot.helper());
         land(shot, owner, self.get().position(), struck);
+        return true;
+    }
+
+    /** A shot with passes left goes on through the body it struck; true when it does. */
+    private boolean pierce(HelperLedger.Shot shot, TargetRef body) {
+        if (shot.flight().pierce() <= 0 || shot.effect().isPresent()) return false;
+        helpers.retrack(shot.pierced(body));
         return true;
     }
 
@@ -698,48 +817,78 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
      * the only effect it has. True when the helper was live and has been spent.
      */
     public boolean helperHitReal(UUID helper, TargetRef struck) {
-        Optional<HelperLedger.Shot> claimed = helpers.claim(helper);
-        if (claimed.isEmpty()) return false;
-        world.removeHelper(helper);
-        HelperLedger.Shot shot = claimed.get();
+        Optional<HelperLedger.Shot> live = helpers.peek(helper);
+        if (live.isEmpty()) return false;
+        // A piercing arrow still inside a body it went through touches it again; that is not a new hit.
+        if (live.get().struck(struck)) return true;
+        HelperLedger.Shot shot = helpers.claim(helper).orElseThrow();
+        if (!pierce(shot, struck)) world.removeHelper(helper);
         CombatBrain owner = brains.get(shot.owner());
         Optional<VirtualNpcState.Snapshot> self = world.npc(shot.owner());
         Optional<CombatTarget> target = resolve(struck);
         if (owner == null || self.isEmpty() || target.isEmpty()) return true;
-        if (!reaches(shot, owner, struck, target.get().squad())) return true;
+        // A potion breaks on whatever it touches and splashes the participants it may reach.
+        if (shot.effect().isEmpty() && !reaches(shot, owner, struck, target.get().squad())) return true;
         land(shot, owner, self.get().position(), target.get());
         return true;
     }
 
-    /** Applies a spent shot once: damage, or a potion's effect. */
+    /** Applies a spent shot once: damage with any Flame fire, or a potion's splash or cloud where it broke. */
     private void land(HelperLedger.Shot shot, CombatBrain owner, WorldPosition from, CombatTarget target) {
         TargetRef attacker = new TargetRef(TargetKind.NPC, shot.owner());
         if (shot.effect().isEmpty()) {
             CombatWorld.DamageOutcome outcome = hit(attacker, from, target, shot.damage(), CombatWorld.DamageKind.PROJECTILE, 0, shot.knockback(), owner.settings().victimDrops());
             if (outcome.status() == CombatWorld.DamageStatus.PROTECTED || outcome.status() == CombatWorld.DamageStatus.CANCELLED) owner.refuse(target.ref());
+            else if (outcome.status() == CombatWorld.DamageStatus.APPLIED && !outcome.killed() && shot.flight().fireTicks() > 0)
+                afterStrike(attacker, target, VanillaMelee.Strike.burning(shot.flight().fireTicks()));
             return;
         }
-        CombatSettings.Effect effect = shot.effect().get();
-        if (!effect.helpful() && !allowed(attacker, from, target)) {
-            owner.refuse(target.ref());
-            return;
-        }
-        if (target.ref().kind() != TargetKind.NPC) {
-            if (world.applyEffect(shot.owner(), target, effect) && !effect.helpful()) realDamaged(target.ref(), attacker);
-            return;
-        }
-        if (effect.id().equals("minecraft:instant_health")) world.heal(target.ref().id(), 4 << effect.amplifier());
-        else if (effect.id().equals("minecraft:instant_damage")) {
-            CombatBrain defender = brains.get(target.ref().id());
-            if (defender == null) return;
-            double mitigated = defender.mitigate(attacker, from, 6 << effect.amplifier(), resolve(attacker), CombatWorld.DamageKind.PROJECTILE);
-            if (mitigated <= 0) return;
-            CombatWorld.DamageOutcome outcome = world.damageVirtual(defender.npc(), attacker, mitigated);
-            if (outcome.status() == CombatWorld.DamageStatus.APPLIED) afterVirtualHit(defender, attacker, from, target, 0, outcome.killed());
-        }
+        potions.broke(shot, owner, from, new WorldPosition(from.world(), CombatGeometry.center(target.bounds())), Optional.of(target));
     }
 
-    public boolean helperHitBlock(UUID helper) { return retire(helper); }
+    /** One potion effect on one participant, after protection; false when nothing applied. */
+    boolean affect(CombatBrain owner, WorldPosition from, CombatTarget target, CombatSettings.Effect effect, double intensity) {
+        TargetRef attacker = new TargetRef(TargetKind.NPC, owner.npc());
+        if (!effect.helpful() && !allowed(attacker, from, target)) {
+            owner.refuse(target.ref());
+            return false;
+        }
+        if (target.ref().kind() != TargetKind.NPC) {
+            CombatSettings.Effect scaled = new CombatSettings.Effect(effect.id(), effect.amplifier(), Math.max(1, (int) Math.round(effect.durationTicks() * intensity)));
+            boolean applied = world.applyEffect(owner.npc(), target, scaled);
+            if (applied && !effect.helpful()) realDamaged(target.ref(), attacker);
+            return applied;
+        }
+        CombatBrain defender = brains.get(target.ref().id());
+        if (effect.id().equals("minecraft:instant_health")) {
+            world.heal(target.ref().id(), (int) (intensity * (4 << effect.amplifier()) + .5));
+            return true;
+        }
+        if (defender == null) return false;
+        if (effect.id().equals("minecraft:slowness")) {
+            defender.slow((int) Math.round(effect.durationTicks() * intensity));
+            return true;
+        }
+        if (!effect.id().equals("minecraft:instant_damage")) return false;
+        double mitigated = defender.mitigate(attacker, from, (int) (intensity * (6 << effect.amplifier()) + .5), resolve(attacker), CombatWorld.DamageKind.PROJECTILE);
+        if (mitigated <= 0) return false;
+        CombatWorld.DamageOutcome outcome = world.damageVirtual(defender.npc(), attacker, mitigated);
+        if (outcome.status() == CombatWorld.DamageStatus.APPLIED) afterVirtualHit(defender, attacker, from, target, 0, outcome.killed());
+        return outcome.status() == CombatWorld.DamageStatus.APPLIED;
+    }
+
+    /** A helper hit a block. A potion still breaks there and splashes or leaves its cloud. */
+    public boolean helperHitBlock(UUID helper) {
+        Optional<HelperLedger.Shot> live = helpers.peek(helper);
+        if (live.isEmpty()) return false;
+        Optional<Vec3> at = world.helperPosition(helper);
+        CombatBrain owner = brains.get(live.get().owner());
+        Optional<VirtualNpcState.Snapshot> self = world.npc(live.get().owner());
+        retire(helper);
+        if (live.get().effect().isPresent() && at.isPresent() && owner != null && self.isPresent())
+            potions.broke(live.get(), owner, self.get().position(), new WorldPosition(self.get().position().world(), at.get()), Optional.empty());
+        return true;
+    }
 
     /** Removes this helper if it is still tracked. For cancellation and unload paths in the platform. */
     public boolean retire(UUID helper) {
@@ -752,13 +901,80 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         for (UUID helper : helpers.retireOwner(owner)) world.removeHelper(helper);
     }
 
-    /** A real player hit this NPC's validated hitbox. NPCs with no enabled combat cannot be hurt. */
-    public CombatWorld.DamageOutcome playerAttack(UUID npc, TargetRef player, WorldPosition from, double amount) {
+    /**
+     * A real player's hit, worked out as vanilla works it out.
+     *
+     * @param strike what the hit was, for sounds and the platform's own sweep over real entities; empty when nothing was dealt
+     */
+    public record PlayerHit(CombatWorld.DamageOutcome outcome, Optional<VanillaMelee.Strike> strike) {
+        static final PlayerHit NONE = new PlayerHit(new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.NO_CHANGE, 0, false), Optional.empty());
+    }
+
+    /**
+     * A real player hit this NPC's validated hitbox with this swing and weapon. Damage, a critical hit, knockback, Fire
+     * Aspect, Bane of Arthropods and Looting follow {@link VanillaMelee#player}; a sword's sweep also strikes other
+     * combat NPCs beside this one. NPCs with no enabled combat cannot be hurt.
+     */
+    public PlayerHit playerAttack(UUID npc, TargetRef player, WorldPosition from, VanillaMelee.Swing swing, VanillaMelee.Weapon weapon) {
+        CombatBrain brain = stopping ? null : brains.get(npc);
+        Optional<VirtualNpcState.Snapshot> snapshot = world.npc(npc);
+        if (brain == null || snapshot.isEmpty() || !snapshot.get().active()) return PlayerHit.NONE;
+        CombatTarget target = view(brain, snapshot.get());
+        Optional<VanillaMelee.Strike> rolled = VanillaMelee.player(swing, weapon, groups(target), random);
+        if (rolled.isEmpty()) return PlayerHit.NONE;
+        VanillaMelee.Strike strike = rolled.get();
+        if (strike.looting() > 0) brain.lootedBy(player, strike.looting());
+        CombatWorld.DamageOutcome outcome = hit(player, from, target, strike.damage(), CombatWorld.DamageKind.MELEE, 0, strike.knockback(), true);
+        if (outcome.status() != CombatWorld.DamageStatus.APPLIED) return new PlayerHit(outcome, rolled);
+        world.critical(npc, strike.critical(), strike.magic());
+        if (!outcome.killed()) afterStrike(player, target, strike);
+        if (strike.sweep() > 0) sweep(player, from, target, strike, weapon);
+        return new PlayerHit(outcome, rolled);
+    }
+
+    /** A sweep strikes every other combat NPC within a block of the struck body and three blocks of the player. */
+    private void sweep(TargetRef player, WorldPosition from, CombatTarget struck, VanillaMelee.Strike strike, VanillaMelee.Weapon weapon) {
+        Hitbox reach = struck.bounds().inflated(1, .25, 1);
+        SpatialNpcIndex.Scan near = world.nearbyNpcs(struck.position(), 3, null, new SpatialNpcIndex.Budget(budgets.scanCells(), budgets.scanCandidates()));
+        for (VirtualNpcState.Snapshot candidate : near.candidates()) {
+            CombatBrain other = brains.get(candidate.npcId());
+            if (other == null || candidate.npcId().equals(struck.ref().id()) || !candidate.active() || !reach.intersects(candidate.bounds())
+                    || candidate.position().point().distance(from.point()) >= 3) continue;
+            CombatTarget beside = view(other, candidate);
+            if (strike.looting() > 0) other.lootedBy(player, strike.looting());
+            CombatWorld.DamageOutcome outcome = hit(player, from, beside, VanillaMelee.swept(strike, weapon, groups(beside)), CombatWorld.DamageKind.MELEE, 0,
+                    VanillaMelee.BASE_KNOCKBACK, true);
+            if (outcome.status() == CombatWorld.DamageStatus.APPLIED && !outcome.killed()) afterStrike(player, beside, strike);
+        }
+    }
+
+    /**
+     * An explosion reached this NPC: the platform worked out the vanilla damage from the blast's power, distance and how
+     * much of the body it can see. It counts as an {@code explosions} hit by {@code source} when a player or mob caused it.
+     */
+    public CombatWorld.DamageOutcome exploded(UUID npc, Optional<TargetRef> source, WorldPosition from, double amount) {
+        CombatBrain brain = stopping ? null : brains.get(npc);
+        Optional<VirtualNpcState.Snapshot> snapshot = world.npc(npc);
+        CombatWorld.DamageOutcome none = new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.NO_CHANGE, 0, false);
+        if (brain == null || snapshot.isEmpty() || !snapshot.get().active() || !(amount > 0)) return none;
+        CombatTarget target = view(brain, snapshot.get());
+        if (source.isPresent()) {
+            if (!allowed(source.get(), from, target)) return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.PROTECTED, 0, false);
+            return strike(brain, source.get(), from, target, amount, VanillaMelee.BASE_KNOCKBACK, CombatWorld.DamageKind.EXPLOSION);
+        }
+        return environment(brain, HealthSettings.DamageSource.EXPLOSIONS, amount, true);
+    }
+
+    /**
+     * A real player or mob hit this NPC outside a validated attack packet, as a mob drawn to the NPC hits its decoy.
+     * The hit asks protection and the NPC's defense like any other.
+     */
+    public CombatWorld.DamageOutcome realHit(UUID npc, TargetRef attacker, WorldPosition from, double amount, double knockback, CombatWorld.DamageKind kind) {
         CombatBrain brain = stopping ? null : brains.get(npc);
         Optional<VirtualNpcState.Snapshot> snapshot = world.npc(npc);
         if (brain == null || snapshot.isEmpty() || !snapshot.get().active() || !(amount > 0))
             return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.NO_CHANGE, 0, false);
-        return hit(player, from, view(brain, snapshot.get()), amount, CombatWorld.DamageKind.MELEE, 0, .4, true);
+        return hit(attacker, from, view(brain, snapshot.get()), amount, kind, 0, knockback, true);
     }
 
     /** Whether a real projectile striking this NPC's body counts: it is alive here and takes projectiles. */
@@ -791,11 +1007,11 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         }
         if (shot.damage() <= 0) {
             if (!brain.settings().health().defense().accepts(shot.shooter().kind(), CombatWorld.DamageKind.PROJECTILE)) return none;
-            push(brain, shot.from(), target, RealShot.KNOCKBACK);
+            push(brain, shot.from(), target, shot.knockback());
             brain.attacked(shot.shooter());
             return none;
         }
-        CombatWorld.DamageOutcome outcome = strike(brain, shot.shooter(), shot.from(), target, shot.damage(), RealShot.KNOCKBACK, CombatWorld.DamageKind.PROJECTILE);
+        CombatWorld.DamageOutcome outcome = strike(brain, shot.shooter(), shot.from(), target, shot.damage(), shot.knockback(), CombatWorld.DamageKind.PROJECTILE);
         if (outcome.status() == CombatWorld.DamageStatus.APPLIED && !outcome.killed()) hazards.ignite(npc, shot.igniteTicks());
         return outcome;
     }
@@ -812,6 +1028,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         if (mitigated <= 0) return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.NO_CHANGE, 0, false);
         CombatWorld.DamageOutcome outcome = world.damageVirtual(brain.npc(), null, mitigated);
         if (outcome.status() != CombatWorld.DamageStatus.APPLIED) return outcome;
+        count(brain.npc(), CombatStatistics.Counter.DAMAGE_TAKEN, outcome.applied());
         if (outcome.killed()) brain.die(snapshot.get().position(), null);
         else wake(brain);
         return outcome;
@@ -921,6 +1138,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         guardians.clear();
         watchers.clear();
         hazards.clear();
+        potions.clear();
         fights.clear();
         chats.clear();
         schedule.clear();

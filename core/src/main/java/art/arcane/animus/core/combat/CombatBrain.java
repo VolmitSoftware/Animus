@@ -51,9 +51,8 @@ final class CombatBrain {
     private final CombatSettings settings;
     private final CombatLoadout loadout;
     private final TargetRules.Context context;
-    private final double meleeDamage;
-    private final double rangedDamage;
-    private final double armor;
+    private final WeaponHand hand;
+    private final EquipmentStats.Armor armor;
     private final StrikeWindow meleeWindow = new StrikeWindow();
     private final StrikeWindow rangedWindow = new StrikeWindow();
     private final Set<UUID> greeted = new HashSet<>();
@@ -109,8 +108,13 @@ final class CombatBrain {
     /** Ticks a dead body lies before a permadeath is recorded, as long as the death animation. */
     static final int DEATH_ANIMATION_TICKS = 20;
     private int stuck;
-    private int ammunition;
-    private final int fullAmmunition;
+    /** Slowness from Bane of Arthropods holds the chase back until this tick. */
+    private long slowUntil;
+    /** The tick of the last turn, from which time spawned is counted. */
+    private long visited;
+    /** The Looting level of the player whose hit landed last, which their kill drops with. */
+    private TargetRef lootingKiller;
+    private int looting;
 
     CombatBrain(CombatEngine engine, CombatWorld world, UUID npc, String handle, CombatSettings settings, CombatLoadout loadout) {
         this.engine = engine;
@@ -122,12 +126,10 @@ final class CombatBrain {
         context = new TargetRules.Context() {
             @Override public Optional<UUID> owner() { return loadout.owner(); }
             @Override public boolean permitted(TargetRef player, String node) { return world.permitted(player, node); }
+            @Override public boolean member(TargetRef player, String kind, String name) { return world.member(player, kind, name); }
         };
-        meleeDamage = EquipmentStats.melee(settings.melee(), loadout);
-        rangedDamage = EquipmentStats.ranged(settings.ranged(), settings.melee(), loadout);
-        armor = EquipmentStats.armor(settings.health().defense(), loadout);
-        fullAmmunition = settings.ranged().useAmmo() && !settings.ranged().weapon().ammunition().isEmpty() ? loadout.count(settings.ranged().weapon().ammunition()) : -1;
-        ammunition = fullAmmunition;
+        hand = new WeaponHand(settings, loadout);
+        armor = settings.health().defense().armorFromEquipment() ? EquipmentStats.armor(loadout) : EquipmentStats.Armor.NONE;
         guarded = settings.guard().player().map((UUID id) -> new TargetRef(TargetKind.PLAYER, id))
                 .or(() -> settings.guard().npc().map((UUID id) -> new TargetRef(TargetKind.NPC, id))).orElse(null);
     }
@@ -151,10 +153,9 @@ final class CombatBrain {
     Slot slot() { return slot; }
     void slot(Slot slot) { this.slot = slot; }
     boolean awaitsTarget() { return target == null && !disengaged && state != CombatState.DEAD; }
-    double meleeDamage() { return meleeDamage; }
-    double rangedDamage() { return rangedDamage; }
+    WeaponHand hand() { return hand; }
     /** Shots left when ammunition is counted, or -1 when it is not. */
-    int ammunition() { return ammunition; }
+    int ammunition() { return hand.ammunition(); }
     /** Whether fight or chat rules make this NPC react to events nearby. */
     boolean watches() {
         return !settings.targets().events().empty() || !settings.avoids().events().empty() || !settings.targets().chat().isEmpty() || !settings.avoids().chat().isEmpty();
@@ -165,8 +166,15 @@ final class CombatBrain {
         return settings.squad().name().isPresent() && settings.squad().name().equals(otherSquad);
     }
 
+    /** Whether the target rules name this participant and the ignore rules do not. */
+    boolean wouldTarget(CombatTarget candidate) { return settings.targets().matches(candidate, context) && !settings.ignores().matches(candidate, context); }
+
     private double scanRange() { return Math.min(settings.targeting().scanRange(), engine.budgets().maximumScanRange()); }
-    private double speed() { return Math.min(settings.pursuit().speed(), engine.budgets().maximumSpeed()); }
+    /** Pursuit speed, cut by 60 percent while Slowness IV from Bane of Arthropods lasts. */
+    private double speed() {
+        double speed = Math.min(settings.pursuit().speed(), engine.budgets().maximumSpeed());
+        return engine.now() < slowUntil ? Math.max(1, speed * .4) : speed;
+    }
 
     /** Runs one turn and returns the ticks until the next one. */
     long update(long now) {
@@ -174,6 +182,8 @@ final class CombatBrain {
         long idle = engine.budgets().idleSleepTicks();
         if (current.isEmpty()) return idle;
         VirtualNpcState.Snapshot self = current.get();
+        if (self.active() && self.health() > 0 && visited > 0) engine.count(npc, CombatStatistics.Counter.TICKS_SPAWNED, now - visited);
+        visited = now;
         drawThisTurn = false;
         if (self.health() == 0) { showDraw(); engine.vacate(this); return updateDead(now, self); }
         if (!self.active()) { showDraw(); engine.vacate(this); return idle; }
@@ -420,9 +430,13 @@ final class CombatBrain {
         CombatSettings.Ranged ranged = settings.ranged();
         boolean ready = now >= reactionUntil;
         double distance = foe.position().point().distance(self.position().point());
-        boolean meleeAllowed = melee.enabled() && !(ranged.enabled() && ranged.helpful());
-        boolean inMelee = meleeAllowed && CombatGeometry.reach(CombatGeometry.center(self.bounds()), foe.bounds()) <= melee.reach();
-        boolean rangedUsable = !inMelee && ranged.enabled() && ammunition != 0 && visible && distance <= ranged.range() && distance >= ranged.minimumRange();
+        double reach = CombatGeometry.reach(CombatGeometry.center(self.bounds()), foe.bounds());
+        if (hand.switchTo(reach > melee.reach())) world.hold(npc, hand.shown());
+        boolean switching = settings.weapons().autoswitch();
+        boolean rangedEnabled = switching ? hand.holdsRanged() && hand.ammunition() != 0 : ranged.enabled();
+        boolean meleeAllowed = melee.enabled() && !(rangedEnabled && hand.effect().map(CombatSettings.Effect::helpful).orElse(false)) && !(switching && hand.holdsRanged());
+        boolean inMelee = meleeAllowed && reach <= melee.reach();
+        boolean rangedUsable = !inMelee && rangedEnabled && hand.ammunition() != 0 && visible && distance <= ranged.range() && distance >= ranged.minimumRange();
         if (inMelee && visible) {
             if (ready && meleeWindow.reserve(now, melee.cooldownTicks())) {
                 CombatWorld.DamageOutcome outcome;
@@ -438,13 +452,14 @@ final class CombatBrain {
             }
             state = CombatState.ATTACKING;
         } else if (rangedUsable) {
-            drawThisTurn = ranged.weapon().drawn();
+            RangedWeapon fires = hand.rangedWeapon();
+            drawThisTurn = fires.drawn();
             if (ready && engine.helperCapacity(npc) && clearShot(self, foe) && rangedWindow.reserve(now, ranged.cooldownTicks())) {
                 try {
                     world.face(npc, CombatGeometry.center(foe.bounds()));
                     if (engine.shoot(this, new WorldPosition(self.position().world(), eye(self)), foe)) {
-                        if (!ranged.weapon().drawn()) world.swing(npc);
-                        if (ammunition > 0) ammunition--;
+                        if (!fires.drawn()) world.swing(npc);
+                        hand.fired();
                     }
                 } finally {
                     rangedWindow.release();
@@ -612,6 +627,7 @@ final class CombatBrain {
     }
 
     private void finish() {
+        if (hand.restore()) world.hold(npc, hand.shown());
         boolean wasEngaged = anchor != null || moving || state != CombatState.IDLE;
         state = CombatState.IDLE;
         // The next fight anchors at the post again, never where this one stopped.
@@ -833,10 +849,34 @@ final class CombatBrain {
         if (defense.protectFromRange() > 0 && (!from.world().equals(self.get().position().world())
                 || from.point().distance(self.get().position().point()) > defense.protectFromRange())) return 0;
         if (defense.protectedFromIgnored() && attackerView.isPresent() && settings.ignores().matches(attackerView.get(), context)) return 0;
-        double reduced = defense.armorPoints() > 0 ? CombatAttributes.armored(amount, defense.armorPoints(), defense.armorToughness()) : amount * (1 - armor);
+        double reduced = armored(amount, switch (kind) {
+            case PROJECTILE -> HealthSettings.DamageSource.PROJECTILES;
+            case EXPLOSION -> HealthSettings.DamageSource.EXPLOSIONS;
+            case MELEE -> HealthSettings.DamageSource.PLAYERS;
+        });
         if (reduced <= 0) return 0;
         invulnerableUntil = now + defense.invulnerableTicks();
         return reduced;
+    }
+
+    /**
+     * Damage after armor. Armor from equipment works as vanilla armor: points less the hit over two plus a quarter of the
+     * toughness, then the protection enchantments that count against this source. Otherwise the module's armor points,
+     * or its armor share, apply.
+     */
+    private double armored(double amount, HealthSettings.DamageSource source) {
+        HealthSettings.Defense defense = settings.health().defense();
+        if (defense.armorFromEquipment()) {
+            double after = armor.points() > 0 ? CombatAttributes.armored(amount, armor.points(), armor.toughness()) : amount;
+            return switch (source) {
+                case PROJECTILES -> VanillaMelee.protectedDamage(after, armor.protection(), armor.projectile(), 2);
+                case FIRE, LAVA -> VanillaMelee.protectedDamage(after, armor.protection(), armor.fire(), 2);
+                case EXPLOSIONS -> VanillaMelee.protectedDamage(after, armor.protection(), armor.blast(), 2);
+                case FALL -> VanillaMelee.protectedDamage(after, armor.protection(), armor.falling(), 3);
+                default -> VanillaMelee.protectedDamage(after, armor.protection(), 0, 0);
+            };
+        }
+        return defense.armorPoints() > 0 ? CombatAttributes.armored(amount, defense.armorPoints(), defense.armorToughness()) : amount * (1 - defense.armor());
     }
 
     /**
@@ -847,7 +887,8 @@ final class CombatBrain {
         HealthSettings.Defense defense = settings.health().defense();
         long now = engine.now();
         if (!defense.takes(source) || now < invulnerableUntil || state == CombatState.DEAD || !(amount > 0)) return 0;
-        double reduced = !armored ? amount : defense.armorPoints() > 0 ? CombatAttributes.armored(amount, defense.armorPoints(), defense.armorToughness()) : amount * (1 - armor);
+        double reduced = armored ? armored(amount, source) : defense.armorFromEquipment() && source == HealthSettings.DamageSource.FALL
+                ? VanillaMelee.protectedDamage(amount, armor.protection(), armor.falling(), 3) : amount;
         if (reduced <= 0) return 0;
         invulnerableUntil = now + defense.invulnerableTicks();
         return reduced;
@@ -875,6 +916,7 @@ final class CombatBrain {
         if (deathHandled) return;
         deathHandled = true;
         deathPlace = place;
+        engine.count(npc, CombatStatistics.Counter.DEATHS, 1);
         state = CombatState.DEAD;
         target = null;
         threat = null;
@@ -884,9 +926,13 @@ final class CombatBrain {
         engine.removeHelpers(npc);
         HealthSettings.Death death = settings.health().death();
         List<CombatWorld.Drop> drops = new ArrayList<>();
+        int bonus = killer != null && killer.equals(lootingKiller) ? looting : 0;
         for (HealthSettings.DropRule rule : death.drops()) {
-            if (engine.random().nextDouble() >= rule.chance()) continue;
+            // Looting raises a rare drop's chance by a hundredth a level and adds up to one item a level, as vanilla loot tables do.
+            double chance = rule.chance() < 1 ? rule.chance() + .01 * bonus : rule.chance();
+            if (engine.random().nextDouble() >= chance) continue;
             int amount = rule.maximum() > rule.amount() ? rule.amount() + engine.random().nextInt(rule.maximum() - rule.amount() + 1) : rule.amount();
+            if (bonus > 0) amount += engine.random().nextInt(bonus + 1);
             drops.add(new CombatWorld.Drop(rule.item(), amount, rule.components()));
         }
         if (death.dropEquipment()) drops.addAll(loadout.worn());
@@ -966,13 +1012,17 @@ final class CombatBrain {
         if (at.isEmpty() || !world.revive(npc, at.get())) return false;
         nextPoint++;
         deathHandled = false;
+        engine.count(npc, CombatStatistics.Counter.TIMES_SPAWNED, 1);
         respawnAt = -1;
         state = CombatState.IDLE;
         nextScan = now;
         backoff = 0;
         nextHeal = 0;
         invulnerableUntil = 0;
-        ammunition = fullAmmunition;
+        slowUntil = 0;
+        looting = 0;
+        lootingKiller = null;
+        hand.refill();
         refusals.clear();
         greeted.clear();
         lastSeen = List.of();
@@ -1029,6 +1079,11 @@ final class CombatBrain {
         else target = null;
         engine.wake(this);
     }
+
+    /** Slowness IV for this long, as Bane of Arthropods gives an arthropod. */
+    void slow(int ticks) { if (ticks > 0) slowUntil = Math.max(slowUntil, engine.now() + ticks); }
+    /** The player whose hit landed and the Looting their weapon has, for the drops of a kill. */
+    void lootedBy(TargetRef player, int level) { lootingKiller = player; looting = level; }
 
     void engage() {
         disengaged = false;

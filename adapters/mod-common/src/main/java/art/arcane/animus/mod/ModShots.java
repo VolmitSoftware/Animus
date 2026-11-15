@@ -7,10 +7,13 @@ import art.arcane.animus.core.combat.ProjectileFlight;
 import art.arcane.animus.core.combat.RealShot;
 import art.arcane.animus.core.combat.TargetKind;
 import art.arcane.animus.core.combat.TargetRef;
+import art.arcane.animus.core.combat.VanillaMelee;
 import art.arcane.animus.core.virtual.Hitbox;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import art.arcane.animus.mod.mixin.ArrowDataAccess;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.random.RandomGenerator;
 import net.minecraft.core.BlockPos;
@@ -81,13 +84,32 @@ final class ModShots {
         WorldPosition at = position(projectile);
         WorldPosition from = new WorldPosition(at.world(), flight.origin().orElse(at.point()));
         double arrowDamage = 0;
+        int punch = 0;
         if (kind == RealShot.Kind.ARROW && projectile instanceof AbstractArrow arrow) {
             ItemStack weapon = arrow.getWeaponItem();
-            int power = weapon == null || weapon.isEmpty() ? 0 : EnchantmentHelper.getItemEnchantmentLevel(
-                    projectile.level().registryAccess().lookupOrThrow(Registries.ENCHANTMENT).getOrThrow(Enchantments.POWER), weapon);
+            int power = level(projectile, weapon, Enchantments.POWER);
+            punch = level(projectile, weapon, Enchantments.PUNCH);
             arrowDamage = RealShot.arrowDamage(arrow.getDeltaMovement().length(), ((ArrowDataAccess) arrow).animus$baseDamage(), power, arrow.isCritArrow(), random);
         }
-        return RealShot.of(kind, shooter, from, arrowDamage, projectile instanceof AbstractThrownPotion potion ? instant(potion) : Optional.empty());
+        return RealShot.of(kind, shooter, from, arrowDamage, projectile instanceof AbstractThrownPotion potion ? instant(potion) : Optional.empty())
+                .enchanted(punch, kind == RealShot.Kind.ARROW && projectile.isOnFire());
+    }
+    private static int level(Entity holder, ItemStack item, net.minecraft.resources.ResourceKey<net.minecraft.world.item.enchantment.Enchantment> enchantment) {
+        return item == null || item.isEmpty() ? 0 : EnchantmentHelper.getItemEnchantmentLevel(holder.level().registryAccess().lookupOrThrow(Registries.ENCHANTMENT).getOrThrow(enchantment), item);
+    }
+    /** A held item as a weapon, with the enchantment levels the shared melee rules read. */
+    static VanillaMelee.Weapon weapon(Entity holder, ItemStack item) {
+        if (item == null || item.isEmpty()) return VanillaMelee.Weapon.EMPTY;
+        Map<String, Integer> levels = new HashMap<>();
+        Map<String, net.minecraft.resources.ResourceKey<net.minecraft.world.item.enchantment.Enchantment>> read = Map.of(VanillaMelee.SHARPNESS, Enchantments.SHARPNESS,
+                VanillaMelee.SMITE, Enchantments.SMITE, VanillaMelee.BANE, Enchantments.BANE_OF_ARTHROPODS, VanillaMelee.IMPALING, Enchantments.IMPALING,
+                VanillaMelee.FIRE_ASPECT, Enchantments.FIRE_ASPECT, VanillaMelee.KNOCKBACK, Enchantments.KNOCKBACK, VanillaMelee.LOOTING, Enchantments.LOOTING,
+                VanillaMelee.DENSITY, Enchantments.DENSITY);
+        for (Map.Entry<String, net.minecraft.resources.ResourceKey<net.minecraft.world.item.enchantment.Enchantment>> entry : read.entrySet()) {
+            int level = level(holder, item, entry.getValue());
+            if (level > 0) levels.put(entry.getKey(), level);
+        }
+        return new VanillaMelee.Weapon(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item.getItem()).toString(), levels);
     }
     private static Optional<CombatSettings.Effect> instant(AbstractThrownPotion potion) {
         PotionContents contents = potion.getItem().get(DataComponents.POTION_CONTENTS);

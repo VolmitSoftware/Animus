@@ -60,6 +60,9 @@ abstract final class Docs {
 
   static const DocLink combat = DocLink('08-combat', 'settings');
   static const DocLink combatTargets = DocLink('08-combat', 'target-rules');
+  static const DocLink combatTeams = DocLink('08-combat', 'plugin-teams');
+  static const DocLink combatWeaponSwitching = DocLink('08-combat', 'weapon-switching');
+  static const DocLink combatPotions = DocLink('08-combat', 'potions');
 
   static const DocLink shops = DocLink('10-shops', 'shop-fields');
   static const DocLink quests = DocLink('38-quests', 'quest-fields');

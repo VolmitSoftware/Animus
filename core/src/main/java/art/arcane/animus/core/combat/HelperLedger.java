@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -24,11 +25,27 @@ public final class HelperLedger {
         private final boolean safeShot;
         private final Optional<CombatSettings.Effect> effect;
         private final long expiresAt;
+        private final Flight flight;
+        private final Set<TargetRef> struck;
         private Vec3 lastPosition;
+
+        /**
+         * What a shot carries besides its damage: how long what it strikes burns (Flame), how many more bodies it passes
+         * through (Piercing), and whether a potion leaves a lingering cloud.
+         */
+        public record Flight(int fireTicks, int pierce, boolean lingering) {
+            public static final Flight PLAIN = new Flight(0, 0, false);
+        }
 
         /** @param effect what the shot applies instead of damage, for a potion */
         public Shot(UUID helper, UUID owner, Optional<TargetRef> intended, double damage, double knockback, boolean safeShot, Optional<CombatSettings.Effect> effect,
-                    long expiresAt, Vec3 lastPosition) {
+                    long expiresAt, Vec3 lastPosition, Flight flight) {
+            this(helper, owner, intended, damage, knockback, safeShot, effect, expiresAt, lastPosition, flight, Set.of());
+        }
+        private Shot(UUID helper, UUID owner, Optional<TargetRef> intended, double damage, double knockback, boolean safeShot, Optional<CombatSettings.Effect> effect,
+                     long expiresAt, Vec3 lastPosition, Flight flight, Set<TargetRef> struck) {
+            this.flight = Objects.requireNonNull(flight, "flight");
+            this.struck = Set.copyOf(struck);
             this.helper = Objects.requireNonNull(helper, "helper");
             this.owner = Objects.requireNonNull(owner, "owner");
             this.intended = Objects.requireNonNull(intended, "intended");
@@ -48,6 +65,16 @@ public final class HelperLedger {
         public Optional<CombatSettings.Effect> effect() { return effect; }
         public long expiresAt() { return expiresAt; }
         public Vec3 lastPosition() { return lastPosition; }
+        public Flight flight() { return flight; }
+        /** Whether a piercing shot already went through this body. */
+        public boolean struck(TargetRef body) { return struck.contains(body); }
+        /** The same shot after it pierced this body, with one pass fewer left. */
+        Shot pierced(TargetRef body) {
+            Set<TargetRef> passed = new java.util.HashSet<>(struck);
+            passed.add(body);
+            return new Shot(helper, owner, intended, damage, knockback, safeShot, effect, expiresAt, lastPosition,
+                    new Flight(flight.fireTicks(), flight.pierce() - 1, flight.lingering()), passed);
+        }
         void moved(Vec3 position) { lastPosition = position; }
     }
 
@@ -70,12 +97,22 @@ public final class HelperLedger {
     public boolean tracks(UUID helper) { return shots.containsKey(helper); }
     public boolean hasCapacity(UUID owner) { return shots.size() < maximum && owners.getOrDefault(owner, 0) < perOwner; }
 
+    /** Puts a shot that pierced a body back, with the same place in rotation it would take as a new one. */
+    void retrack(Shot shot) {
+        shots.put(shot.helper(), shot);
+        owners.merge(shot.owner(), 1, Integer::sum);
+        order.addLast(shot.helper());
+    }
+
     public void track(Shot shot) {
         if (!hasCapacity(shot.owner())) throw new IllegalStateException("Helper budget exhausted");
         shots.put(shot.helper(), shot);
         owners.merge(shot.owner(), 1, Integer::sum);
         order.addLast(shot.helper());
     }
+
+    /** The live shot of this helper, still in the ledger. */
+    public Optional<Shot> peek(UUID helper) { return Optional.ofNullable(shots.get(helper)); }
 
     /** The only exit from the ledger: the first caller gets the shot and every later caller gets nothing. */
     public Optional<Shot> claim(UUID helper) {

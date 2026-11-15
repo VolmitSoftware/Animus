@@ -21,9 +21,15 @@ public record Hitbox(Vec3 min, Vec3 max) {
     }
 
     public Hitbox translated(Vec3 offset) { return new Hitbox(min.add(offset), max.add(offset)); }
-    public Hitbox inflated(double amount) {
-        Vec3 by = new Vec3(amount, amount, amount);
+    public Hitbox inflated(double amount) { return inflated(amount, amount, amount); }
+    public Hitbox inflated(double x, double y, double z) {
+        Vec3 by = new Vec3(x, y, z);
         return new Hitbox(min.subtract(by), max.add(by));
+    }
+    /** Whether the two boxes overlap with positive volume. */
+    public boolean intersects(Hitbox other) {
+        return min.x() < other.max.x() && max.x() > other.min.x() && min.y() < other.max.y() && max.y() > other.min.y()
+                && min.z() < other.max.z() && max.z() > other.min.z();
     }
 
     public OptionalDouble rayDistance(Vec3 origin, Vec3 direction, double maxReach) {

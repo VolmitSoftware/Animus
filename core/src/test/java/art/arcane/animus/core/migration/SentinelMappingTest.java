@@ -58,8 +58,7 @@ class SentinelMappingTest {
             assertEquals(SentinelMapping.Disposition.STATISTIC, SentinelMapping.disposition(field), field);
             counts.merge(SentinelMapping.Disposition.STATISTIC, 1, Integer::sum);
         }
-        assertEquals(51, counts.get(SentinelMapping.Disposition.CONVERTED));
-        assertEquals(2, counts.get(SentinelMapping.Disposition.UNSUPPORTED));
+        assertEquals(53, counts.get(SentinelMapping.Disposition.CONVERTED), "Every Sentinel setting runs, autoswitch and weapon redirects included");
         assertEquals(16, counts.get(SentinelMapping.Disposition.STATISTIC));
         assertEquals(SentinelMapping.Disposition.UNKNOWN, SentinelMapping.disposition("somethingNew"));
     }
@@ -314,21 +313,60 @@ class SentinelMappingTest {
         assertEquals(5, settings.ranged().damage());
         assertFalse(settings(SentinelMapping.convert(json("{}"), json("{\"hand\":{\"type\":\"IRON_SWORD\"}}"), new JsonArray())).ranged().enabled());
     }
-    @Test void statisticsAndUnsupportedSettingsAreKeptApart() {
-        SentinelMapping.Result result = convert("{\"stats_punches\":23,\"stats_potionsThrow\":1,\"autoswitch\":true,\"weapon_redirect_map\":{\"stick\":\"bow\"},\"brandNewSetting\":1,\"health\":40}");
+    @Test void statisticsAndUnknownSettingsAreKeptApart() {
+        SentinelMapping.Result result = convert("{\"stats_punches\":23,\"stats_potionsThrow\":1,\"brandNewSetting\":1,\"health\":40}");
         JsonObject module = result.module();
         assertEquals(23, module.getAsJsonObject("historicalStatistics").get("stats_punches").getAsInt());
         assertEquals(1, module.getAsJsonObject("historicalStatistics").get("stats_potionsThrow").getAsInt());
         JsonObject preserved = module.getAsJsonObject("preservedSettings");
-        assertTrue(preserved.get("autoswitch").getAsBoolean());
-        assertEquals("bow", preserved.getAsJsonObject("weapon_redirect_map").get("stick").getAsString());
         assertEquals(1, preserved.get("brandNewSetting").getAsInt());
         assertFalse(preserved.has("stats_punches"));
         assertFalse(preserved.has("health"), "A cleanly converted setting is not repeated");
         JsonObject report = module.getAsJsonObject("migrationReport");
         assertEquals("[\"health\"]", report.get("converted").toString());
-        assertEquals(new HashSet<>(List.of("\"autoswitch\"", "\"weapon_redirect_map\"")), new HashSet<>(strings(report.getAsJsonArray("unsupported"))));
+        assertFalse(report.has("unsupported"));
         assertEquals("[\"brandNewSetting\"]", report.get("unknown").toString());
+    }
+    @Test void autoswitchAndWeaponRedirectsBecomeWeaponSettings() {
+        SentinelMapping.Result result = SentinelMapping.convert(json("{\"autoswitch\":true,\"weapon_redirect_map\":{\"stick\":\"bow\",\"BLAZE_ROD\":\"DIAMOND_SWORD\"}}"),
+                json("{\"hand\":{\"type\":\"STICK\"}}"), new JsonArray());
+        CombatSettings settings = settings(result);
+        assertTrue(settings.weapons().autoswitch());
+        assertEquals(Map.of("minecraft:stick", "minecraft:bow", "minecraft:blaze_rod", "minecraft:diamond_sword"), settings.weapons().redirects());
+        assertTrue(settings.ranged().enabled(), "A stick redirected to a bow fires arrows");
+        assertEquals(RangedWeapon.ARROW, settings.ranged().weapon());
+        assertFalse(result.module().getAsJsonObject("preservedSettings").has("autoswitch"));
+        assertTrue(settings(convert("{\"autoswitch\":true}")).ranged().enabled(), "A switching NPC may pick up any ranged weapon it carries");
+    }
+    @Test void aHeldSplashOrLingeringPotionThrowsItsOwnEffect() {
+        CombatSettings splash = settings(SentinelMapping.convert(json("{}"), json("{\"hand\":{\"type\":\"SPLASH_POTION\",\"meta\":{\"potion-type\":\"minecraft:strong_harming\"}}}"), new JsonArray()));
+        assertEquals(RangedWeapon.POTION, splash.ranged().weapon());
+        assertEquals(new CombatSettings.Effect("minecraft:instant_damage", 1, 1), splash.ranged().effect().orElseThrow());
+        assertFalse(splash.ranged().lingering());
+        CombatSettings lingering = settings(SentinelMapping.convert(json("{}"), json("{\"hand\":{\"type\":\"LINGERING_POTION\",\"meta\":{\"potion-type\":\"POISON\"}}}"), new JsonArray()));
+        assertTrue(lingering.ranged().lingering());
+        assertEquals("minecraft:poison", lingering.ranged().effect().orElseThrow().id());
+        SentinelMapping.Result unreadable = SentinelMapping.convert(json("{}"), json("{\"hand\":{\"type\":\"SPLASH_POTION\"}}"), new JsonArray());
+        assertFalse(settings(unreadable).ranged().enabled());
+        assertTrue(unreadable.notes().stream().anyMatch((String note) -> note.startsWith("hand:")));
+    }
+    /** Citizens' ItemStorage saves item meta as base64 of Bukkit's object stream: on {@code meta} itself, or under {@code meta.encoded-meta} in older saves. */
+    @Test void aHeldPotionIsReadFromCitizensSerializedMeta() {
+        CombatSettings splash = settings(SentinelMapping.convert(json("{}"), json("{\"hand\":{\"type\":\"splash_potion\",\"amount\":1,\"meta\":\"" + HARMING_META + "\"}}"), new JsonArray()));
+        assertEquals(new CombatSettings.Effect("minecraft:instant_damage", 1, 1), splash.ranged().effect().orElseThrow());
+        CombatSettings lingering = settings(SentinelMapping.convert(json("{}"), json("{\"hand\":{\"type\":\"LINGERING_POTION\",\"amount\":1,\"meta\":{\"encoded-meta\":\"" + POISON_META + "\"}}}"), new JsonArray()));
+        assertTrue(lingering.ranged().lingering());
+        assertEquals(new CombatSettings.Effect("minecraft:poison", 1, 900), lingering.ranged().effect().orElseThrow(), "a custom effect keeps its level and length");
+        SentinelMapping.Result broken = SentinelMapping.convert(json("{}"), json("{\"hand\":{\"type\":\"splash_potion\",\"meta\":\"rO0ABXNyAA\"}}"), new JsonArray());
+        assertFalse(settings(broken).ranged().enabled());
+        assertTrue(broken.notes().stream().anyMatch((String note) -> note.startsWith("hand:")));
+    }
+    /** Invented potions written as Citizens writes them: {@code BukkitObjectOutputStream}, then base64. */
+    static final String HARMING_META = "rO0ABXNyABpvcmcuYnVra2l0LnV0aWwuaW8uV3JhcHBlcvJQR+zxEm8FAgABTAADbWFwdAAPTGphdmEvdXRpbC9NYXA7eHBzcgA1Y29tLmdvb2dsZS5jb21tb24uY29sbGVjdC5JbW11dGFibGVNYXAkU2VyaWFsaXplZEZvcm0AAAAAAAAAAAIAAkwABGtleXN0ABJMamF2YS9sYW5nL09iamVjdDtMAAZ2YWx1ZXNxAH4ABHhwdXIAE1tMamF2YS5sYW5nLk9iamVjdDuQzlifEHMpbAIAAHhwAAAAA3QAAj09dAAJbWV0YS10eXBldAALcG90aW9uLXR5cGV1cQB+AAYAAAADdAAISXRlbU1ldGF0AAZQT1RJT050ABhtaW5lY3JhZnQ6c3Ryb25nX2hhcm1pbmc=";
+    static final String POISON_META = "rO0ABXNyABpvcmcuYnVra2l0LnV0aWwuaW8uV3JhcHBlcvJQR+zxEm8FAgABTAADbWFwdAAPTGphdmEvdXRpbC9NYXA7eHBzcgA1Y29tLmdvb2dsZS5jb21tb24uY29sbGVjdC5JbW11dGFibGVNYXAkU2VyaWFsaXplZEZvcm0AAAAAAAAAAAIAAkwABGtleXN0ABJMamF2YS9sYW5nL09iamVjdDtMAAZ2YWx1ZXNxAH4ABHhwdXIAE1tMamF2YS5sYW5nLk9iamVjdDuQzlifEHMpbAIAAHhwAAAAA3QAAj09dAAJbWV0YS10eXBldAAOY3VzdG9tLWVmZmVjdHN1cQB+AAYAAAADdAAISXRlbU1ldGF0AAZQT1RJT05zcgA2Y29tLmdvb2dsZS5jb21tb24uY29sbGVjdC5JbW11dGFibGVMaXN0JFNlcmlhbGl6ZWRGb3JtAAAAAAAAAAACAAFbAAhlbGVtZW50c3QAE1tMamF2YS9sYW5nL09iamVjdDt4cHVxAH4ABgAAAAFzcQB+AABzcQB+AAN1cQB+AAYAAAAHcQB+AAh0AAZlZmZlY3R0AAhkdXJhdGlvbnQACWFtcGxpZmllcnQAB2FtYmllbnR0AA1oYXMtcGFydGljbGVzdAAIaGFzLWljb251cQB+AAYAAAAHdAAMUG90aW9uRWZmZWN0dAAQbWluZWNyYWZ0OnBvaXNvbnNyABFqYXZhLmxhbmcuSW50ZWdlchLioKT3gYc4AgABSQAFdmFsdWV4cgAQamF2YS5sYW5nLk51bWJlcoaslR0LlOCLAgAAeHAAAAOEc3EAfgAeAAAAAXNyABFqYXZhLmxhbmcuQm9vbGVhbs0gcoDVnPruAgABWgAFdmFsdWV4cABzcQB+ACIBcQB+ACQ=";
+    @Test void townyFactionsAndScoreboardTargetsBecomeTeamRules() {
+        CombatSettings settings = settings(convert("{\"allTargets\":{\"byOther\":[\"towny:Riverton\",\"nationenemies:North\",\"factions:Red\",\"sbteam:blue\",\"unknownplugin:x\"]}}"));
+        assertEquals(java.util.Set.of("towny:Riverton", "nationenemies:North", "factions:Red", "sbteam:blue"), settings.targets().teams());
     }
     private static List<String> strings(JsonArray array) { return array.asList().stream().map(Object::toString).toList(); }
 
@@ -376,17 +414,17 @@ class SentinelMappingTest {
         assertEquals(new UUID(0, 2), settings.guard().npc().orElseThrow());
         assertEquals("new", settings.health().respawn().locations().getFirst().world(), "World mapping applies to converted locations");
         assertEquals(23, module.getAsJsonObject("historicalStatistics").get("stats_punches").getAsInt());
-        assertTrue(module.getAsJsonObject("preservedSettings").get("autoswitch").getAsBoolean());
+        assertTrue(settings.weapons().autoswitch());
         JsonObject archived = JsonDocuments.object(Files.readString(preview.directory().resolve("records/1.json")));
         assertEquals(40, archived.getAsJsonObject("traits").getAsJsonObject("sentinel").get("health").getAsInt());
         assertEquals(40, candidate.getAsJsonObject("modules").getAsJsonObject("citizens:review").getAsJsonObject("sentinel").get("health").getAsInt());
         JsonObject report = JsonDocuments.object(Files.readString(preview.directory().resolve("reports/1.json"))).getAsJsonObject("fields");
         assertEquals("CONVERTED", report.get("/traits/sentinel/health").getAsString());
-        assertEquals("UNSUPPORTED_PRESERVED", report.get("/traits/sentinel/autoswitch").getAsString());
-        assertEquals("UNSUPPORTED_PRESERVED", report.get("/traits/sentinel/stats_punches").getAsString());
+        assertEquals("CONVERTED", report.get("/traits/sentinel/autoswitch").getAsString());
+        assertEquals("CONVERTED", report.get("/traits/sentinel/stats_punches").getAsString());
         JsonObject counts = preview.summary().getAsJsonObject("sentinelMapping");
-        assertTrue(counts.get("converted").getAsInt() >= 4);
-        assertEquals(1, counts.get("unsupported").getAsInt());
+        assertTrue(counts.get("converted").getAsInt() >= 5);
+        assertFalse(counts.has("unsupported"));
         assertEquals(1, counts.get("statistics").getAsInt());
     }
     @Test void anAppliedCopyRewritesTheGuardToTheCopysIdentity() throws Exception {

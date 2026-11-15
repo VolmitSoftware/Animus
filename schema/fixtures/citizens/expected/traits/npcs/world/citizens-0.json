@@ -234,12 +234,17 @@
       "ranged": {
         "fromEquipment": true,
         "enabled": true,
-        "weapon": "arrow",
         "cooldownTicks": 40,
         "range": 50.0,
         "inaccuracy": 0.5,
         "safeShot": true,
         "useAmmo": false
+      },
+      "weapons": {
+        "autoswitch": true,
+        "redirects": {
+          "minecraft:bow": "minecraft:arrow"
+        }
       },
       "victimDrops": false,
       "greetings": {
@@ -249,10 +254,6 @@
         "cooldownTicks": 100
       },
       "preservedSettings": {
-        "autoswitch": true,
-        "weapon_redirect_map": {
-          "BOW": "ARROW"
-        },
         "mysteryField": "kept",
         "allTargets": {
           "byPlayerName": [
@@ -386,9 +387,7 @@
           "warning_text",
           "greeting_text",
           "greet_range",
-          "greet_rate"
-        ],
-        "unsupported": [
+          "greet_rate",
           "autoswitch",
           "weapon_redirect_map"
         ],

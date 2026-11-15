@@ -73,6 +73,11 @@
       "name": "holograms",
       "source": "holograms.yml",
       "worldMap": {}
+    },
+    {
+      "name": "potions",
+      "source": "potions.yml",
+      "worldMap": {}
     }
   ],
   "invalid": "invalid"

@@ -2,10 +2,14 @@
 /// `animus:health` module.
 library;
 
+import '../npc/combat_settings.dart' show combatTeamKinds;
+import 'citizens_items.dart' show encodedItemMeta;
 import 'java_json.dart';
 import 'java_lang.dart';
+import 'java_serialized.dart' show decodeJavaSerialized;
+import 'potion_effects.dart';
 
-enum Disposition { converted, unsupported, statistic, unknown }
+enum Disposition { converted, statistic, unknown }
 
 const Set<String> _converted = <String>{
   'allTargets', 'allIgnores', 'allAvoids', 'avoidRange', 'enemyTargetTime', 'fightback', 'realistic', 'ignore_los', 'retain_target', //
@@ -13,9 +17,8 @@ const Set<String> _converted = <String>{
   'guardedNPC', 'guardingUpper', 'guardingLower', 'avoidReturnPoint', 'disable_teleporting', 'damage', 'attackRate', 'attackRateRanged', 'range',
   'reach', 'safeShot', 'accuracy', 'projectileRange', 'health', 'armor', 'invincible', 'protected', 'protectFromRange', 'allow_knockback',
   'healRate', 'drops', 'dropChances', 'enemyDrops', 'death_xp', 'respawnTime', 'spawnPoint', 'worldguard_region', 'needsAmmo',
-  'weapon_damage_map', 'warning_text', 'greeting_text', 'greet_range', 'greet_rate',
+  'weapon_damage_map', 'warning_text', 'greeting_text', 'greet_range', 'greet_rate', 'autoswitch', 'weapon_redirect_map',
 };
-const Set<String> _unsupported = <String>{'autoswitch', 'weapon_redirect_map'};
 const String _guardReference = '/traits/sentinel/guardedNPC';
 const double _walkingSpeed = 4.3;
 const Map<String, String> _categories = <String, String>{
@@ -36,7 +39,8 @@ const Map<String, String> _fights = <String, String>{
 };
 const Map<String, String> _heldWeapons = <String, String>{
   'bow': 'arrow', 'crossbow': 'arrow', 'trident': 'trident', 'blaze_rod': 'fireball', 'snowball': 'snowball', 'snow_ball': 'snowball', //
-  'egg': 'egg', 'spectral_arrow': 'spectral_arrow', 'wither_skeleton_skull': 'wither_skull',
+  'egg': 'egg', 'spectral_arrow': 'spectral_arrow', 'wither_skeleton_skull': 'wither_skull', 'white_dye': 'llama_spit',
+  'splash_potion': 'potion', 'lingering_potion': 'potion', 'potion': 'potion',
 };
 const Map<String, String> _labelKinds = <String, String>{
   'player': 'byPlayerName', 'npc': 'byNpcName', 'entityname': 'byEntityName', 'helditem': 'byHeldItem', 'offhand': 'byOffhandItem', //
@@ -45,7 +49,6 @@ const Map<String, String> _labelKinds = <String, String>{
 
 Disposition sentinelDisposition(String field) {
   if (_converted.contains(field)) return Disposition.converted;
-  if (_unsupported.contains(field)) return Disposition.unsupported;
   return field.startsWith('stats_') ? Disposition.statistic : Disposition.unknown;
 }
 
@@ -213,7 +216,8 @@ bool _other(String value, JObject rules) {
     case 'permission':
       return RegExp(r'^[A-Za-z0-9_.*-]{1,128}$').hasMatch(rest) && _add(rules, 'permissions', rest);
     default:
-      return false;
+      // Sentinel target prefixes from Towny, Factions and scoreboard teams; Java's `\s` is ASCII whitespace only.
+      return combatTeamKinds.contains(prefix) && RegExp(r'^[^ \t\n\x0B\f\r:]{1,64}$').hasMatch(rest) && _add(rules, 'teams', '$prefix:$rest');
   }
 }
 
@@ -324,7 +328,6 @@ class _Converter {
   final JObject health = JObject();
   final JObject preserved = JObject();
   final JArray converted = JArray();
-  final JArray unsupported = JArray();
   final JArray unknown = JArray();
   final List<String> notes = <String>[];
   bool assist = false;
@@ -335,9 +338,6 @@ class _Converter {
       switch (sentinelDisposition(field.key)) {
         case Disposition.statistic:
           statistics.add(field.key, field.value.deepCopy());
-        case Disposition.unsupported:
-          preserved.add(field.key, field.value.deepCopy());
-          unsupported.addString(field.key);
         case Disposition.unknown:
           preserved.add(field.key, field.value.deepCopy());
           unknown.addString(field.key);
@@ -362,7 +362,6 @@ class _Converter {
     module.add('historicalStatistics', statistics);
     final JObject report = JObject();
     report.add('converted', converted);
-    report.add('unsupported', unsupported);
     report.add('unknown', unknown);
     report.add('notes', JArray(<JElement>[for (final String note in notes) JString(note)]));
     module.add('migrationReport', report);
@@ -574,9 +573,15 @@ class _Converter {
       melee.addBool('enabled', false);
     }
     _weaponDamage(melee);
-    final String? weapon = _heldWeapon();
-    ranged.addBool('enabled', weapon != null);
+    final JObject weapons = _section('weapons');
+    final bool switching = _flag('autoswitch', false);
+    weapons.addBool('autoswitch', switching);
+    final JObject redirects = _redirects();
+    if (redirects.isNotEmpty) weapons.add('redirects', redirects);
+    final String? weapon = _heldWeapon(redirects);
+    ranged.addBool('enabled', weapon != null || switching);
     if (weapon != null) ranged.addString('weapon', weapon);
+    if (weapon == 'potion') _heldPotion(ranged, redirects);
     ranged.addInt('cooldownTicks', _ticks('attackRateRanged', 30, 1, 1200));
     ranged.addDouble('range', _number('projectileRange', 100, 1, 256));
     ranged.addDouble('inaccuracy', _number('accuracy', 0, 0, 16));
@@ -608,14 +613,97 @@ class _Converter {
     if (converted.isNotEmpty) melee.add('weaponDamage', converted);
   }
 
-  String? _heldWeapon() {
+  /// Sentinel's `weapon_redirect_map` as item ids: the held item on the left fights as the one on the right.
+  JObject _redirects() {
+    final JObject converted = JObject();
+    final JElement? map = source.get('weapon_redirect_map');
+    if (map == null || map.isNull) return converted;
+    if (map is! JObject || map.length > 64) {
+      _keep('weapon_redirect_map', 'not a map of at most 64 items');
+      return converted;
+    }
+    for (final MapEntry<String, JElement> entry in map.entries) {
+      final String? from = _itemId(entry.key);
+      final String? target = _text(entry.value);
+      final String? into = target == null ? null : _itemId(target);
+      if (from == null || into == null) {
+        _keep('weapon_redirect_map', 'an entry is not an item mapped to an item');
+        return JObject();
+      }
+      converted.addString(from, into);
+    }
+    return converted;
+  }
+
+  static String? _itemId(String material) {
+    final String id = 'minecraft:${javaLower(material).replaceAll('minecraft:', '')}';
+    return RegExp(r'^[a-z0-9_.-]+:[a-z0-9_./-]+$').hasMatch(id) ? id : null;
+  }
+
+  /// The imported held item's id, or null.
+  String? _heldType() {
     final JElement? gear = equipment;
     if (gear is! JObject) return null;
     final JElement? hand = gear.get('hand');
     if (hand is! JObject) return null;
     final String? type = _text(hand.get('type')) ?? _text(hand.get('id'));
-    if (type == null) return null;
-    return _heldWeapons[javaLower(type).replaceAll('minecraft:', '')];
+    return type == null ? null : _itemId(type);
+  }
+
+  /// The ranged weapon the imported held item fires after its redirect, as Sentinel chooses it.
+  String? _heldWeapon(JObject redirects) {
+    final String? held = _heldType();
+    if (held == null) return null;
+    final String type = redirects.has(held) ? redirects.get(held)!.asPrimitive.asString : held;
+    return _heldWeapons[type.replaceAll('minecraft:', '')];
+  }
+
+  /// A held splash or lingering potion throws its own effect; one Animus cannot read is kept, and the NPC throws nothing.
+  void _heldPotion(JObject ranged, JObject redirects) {
+    final String type = _heldType()!;
+    final String effective = redirects.has(type) ? redirects.get(type)!.asPrimitive.asString : type;
+    final JObject hand = (equipment! as JObject).get('hand')! as JObject;
+    final PotionEffect? effect = _potionEffect(_itemMeta(hand.get('meta')));
+    if (effect == null) {
+      ranged.addBool('enabled', false);
+      ranged.remove('weapon');
+      notes.add("hand: the held potion's effect could not be read, so the NPC throws nothing");
+      return;
+    }
+    final JObject applied = JObject();
+    applied.addString('id', effect.id);
+    applied.addInt('amplifier', effect.amplifier);
+    applied.addInt('durationTicks', effect.durationTicks);
+    ranged.add('effect', applied);
+    if (effective == 'minecraft:lingering_potion') ranged.addBool('lingering', true);
+  }
+
+  /// A saved item's meta as a map. Citizens' ItemStorage writes it as base64 of Bukkit's object stream, on `meta` itself
+  /// or, in older saves, under `meta.encoded-meta`; a plain map is read as it is.
+  static JObject _itemMeta(JElement? meta) {
+    if (meta == null) return JObject();
+    final String? encoded = encodedItemMeta(meta);
+    if (encoded == null) return meta is JObject ? meta : JObject();
+    final JElement? decoded = decodeJavaSerialized(encoded);
+    return decoded is JObject ? decoded : JObject();
+  }
+
+  /// The potion's own effect, else its first custom effect at its level and length.
+  static PotionEffect? _potionEffect(JObject meta) {
+    final String? potion = _text(meta.get('potion-type'));
+    if (potion != null) return potionEffect(potion.contains(':') ? javaLower(potion) : 'minecraft:${javaLower(potion)}');
+    final JElement? custom = meta.get('custom-effects');
+    if (custom is! JArray || custom.isEmpty) return null;
+    final JElement first = custom.elements.first;
+    if (first is! JObject) return null;
+    final String? id = _text(first.get('effect'));
+    final String? effect = id == null ? null : (id.contains(':') ? javaLower(id) : 'minecraft:${javaLower(id)}');
+    if (effect == null || !RegExp(r'^[a-z0-9_.-]+:[a-z0-9_./-]+$').hasMatch(effect)) return null;
+    final JElement? ticks = first.get('duration'), level = first.get('amplifier');
+    final int duration = ticks is JNumber ? ticks.asInt : 0;
+    final int amplifier = level is JNumber ? level.asInt : 0;
+    if (duration < 1 || amplifier < 0) return null;
+    return (id: effect, amplifier: amplifier < 9 ? amplifier : 9, durationTicks: duration < 72000 ? duration : 72000);
   }
 
   /// Sentinel's defense becomes the health module; an NPC that is not invincible is killable.

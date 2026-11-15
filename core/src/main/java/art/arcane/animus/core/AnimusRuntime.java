@@ -19,6 +19,7 @@ import art.arcane.animus.core.rig.RigCheckpoints;
 import art.arcane.animus.core.rig.RigLibrary;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
@@ -46,6 +47,7 @@ public final class AnimusRuntime implements AutoCloseable {
     private DocumentStore documents;
     private NpcRepository npcs;
     private MutationLane fileWork;
+    private art.arcane.animus.core.combat.CombatStatistics combatStatistics;
     private RepositoryDefinitions definitions;
     private BehaviorStateStore behaviorState;
     private volatile art.arcane.animus.core.migration.CitizensDropIn.Host importHost = art.arcane.animus.core.migration.CitizensDropIn.Host.NONE;
@@ -231,6 +233,8 @@ public final class AnimusRuntime implements AutoCloseable {
     private synchronized void closeStorage() {
         DocumentStore owned = documents;
         BehaviorStateStore state = behaviorState;
+        if (combatStatistics != null) combatStatistics.flushNow();
+        combatStatistics = null;
         try {
             try { if (state != null) state.close(); }
             finally { if (owned != null) owned.close(); }
@@ -283,6 +287,18 @@ public final class AnimusRuntime implements AutoCloseable {
     public synchronized BehaviorStateStore behaviorState() {
         if (behaviorState == null) throw new IllegalStateException("Animus is not running");
         return behaviorState;
+    }
+
+    /** How much each combat NPC has fought, in {@code state/combat/statistics.json}; read on first use. */
+    public synchronized art.arcane.animus.core.combat.CombatStatistics combatStatistics() {
+        if (combatStatistics == null) {
+            Path file;
+            try { file = documents().resolve("state/combat/statistics.json"); }
+            catch (IOException invalid) { throw new UncheckedIOException(invalid); }
+            combatStatistics = new art.arcane.animus.core.combat.CombatStatistics(file,
+                    (String warning) -> System.getLogger("Animus").log(System.Logger.Level.WARNING, warning));
+        }
+        return combatStatistics;
     }
 
     /** Rigs and animations; reload on the file lane. */

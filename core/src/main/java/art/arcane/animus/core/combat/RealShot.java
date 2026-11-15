@@ -10,10 +10,11 @@ import java.util.random.RandomGenerator;
  * fire and potion effect it carries. Projectiles NPCs fire are helpers and never become shots.
  *
  * @param from        where the shooter stood, for knockback direction and range checks
+ * @param knockback   how hard the hit pushes, Punch included
  * @param igniteTicks how long a body that takes fire burns after the hit
  * @param potion      the instant effect a thrown potion applies to the body it hits
  */
-public record RealShot(Kind kind, TargetRef shooter, WorldPosition from, double damage, int igniteTicks, Optional<CombatSettings.Effect> potion) {
+public record RealShot(Kind kind, TargetRef shooter, WorldPosition from, double damage, double knockback, int igniteTicks, Optional<CombatSettings.Effect> potion) {
     /** The standard knockback of a vanilla projectile hit. */
     public static final double KNOCKBACK = .4;
 
@@ -35,13 +36,21 @@ public record RealShot(Kind kind, TargetRef shooter, WorldPosition from, double 
     /** {@code arrowDamage} is used by arrows only; the rest carry their fixed vanilla damage. */
     public static RealShot of(Kind kind, TargetRef shooter, WorldPosition from, double arrowDamage, Optional<CombatSettings.Effect> potion) {
         return switch (kind) {
-            case ARROW -> new RealShot(kind, shooter, from, arrowDamage, 0, Optional.empty());
-            case TRIDENT, WITHER_SKULL -> new RealShot(kind, shooter, from, 8, 0, Optional.empty());
-            case SNOWBALL, EGG -> new RealShot(kind, shooter, from, 0, 0, Optional.empty());
-            case SMALL_FIREBALL -> new RealShot(kind, shooter, from, 5, 100, Optional.empty());
-            case LARGE_FIREBALL -> new RealShot(kind, shooter, from, 6, 0, Optional.empty());
-            case POTION -> new RealShot(kind, shooter, from, 0, 0, potion);
+            case ARROW -> new RealShot(kind, shooter, from, arrowDamage, KNOCKBACK, 0, Optional.empty());
+            case TRIDENT, WITHER_SKULL -> new RealShot(kind, shooter, from, 8, KNOCKBACK, 0, Optional.empty());
+            case SNOWBALL, EGG -> new RealShot(kind, shooter, from, 0, KNOCKBACK, 0, Optional.empty());
+            case SMALL_FIREBALL -> new RealShot(kind, shooter, from, 5, KNOCKBACK, 100, Optional.empty());
+            case LARGE_FIREBALL -> new RealShot(kind, shooter, from, 6, KNOCKBACK, 0, Optional.empty());
+            case POTION -> new RealShot(kind, shooter, from, 0, KNOCKBACK, 0, potion);
         };
+    }
+
+    /**
+     * The same shot fired from a bow or crossbow with these enchantments: Punch pushes six tenths of a block more a
+     * level, and an arrow alight from Flame sets the body burning for five seconds.
+     */
+    public RealShot enchanted(int punch, boolean burning) {
+        return new RealShot(kind, shooter, from, damage, knockback + .6 * Math.max(0, punch), burning ? Math.max(igniteTicks, 100) : igniteTicks, potion);
     }
 
     /**

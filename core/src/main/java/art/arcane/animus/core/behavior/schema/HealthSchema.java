@@ -30,7 +30,7 @@ final class HealthSchema {
         fields.add("knockback", described(type("boolean"), "Hits push it back, less by knockback_resistance. True by default."));
         fields.add("regenerate", described(type("boolean"), "Heals 1 health each regenerateTicks."));
         fields.add("regenerateTicks", described(range("integer", 1, 72000), "100 by default."));
-        JsonObject sources = described(type("array"), "What can hurt it. Every attack by default; fire, lava and fall only when listed.");
+        JsonObject sources = described(type("array"), "What can hurt it. Every attack and explosions by default; fire, lava and fall only when listed.");
         sources.add("items", choices(Arrays.stream(HealthSettings.DamageSource.values()).map(HealthSettings.DamageSource::jsonName).toList()));
         sources.addProperty("uniqueItems", true);
         fields.add("sources", sources);

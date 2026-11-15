@@ -229,8 +229,9 @@ class CombatParityTest {
         assertEquals(11, world.realDamage.get(other), "The weapon map replaces the fixed damage");
         CombatLoadout armored = new CombatLoadout(Optional.empty(), Map.of("chest", "minecraft:diamond_chestplate", "head", "minecraft:diamond_helmet"), Map.of());
         UUID tank = combatant(0, 60, "{}", CombatTesting.health("{\"killable\":true,\"armorFromEquipment\":true,\"invulnerableTicks\":0}"), armored);
-        engine().playerAttack(tank, player(world.player("Hitter", 1, 60)), MockCombatWorld.at(1, 64, 60), 10);
-        assertEquals(20 - 10 * (1 - .44), world.npc(tank).orElseThrow().health(), 1e-9);
+        CombatTesting.hit(engine(), tank, player(world.player("Hitter", 1, 60)), MockCombatWorld.at(1, 64, 60), 10);
+        // A diamond helmet and chestplate are 11 armor points with 4 toughness: vanilla blocks 11 - 10 / (2 + 4 / 4) of 25.
+        assertEquals(20 - 10 * (1 - (11 - 10 / 3.0) / 25), world.npc(tank).orElseThrow().health(), 1e-9);
         assertTrue(engine().registered(mapped));
     }
     @Test void aPursuitRegionKeepsTheFightInsideIt() {

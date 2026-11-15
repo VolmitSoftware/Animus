@@ -13,6 +13,7 @@ import art.arcane.animus.core.combat.RealShot;
 import art.arcane.animus.core.combat.TargetCategory;
 import art.arcane.animus.core.combat.TargetKind;
 import art.arcane.animus.core.combat.TargetRef;
+import art.arcane.animus.core.combat.VanillaMelee;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.runtime.CombatModule;
 import art.arcane.animus.core.runtime.NpcRuntime;
@@ -34,6 +35,7 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.Projectile;
@@ -171,14 +173,16 @@ final class ModCombat implements AutoCloseable {
         return Math.sqrt(x * x + y * y + z * z);
     }
 
-    /** A validated player hit on a combat NPC, scaled by the player's attack charge like a vanilla hit. */
+    /** A validated player hit on a combat NPC, worked out from the player's state and held weapon as a vanilla hit is. */
     void playerHit(ServerPlayer player, UUID npc) {
         if (!module.running() || !module.engine().registered(npc)) return;
-        double base = player.getAttributeValue(Attributes.ATTACK_DAMAGE);
-        double charge = player.getAttackStrengthScale(.5f);
+        VanillaMelee.Swing swing = new VanillaMelee.Swing(player.getAttributeValue(Attributes.ATTACK_DAMAGE), player.getAttackStrengthScale(.5f),
+                player.getAttributeValue(Attributes.ATTACK_KNOCKBACK), player.getAttributeValue(Attributes.SWEEPING_DAMAGE_RATIO), player.fallDistance,
+                player.onGround(), player.onClimbable(), player.isInWater(), player.hasEffect(MobEffects.BLINDNESS), player.isPassenger(),
+                player.isSprinting(), player.isFallFlying());
         net.minecraft.world.phys.Vec3 at = player.position();
         module.engine().playerAttack(npc, new TargetRef(TargetKind.PLAYER, player.getUUID()),
-                new WorldPosition(ModWorldKeys.key(player.level()), new Vec3(at.x(), at.y(), at.z())), AttackProfile.charged(base, charge));
+                new WorldPosition(ModWorldKeys.key(player.level()), new Vec3(at.x(), at.y(), at.z())), swing, ModShots.weapon(player, player.getMainHandItem()));
     }
     /** A real player or mob was hurt by another; guards and allies may respond. */
     void realDamaged(LivingEntity victim, DamageSource source) {

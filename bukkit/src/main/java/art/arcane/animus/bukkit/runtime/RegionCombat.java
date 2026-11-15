@@ -89,6 +89,11 @@ public final class RegionCombat implements Listener, AutoCloseable {
     private final AtomicLong denials = new AtomicLong(), failures = new AtomicLong(), messages = new AtomicLong(), dropped = new AtomicLong(), deleted = new AtomicLong();
     private volatile Executor files;
     private volatile boolean closed;
+    final art.arcane.animus.bukkit.combat.PluginTeams teams;
+    final art.arcane.animus.core.combat.CombatStatistics.Sink statistics;
+    /** When fight counts were last written; every NPC's turn may write them, at most once in {@link #STATISTICS_NANOS}. */
+    private final AtomicLong statisticsWritten = new AtomicLong(System.nanoTime());
+    private static final long STATISTICS_NANOS = 30_000_000_000L;
 
     RegionCombat(RegionNpcRuntime host, CombatBudgets budgets, ProtectionAdapter adapter, String protectionName) {
         this.host = host; this.protectionName = protectionName;
@@ -102,6 +107,8 @@ public final class RegionCombat implements Listener, AutoCloseable {
         };
         helperKey = new NamespacedKey(host.plugin, "combat_helper");
         ownerKey = new NamespacedKey(host.plugin, "combat_helper_owner");
+        teams = new art.arcane.animus.bukkit.combat.PluginTeams(host.plugin.getServer());
+        statistics = host.runtime.combatStatistics().sink();
         host.plugin.getServer().getPluginManager().registerEvents(this, host.plugin);
         settingsListener = host.runtime.onSettings((art.arcane.animus.core.config.PluginSettings next) -> {
             boolean was = this.budgets.enabled();
@@ -121,6 +128,15 @@ public final class RegionCombat implements Listener, AutoCloseable {
         budgets = next;
     }
     boolean enabled() { return budgets.enabled(); }
+    /** Writes changed fight counts on the file lane at most every thirty seconds; any region may ask. */
+    void flushStatistics() {
+        long last = statisticsWritten.get(), now = System.nanoTime();
+        if (now - last < STATISTICS_NANOS || !statisticsWritten.compareAndSet(last, now)) return;
+        if (files == null) files = host.runtime.fileExecutor((Runnable task, MutationLane.EngineTaskEvent event, Throwable failure) -> {
+            if (event == MutationLane.EngineTaskEvent.FAILED) warn("Combat could not save fight counts: " + failure);
+        });
+        host.runtime.combatStatistics().flush(files);
+    }
 
     String status() {
         int helpers = 0;
@@ -379,7 +395,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
         ActorCombat combat = actor == null || !actor.owner.owned() ? null : actor.combat();
         if (combat == null) return;
         Player player = event.getViewer();
-        combat.playerAttack(player, CombatHits.attackDamage(player, swings.remove(player.getUniqueId())));
+        combat.playerAttack(player, CombatHits.swing(player, swings.remove(player.getUniqueId())), CombatHits.weapon(player.getInventory().getItemInMainHand()));
     }
     /** On the player's region, before the server resets the charge. */
     @EventHandler(priority = EventPriority.LOWEST)
@@ -453,6 +469,29 @@ public final class RegionCombat implements Listener, AutoCloseable {
             end();
         }
         void end() { if (!ended) { ended = true; flying.decrementAndGet(); } }
+    }
+    /** On the explosion's region: every combat NPC in reach takes vanilla explosion damage, handed to its owner. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void exploded(org.bukkit.event.entity.EntityExplodeEvent event) {
+        if (helper(event.getEntity())) return;
+        Entity source = event.getEntity();
+        Entity cause = source instanceof org.bukkit.entity.TNTPrimed tnt ? tnt.getSource() : source;
+        blast(event.getLocation(), art.arcane.animus.bukkit.combat.Explosions.power(source), Optional.ofNullable(cause == null ? null : CombatHits.reference(cause)));
+    }
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void blockExploded(org.bukkit.event.block.BlockExplodeEvent event) {
+        blast(event.getBlock().getLocation().add(.5, .5, .5), art.arcane.animus.bukkit.combat.Explosions.BLOCK_POWER, Optional.empty());
+    }
+    private void blast(org.bukkit.Location centre, float power, Optional<TargetRef> source) {
+        if (closed || !enabled() || combatants.isEmpty()) return;
+        WorldPosition at = RegionViewer.position(centre);
+        SpatialNpcIndex.Scan near = scan(at, Math.min(14, power * 2), null, new SpatialNpcIndex.Budget(64, 256));
+        for (VirtualNpcState.Snapshot npc : near.candidates()) {
+            RegionActor actor = actor(npc.npcId());
+            if (actor == null || !npc.active()) continue;
+            double damage = art.arcane.animus.bukkit.combat.Explosions.damage(centre.getWorld(), at.point(), power, npc.bounds());
+            if (damage > 0) send(actor, "explosion", (ActorCombat combat) -> combat.exploded(source, at, damage));
+        }
     }
     /** Whether a real projectile striking this NPC counts, from the view its owner published. */
     private boolean shootable(UUID npc) {

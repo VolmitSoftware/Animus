@@ -3,7 +3,6 @@ package art.arcane.animus.core.runtime;
 import art.arcane.animus.core.combat.CombatWorld;
 import art.arcane.animus.core.navigation.BodyTerrain;
 import art.arcane.animus.core.navigation.MotionValidator;
-import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.navigation.TerrainReader;
 import art.arcane.animus.core.virtual.Hitbox;
 import art.arcane.animus.core.virtual.SpatialNpcIndex;
@@ -21,7 +20,6 @@ import java.util.UUID;
  * go through the persisted runtime and its live collision reads. A platform adds the real entities.
  */
 public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
-    private static final int MOVE_HORIZONTAL = 30;
     private static final int MOVE_VERTICAL = 7;
     private static final int PROBE_CELLS = 256;
     private static final double MAXIMUM_KNOCKBACK = 1.5;
@@ -44,14 +42,18 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
         return living.scanNpcs(center, radius, cursor, budget);
     }
 
+    /**
+     * A chase on the navigation planner: slabs, stairs, ladders, doors the NPC may open, and its step and jump heights. A
+     * goal farther than one plan reaches is walked in segments; a moving goal is planned again while the last path is walked.
+     */
     @Override public MoveStatus move(UUID npc, WorldPosition goal, double speed) {
         Optional<NpcRuntime.ActiveNpc> active = living.combatant(npc);
         if (active.isEmpty()) return MoveStatus.REJECTED;
         Vec3 origin = active.get().state().position().point();
         Vec3 delta = goal.point().subtract(origin);
-        Vec3 clamped = new Vec3(origin.x() + clamp(delta.x(), MOVE_HORIZONTAL), Math.floor(origin.y() + clamp(delta.y(), MOVE_VERTICAL)), origin.z() + clamp(delta.z(), MOVE_HORIZONTAL));
+        Vec3 feet = new Vec3(goal.point().x(), Math.floor(origin.y() + clamp(delta.y(), MOVE_VERTICAL)), goal.point().z());
         try {
-            living.navigate(active.get().id(), new WorldPosition(goal.world(), clamped), MovementProfile.Mode.WALK, speed);
+            living.chase(active.get().id(), new WorldPosition(goal.world(), feet), speed);
             refusals.remove(npc);
             return MoveStatus.ACCEPTED;
         } catch (IllegalArgumentException refused) {
@@ -138,6 +140,12 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
     @Override public double yaw(UUID npc) { return living.yaw(npc); }
     @Override public void swing(UUID npc) { living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> living.attackSwing(active.id())); }
     @Override public void drawing(UUID npc, boolean drawing) { living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> living.drawing(active.id(), drawing)); }
+    @Override public void hold(UUID npc, Optional<art.arcane.animus.core.npc.NpcItem> item) {
+        living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> living.holdItem(active.id(), item));
+    }
+    @Override public void critical(UUID npc, boolean critical, boolean magic) {
+        living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> living.critical(active.id(), critical, magic));
+    }
     @Override public void knockback(UUID npc, Vec3 direction, double strength) {
         Optional<NpcRuntime.ActiveNpc> active = living.combatant(npc);
         double horizontal = Math.hypot(direction.x(), direction.z());

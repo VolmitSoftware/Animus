@@ -38,7 +38,7 @@ ItemMetaResult readCitizensItem(JObject item, BigInt damage) {
   bool readable = true;
   JObject? meta;
   if (item.has('meta')) {
-    final String? encoded = _encoded(item.get('meta')!);
+    final String? encoded = encodedItemMeta(item.get('meta')!);
     final JElement? decoded = encoded == null ? null : decodeJavaSerialized(encoded);
     if (decoded is JObject) {
       meta = decoded;
@@ -52,11 +52,12 @@ ItemMetaResult readCitizensItem(JObject item, BigInt damage) {
   return ItemMetaResult(mapping.text(), Set<String>.of(mapping.unmapped), readable);
 }
 
-String? _encoded(JElement value) {
+/// The base64 text of a `meta` value: a string, or Citizens' `""` or `encoded-meta` child.
+String? encodedItemMeta(JElement value) {
   if (value is JString) return value.value;
   if (value is! JObject) return null;
-  if (value.has('encoded-meta')) return _encoded(value.get('encoded-meta')!);
-  if (value.has('')) return _encoded(value.get('')!);
+  if (value.has('encoded-meta')) return encodedItemMeta(value.get('encoded-meta')!);
+  if (value.has('')) return encodedItemMeta(value.get('')!);
   return null;
 }
 

@@ -28,11 +28,11 @@ const List<String> healthKeys = <String>[
   'dead',
 ];
 
-/// What may hurt the NPC: attacks, then the environment, which counts only when listed.
-const List<String> healthSources = <String>['players', 'mobs', 'npcs', 'projectiles', 'fire', 'lava', 'fall'];
+/// What may hurt the NPC: attacks and explosions, then the environment, which counts only when listed.
+const List<String> healthSources = <String>['players', 'mobs', 'npcs', 'projectiles', 'explosions', 'fire', 'lava', 'fall'];
 
-/// The sources a module without `sources` takes: every attack and nothing from the environment.
-const List<String> healthAttackSources = <String>['players', 'mobs', 'npcs', 'projectiles'];
+/// The sources a module without `sources` takes: every attack and explosions, nothing from the environment.
+const List<String> healthAttackSources = <String>['players', 'mobs', 'npcs', 'projectiles', 'explosions'];
 
 const List<String> healthAfterDeath = <String>['respawn', 'permadeath', 'delete'];
 const List<String> healthOrders = <String>['in_order', 'random', 'nearest'];

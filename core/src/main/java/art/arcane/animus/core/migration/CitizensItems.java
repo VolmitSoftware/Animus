@@ -54,7 +54,7 @@ final class CitizensItems {
     }
 
     /** The base64 text of a {@code meta} value: a string, or Citizens' {@code ""} or {@code encoded-meta} child. */
-    private static Optional<String> encoded(JsonElement value) {
+    static Optional<String> encoded(JsonElement value) {
         if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) return Optional.of(value.getAsString());
         if (!value.isJsonObject()) return Optional.empty();
         JsonObject object = value.getAsJsonObject();

@@ -367,42 +367,42 @@ class CombatEngineTest {
         UUID npc = combatant(0, 0, "{\"ignores\":{\"players\":[\"bob\"]},\"targeting\":{\"fightBack\":false}}",
                 "{\"killable\":true,\"invulnerableTicks\":10,\"protectedFromIgnored\":true,\"protectFromRange\":5}");
         WorldPosition close = MockCombatWorld.at(2, 64, 0);
-        assertEquals(CombatWorld.DamageStatus.APPLIED, engine().playerAttack(npc, player(alice), close, 3).status());
-        assertEquals(CombatWorld.DamageStatus.NO_CHANGE, engine().playerAttack(npc, player(alice), close, 3).status(), "Inside invulnerability frames");
+        assertEquals(CombatWorld.DamageStatus.APPLIED, CombatTesting.hit(engine(), npc, player(alice), close, 3).status());
+        assertEquals(CombatWorld.DamageStatus.NO_CHANGE, CombatTesting.hit(engine(), npc, player(alice), close, 3).status(), "Inside invulnerability frames");
         run(10);
-        assertEquals(CombatWorld.DamageStatus.NO_CHANGE, engine().playerAttack(npc, player(alice), MockCombatWorld.at(9, 64, 0), 3).status(), "Beyond protectFromRange");
+        assertEquals(CombatWorld.DamageStatus.NO_CHANGE, CombatTesting.hit(engine(), npc, player(alice), MockCombatWorld.at(9, 64, 0), 3).status(), "Beyond protectFromRange");
         UUID bob = world.player("Bob", 2, 1);
-        assertEquals(CombatWorld.DamageStatus.NO_CHANGE, engine().playerAttack(npc, player(bob), close, 3).status(), "Ignored attackers cannot hurt a protected NPC");
+        assertEquals(CombatWorld.DamageStatus.NO_CHANGE, CombatTesting.hit(engine(), npc, player(bob), close, 3).status(), "Ignored attackers cannot hurt a protected NPC");
         assertEquals(17, world.npc(npc).orElseThrow().health());
     }
     @Test void anNpcWithoutEnabledCombatCannotBeHurt() {
         UUID plain = world.npc(0, 0, 20);
-        assertEquals(CombatWorld.DamageStatus.NO_CHANGE, engine().playerAttack(plain, player(UUID.randomUUID()), near(), 5).status());
+        assertEquals(CombatWorld.DamageStatus.NO_CHANGE, CombatTesting.hit(engine(), plain, player(UUID.randomUUID()), near(), 5).status());
         assertEquals(20, world.npc(plain).orElseThrow().health());
     }
     @Test void invincibleNpcIsProtectedFromDamage() {
         UUID npc = combatant(0, 0, "{}", "{\"killable\":false}");
-        assertEquals(CombatWorld.DamageStatus.PROTECTED, engine().playerAttack(npc, player(UUID.randomUUID()), near(), 5).status());
+        assertEquals(CombatWorld.DamageStatus.PROTECTED, CombatTesting.hit(engine(), npc, player(UUID.randomUUID()), near(), 5).status());
     }
     @Test void knockbackCanBeRefused() {
         UUID npc = combatant(0, 0, "{}", "{\"killable\":true,\"knockback\":false}");
-        engine().playerAttack(npc, player(UUID.randomUUID()), near(), 1);
+        CombatTesting.hit(engine(), npc, player(UUID.randomUUID()), near(), 1);
         assertTrue(world.knocked.isEmpty());
     }
     @Test void fightBackEngagesAnAttackerAndRunawayFleesInstead() {
         UUID alice = world.player("Alice", 2, 0);
         UUID fights = combatant(0, 0, "{\"targeting\":{\"scanIntervalTicks\":100}}");
-        engine().playerAttack(fights, player(alice), MockCombatWorld.at(2, 64, 0), 1);
+        CombatTesting.hit(engine(), fights, player(alice), MockCombatWorld.at(2, 64, 0), 1);
         run(1);
         assertEquals(player(alice), status(fights).target().orElseThrow());
         UUID flees = combatant(5, 0, "{\"targeting\":{\"fightBack\":false,\"scanIntervalTicks\":100},\"avoidance\":{\"fleeWhenAttacked\":true,\"range\":10}}");
-        engine().playerAttack(flees, player(alice), MockCombatWorld.at(2, 64, 0), 1);
+        CombatTesting.hit(engine(), flees, player(alice), MockCombatWorld.at(2, 64, 0), 1);
         run(1);
         assertEquals(CombatState.AVOIDING, status(flees).state());
     }
     @Test void healingRestoresHealthAtTheConfiguredRate() {
         UUID npc = combatant(0, 0, "{\"targeting\":{\"fightBack\":false}}", "{\"killable\":true,\"regenerate\":true,\"regenerateTicks\":5,\"invulnerableTicks\":0}");
-        engine().playerAttack(npc, player(UUID.randomUUID()), near(), 4);
+        CombatTesting.hit(engine(), npc, player(UUID.randomUUID()), near(), 4);
         run(6);
         assertEquals(17, world.npc(npc).orElseThrow().health());
     }
@@ -415,7 +415,7 @@ class CombatEngineTest {
         assertTrue(world.realDamage.isEmpty());
         assertEquals(ProtectionAdapter.Action.NPC_ATTACK, protectionCalls.getFirst().action());
         assertEquals(zombie, protectionCalls.getFirst().target().id());
-        assertEquals(CombatWorld.DamageStatus.PROTECTED, engine().playerAttack(npc, player(UUID.randomUUID()), near(), 5).status());
+        assertEquals(CombatWorld.DamageStatus.PROTECTED, CombatTesting.hit(engine(), npc, player(UUID.randomUUID()), near(), 5).status());
         assertEquals(20, world.npc(npc).orElseThrow().health());
         assertTrue(engine().protectionDenials() >= 2);
     }
@@ -549,7 +549,7 @@ class CombatEngineTest {
         world.monster("minecraft:zombie", 10, 0);
         run(2);
         UUID helper = onlyHelper();
-        engine().playerAttack(archer, player(UUID.randomUUID()), near(), 100);
+        CombatTesting.hit(engine(), archer, player(UUID.randomUUID()), near(), 100);
         assertTrue(world.removedHelpers.contains(helper));
     }
     @Test void helperBudgetsLimitLaunches() {
@@ -632,7 +632,7 @@ class CombatEngineTest {
         UUID npc = combatant(0, 0, HUNT_MONSTERS);
         run(100);
         UUID alice = world.player("Alice", 2, 0);
-        engine().playerAttack(npc, player(alice), MockCombatWorld.at(2, 64, 0), 1);
+        CombatTesting.hit(engine(), npc, player(alice), MockCombatWorld.at(2, 64, 0), 1);
         run(1);
         assertTrue(status(npc).target().isPresent());
     }
