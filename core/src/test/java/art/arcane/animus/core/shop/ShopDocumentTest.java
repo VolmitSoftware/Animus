@@ -117,4 +117,52 @@ class ShopDocumentTest {
         assertTrue(problems(OWNED.replace("\"y\": 64", "\"y\": 99999")).contains("$.containers[0].y: expected integer -2048..2048"));
         assertTrue(problems(OWNED.replace("\"uuid\": \"00000000-0000-0000-0000-00000000000a\"", "\"uuid\": \"alex\"")).contains("$.owner.uuid: expected canonical player UUID"));
     }
+
+    private static final String BOOKS = """
+            {"schemaVersion": 1, "revision": 1, "id": "town:baker", "kind": "book", "owner": {"uuid": "00000000-0000-0000-0000-00000000000a"},
+             "containers": [{"world": "world", "x": 10, "y": 64, "z": -3}],
+             "pages": [{"name": "Books", "trade": {"0": {"id": "b", "type": "trade", "item": {"id": "minecraft:written_book"}, "book": "Tales",
+               "needs": [{"item": {"id": "minecraft:emerald"}, "amount": 5}]}}}]}
+            """;
+
+    @Test void playerShopsNameTheirKind() {
+        assertEquals(List.of(), problems(OWNED.replace("\"containers\"", "\"kind\": \"selling\", \"containers\"")));
+        for (ShopDocument.Kind kind : ShopDocument.Kind.values())
+            assertEquals(Optional.of(kind), ShopDocument.Kind.of(kind.key()), kind.key());
+        assertEquals(Optional.of(ShopDocument.Kind.BUYING), ShopDocument.parse("town:baker", OWNED.replace("\"containers\"", "\"kind\": \"buying\", \"containers\"")).shop().orElseThrow().kind());
+        assertTrue(problems(OWNED.replace("\"containers\"", "\"kind\": \"renting\", \"containers\"")).contains("$.kind: expected selling, buying, trading or book"));
+        assertTrue(problems(ShopScreenTest.BAKERY.replace("\"schemaVersion\": 1", "\"schemaVersion\": 1, \"kind\": \"selling\"")).contains("$.kind: a shop kind needs containers, which hold its stock"));
+    }
+
+    @Test void aClosedShopKeepsItsReason() {
+        ShopDocument shop = ShopDocument.parse("town:baker", OWNED.replace("\"containers\"", "\"closed\": \"The chest is gone\", \"containers\"")).shop().orElseThrow();
+        assertEquals(Optional.of("The chest is gone"), shop.closed());
+        assertEquals(Optional.empty(), ShopDocument.parse("town:baker", OWNED).shop().orElseThrow().closed());
+        assertTrue(problems(OWNED.replace("\"containers\"", "\"closed\": \" \", \"containers\"")).contains("$.closed: expected nonblank string"));
+        assertTrue(problems(OWNED.replace("\"containers\"", "\"closed\": \"" + "x".repeat(257) + "\", \"containers\"")).contains("$.closed: at most 256 characters"));
+    }
+
+    @Test void bookShopsCopyBooksByTitle() {
+        assertEquals(List.of(), problems(BOOKS));
+        ShopDocument.Entry entry = ShopDocument.parse("town:baker", BOOKS).shop().orElseThrow().entry("b").orElseThrow();
+        assertEquals(Optional.of("Tales"), entry.book());
+        assertEquals(List.of(), entry.gives());
+        assertTrue(problems(BOOKS.replace("\"book\": \"Tales\",", "\"book\": \"Tales\", \"gives\": [{\"item\": {\"id\": \"minecraft:diamond\"}}],"))
+                .contains("$.pages[0].trade.0.gives: a book entry gives a copy of its book; remove gives"));
+        assertTrue(problems(BOOKS.replace("\"book\": \"Tales\",", "")).contains("$.pages[0].trade.0.book: a book shop's trades name the book they copy"));
+        assertTrue(problems(BOOKS.replace("\"kind\": \"book\"", "\"kind\": \"selling\"")).contains("$.pages[0].trade.0.book: book entries belong in a book shop, kind book"));
+        assertTrue(problems(OWNED.replace("\"needs\"", "\"book\": \"Tales\", \"needs\"")).contains("$.pages[0].trade.0.book: book entries belong in a book shop, kind book"));
+    }
+
+    @Test void containerShopsRunNoCommands() {
+        assertTrue(problems(OWNED.replace("\"needs\"", "\"commands\": [{\"command\": \"give {player} diamond\"}], \"needs\""))
+                .contains("$.pages[0].trade.0.commands: a container shop trades items for items; remove the commands"));
+    }
+
+    @Test void onlyItsOwnerOwnsAShop() {
+        ShopDocument shop = ShopDocument.parse("town:baker", OWNED).shop().orElseThrow();
+        assertTrue(shop.owns(java.util.UUID.fromString("00000000-0000-0000-0000-00000000000a")));
+        assertFalse(shop.owns(java.util.UUID.fromString("00000000-0000-0000-0000-00000000000b")));
+        assertFalse(ShopDocument.parse("town:baker", ShopScreenTest.BAKERY).shop().orElseThrow().owns(java.util.UUID.fromString("00000000-0000-0000-0000-00000000000a")));
+    }
 }

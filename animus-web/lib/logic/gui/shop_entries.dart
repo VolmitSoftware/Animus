@@ -1,6 +1,7 @@
 /// Shop entry rules as core's ShopDocument reads them: which fields each
-/// entry type keeps, what a container shop allows, and the writer that
-/// changes an entry's type without leaving fields the new type refuses.
+/// entry type keeps, what a container shop and a book shop allow, and the
+/// writer that changes an entry's type without leaving fields the new type
+/// refuses.
 library;
 
 import 'gui_json.dart';
@@ -11,6 +12,23 @@ const List<String> shopEntryTypes = <String>['buy', 'command', 'sell', 'trade', 
 /// Whether [shop] stocks from chests: it lists `containers`.
 bool isContainerShop(JsonMap shop) => asList(shop['containers']).isNotEmpty;
 
+/// A container shop's `kind`, as players pick it in game.
+const List<String> shopKinds = <String>['selling', 'buying', 'trading', 'book'];
+
+/// Whether [shop] is a book shop, whose trades copy written books.
+bool isBookShop(JsonMap shop) => shop['kind'] == 'book';
+
+/// The title a new book trade starts with, until the owner names the book.
+const String untitledBook = 'Untitled';
+
+/// The owner of a player's shop by name: the name the server knows for its
+/// UUID in [known], else the last name the shop kept, else "Unknown player".
+String shopOwnerName(JsonMap shop, Map<String, String> known) {
+  final JsonMap owner = asMap(shop['owner']);
+  final String? name = known[asString(owner['uuid'])] ?? asString(owner['name']);
+  return name == null || name.trim().isEmpty ? 'Unknown player' : name.trim();
+}
+
 /// The types a slot of [grid] may hold; a container shop trades items for
 /// items, so it keeps only trade and static entries.
 List<String> shopTypesFor(String grid, {required bool container}) => <String>[
@@ -20,11 +38,14 @@ List<String> shopTypesFor(String grid, {required bool container}) => <String>[
       'static',
     ];
 
-/// Whether an entry of [type] may carry [key] (core's per-type checks).
-bool shopEntryKeeps(String type, String key, {bool container = false}) => switch (key) {
+/// Whether an entry of [type] may carry [key] (core's per-type checks). A
+/// book shop's trades name a `book` in place of `gives`.
+bool shopEntryKeeps(String type, String key, {bool container = false, bool bookShop = false}) => switch (key) {
       'sellPartial' => type == 'sell',
-      'needs' || 'gives' => type == 'trade',
-      'commands' => type == 'command',
+      'needs' => type == 'trade',
+      'gives' => type == 'trade' && !bookShop,
+      'book' => type == 'trade' && bookShop,
+      'commands' => !container && type == 'command',
       'limit' => type != 'static',
       'stock' => !container && (type == 'buy' || type == 'command' || type == 'trade'),
       'price' => !container,
@@ -35,10 +56,10 @@ bool shopEntryKeeps(String type, String key, {bool container = false}) => switch
 /// [entry] as a [type] entry: fields the new type refuses are removed and
 /// the fields it needs are added with starting values; everything else
 /// stays.
-JsonMap withShopEntryType(JsonMap entry, String type, {bool container = false}) {
+JsonMap withShopEntryType(JsonMap entry, String type, {bool container = false, bool bookShop = false}) {
   final JsonMap out = <String, Object?>{
     for (final MapEntry<String, Object?> field in entry.entries)
-      if (field.key == 'type' || shopEntryKeeps(type, field.key, container: container)) field.key: field.value,
+      if (field.key == 'type' || shopEntryKeeps(type, field.key, container: container, bookShop: bookShop)) field.key: field.value,
   };
   out['type'] = type;
   if (!container && (type == 'buy' || type == 'sell' || type == 'command') && out['price'] == null) out['price'] = 1;
@@ -48,7 +69,11 @@ JsonMap withShopEntryType(JsonMap entry, String type, {bool container = false}) 
   if (type == 'trade') {
     final String item = asString(asMap(entry['item'])['id']) ?? 'minecraft:bread';
     if (asList(out['needs']).isEmpty) out['needs'] = <Object?>[<String, Object?>{'item': <String, Object?>{'id': 'minecraft:emerald'}, 'amount': 1}];
-    if (asList(out['gives']).isEmpty) out['gives'] = <Object?>[<String, Object?>{'item': <String, Object?>{'id': item}, 'amount': 1}];
+    if (bookShop) {
+      if ((asString(out['book']) ?? '').trim().isEmpty) out['book'] = untitledBook;
+    } else if (asList(out['gives']).isEmpty) {
+      out['gives'] = <Object?>[<String, Object?>{'item': <String, Object?>{'id': item}, 'amount': 1}];
+    }
   }
   return out;
 }

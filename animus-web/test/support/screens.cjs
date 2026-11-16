@@ -268,8 +268,8 @@ async function walkScreens(page, {url, fake, width, wanted = () => true, check, 
   }
   await walk('server');
   // Real-shaped data: many NPC routes, a name made only of colour codes,
-  // raw-id behaviors and shops, pixel-art holograms. Seen as a first-time
-  // owner sees them, in Simple.
+  // raw-id behaviors and shops, pixel-art holograms, a player's book shop
+  // with its Settings. Seen as a first-time owner sees them, in Simple.
   await addRealShape(fake);
   await setMode('simple');
   for (const [name, route] of realShapeScreens(`server-${server}`)) {
@@ -278,8 +278,9 @@ async function walkScreens(page, {url, fake, width, wanted = () => true, check, 
     if (name.endsWith('movement')) await page.waitForFunction(() => /\b([4-9]\d|\d{3,}) routes\b/.test(document.getElementById('animus-main')?.innerText || ''), null, {timeout: 20000})
         .catch(async () => { throw new Error(`Movement never listed the walkers: ${(await page.locator('#animus-main').innerText()).slice(0, 300)}`); });
     await page.waitForTimeout(300);
+    if (name.endsWith('shop settings')) await pickTab(page, page.locator('#animus-main'), 'Settings');
     await reveal();
-    await visit(name, {framed: name.endsWith('npc')});
+    await visit(name, {framed: name.endsWith('npc') || name.endsWith('shop')});
   }
 }
 

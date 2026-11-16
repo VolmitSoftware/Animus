@@ -36,8 +36,9 @@ import java.util.stream.Stream;
 /**
  * Converts a Shopkeepers {@code save.yml} into Animus shops. Every shopkeeper becomes the shop
  * {@code shopkeepers:shop-<id>} with one trade entry per offer, in the native trading screen as Shopkeepers shows it. Admin shops have no stock limit. Player shops become
- * owned shops whose stock is their containers: selling shops take the currency items Shopkeepers would ask for,
- * buying shops pay them out, trading shops swap their items. Citizens shopkeepers bind to the Animus NPC converted from
+ * owned shops of the same kind whose stock is their containers: selling shops take the currency items Shopkeepers would
+ * ask for, buying shops pay them out, trading shops swap their items, and book shops sell copies of a written book by
+ * its title. Citizens shopkeepers bind to the Animus NPC converted from
  * their Citizens NPC; mob shopkeepers become new NPCs of that mob at the shop; sign and virtual shopkeepers get a shop
  * and no NPC. An offer whose items cannot be written exactly shows but does not trade, with its data kept in
  * {@code imported}.
@@ -48,7 +49,7 @@ import java.util.stream.Stream;
  * shopkeeper whose NPC is installed and returns the rest as pending.
  */
 public final class ShopkeepersImporter {
-    public static final int VERSION = 3;
+    public static final int VERSION = 4;
     public static final String NAMESPACE = "shopkeepers", IMPORTS = "imports/shopkeepers";
     static final String SHOP_PATH = "shops/shopkeepers/shop-(?:0|[1-9][0-9]{0,9})\\.json", NPC_PATH = "npcs/shopkeepers/shopkeeper-(?:0|[1-9][0-9]{0,9})\\.json";
     private static final int MAXIMUM_SHOPKEEPERS = 10_000, PER_PAGE = 45, MAXIMUM_STACK = 64;
@@ -56,7 +57,8 @@ public final class ShopkeepersImporter {
     private static final Set<String> HANDLED = Set.of("type", "uniqueId", "name", "world", "x", "y", "z", "yaw", "open", "object", "tradePerm", "recipes", "offers",
             "owner uuid", "owner", "containers", "chestx", "chesty", "chestz", "snapshots");
     private static final Set<String> OWNERSHIP = Set.of("notifyOnTrades", "forHire", "hirecost", "members", "expiration", "expirationNotifications", "ownedSince");
-    private static final Set<String> PLAYER_TYPES = Set.of("sell", "buy", "trade", "book");
+    private static final Map<String, ShopDocument.Kind> PLAYER_KINDS = Map.of("sell", ShopDocument.Kind.SELLING, "buy", ShopDocument.Kind.BUYING,
+            "trade", ShopDocument.Kind.TRADING, "book", ShopDocument.Kind.BOOK);
 
     /** A conversion: its import id, the staged files by relative path in path order, and the summary {@code report.json} holds. */
     public record Conversion(String id, Map<String, String> files, JsonObject summary) {
@@ -168,7 +170,7 @@ public final class ShopkeepersImporter {
             String type = string(record, "type").orElse("").toLowerCase(Locale.ROOT);
             if (type.equals("player")) { type = "sell"; report.field("/type", Status.CONVERTED_WITH_CHANGES, "the old player type is a selling shop"); }
             else report.field("/type", Status.CONVERTED);
-            if (!type.equals("admin") && !PLAYER_TYPES.contains(type)) { issues.add(key + ": shop type " + (type.isEmpty() ? "(none)" : type) + " is not converted; kept in source.yml"); continue; }
+            if (!type.equals("admin") && !PLAYER_KINDS.containsKey(type)) { issues.add(key + ": shop type " + (type.isEmpty() ? "(none)" : type) + " is not converted; kept in source.yml"); continue; }
             JsonObject object = record.has("object") && record.get("object").isJsonObject() ? record.getAsJsonObject("object") : new JsonObject();
             String objectType = string(object, "type").orElse("virtual").toLowerCase(Locale.ROOT);
             types.merge(type, 1, Integer::sum);
@@ -200,7 +202,7 @@ public final class ShopkeepersImporter {
             if (currency.log()) shop.addProperty("log", true);
             boolean open = !record.has("open") || !record.get("open").isJsonPrimitive() || !record.get("open").getAsJsonPrimitive().isBoolean() || record.get("open").getAsBoolean();
             if (record.has("open")) report.field("/open", open ? Status.CONVERTED : Status.CONVERTED_WITH_CHANGES, open ? null : "the shop was closed; its offers show but do not trade until you change them to trade entries");
-            boolean player = PLAYER_TYPES.contains(type);
+            boolean player = PLAYER_KINDS.containsKey(type);
             boolean stocked = false;
             if (player) {
                 Optional<UUID> owner = string(record, "owner uuid").flatMap(ShopkeepersImporter::uuid);
@@ -213,8 +215,11 @@ public final class ShopkeepersImporter {
                     report.field("/owner uuid", Status.CONVERTED);
                     if (record.has("owner")) report.field("/owner", Status.CONVERTED);
                 } else report.field("/owner uuid", Status.REQUIRES_REVIEW, "no valid owner; the shop's offers show but do not trade");
-                if (owner.isPresent() && !containers.isEmpty()) { shop.add("containers", containers); stocked = true; }
-                else if (owner.isPresent()) report.note("the shop has no container; its offers show but do not trade until one is added");
+                if (owner.isPresent() && !containers.isEmpty()) {
+                    shop.add("containers", containers);
+                    shop.addProperty("kind", PLAYER_KINDS.get(type).key());
+                    stocked = true;
+                } else if (owner.isPresent()) report.note("the shop has no container; its offers show but do not trade until one is added");
             }
             List<JsonObject> entries = new ArrayList<>();
             String list = type.equals("admin") ? "recipes" : "offers";
@@ -357,46 +362,46 @@ public final class ShopkeepersImporter {
                                               int[] items, TreeMap<String, Integer> dataVersions) {
         if (value == null || !value.isJsonObject()) { report.field(path, Status.UNSUPPORTED_PRESERVED, "not an offer mapping; kept in source.yml"); return Optional.empty(); }
         JsonObject offer = value.getAsJsonObject();
-        if (type.equals("book")) {
-            report.field(path, Status.UNSUPPORTED_PRESERVED, "a book offer copies a written book from the shop's chest by title; Animus trades exact items only, so it is kept in source.yml");
-            return Optional.empty();
-        }
         List<JsonObject> needs = new ArrayList<>(), gives = new ArrayList<>();
         List<String> notes = new ArrayList<>();
         boolean exact = true;
-        ShopkeepersItems.Item icon;
+        Optional<String> book = Optional.empty();
+        NpcItem icon;
         if (type.equals("admin") || type.equals("trade")) {
             Optional<ShopkeepersItems.Item> result = item(offer.get("resultItem"), items, dataVersions);
             Optional<ShopkeepersItems.Item> first = item(offer.get("item1"), items, dataVersions);
             Optional<ShopkeepersItems.Item> second = item(offer.get("item2"), items, dataVersions);
             if (result.isEmpty() || first.isEmpty()) { report.field(path, Status.UNSUPPORTED_PRESERVED, "the offer has no result item or no first item; kept in source.yml"); return Optional.empty(); }
-            icon = result.get();
+            icon = result.get().item();
             for (ShopkeepersItems.Item need : second.isPresent() ? List.of(first.get(), second.get()) : List.of(first.get())) needs.add(goods(need.item(), need.amount()));
-            gives.add(goods(icon.item(), icon.amount()));
+            gives.add(goods(icon, result.get().amount()));
             for (ShopkeepersItems.Item part : second.isPresent() ? List.of(result.get(), first.get(), second.get()) : List.of(result.get(), first.get())) {
                 exact &= part.exact();
                 notes.addAll(part.notes());
             }
+        } else if (type.equals("book")) {
+            book = string(offer, "book").filter((String title) -> !title.isBlank());
+            Optional<Integer> price = ShopkeepersItems.integer(offer.get("price"));
+            if (book.isEmpty() || price.isEmpty() || price.get() < 1) { report.field(path, Status.UNSUPPORTED_PRESERVED, "the offer has no book title or no price of at least 1; kept in source.yml"); return Optional.empty(); }
+            if (book.get().length() > ShopDocument.MAXIMUM_TITLE) { report.field(path, Status.UNSUPPORTED_PRESERVED, "the book title is longer than " + ShopDocument.MAXIMUM_TITLE + " characters; kept in source.yml"); return Optional.empty(); }
+            if (currency.low().isEmpty()) { report.field(path, Status.UNSUPPORTED_PRESERVED, "the currency item in config.yml is not an item; kept in source.yml"); return Optional.empty(); }
+            icon = new NpcItem("minecraft:written_book", 1, Optional.empty(), Optional.empty());
+            exact = currency.low().get().exact() && currency.high().map(ShopkeepersItems.Item::exact).orElse(true);
+            if (!pay(price.get(), currency, needs, path, report)) return Optional.empty();
         } else {
             Optional<ShopkeepersItems.Item> sold = item(offer.get("item"), items, dataVersions);
             Optional<Integer> price = ShopkeepersItems.integer(offer.get("price"));
             if (sold.isEmpty() || price.isEmpty() || price.get() < 1) { report.field(path, Status.UNSUPPORTED_PRESERVED, "the offer has no item or no price of at least 1; kept in source.yml"); return Optional.empty(); }
             if (currency.low().isEmpty()) { report.field(path, Status.UNSUPPORTED_PRESERVED, "the currency item in config.yml is not an item; kept in source.yml"); return Optional.empty(); }
-            icon = sold.get();
+            icon = sold.get().item();
             exact = sold.get().exact() && currency.low().get().exact() && currency.high().map(ShopkeepersItems.Item::exact).orElse(true);
             notes.addAll(sold.get().notes());
             if (type.equals("sell")) {
-                int remaining = price.get();
-                if (currency.high().isPresent() && price.get() > currency.highMinimum()) {
-                    int high = Math.min(price.get() / currency.highValue(), MAXIMUM_STACK);
-                    if (high > 0) { needs.add(goods(currency.high().get().item(), high)); remaining -= high * currency.highValue(); }
-                }
-                if (remaining > MAXIMUM_STACK) { report.field(path, Status.UNSUPPORTED_PRESERVED, "price " + price.get() + " needs more than one stack of each currency item, which Shopkeepers also skips"); return Optional.empty(); }
-                if (remaining > 0) needs.add(goods(currency.low().get().item(), remaining));
-                gives.add(goods(icon.item(), icon.amount()));
+                if (!pay(price.get(), currency, needs, path, report)) return Optional.empty();
+                gives.add(goods(icon, sold.get().amount()));
             } else {
                 if (price.get() > MAXIMUM_STACK) { report.field(path, Status.UNSUPPORTED_PRESERVED, "price " + price.get() + " is more than one stack of the currency item, which Shopkeepers also skips"); return Optional.empty(); }
-                needs.add(goods(icon.item(), icon.amount()));
+                needs.add(goods(icon, sold.get().amount()));
                 gives.add(goods(currency.low().get().item(), price.get()));
             }
         }
@@ -404,24 +409,41 @@ public final class ShopkeepersImporter {
         entry.addProperty("id", entryId);
         boolean trade = exact && tradable;
         entry.addProperty("type", trade ? "trade" : "static");
-        entry.add("item", icon.item().toJson());
+        entry.add("item", icon.toJson());
         JsonArray needList = new JsonArray(), giveList = new JsonArray();
         needs.forEach(needList::add);
         gives.forEach(giveList::add);
         if (trade) {
+            book.ifPresent((String title) -> entry.addProperty("book", title));
             entry.add("needs", needList);
-            entry.add("gives", giveList);
+            if (book.isEmpty()) entry.add("gives", giveList);
         } else {
             JsonObject kept = new JsonObject();
             kept.addProperty("source", "Shopkeepers");
+            book.ifPresent((String title) -> kept.addProperty("book", title));
             kept.add("needs", needList);
-            kept.add("gives", giveList);
+            if (book.isEmpty()) kept.add("gives", giveList);
             entry.add("imported", kept);
         }
         if (!exact) report.field(path, Status.REQUIRES_REVIEW, "item data Animus cannot write exactly is kept in imported, so the offer shows but does not trade: " + String.join("; ", notes));
         else if (!tradable) report.field(path, Status.CONVERTED_WITH_CHANGES, "converted as a display entry; the shop cannot trade yet");
         else report.field(path, notes.isEmpty() ? Status.CONVERTED : Status.CONVERTED_WITH_CHANGES, notes.isEmpty() ? null : String.join("; ", notes));
         return Optional.of(entry);
+    }
+
+    /**
+     * Adds a selling price to {@code needs} as Shopkeepers asks for it: high currency first when the price is above its
+     * minimum cost, the rest in base currency. False, reported, when the rest is more than one stack.
+     */
+    private static boolean pay(int price, Currency currency, List<JsonObject> needs, String path, ImportReport report) {
+        int remaining = price;
+        if (currency.high().isPresent() && price > currency.highMinimum()) {
+            int high = Math.min(price / currency.highValue(), MAXIMUM_STACK);
+            if (high > 0) { needs.add(goods(currency.high().get().item(), high)); remaining -= high * currency.highValue(); }
+        }
+        if (remaining > MAXIMUM_STACK) { report.field(path, Status.UNSUPPORTED_PRESERVED, "price " + price + " needs more than one stack of each currency item, which Shopkeepers also skips"); return false; }
+        if (remaining > 0) needs.add(goods(currency.low().get().item(), remaining));
+        return true;
     }
 
     private static Optional<ShopkeepersItems.Item> item(JsonElement value, int[] items, TreeMap<String, Integer> dataVersions) {

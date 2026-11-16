@@ -356,19 +356,37 @@ public final class EditorApi implements EditorRequestHandler {
         return done(EditorResponse.json(200, body));
     }
 
-    private CompletionStage<EditorResponse> lookups(EditorRequest request, EditorTokens.Token token, String[] segments) {
-        EditorHost.Lookups lookups = parts.host().lookups();
-        JsonObject body = new JsonObject(), registries = new JsonObject();
-        new TreeMap<>(lookups.registries()).forEach((String kind, List<String> ids) -> registries.add(kind, sortedArray(ids)));
-        body.add("registries", registries);
-        body.add("commands", sortedArray(lookups.commands()));
-        body.add("papi", sortedArray(lookups.papi()));
-        JsonObject owners = new JsonObject();
-        Set<UUID> owning = new TreeSet<>();
-        for (NpcDefinition definition : parts.npcs().get().stored()) definition.owner().ifPresent(owning::add);
-        for (UUID owner : owning) parts.host().playerName(owner).ifPresent((String name) -> owners.addProperty(owner.toString(), name));
-        body.add("owners", owners);
-        return done(EditorResponse.json(200, body));
+    /** Reads the shop files for their owners, so it runs on the file lane. */
+    private CompletionStage<EditorResponse> lookups(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
+        return files(token, () -> {
+            EditorHost.Lookups lookups = parts.host().lookups();
+            JsonObject body = new JsonObject(), registries = new JsonObject();
+            new TreeMap<>(lookups.registries()).forEach((String kind, List<String> ids) -> registries.add(kind, sortedArray(ids)));
+            body.add("registries", registries);
+            body.add("commands", sortedArray(lookups.commands()));
+            body.add("papi", sortedArray(lookups.papi()));
+            JsonObject owners = new JsonObject();
+            Set<UUID> owning = shopOwners();
+            for (NpcDefinition definition : parts.npcs().get().stored()) definition.owner().ifPresent(owning::add);
+            for (UUID owner : owning) parts.host().playerName(owner).ifPresent((String name) -> owners.addProperty(owner.toString(), name));
+            body.add("owners", owners);
+            return EditorResponse.json(200, body);
+        });
+    }
+
+    /** The owners of the stored player shops; a shop whose owner does not read is skipped. */
+    private Set<UUID> shopOwners() throws IOException {
+        Set<UUID> owners = new TreeSet<>();
+        for (EditorDocuments.Location location : parts.documents().list(List.of(DocumentKind.SHOP))) {
+            String content = parts.documents().read(location).content();
+            if (content == null) continue;
+            JsonElement owner = EditorDocuments.source(content).get("owner");
+            JsonElement uuid = owner != null && owner.isJsonObject() ? owner.getAsJsonObject().get("uuid") : null;
+            if (uuid == null || !uuid.isJsonPrimitive() || !uuid.getAsJsonPrimitive().isString()) continue;
+            try { owners.add(UUID.fromString(uuid.getAsString())); }
+            catch (IllegalArgumentException malformed) { /* ShopDocument refuses the shop; it has no owner to name. */ }
+        }
+        return owners;
     }
 
     private static JsonArray sortedArray(Collection<String> values) {

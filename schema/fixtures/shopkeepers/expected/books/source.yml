@@ -1,0 +1,53 @@
+data-version: 4|4189
+'1':
+  uniqueId: 0b5e3d8a-2222-4c2a-9e6f-000000000001
+  name: Closed Library
+  owner uuid: 00000000-0000-4000-8000-00000000a1e5
+  owner: Alex
+  world: world
+  x: 70
+  y: 64
+  z: 5
+  yaw: 0.0
+  type: book
+  open: false
+  object:
+    type: sign
+  containers:
+  - type: stock-and-earnings
+    world: world
+    x: 71
+    y: 64
+    z: 5
+  offers:
+    '1':
+      book: Field Notes
+      price: 25
+    '2':
+      book: ' '
+      price: 5
+    '3':
+      book: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      price: 5
+    '4':
+      book: Atlas
+      price: 9999
+    '5':
+      book: Atlas
+'2':
+  uniqueId: 0b5e3d8a-2222-4c2a-9e6f-000000000002
+  name: Chestless Library
+  owner uuid: 00000000-0000-4000-8000-00000000b0b0
+  owner: Bob
+  world: world
+  x: 80
+  y: 64
+  z: 5
+  yaw: 0.0
+  type: book
+  object:
+    type: sign
+  offers:
+    '1':
+      book: Field Notes
+      price: 3

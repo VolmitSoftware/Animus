@@ -60,6 +60,20 @@ final class ServiceCommands {
             services.shops().stock(actor(), shop, mode, given(price), page);
         }
 
+        @Director(description = "Make your own shop on the chest you look at", origin = DirectorOrigin.PLAYER)
+        @AnimusPermission(PermissionNodes.SHOPS_CREATE)
+        void create() { services.shops().create(actor()); }
+
+        @Director(description = "Get the shop item: sneak and right-click your chest with it to make a shop", origin = DirectorOrigin.PLAYER)
+        @AnimusPermission(PermissionNodes.SHOPS_CREATE)
+        void item() { services.shops().item(actor()); }
+
+        @Director(description = "Run your shops, or one shop by its id", origin = DirectorOrigin.PLAYER)
+        @AnimusPermission(PermissionNodes.SHOPS_CREATE)
+        void manage(@Param(name = "shop", defaultValue = "", description = "The shop id; all your shops when left out") String shop) {
+            services.shops().manage(actor(), given(shop));
+        }
+
         @Director(description = "Reload shops and chest GUIs from disk")
         void reload() { services.shops().reloadCommand(actor()); }
 

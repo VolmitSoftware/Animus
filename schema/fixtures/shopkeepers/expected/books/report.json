@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "importerVersion": 4,
+  "importId": "807625e98b02221d488a21d778af6e6a6c67a3fa3ea9d6499112e2f7053ed2f2",
+  "sourceSha256": "ea568ba9124e21d14cfba393bccc545917a5307a04d7a0793ae9b8a02a0d07df",
+  "notice": "Data conversion only. Shops install under shops/shopkeepers/ and open on their NPCs. Try each shop in game before relying on it.",
+  "dataVersion": "4|4189",
+  "shops": 2,
+  "npcs": 0,
+  "types": {
+    "book": 2
+  },
+  "objects": {
+    "sign": 2
+  },
+  "offers": {
+    "total": 6,
+    "trade": 0,
+    "static": 2,
+    "skipped": 4
+  },
+  "items": {
+    "total": 0,
+    "withComponents": 0,
+    "preservedOnly": 0,
+    "dataVersions": {}
+  },
+  "currency": {
+    "config": false,
+    "item": {
+      "id": "minecraft:emerald",
+      "count": 1
+    },
+    "highItem": {
+      "id": "minecraft:emerald_block",
+      "count": 1
+    },
+    "highValue": 9,
+    "highMinimumCost": 20,
+    "tradeLog": "disabled"
+  },
+  "links": {
+    "inCitizensSave": 0,
+    "notInCitizensSave": 0,
+    "unchecked": 0
+  },
+  "bindings": [],
+  "shopMap": {
+    "shopkeepers:shop-1": {
+      "shopkeeper": 1,
+      "document": "shops/shopkeepers/shop-1.json",
+      "entries": 1
+    },
+    "shopkeepers:shop-2": {
+      "shopkeeper": 2,
+      "document": "shops/shopkeepers/shop-2.json",
+      "entries": 1
+    }
+  },
+  "issues": [],
+  "documents": {
+    "shops/shopkeepers/shop-1.json": "75835b129432cd8a5463815f6288f6cb1380e361543b1712f1e31ad549c31d00",
+    "shops/shopkeepers/shop-2.json": "a1a2c723003f98f658fd66c4f0ae962f8d28e625c521061235b3c81424e2cf9e"
+  }
+}

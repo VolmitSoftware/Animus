@@ -22,10 +22,31 @@
       "z": 5
     }
   ],
+  "kind": "book",
   "pages": [
     {
       "name": "Page 1",
-      "rows": 1
+      "rows": 2,
+      "trade": {
+        "0": {
+          "id": "offer-1",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:written_book",
+            "count": 1
+          },
+          "book": "Server Guide",
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:gold_nugget",
+                "count": 1
+              },
+              "amount": 10
+            }
+          ]
+        }
+      }
     }
   ],
   "imported": {

@@ -4,7 +4,8 @@
     {"name": "admin", "source": "admin.yml", "citizens": "admin-citizens.yml"},
     {"name": "admin-unchecked", "source": "admin.yml"},
     {"name": "player", "source": "player.yml", "config": "player-config.yml"},
-    {"name": "minimal", "source": "minimal.yml"}
+    {"name": "minimal", "source": "minimal.yml"},
+    {"name": "books", "source": "books.yml"}
   ],
   "invalid": "invalid"
 }

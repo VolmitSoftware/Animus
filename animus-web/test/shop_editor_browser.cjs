@@ -16,6 +16,12 @@
 // width, Settings names the window field once ("Opens as" under "Window"),
 // the "Opened by" link is foreground text, the preview menu checks what it
 // shows, and Sold out dims the chest window's offers.
+// Then a player's selling shop owned by Steve, whose name only the fake
+// server knows, at 1600, 768 and 390 px in Simple: Settings shows its kind
+// and Steve by name (never the UUID), closing it keeps a reason, the kind
+// turns to Book, its old trade takes a book title and drops what it gave,
+// Add offer makes a book trade with a Book title field, and Apply stores
+// kind, reason and book trades with the owner untouched.
 //
 //   python3 tool/serve_site.py --port <web port>
 //   dart run tool/fake_server.dart --port=<fake port> --origin=http://127.0.0.1:<web port>
@@ -449,9 +455,120 @@ async function nativePaging(browser, viewport, label) {
   await context.close();
 }
 
+const stall = 'town:stall';
+/** The fake server knows this player as Steve (tool/fake_server/api.dart). */
+const steve = '00000000-0000-4000-8000-000000000002';
+
+/** A player's selling shop with one trade and no owner name of its own. */
+function stallShop() {
+  return {
+    schemaVersion: 1, id: stall, title: '&2Stall', kind: 'selling', owner: {uuid: steve},
+    containers: [{world: 'world', x: 10, y: 64, z: -3}], modes: ['trade'],
+    pages: [{name: 'Page 1', rows: 3, trade: {'10': {
+      id: 'bread', type: 'trade', item: {id: 'minecraft:bread'},
+      needs: [{item: {id: 'minecraft:emerald'}, amount: 2}], gives: [{item: {id: 'minecraft:bread'}, amount: 4}],
+    }}}],
+  };
+}
+
+async function playerShop(browser, viewport, label) {
+  await control('reset', {});
+  await control('restore', {});
+  await control('edit', {kind: 'shop', id: stall, source: stallShop()});
+  const {code} = await control('pair?paths=both', {});
+  const context = await browser.newContext({viewport});
+  await context.addInitScript(() => window.localStorage.setItem('animus.mode', 'simple'));
+  const page = await context.newPage();
+  page.setDefaultTimeout(15000);
+  const errors = [];
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  page.on('pageerror', error => errors.push(String(error)));
+  await page.goto(`${site}/#/pair/${code}`);
+  await page.getByRole('button', {name: 'Pair', exact: true}).click();
+  await page.waitForFunction(() => location.hash.startsWith('#/server/'));
+  await waitOnline(page);
+  await page.locator('[data-testid="home-count"]').first().waitFor();
+  const workspace = await page.evaluate(() => `#/workspace/server-${location.hash.split('/')[2]}`);
+  await page.goto(`${site}/${workspace}/shop/${encodeURIComponent(stall)}`);
+  const form = page.getByRole('region', {name: 'Shop'});
+  await form.locator('li[data-offer]').first().waitFor();
+
+  // Settings in Simple: the kind, and the owner by the name the server knows.
+  await form.getByRole('tab', {name: /^Settings/}).click();
+  const kind = form.getByRole('combobox', {name: 'Kind', exact: true});
+  await kind.waitFor();
+  assert.match(await kind.innerText(), /Selling/, `${label}: the kind reads Selling`);
+  assert.equal(await form.getByLabel('Owner', {exact: true}).inputValue(), 'Steve', `${label}: the owner by name from the server`);
+  assert.ok(!(await form.innerText()).includes(steve), `${label}: no owner UUID in Simple`);
+  assert.equal(await form.getByLabel('Owner UUID').count(), 0, `${label}: the UUID field is Advanced only`);
+
+  // Closed, with a reason the owner reads.
+  const status = form.getByRole('group', {name: 'Status'});
+  if (await status.count()) await status.getByRole('button', {name: 'Closed', exact: true}).click();
+  else await pickOption(page, form.getByRole('combobox', {name: 'Status'}), 'Closed');
+  const reason = form.getByLabel('Closed reason', {exact: true});
+  await reason.waitFor();
+  assert.equal(await reason.inputValue(), 'Closed from the web editor');
+  await reason.fill('Restocking the shelves');
+  await settle(page);
+
+  // A book shop: the old trade names a book and drops what it gave.
+  await pickOption(page, kind, 'Book');
+  await settle(page);
+  await page.waitForTimeout(400);
+  await check(page, `${label}-settings-simple`);
+  await form.getByRole('tab', {name: /^Offers/}).click();
+  await form.locator('li[data-id="bread"] summary').first().click();
+  const bread = form.locator('li[data-offer][data-id="bread"].is-open');
+  await bread.getByText("a book shop's trades name the book they copy", {exact: false}).first().waitFor();
+  await bread.getByLabel('Book title', {exact: true}).fill('Bread recipes');
+  await settle(page);
+  await rowMenu(page, bread, 'Actions for gives 1', 'Delete');
+  await bread.getByRole('button', {name: 'Add an item to Gives'}).waitFor({state: 'detached'});
+  await form.locator('summary', {hasText: /1 copy of Bread recipes for 2 emeralds/}).waitFor();
+
+  // Add offer makes a book trade: what it takes and the book it copies.
+  await page.locator('#animus-shop-add').click();
+  const trade = form.locator('li[data-offer][data-id="trade"].is-open');
+  const title = trade.getByLabel('Book title', {exact: true});
+  await title.waitFor();
+  assert.equal(await trade.getByRole('button', {name: 'Add an item to Gives'}).count(), 0, `${label}: a book trade gives no items`);
+  await title.fill('Tales of the Valley');
+  await settle(page);
+  await form.locator('summary', {hasText: /1 copy of Tales of the Valley for 1 emerald/}).waitFor();
+  await check(page, `${label}-book-offer`);
+
+  // Apply: the server keeps the kind, the reason and the book trades.
+  await saveAction(page, 'apply').click();
+  await page.waitForFunction(() => /Applied|Up to date/.test(document.querySelector('.ui-save-bar .ui-save-message')?.textContent || ''), null, {timeout: 20000});
+  const stored = (await control(`document?kind=shop&id=${encodeURIComponent(stall)}`)).source;
+  assert.equal(stored.kind, 'book');
+  assert.equal(stored.closed, 'Restocking the shelves');
+  assert.deepEqual(stored.owner, {uuid: steve}, 'the owner is untouched');
+  assert.deepEqual(stored.pages[0].trade['10'], {
+    id: 'bread', type: 'trade', item: {id: 'minecraft:bread'}, needs: [{item: {id: 'minecraft:emerald'}, amount: 2}], book: 'Bread recipes',
+  });
+  const added = Object.values(stored.pages[0].trade).find(entry => entry.id === 'trade');
+  assert.equal(added.book, 'Tales of the Valley');
+  assert.equal(added.gives, undefined);
+  assert.equal(added.item.id, 'minecraft:written_book');
+
+  // Reopening the shop opens it again and forgets the reason.
+  await form.getByRole('tab', {name: /^Settings/}).click();
+  if (await status.count()) await status.getByRole('button', {name: 'Open', exact: true}).click();
+  else await pickOption(page, form.getByRole('combobox', {name: 'Status'}), 'Open');
+  await reason.waitFor({state: 'detached'});
+  assert.deepEqual(errors, [], label);
+  await context.close();
+}
+
 (async () => {
   const browser = await chromium.launch({headless: true});
   try {
+    for (const width of [1600, 768, 390]) {
+      await playerShop(browser, {width, height: 900}, `shop-player-${width}`);
+      console.log(`shop-player-${width}: ok`);
+    }
     for (const width of [1440, 1024, 768, 390]) {
       await nativePaging(browser, {width, height: 900}, `shop-native-${width}`);
       console.log(`shop-native-${width}: ok`);

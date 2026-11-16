@@ -82,8 +82,29 @@ public interface ScreenHost<P, S> {
      * inventory and that protection lets the shop's owner open it. A platform without container shops refuses.
      */
     default art.arcane.animus.core.shop.ShopStock<S> stock(art.arcane.animus.core.shop.ShopDocument shop) {
-        return art.arcane.animus.core.shop.ShopStock.refused("this platform has no container shops");
+        return art.arcane.animus.core.shop.ShopStock.refused(NO_CONTAINER_SHOPS);
     }
+
+    /** Whether players can keep shop stock in container blocks on this platform. */
+    default boolean containerShops() { return false; }
+
+    /** The container block the player looks at within reach, and where a shop's NPC would stand in front of it. Empty when there is none. */
+    default Optional<art.arcane.animus.core.shop.ShopSpot> lookedAtContainer(P player) { return Optional.empty(); }
+
+    /**
+     * Why the player may not keep a shop's stock in this block now: it is not loaded on this thread, it holds no
+     * inventory, or protection would not let the player open it. Empty when it may.
+     */
+    default Optional<String> stockRefusal(P player, art.arcane.animus.core.shop.ShopDocument.Container container) { return Optional.of(NO_CONTAINER_SHOPS); }
+
+    /** Opens the block's inventory for the player as if they opened it by hand; empty when it opened, else why not. */
+    default Optional<String> openContainer(P player, art.arcane.animus.core.shop.ShopDocument.Container container) { return Optional.of(NO_CONTAINER_SHOPS); }
+
+    /** Gives the shop maker item, found by its item marker like the wand; {@code NONE} on a platform without one. */
+    default WandGift giveShopItem(P player) { return WandGift.NONE; }
+
+    /** What a platform without container shops says. */
+    String NO_CONTAINER_SHOPS = "this server has no container shops; they need Paper, Spigot or Folia";
 
     /**
      * What the player holds or wears in a hand or armor slot, in the definition item shape with its components. Empty

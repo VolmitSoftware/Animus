@@ -69,7 +69,11 @@ abstract class ToolkitHarness {
     art.arcane.animus.core.inventory.Economy economy = art.arcane.animus.core.shop.PricesTest.coins("Coins");
     final Toolkit.Commands commands = new Toolkit.Commands((CommandActor actor, String id) -> calls.add("inspect " + id), (CommandActor actor) -> calls.add("pair"),
             (CommandActor actor, String id) -> calls.add("revive " + id), (UUID player) -> recording, (String npc) -> runs.running(npc),
-            () -> new art.arcane.animus.core.shop.Prices(economy, art.arcane.animus.core.config.ShopSettings.DEFAULT));
+            () -> new art.arcane.animus.core.shop.Prices(economy, art.arcane.animus.core.config.ShopSettings.DEFAULT), () -> this.shops);
+    /** The container shops the menu sees; reloading reads them from the store's files. */
+    art.arcane.animus.core.shop.PlayerShops shops;
+    /** Lines the shops sent to players, as {@code uuid: text}. */
+    final List<String> told = new ArrayList<>();
 
     /** Commits {@code files}, reads the NPCs and installs the menu; {@code queued} holds file work until {@link #drain}. */
     void start(List<DocumentStore.Change> files, boolean queued) throws IOException {
@@ -98,9 +102,18 @@ abstract class ToolkitHarness {
                     calls.add("relocate " + id + " " + destination.world() + " " + destination.point().x() + " " + destination.point().y() + " " + destination.point().z());
                     return true;
                 }), () -> now, () -> signer, () -> owners));
+        shops = new art.arcane.animus.core.shop.PlayerShops(() -> store, queued ? queue::add : Runnable::run, () -> art.arcane.animus.core.config.ShopSettings.DEFAULT,
+                this::indexShops, (UUID player, String text) -> told.add(player + ": " + text), (String line) -> { throw new AssertionError(line); });
+        indexShops();
         toolkit.hook(commands);
         toolkit.joined(alex.id);
         drain();
+    }
+
+    /** Reads the shop files into {@link #shops}, as a catalog reload does. */
+    void indexShops() {
+        try { shops.index(art.arcane.animus.core.shop.ShopCatalog.load(root, (String id) -> true)); }
+        catch (IOException unreadable) { throw new java.io.UncheckedIOException(unreadable); }
     }
 
     @AfterEach void stop() throws IOException {

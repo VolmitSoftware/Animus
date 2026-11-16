@@ -26,12 +26,15 @@ import java.util.UUID;
  * reported as {@code $.path: message} and refuses the whole shop.
  * <p>
  * A shop with {@code containers} is owned: its {@code owner} keeps the stock in those blocks. Such a shop trades items
- * for items only; each trade takes its gives from the containers and puts its needs into them.
+ * for items only and runs no commands; each trade takes its gives from the containers and puts its needs into them.
+ * Its {@code kind} says how its owner's editor lays the offers out, and a book shop's entries copy written books.
+ * {@code closed} is why a shop trades nothing for now.
  */
 public record ShopDocument(String id, long revision, String title, Optional<String> permission, List<Mode> modes, Mode defaultMode,
                            MatchRule match, boolean closeAfterPurchase, boolean confirm, boolean log, List<Page> pages,
-                           Optional<Owner> owner, List<Container> containers, Optional<Style> style, Optional<String> layout) {
-    public static final int SCHEMA_VERSION = 1, MAXIMUM_PAGES = 64, MAXIMUM_COMMANDS = 16, MAXIMUM_CONTAINERS = 8;
+                           Optional<Owner> owner, List<Container> containers, Optional<Style> style, Optional<String> layout,
+                           Optional<Kind> kind, Optional<String> closed) {
+    public static final int SCHEMA_VERSION = 1, MAXIMUM_PAGES = 64, MAXIMUM_COMMANDS = 16, MAXIMUM_CONTAINERS = 8, MAXIMUM_TITLE = 128, MAXIMUM_REASON = 256;
     /** The player who owns an owned shop. {@code name} is the last known name, for messages only. */
     public record Owner(UUID uuid, Optional<String> name) {}
     /** A block whose inventory holds an owned shop's stock. */
@@ -61,6 +64,19 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
         public String key() { return name().toLowerCase(Locale.ROOT); }
         public static Optional<Style> of(String key) {
             for (Style style : values()) if (style.key().equals(key)) return Optional.of(style);
+            return Optional.empty();
+        }
+    }
+    /**
+     * How an owned shop trades, as Shopkeepers' player shops do: a selling shop gives its stock for price items, a buying
+     * shop pays from its stock for the items it buys, a trading shop swaps items, and a book shop sells copies of the
+     * written books in its stock.
+     */
+    public enum Kind {
+        SELLING, BUYING, TRADING, BOOK;
+        public String key() { return name().toLowerCase(Locale.ROOT); }
+        public static Optional<Kind> of(String key) {
+            for (Kind kind : values()) if (kind.key().equals(key)) return Optional.of(kind);
             return Optional.empty();
         }
     }
@@ -104,11 +120,12 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
     /**
      * One slot of one grid. {@code item} is the icon and, for buy and sell, the goods; {@code price} is for {@code item.count()}
      * items. {@code levels} is a cost in experience levels on buy, command and trade entries, taken with the price.
+     * {@code book} is the title of the written book a book shop's trade copies out of its stock instead of giving goods.
      */
     public record Entry(String id, Type type, NpcItem item, Display display, BigDecimal price, int levels, boolean allowStack, boolean sellPartial,
                         List<Goods> needs, List<Goods> gives, List<ShopCommand> commands, Limit limit, Optional<Stock> stock,
                         Optional<String> permission, Optional<String> broadcast, boolean closeAfterPurchase, boolean dropWhenFull,
-                        Optional<Discount> discount, Optional<MatchRule> match) {
+                        Optional<Discount> discount, Optional<MatchRule> match, Optional<String> book) {
         public Entry { needs = List.copyOf(needs); gives = List.copyOf(gives); commands = List.copyOf(commands); }
         public BigDecimal price(Instant now) { return discount.filter((Discount active) -> active.active(now)).map(Discount::price).orElse(price); }
         /** A command entry, or any entry with a {@code commands} list. */
@@ -147,6 +164,9 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
     /** True when the stock lives in containers. */
     public boolean stocked() { return !containers.isEmpty(); }
 
+    /** Whether {@code player} owns this shop. */
+    public boolean owns(UUID player) { return owner.map((Owner seller) -> seller.uuid().equals(player)).orElse(false); }
+
     /** The entry with this id anywhere in the shop. */
     public Optional<Entry> entry(String entryId) {
         for (Page page : pages) for (Map<Integer, Entry> grid : page.grids().values()) for (Entry entry : grid.values()) if (entry.id().equals(entryId)) return Optional.of(entry);
@@ -166,11 +186,23 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
     public static Result parse(String expectedId, JsonObject object) {
         Reader reader = new Reader();
         reader.fields(object, Set.of("schemaVersion", "revision", "id", "title", "permission", "modes", "defaultMode", "match",
-                "closeAfterPurchase", "confirm", "log", "pages", "imported", "owner", "containers", "style", "layout"), "$");
+                "closeAfterPurchase", "confirm", "log", "pages", "imported", "owner", "containers", "style", "layout", "kind", "closed"), "$");
         Optional<Owner> owner = reader.owner(object.get("owner"), "$.owner");
         List<Container> containers = reader.containers(object.get("containers"), "$.containers");
         if (!containers.isEmpty() && !object.has("owner")) reader.problem("$.owner", "a shop with containers needs an owner");
         reader.stocked = !containers.isEmpty();
+        Optional<Kind> kind = Optional.empty();
+        if (object.has("kind")) {
+            kind = reader.string(object, "kind", "$", true).flatMap(Kind::of);
+            if (kind.isEmpty()) reader.problem("$.kind", "expected selling, buying, trading or book");
+            else if (!reader.stocked) reader.problem("$.kind", "a shop kind needs containers, which hold its stock");
+        }
+        reader.kind = kind;
+        Optional<String> closed = Optional.empty();
+        if (object.has("closed")) {
+            closed = reader.string(object, "closed", "$", true);
+            if (closed.isPresent() && closed.get().length() > MAXIMUM_REASON) { reader.problem("$.closed", "at most " + MAXIMUM_REASON + " characters"); closed = Optional.empty(); }
+        }
         long schema = reader.integer(object, "schemaVersion", "$", 1, Integer.MAX_VALUE, -1);
         if (schema != SCHEMA_VERSION && schema != -1) reader.problem("$.schemaVersion", "shop schemaVersion " + schema + " is not supported; Animus reads version " + SCHEMA_VERSION);
         if (!object.has("schemaVersion")) reader.problem("$.schemaVersion", "expected integer 1");
@@ -220,12 +252,14 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
             for (int index = 0; index < array.size(); index++) reader.page(array.get(index), "$.pages[" + index + "]", entryIds).ifPresent(pages::add);
         }
         if (!reader.problems.isEmpty()) return new Result(Optional.empty(), reader.problems);
-        return new Result(Optional.of(new ShopDocument(id, revision, title, permission, modes, defaultMode, match, close, confirm, log, pages, owner, containers, style, layout)), List.of());
+        return new Result(Optional.of(new ShopDocument(id, revision, title, permission, modes, defaultMode, match, close, confirm, log, pages, owner, containers, style, layout,
+                kind, closed)), List.of());
     }
 
     private static final class Reader {
         final List<String> problems = new ArrayList<>();
         boolean stocked;
+        Optional<Kind> kind = Optional.empty();
 
         Optional<Owner> owner(JsonElement value, String path) {
             if (value == null) return Optional.empty();
@@ -305,7 +339,7 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
             if (value == null || !value.isJsonObject()) { problem(path, "expected entry object"); return Optional.empty(); }
             JsonObject object = value.getAsJsonObject();
             fields(object, Set.of("id", "type", "item", "display", "price", "levels", "allowStack", "sellPartial", "needs", "gives", "commands", "limit",
-                    "stock", "permission", "broadcast", "closeAfterPurchase", "dropWhenFull", "discount", "match", "imported"), path);
+                    "stock", "permission", "broadcast", "closeAfterPurchase", "dropWhenFull", "discount", "match", "imported", "book"), path);
             int before = problems.size();
             String id = string(object, "id", path, true).orElse("");
             if (!id.isEmpty() && !id.matches("[a-z0-9_-]{1,64}")) problem(path + ".id", "expected 1-64 lowercase letters, digits, _ or -");
@@ -329,8 +363,14 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
             boolean allowStack = bool(object, "allowStack", path, false);
             boolean sellPartial = bool(object, "sellPartial", path, false);
             if (sellPartial && type != Type.SELL) problem(path + ".sellPartial", "applies only to sell entries");
+            Optional<String> book = object.has("book") ? string(object, "book", path, true) : Optional.empty();
+            if (book.isPresent() && book.get().length() > MAXIMUM_TITLE) problem(path + ".book", "at most " + MAXIMUM_TITLE + " characters");
+            if (book.isPresent() && type != Type.TRADE) problem(path + ".book", "only trade entries copy a book");
+            else if (book.isPresent() && kind.filter((Kind shop) -> shop == Kind.BOOK).isEmpty()) problem(path + ".book", "book entries belong in a book shop, kind book");
+            else if (book.isEmpty() && type == Type.TRADE && kind.filter((Kind shop) -> shop == Kind.BOOK).isPresent()) problem(path + ".book", "a book shop's trades name the book they copy");
+            if (book.isPresent() && object.has("gives")) problem(path + ".gives", "a book entry gives a copy of its book; remove gives");
             List<Goods> needs = goods(object.get("needs"), path + ".needs", type == Type.TRADE);
-            List<Goods> gives = goods(object.get("gives"), path + ".gives", type == Type.TRADE);
+            List<Goods> gives = book.isPresent() ? List.of() : goods(object.get("gives"), path + ".gives", type == Type.TRADE);
             if (type != Type.TRADE && (object.has("needs") || object.has("gives"))) problem(path, "needs and gives apply only to trade entries");
             List<ShopCommand> commands = commands(object.get("commands"), path + ".commands");
             if (type == Type.COMMAND && commands.isEmpty()) problem(path + ".commands", "command entries need at least one command");
@@ -351,10 +391,11 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
                 if (object.has("price") && price.signum() > 0) problem(path + ".price", "a container shop trades items for items; remove the price");
                 if (levels > 0) problem(path + ".levels", "a container shop trades items for items; remove the levels");
                 if (stock.isPresent()) problem(path + ".stock", "a container shop's stock is its containers");
+                if (!commands.isEmpty()) problem(path + ".commands", "a container shop trades items for items; remove the commands");
             }
             if (problems.size() != before || item == null) return Optional.empty();
             return Optional.of(new Entry(id, type, item, display, price, levels, allowStack, sellPartial, needs, gives, commands, limit, stock, permission,
-                    broadcast, close, drop, discount, match));
+                    broadcast, close, drop, discount, match, book));
         }
 
         Display display(JsonElement value, String path) {

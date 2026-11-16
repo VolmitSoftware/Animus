@@ -1,0 +1,39 @@
+{
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/containers": "CONVERTED",
+    "/name": "CONVERTED",
+    "/object/type": "CONVERTED",
+    "/offers/1": "CONVERTED_WITH_CHANGES",
+    "/offers/2": "UNSUPPORTED_PRESERVED",
+    "/offers/3": "UNSUPPORTED_PRESERVED",
+    "/offers/4": "UNSUPPORTED_PRESERVED",
+    "/offers/5": "UNSUPPORTED_PRESERVED",
+    "/open": "CONVERTED_WITH_CHANGES",
+    "/owner": "CONVERTED",
+    "/owner uuid": "CONVERTED",
+    "/type": "CONVERTED",
+    "/uniqueId": "CONVERTED",
+    "/world": "CONVERTED",
+    "/x": "CONVERTED",
+    "/y": "CONVERTED",
+    "/yaw": "CONVERTED",
+    "/z": "CONVERTED"
+  },
+  "notes": [
+    "/open: the shop was closed; its offers show but do not trade until you change them to trade entries",
+    "/offers/1: converted as a display entry; the shop cannot trade yet",
+    "/offers/2: the offer has no book title or no price of at least 1; kept in source.yml",
+    "/offers/3: the book title is longer than 128 characters; kept in source.yml",
+    "/offers/4: price 9999 needs more than one stack of each currency item, which Shopkeepers also skips",
+    "/offers/5: the offer has no book title or no price of at least 1; kept in source.yml",
+    "a sign shopkeeper gets no NPC; open the shop with /animus shop open shopkeepers:shop-1 or bind it to an NPC"
+  ],
+  "counts": {
+    "CONVERTED": 12,
+    "CONVERTED_WITH_CHANGES": 2,
+    "UNSUPPORTED_PRESERVED": 4
+  },
+  "shopkeeper": 1,
+  "shop": "shopkeepers:shop-1"
+}

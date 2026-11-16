@@ -102,6 +102,24 @@
       }
     },
     {
+      "path": "documents/shop/book-shop.json",
+      "kind": "shop",
+      "id": "town:library",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "documents/shop/invalid-book-trade-with-gives.json",
+      "kind": "shop",
+      "id": "town:library",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
       "path": "documents/shop/id-mismatch.json",
       "kind": "shop",
       "id": "shop:bakery",

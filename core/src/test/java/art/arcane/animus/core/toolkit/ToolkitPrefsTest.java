@@ -186,7 +186,8 @@ class ToolkitPrefsTest {
             List<ToolkitMode> drawn = new ArrayList<>();
             toolkit.hook(new Toolkit.Commands((CommandActor actor, String id) -> {}, (CommandActor actor) -> {}, (CommandActor actor, String id) -> {}, (UUID player) -> false,
                     (String npc) -> CompletableFuture.completedFuture(List.of()),
-                    () -> new art.arcane.animus.core.shop.Prices(art.arcane.animus.core.inventory.Economy.none("none"), art.arcane.animus.core.config.ShopSettings.DEFAULT)));
+                    () -> new art.arcane.animus.core.shop.Prices(art.arcane.animus.core.inventory.Economy.none("none"), art.arcane.animus.core.config.ShopSettings.DEFAULT),
+                    () -> { throw new AssertionError("no shops in this test"); }));
             toolkit.open(alex.id, (Toolkit<Player, Stack> kit, ScreenManager<Player, Stack>.Viewer viewer, Toolkit.Commands lent) -> new ToolScreen<>(kit, viewer, lent) {
                 @Override String title() { return "Probe"; }
                 @Override int rows() { return 1; }

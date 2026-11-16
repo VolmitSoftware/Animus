@@ -97,6 +97,11 @@ final class EditorHarness implements AutoCloseable {
 
         @Override public boolean online(UUID player) { return online; }
 
+        /** The names the server knows, as its user cache does. */
+        final Map<UUID, String> names = new java.util.concurrent.ConcurrentHashMap<>();
+
+        @Override public Optional<String> playerName(UUID player) { return Optional.ofNullable(names.get(player)); }
+
         @Override public boolean commandGrants() { return commandGrants; }
 
         @Override public void permission(UUID player, String node, Consumer<Admin> result) { result.accept(node.equals(EditorCommands.COMMANDS_PERMISSION) ? commands : admin); }

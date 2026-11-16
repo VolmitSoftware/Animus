@@ -164,6 +164,20 @@ public final class ScreenManager<P, S> {
         if (!viewer.closed && viewer.screen == before) viewer.render(false);
     }
 
+    /**
+     * A click on a stack in the player's own inventory while the window is open; nothing moved, so {@code item} is only
+     * what the stack looks like. Clicks on a stale window are ignored.
+     */
+    public void picked(P player, Object window, art.arcane.animus.core.npc.NpcItem item) {
+        Viewer viewer = viewers.get(host.id(player));
+        if (viewer == null || viewer.window != window || viewer.closed) return;
+        viewer.player = player;
+        Screen before = viewer.screen;
+        try { before.picked(item); }
+        catch (RuntimeException failure) { warn.accept("Screen pick failed for " + viewer.id + ": " + failure); viewer.close(); return; }
+        if (!viewer.closed && viewer.screen == before) viewer.render(false);
+    }
+
     /** The client or platform closed the window. Stale windows are ignored. */
     public void closed(P player, Object window) {
         Viewer viewer = viewers.get(host.id(player));

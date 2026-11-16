@@ -4,6 +4,8 @@ package art.arcane.animus.core.gui;
 public interface Screen {
     ScreenFrame render();
     void click(int slot, GuiModel.Click click);
+    /** The viewer clicked a stack in their own inventory, which stays where it is; most windows ignore it. */
+    default void picked(art.arcane.animus.core.npc.NpcItem item) { }
     /** Called every owner tick while open; true asks for a new frame. */
     default boolean tick(long tick) { return false; }
     default boolean closeOnTeleport() { return true; }

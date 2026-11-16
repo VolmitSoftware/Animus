@@ -20,6 +20,7 @@ import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.bukkit.toolkit.BukkitWand;
 import art.arcane.animus.core.text.ChatLine;
+import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.toolkit.Toolkit;
 import art.arcane.volmlib.util.plugin.ComponentMessenger;
 import art.arcane.volmlib.util.plugin.ComponentText;
@@ -349,6 +350,14 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     @Override public art.arcane.animus.core.shop.ShopStock<ItemStack> stock(art.arcane.animus.core.shop.ShopDocument shop) { return stocks.open(shop); }
     @Override public Optional<NpcItem> worn(Player player, EquipmentSlot slot) { return RecorderLook.item(RecorderLook.stack(player.getInventory(), slot)); }
     @Override public boolean holdsWand(Player player) { return BukkitWand.held(player); }
+    @Override public boolean containerShops() { return true; }
+    @Override public Optional<art.arcane.animus.core.shop.ShopSpot> lookedAtContainer(Player player) { return BukkitShopStock.looked(player); }
+    @Override public Optional<String> stockRefusal(Player player, art.arcane.animus.core.shop.ShopDocument.Container container) { return stocks.refusal(player.getUniqueId(), container); }
+    @Override public Optional<String> openContainer(Player player, art.arcane.animus.core.shop.ShopDocument.Container container) { return stocks.show(player, container); }
+    @Override public WandGift giveShopItem(Player player) {
+        Optional<ItemStack> maker = stack(Toolkit.SHOP_MAKER, Optional.of(Toolkit.SHOP_MAKER_NAME), Toolkit.SHOP_MAKER_LORE, new ArrayList<>());
+        return maker.map((ItemStack stack) -> BukkitWand.give(player, stack, Toolkit.SHOP_ITEM)).orElse(WandGift.NONE);
+    }
     @Override public WandGift giveWand(Player player) {
         Optional<ItemStack> wand = stack(Toolkit.WAND_ITEM, Optional.of(Toolkit.WAND_NAME), Toolkit.WAND_LORE, new ArrayList<>());
         return wand.map((ItemStack stack) -> BukkitWand.give(player, stack)).orElse(WandGift.NONE);
@@ -373,13 +382,31 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         Optional<Window> window = window(event.getView());
         if (window.isEmpty()) return;
         event.setCancelled(true);
-        if (!(event.getWhoClicked() instanceof Player player) || event.getRawSlot() < 0 || event.getRawSlot() >= event.getView().getTopInventory().getSize()) return;
+        if (!(event.getWhoClicked() instanceof Player player) || event.getRawSlot() < 0) return;
         Optional<GuiModel.Click> click = click(event.getClick());
         if (click.isEmpty()) return;
+        if (event.getRawSlot() >= event.getView().getTopInventory().getSize()) { pick(player, window.get(), event.getCurrentItem()); return; }
         int slot = event.getRawSlot();
         Window target = window.get();
         ScreenManager<Player, ItemStack> current = manager;
         if (current != null) later.test(player, () -> { if (player.isOnline()) current.click(player, target, slot, click.get()); });
+    }
+
+    /**
+     * A click on a stack in the player's own inventory: the window's screen gets what the stack is on the next tick, and
+     * the stack stays where it is. A stack whose item data the definition shape cannot hold whole is refused.
+     */
+    private void pick(Player player, Window target, ItemStack stack) {
+        if (stack == null || stack.getType().isAir()) return;
+        Optional<NpcItem> item = RecorderLook.item(stack);
+        String data = stack.hasItemMeta() ? stack.getItemMeta().getAsComponentString() : "";
+        boolean lost = item.isPresent() && item.get().components().isEmpty() && data != null && !data.isBlank() && !data.equals("[]");
+        if (item.isEmpty() || lost) {
+            player.sendMessage(Palette.error("That item holds more data than a shop offer can keep"));
+            return;
+        }
+        ScreenManager<Player, ItemStack> current = manager;
+        if (current != null) later.test(player, () -> { if (player.isOnline()) current.picked(player, target, item.get()); });
     }
 
     /** The four bound clicks, as the mod host maps them; number keys, double clicks, drops, middle and border clicks are none. */

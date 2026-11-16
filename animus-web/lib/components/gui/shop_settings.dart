@@ -1,12 +1,14 @@
 /// The shop's Settings tab. Simple: the title (codes editable, shown in
-/// colour under the field) and the NPCs that open the shop. Advanced adds
-/// the window and layout, who may open it, the modes in switch order, the
-/// purchase switches, item matching, pages, and the owner and containers
-/// of a player's shop.
+/// colour under the field), a player's shop's kind and its owner by name,
+/// whether the shop is open or closed and why, and the NPCs that open the
+/// shop. Advanced adds the window and layout, who may open it, the modes in
+/// switch order, the purchase switches, item matching, pages, and the
+/// owner's UUID and name and the containers of a player's shop.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 
+import '../../config/docs_links.dart';
 import '../../logic/diagnostic_text.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_validation.dart' show shopModes;
@@ -34,8 +36,16 @@ import '../../ui/field.dart';
 import '../../ui/number_input.dart';
 import 'gui_stack.dart';
 import '../../ui/stack.dart';
+import '../../ui/toggle_choice.dart';
+import '../suggest/suggest_scope.dart';
 
 const Map<String, String> shopModeLabels = <String, String>{'buy': 'Buy', 'sell': 'Sell', 'trade': 'Trade'};
+
+/// A player's shop kinds by plain name.
+const Map<String, String> shopKindLabels = <String, String>{'selling': 'Selling', 'buying': 'Buying', 'trading': 'Trading', 'book': 'Book'};
+
+/// The reason a shop closed here keeps until its owner writes their own.
+const String editorClosedReason = 'Closed from the web editor';
 
 class ShopSettings extends StatefulWidget {
   const ShopSettings({
@@ -67,7 +77,7 @@ class ShopSettings extends StatefulWidget {
 
   /// Whether this tab shows the problem at [path] at its field.
   static bool shows(String path) =>
-      RegExp(r'^\$\.(title|style|layout|permission|modes|defaultMode|match|confirm|log|closeAfterPurchase|owner|containers|pages(\[\d+\]\.(name|rows|permission))?$)').hasMatch(path) ||
+      RegExp(r'^\$\.(title|style|layout|permission|modes|defaultMode|match|confirm|log|closeAfterPurchase|kind|closed|owner|containers|pages(\[\d+\]\.(name|rows|permission))?$)').hasMatch(path) ||
       RegExp(r'^\$\.(owner|containers)').hasMatch(path);
 
   @override
@@ -82,15 +92,17 @@ class _ShopSettingsState extends State<ShopSettings> {
 
   void _set(String key, Object? value) => component.onWrite(<JsonStep>[key], value, coalesce: 'shop.$key');
 
-  Widget _row(String label, String key, Widget Function(String id) child, {String? tip}) {
+  Widget _row(String label, String key, Widget Function(String id) child, {String? tip, DocLink? docs, String? hint}) {
     final String path = key.split('.').fold(r'$', childPath);
     final String id = guiPathId(path);
-    return Field(label: label, forId: id, tip: tip, problems: diagnosticsAt(_diagnostics, path, nested: true), child: child(id));
+    return Field(label: label, forId: id, tip: tip, docs: docs, hint: hint, problems: diagnosticsAt(_diagnostics, path, nested: true), child: child(id));
   }
 
   @override
   Widget build(BuildContext context) {
     final bool advanced = ModeScope.advanced(context);
+    final bool container = isContainerShop(_shop);
+    final Map<String, String> owners = SuggestScope.sourcesOf(context).owners;
     return stack(spacing: 16, <Widget>[
       _row(
         'Title',
@@ -106,6 +118,9 @@ class _ShopSettingsState extends State<ShopSettings> {
         ),
         tip: 'The window title. Colour codes such as &6 work; the line under the field shows the result.',
       ),
+      if (container || _shop.containsKey('kind')) _kind(),
+      if (!advanced && (container || _shop.containsKey('owner'))) _ownerName(owners),
+      ..._status(),
       ShopLinks(shop: component.shopId, documents: component.documents, onCommit: component.onCommit, onOpen: component.onOpen),
       if (advanced) ...<Widget>[
         groupHeading('Window'),
@@ -187,10 +202,64 @@ class _ShopSettingsState extends State<ShopSettings> {
           tip: 'Exact compares all item data. Loose ignores data that imported shops never set.',
         ),
         _pages(),
-        _owner(),
+        _owner(owners),
         _containers(),
       ],
     ]);
+  }
+
+  /// A player's shop kind, as its owner picked it in game.
+  Widget _kind() => _row(
+        'Kind',
+        'kind',
+        (String id) => AnimusSelect.values(
+          id: id,
+          value: asString(_shop['kind']),
+          values: shopKinds,
+          labels: shopKindLabels,
+          allowNone: true,
+          noneLabel: 'Not set',
+          onChanged: (String? v) => _set('kind', v),
+        ),
+        tip: 'Selling sells the chest stock, buying pays from it, trading swaps items, and book sells copies of the written books in it.',
+        docs: Docs.playerShops,
+      );
+
+  /// The owner by name; Simple never shows their UUID.
+  Widget _ownerName(Map<String, String> owners) => Field(
+        label: 'Owner',
+        forId: 'animus-shop-owner',
+        tip: 'The player whose chest holds the stock. They run the shop in game.',
+        docs: Docs.playerShops,
+        problems: diagnosticsAt(_diagnostics, r'$.owner', nested: true),
+        child: TextInput(id: 'animus-shop-owner', value: shopOwnerName(_shop, owners), readOnly: true),
+      );
+
+  /// Open or closed, on any shop; a closed shop keeps its reason.
+  List<Widget> _status() {
+    final bool closed = _shop.containsKey('closed');
+    return <Widget>[
+      Field(
+        label: 'Status',
+        tip: 'A closed shop trades nothing, and players who open it are told it is closed.',
+        docs: Docs.playerShops,
+        child: ToggleChoice<bool>(
+          label: 'Status',
+          value: closed,
+          options: const <ChoiceOption<bool>>[ChoiceOption<bool>(false, 'Open'), ChoiceOption<bool>(true, 'Closed')],
+          onChanged: (bool close) {
+            if (close != closed) component.onWrite(const <JsonStep>['closed'], close ? editorClosedReason : null, coalesce: 'shop.status');
+          },
+        ),
+      ),
+      if (closed)
+        _row(
+          'Reason',
+          'closed',
+          (String id) => AutocompleteInput(id: id, value: asString(_shop['closed']) ?? '', label: 'Closed reason', onChanged: (String v) => _set('closed', v), profile: FieldProfile.none),
+          tip: 'Why the shop is closed, for its owner. Opening the shop clears it.',
+        ),
+    ];
   }
 
   /// The modes players switch between, in order: on modes first, by drag
@@ -333,7 +402,7 @@ class _ShopSettingsState extends State<ShopSettings> {
     );
   }
 
-  Widget _owner() {
+  Widget _owner(Map<String, String> owners) {
     final JsonMap owner = asMap(_shop['owner']);
     final bool container = isContainerShop(_shop);
     void set(String key, String value) {
@@ -351,6 +420,7 @@ class _ShopSettingsState extends State<ShopSettings> {
           'owner.uuid',
           (String id) => AutocompleteInput(id: id, value: asString(owner['uuid']) ?? '', label: 'Owner UUID', placeholder: '00000000-0000-0000-0000-000000000000', onChanged: (String v) => set('uuid', v), profile: FieldProfile.none),
           tip: 'Lowercase with dashes.',
+          hint: owners[asString(owner['uuid'])],
         ),
         _row('Name', 'owner.name', (String id) => AutocompleteInput(id: id, value: asString(owner['name']) ?? '', label: 'Owner name', onChanged: (String v) => set('name', v), profile: FieldProfile.none)),
         for (final Diagnostic problem in diagnosticsAt(_diagnostics, r'$.owner')) AppAlert(tone: AlertTone.warning, message: diagnosticSentence(problem)),

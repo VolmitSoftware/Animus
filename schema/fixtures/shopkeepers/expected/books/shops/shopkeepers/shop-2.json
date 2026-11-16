@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "shopkeepers:shop-2",
+  "title": "Chestless Library",
+  "style": "native",
+  "modes": [
+    "trade"
+  ],
+  "defaultMode": "trade",
+  "match": "strict",
+  "owner": {
+    "uuid": "00000000-0000-4000-8000-00000000b0b0",
+    "name": "Bob"
+  },
+  "pages": [
+    {
+      "name": "Page 1",
+      "rows": 2,
+      "trade": {
+        "0": {
+          "id": "offer-1",
+          "type": "static",
+          "item": {
+            "id": "minecraft:written_book",
+            "count": 1
+          },
+          "imported": {
+            "source": "Shopkeepers",
+            "book": "Field Notes",
+            "needs": [
+              {
+                "item": {
+                  "id": "minecraft:emerald",
+                  "count": 1
+                },
+                "amount": 3
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "imported": {
+    "source": "Shopkeepers",
+    "shopkeeper": 2,
+    "uniqueId": "0b5e3d8a-2222-4c2a-9e6f-000000000002",
+    "type": "book",
+    "location": {
+      "world": "world",
+      "x": 80,
+      "y": 64,
+      "z": 5,
+      "yaw": 0.0
+    },
+    "object": {
+      "type": "sign"
+    }
+  }
+}

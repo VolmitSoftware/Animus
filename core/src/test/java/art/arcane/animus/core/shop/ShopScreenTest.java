@@ -21,8 +21,9 @@ class ShopScreenTest {
     private final MockEconomy economy = new MockEconomy();
     private final ShopLedger ledger = new ShopLedger(change -> {});
     private final ScreenManager<Player, Stack> manager = new ScreenManager<>(host, npc -> true, warning -> { throw new AssertionError(warning); });
+    private final java.util.List<String> lost = new java.util.ArrayList<>();
     private final ShopScreen.Context<Stack> context = new ShopScreen.Context<>(ShopSettings.DEFAULT,
-            new ShopTransactions<>(MockInventory.OPS, economy, ledger, () -> NOW), Optional.empty(), () -> NOW);
+            new ShopTransactions<>(MockInventory.OPS, economy, ledger, () -> NOW), Optional.empty(), () -> NOW, (ShopDocument shop, String reason) -> lost.add(shop.id() + ": " + reason));
     private final Player alex = new Player("Alex");
 
     static final String BAKERY = """
@@ -71,7 +72,7 @@ class ShopScreenTest {
 
     @Test void withoutAnEconomyPricesReadInPriceFormat() {
         ShopScreen.Context<Stack> none = new ShopScreen.Context<>(ShopSettings.DEFAULT,
-                new ShopTransactions<>(MockInventory.OPS, art.arcane.animus.core.inventory.Economy.none("Vault is not installed"), ledger, () -> NOW), Optional.empty(), () -> NOW);
+                new ShopTransactions<>(MockInventory.OPS, art.arcane.animus.core.inventory.Economy.none("Vault is not installed"), ledger, () -> NOW), Optional.empty(), () -> NOW, (ShopDocument shop, String reason) -> {});
         manager.open(alex, Optional.empty(), (ScreenManager<Player, Stack>.Viewer viewer) -> ShopScreen.open(parse(BAKERY), viewer, none));
         assertTrue(alex.frame.items().get(10).lore().stream().map(RichText::plain).anyMatch((String line) -> line.equals("Price: 12")),
                 alex.frame.items().get(10).lore().toString());
@@ -182,5 +183,48 @@ class ShopScreenTest {
         List<String> lore = alex.frame.items().get(10).lore().stream().map(RichText::plain).toList();
         assertTrue(lore.contains("Limit: 4/8"), lore.toString());
         assertTrue(lore.contains("Resets every 1d"), lore.toString());
+    }
+
+    private static final String STALL = """
+            {"schemaVersion": 1, "revision": 1, "id": "town:baker", "title": "Sam's stall", "kind": "book", "owner": {"uuid": "00000000-0000-0000-0000-00000000000b", "name": "Sam"},
+             "containers": [{"world": "world", "x": 0, "y": 64, "z": 0}],
+             "pages": [{"name": "Books", "rows": 3, "trade": {"10": {"id": "tales", "type": "trade", "item": {"id": "minecraft:written_book"}, "book": "Tales",
+               "needs": [{"item": {"id": "minecraft:emerald"}, "amount": 5}]}}}]}
+            """;
+
+    @Test void aClosedShopTellsBuyersAndOpensNothing() {
+        assertFalse(open(parse(STALL.replace("\"kind\"", "\"closed\": \"Its chest was broken\", \"kind\""))));
+        assertEquals(List.of("Sam's stall is closed."), alex.messages);
+    }
+
+    @Test void aBookOfferShowsTheTitleItCopies() {
+        assertTrue(open(parse(STALL)));
+        assertEquals("Tales", RichText.plain(alex.frame.items().get(10).name().orElseThrow()));
+        assertTrue(alex.frame.items().get(10).lore().stream().map(RichText::plain).anyMatch((String line) -> line.equals("- Copy of Tales")), alex.frame.items().get(10).lore().toString());
+    }
+
+    @Test void aBookBuyerGetsACopyOutOfTheChest() {
+        MockInventory chest = new MockInventory(27).with(0, Stack.of("minecraft:writable_book", 1)).with(1, new Stack("minecraft:written_book", 1, "Tales", ""));
+        host.stocks = (ShopDocument shop) -> ShopStock.of(chest);
+        alex.inventory.with(0, Stack.of("minecraft:emerald", 5));
+        open(parse(STALL));
+        click(10, Click.LEFT);
+        assertEquals(List.of("Traded for Copy of Tales."), alex.messages);
+        assertEquals(new Stack("minecraft:written_book", 1, "Tales", "generation=1"), alex.inventory.get(0));
+        assertEquals(5, chest.total("minecraft:emerald"));
+        assertEquals(0, chest.total("minecraft:writable_book"));
+    }
+
+    @Test void aLostChestClosesTheShopButAnUnloadedOneDoesNot() {
+        host.stocks = (ShopDocument shop) -> ShopStock.refused("the chest at world 0 64 0 is not loaded");
+        alex.inventory.with(0, Stack.of("minecraft:emerald", 5));
+        open(parse(STALL));
+        click(10, Click.LEFT);
+        assertEquals(List.of(), lost, "an unloaded chunk passes on its own");
+        host.stocks = (ShopDocument shop) -> ShopStock.lost("there is no chest at world 0 64 0");
+        click(10, Click.LEFT);
+        assertEquals(List.of("town:baker: there is no chest at world 0 64 0"), lost);
+        assertEquals("The shop's chest cannot be used: there is no chest at world 0 64 0", alex.messages.getLast());
+        assertEquals(5, alex.inventory.total("minecraft:emerald"), "the buyer keeps what they had");
     }
 }

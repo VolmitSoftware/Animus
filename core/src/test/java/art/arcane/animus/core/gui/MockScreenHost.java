@@ -51,11 +51,27 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
     }
 
     public Economy economy = Economy.none("no economy");
+    /** What {@code stock} answers for a container shop; refused by default, as on a platform without container shops. */
+    public java.util.function.Function<art.arcane.animus.core.shop.ShopDocument, art.arcane.animus.core.shop.ShopStock<Stack>> stocks =
+            (art.arcane.animus.core.shop.ShopDocument shop) -> art.arcane.animus.core.shop.ShopStock.refused("this platform has no container shops");
     public final List<String> console = new ArrayList<>();
     public final List<String> broadcasts = new ArrayList<>();
     public Set<String> unsupported = Set.of();
 
     @Override public UUID id(Player player) { return player.id; }
+    @Override public art.arcane.animus.core.shop.ShopStock<Stack> stock(art.arcane.animus.core.shop.ShopDocument shop) { return stocks.apply(shop); }
+    /** Why a player may not keep shop stock in a block; empty lets them. */
+    public Optional<String> chestRefusal = Optional.empty();
+    /** The container blocks players opened, as {@code world x y z}, and how many shop items the host handed out. */
+    public final List<String> chestsOpened = new ArrayList<>();
+    public int shopItems;
+    @Override public Optional<String> stockRefusal(Player player, art.arcane.animus.core.shop.ShopDocument.Container container) { return chestRefusal; }
+    @Override public Optional<String> openContainer(Player player, art.arcane.animus.core.shop.ShopDocument.Container container) {
+        if (chestRefusal.isPresent()) return chestRefusal;
+        chestsOpened.add(container.world() + " " + container.x() + " " + container.y() + " " + container.z());
+        return Optional.empty();
+    }
+    @Override public WandGift giveShopItem(Player player) { shopItems++; return WandGift.GIVEN; }
     @Override public String name(Player player) { return player.name; }
     @Override public Object viewer(Player player, String property) { return player.facts.get(property); }
     @Override public boolean permitted(Player player, String node) { return player.permissions.contains("*") || PermissionNodes.granted(player.permissions::contains, node); }

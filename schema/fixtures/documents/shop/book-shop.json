@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:library",
+  "title": "&6Library",
+  "kind": "book",
+  "closed": "Restocking the shelves",
+  "owner": {
+    "uuid": "00000000-0000-4000-8000-000000000002",
+    "name": "Steve"
+  },
+  "containers": [
+    {
+      "world": "world",
+      "x": 10,
+      "y": 64,
+      "z": -3
+    }
+  ],
+  "modes": [
+    "trade"
+  ],
+  "pages": [
+    {
+      "name": "Books",
+      "rows": 3,
+      "trade": {
+        "10": {
+          "id": "tales",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:written_book"
+          },
+          "book": "Tales of the Valley",
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:emerald"
+              },
+              "amount": 5
+            }
+          ]
+        },
+        "12": {
+          "id": "shelf",
+          "type": "static",
+          "item": {
+            "id": "minecraft:bookshelf"
+          }
+        }
+      }
+    }
+  ]
+}

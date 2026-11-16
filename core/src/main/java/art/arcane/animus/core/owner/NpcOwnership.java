@@ -56,6 +56,6 @@ public final class NpcOwnership {
         if (owned + adding <= limit.getAsInt()) return Optional.empty();
         if (adding > 1 && owned < limit.getAsInt()) return Optional.of("You own " + owned + " of your " + limit.getAsInt() + " NPCs; that makes " + adding + " more");
         return Optional.of(limit.getAsInt() == 0 ? "You cannot make NPCs; ask an admin for an " + PermissionNodes.LIMIT_PREFIX + "<n> node"
-                : "You own " + owned + " NPCs, your limit; remove one to make another");
+                : "You own " + owned + (owned == 1 ? " NPC" : " NPCs") + ", your limit; remove one to make another");
     }
 }

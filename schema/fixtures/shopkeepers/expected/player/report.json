@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "importerVersion": 3,
-  "importId": "2cce5249a59598a99a0b4a7cac49b5d67f70c7433b457cb20d784207edb78857",
+  "importerVersion": 4,
+  "importId": "e5da7cdd30e1fb839060ba6f7b1e99b4c7a8442969db34cae84094cf912232d3",
   "sourceSha256": "1ad1369513283726a44d198ab0a0f94388afcbc1e761bbc4f780a5b1c3563c08",
   "configSha256": "fa0989ce99526a144db8f9b672d0d7f0dbdcf2c9cd4f7f2a5be53d21257fd03e",
   "notice": "Data conversion only. Shops install under shops/shopkeepers/ and open on their NPCs. Try each shop in game before relying on it.",
@@ -24,9 +24,9 @@
   },
   "offers": {
     "total": 9,
-    "trade": 5,
+    "trade": 6,
     "static": 1,
-    "skipped": 3
+    "skipped": 2
   },
   "items": {
     "total": 10,
@@ -83,7 +83,7 @@
     "shopkeepers:shop-13": {
       "shopkeeper": 13,
       "document": "shops/shopkeepers/shop-13.json",
-      "entries": 0
+      "entries": 1
     },
     "shopkeepers:shop-14": {
       "shopkeeper": 14,
@@ -100,14 +100,14 @@
   },
   "issues": [],
   "documents": {
-    "shops/shopkeepers/shop-10.json": "dacadb75709fcba11230ad8024cf200daedb7e5a2ac925298488ceafb582a27b",
-    "npcs/shopkeepers/shopkeeper-10.json": "bb72316fbf23e9d5fc20b8b8be7082818b0403ce5b546a837612017df5bba5dd",
-    "shops/shopkeepers/shop-11.json": "2a6d77c915d95328798f2b8550c87bc2d497da4d2dd13f589dacbfb35daaa380",
-    "shops/shopkeepers/shop-12.json": "ad8f89730b85cf856b7ceaa7d1bd227595fe73e626e67f4eef32a35c400873c0",
-    "shops/shopkeepers/shop-13.json": "1c4ae5e0052616eab8da50f814bfa5c15c6c030dd9796500151927dddbae04a6",
+    "shops/shopkeepers/shop-10.json": "286a8f402cfc92eac3ded7f4f9b5205629917779e44d43abfbc12fee5b78df76",
+    "npcs/shopkeepers/shopkeeper-10.json": "f88160ad4d75be5fc30a0e696269cbcaf5bc60eea4576e6a222325c25a12ce26",
+    "shops/shopkeepers/shop-11.json": "0cf971f9fd2f02001e4c8dfb5e3dfd16051f649ceae2e92bae654bb448062a26",
+    "shops/shopkeepers/shop-12.json": "da256d9891e293ba98473df7c35bd9726d83db2f583217fa07626d5d39c59c46",
+    "shops/shopkeepers/shop-13.json": "84c76281cc312c7381d1c03e0ed99d4e30ba362a17425bd1cd4522f092308030",
     "shops/shopkeepers/shop-14.json": "f3872a1b2780e046ba1ae20b1646d7688afe946f1115cdebf261a77ce2f26a4c",
-    "npcs/shopkeepers/shopkeeper-14.json": "b16c02a160586285b90635efdb7f5c6808dc9e5d460abbd64be389c7a5c4c31e",
-    "shops/shopkeepers/shop-15.json": "fba5ed1818bb4afaa723ca0d69697620c343c5ab7f8068eab45eac1c3eec3d01",
-    "npcs/shopkeepers/shopkeeper-15.json": "a30395b87f2d49b79aed14faa02fd7a83c6df40520f9cd49398a4f26acc2c09d"
+    "npcs/shopkeepers/shopkeeper-14.json": "b8aef73e66e916e4bc5f4e54c9bade3fedf21dd5b187e688856f0f6c0c282898",
+    "shops/shopkeepers/shop-15.json": "46c002fd0808724bb189372e47e7bfc2a097ddc51d652efc02dfa4f3eacda653",
+    "npcs/shopkeepers/shopkeeper-15.json": "f10febd5dd2ee739889ff17b75f265ab942846699ceb79880da8abcec34c01a9"
   }
 }

@@ -9,6 +9,8 @@ import art.arcane.animus.core.npc.GroupDocument;
 import art.arcane.animus.core.npc.GroupMerge;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
+import art.arcane.animus.core.shop.ShopCatalog;
+import art.arcane.animus.core.shop.ShopDocument;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.NpcPaths;
 import com.google.gson.JsonArray;
@@ -133,12 +135,38 @@ public final class OwnerWrites implements DocumentStore.CommitCheck {
                 throw new IOException(previous == null ? "A new NPC is owned by whoever makes it" : NpcOwnership.OWNER_REFUSAL);
             return;
         }
+        if (path.startsWith(ShopCatalog.SHOP_FOLDER + "/")) { shop(actor.player(), path, change.content()); return; }
         if (SHARED.stream().noneMatch(path::startsWith)) throw new IOException("Only an admin can change " + path);
         if (store.read(path) == null) return;
         String id = sharedId(path);
         for (NpcDefinition definition : npcs.stored())
             if (!definition.owner().equals(self) && mentions(definition.json(), id))
                 throw new IOException(path + " is used by " + definition.id() + ", which is not yours; only an admin can change it");
+    }
+
+    /**
+     * A player's own shop: they change only shops they own and keep owning, each keeping its stock in chests, so it can
+     * trade only what its chests hold. The shop must load, which refuses commands and money in such a shop.
+     */
+    private void shop(UUID self, String path, String content) throws IOException {
+        String stored = store.read(path);
+        if (stored != null && !shopOwner(object(stored)).equals(Optional.of(self))) throw new IOException(path + " is not your shop; only an admin can change it");
+        if (content == null) return;
+        JsonObject next = object(content);
+        if (!shopOwner(next).equals(Optional.of(self)))
+            throw new IOException(stored == null ? "A shop you make is yours; only an admin can make one for another player" : "Only an admin can change who owns a shop");
+        if (!(next.get("containers") instanceof JsonArray chests) || chests.isEmpty()) throw new IOException("A shop you make keeps its stock in chests");
+        Optional<String> id = EditorDocuments.idFor(DocumentKind.SHOP, path);
+        if (id.isEmpty()) throw new IOException(path + " is not a shop file");
+        List<String> problems = ShopDocument.parse(id.get(), next).problems();
+        if (!problems.isEmpty()) throw new IOException(problems.getFirst());
+    }
+
+    /** The owner a shop file names; none for a malformed one. */
+    private static Optional<UUID> shopOwner(JsonObject shop) {
+        if (shop == null || !(shop.get("owner") instanceof JsonObject owner) || !(owner.get("uuid") instanceof JsonElement uuid) || !uuid.isJsonPrimitive()) return Optional.empty();
+        try { return Optional.of(UUID.fromString(uuid.getAsString())); }
+        catch (IllegalArgumentException invalid) { return Optional.empty(); }
     }
 
     /** The id NPC definitions name a shared document by. */

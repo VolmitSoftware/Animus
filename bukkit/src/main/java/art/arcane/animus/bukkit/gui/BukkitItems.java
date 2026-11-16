@@ -15,6 +15,7 @@ import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.inventory.meta.BookMeta;
 import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.PotionMeta;
@@ -52,6 +53,29 @@ final class BukkitItems implements ItemOps<ItemStack> {
         if (a instanceof Damageable da && b instanceof Damageable db && da.getDamage() != db.getDamage()) return false;
         if (a instanceof PotionMeta pa && b instanceof PotionMeta pb && pa.getBasePotionType() != pb.getBasePotionType()) return false;
         return !(a instanceof WritableBookMeta ba && b instanceof WritableBookMeta bb) || ba.getPages().equals(bb.getPages());
+    }
+
+    @Override public Optional<String> bookTitle(ItemStack stack) {
+        if (empty(stack) || stack.getType() != Material.WRITTEN_BOOK || !(stack.getItemMeta() instanceof BookMeta book) || !book.hasTitle()) return Optional.empty();
+        return Optional.ofNullable(book.getTitle());
+    }
+
+    /** A crafting table's copy: one book, a generation further on; an original or a copy of an original can be copied. */
+    @Override public Optional<ItemStack> copyBook(ItemStack stack) {
+        if (bookTitle(stack).isEmpty() || !(stack.getItemMeta() instanceof BookMeta book)) return Optional.empty();
+        BookMeta.Generation generation = book.hasGeneration() ? book.getGeneration() : BookMeta.Generation.ORIGINAL;
+        BookMeta.Generation next = switch (generation) {
+            case ORIGINAL -> BookMeta.Generation.COPY_OF_ORIGINAL;
+            case COPY_OF_ORIGINAL -> BookMeta.Generation.COPY_OF_COPY;
+            default -> null;
+        };
+        if (next == null) return Optional.empty();
+        ItemStack copy = stack.clone();
+        copy.setAmount(1);
+        BookMeta meta = (BookMeta) copy.getItemMeta();
+        meta.setGeneration(next);
+        copy.setItemMeta(meta);
+        return Optional.of(copy);
     }
 
     @Override public String describe(ItemStack stack, int count) {

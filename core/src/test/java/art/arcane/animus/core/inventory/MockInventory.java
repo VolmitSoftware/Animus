@@ -26,6 +26,15 @@ public class MockInventory implements TradeInventory<MockInventory.Stack> {
             };
         }
         @Override public String describe(Stack stack, int count) { return count + "x " + stack.id(); }
+        /** A written book's name is its title and its hidden data its generation, {@code generation=0} when empty. */
+        @Override public java.util.Optional<String> bookTitle(Stack stack) {
+            return stack != null && stack.id().equals("minecraft:written_book") ? java.util.Optional.of(stack.name()) : java.util.Optional.empty();
+        }
+        @Override public java.util.Optional<Stack> copyBook(Stack stack) {
+            if (bookTitle(stack).isEmpty()) return java.util.Optional.empty();
+            int generation = stack.hidden().isEmpty() ? 0 : Integer.parseInt(stack.hidden().substring("generation=".length()));
+            return generation >= 2 ? java.util.Optional.empty() : java.util.Optional.of(new Stack(stack.id(), 1, stack.name(), "generation=" + (generation + 1)));
+        }
     };
 
     private final Stack[] slots;

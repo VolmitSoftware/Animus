@@ -103,7 +103,7 @@ final class ToolkitCommands extends CommandGroup {
     private Toolkit.Commands commands() {
         return new Toolkit.Commands(this::inspect, (CommandActor viewer) -> services.editor().pair(viewer, "", "", "", ""),
                 (CommandActor viewer, String id) -> NpcCommands.revive(this, viewer, id), (UUID player) -> services.recordings().recording(player), runs(services.behaviors()),
-                () -> services.shops().prices());
+                () -> services.shops().prices(), () -> services.shops().players());
     }
 
     /** The running menu. */

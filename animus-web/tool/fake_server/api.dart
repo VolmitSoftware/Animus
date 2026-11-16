@@ -19,6 +19,10 @@ import 'terrain.dart';
 import 'tokens.dart';
 import 'validation.dart';
 
+/// The player who owns the browser checks' player shop; the fake server
+/// knows them as Steve.
+const String fakeShopOwner = '00000000-0000-4000-8000-000000000002';
+
 /// Settings of one fake server.
 class FakeSettings {
   const FakeSettings({
@@ -421,7 +425,24 @@ class FakeApi {
     });
   }
 
-  /// A small Paper server with PlaceholderAPI: a few ids of each registry, and the paired viewer, Alex, as the one owner it knows.
+  /// The names this server knows, as a real server's user cache: the
+  /// paired viewer is Alex, and Steve owns the browser checks' player shop.
+  Map<String, String> get _players => <String, String>{settings.viewer: 'Alex', fakeShopOwner: 'Steve'};
+
+  /// The known players who own a stored NPC or shop, as EditorApi lists them.
+  Map<String, String> _owners() {
+    final Map<String, String> players = _players;
+    final Set<String> owning = <String>{
+      for (final StoredDocument npc in documents.list(DocumentKind.npc))
+        if (npc.json?['owner'] case final String owner) owner,
+      for (final StoredDocument shop in documents.list(DocumentKind.shop))
+        if (shop.json?['owner'] case <String, Object?>{'uuid': final String owner}) owner,
+    };
+    return <String, String>{for (final String owner in owning.toList()..sort()) if (players[owner] case final String name) owner: name};
+  }
+
+  /// A small Paper server with PlaceholderAPI: a few ids of each registry,
+  /// and the names of the players it knows who own an NPC or a shop.
   FakeResponse _lookups(FakeRequest request, FakeToken token, List<String> segments) => FakeResponse(200, body: <String, Object?>{
         'registries': <String, Object?>{
           'items': <String>['minecraft:bread', 'minecraft:diamond', 'minecraft:diamond_sword', 'minecraft:emerald'],
@@ -431,7 +452,7 @@ class FakeApi {
         },
         'commands': <String>['animus', 'give', 'spawn', 'tp'],
         'papi': <String>['player', 'server'],
-        'owners': <String, Object?>{settings.viewer: 'Alex'},
+        'owners': _owners(),
       });
 
   FakeResponse _capabilities(FakeRequest request, FakeToken token, List<String> segments) {

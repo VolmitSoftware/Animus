@@ -303,6 +303,8 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
         shops.addProperty("style", defaults.style());
         shops.addProperty("priceFormat", defaults.priceFormat());
         shops.addProperty("flushMillis", defaults.flushMillis());
+        shops.addProperty("playerLimit", defaults.playerLimit());
+        shops.addProperty("currency", defaults.currency());
         JsonObject messages = new JsonObject();
         defaults.messages().forEach(messages::addProperty);
         shops.add("messages", messages);
@@ -318,7 +320,8 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
             messages.put(entry.getKey(), entry.getValue().getAsString());
         }
         return new ShopSettings(bool(document, "enabled", defaults.enabled()), text(document, "economy", defaults.economy()),
-                text(document, "style", defaults.style()), text(document, "priceFormat", defaults.priceFormat()), integer(document, "flushMillis", defaults.flushMillis()), messages);
+                text(document, "style", defaults.style()), text(document, "priceFormat", defaults.priceFormat()), integer(document, "flushMillis", defaults.flushMillis()),
+                integer(document, "playerLimit", defaults.playerLimit()), text(document, "currency", defaults.currency()), messages);
     }
 
     private static String text(JsonObject document, String key, String fallback) {

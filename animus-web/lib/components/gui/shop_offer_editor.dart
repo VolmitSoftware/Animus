@@ -1,9 +1,9 @@
 /// One offer's form, open under its row. Simple: the kind, what it takes
-/// and gives (item picker and count), the price, commands, and its name
-/// and lore under More. Advanced adds the id, page and slot, item details,
-/// sale prices and the rules (stock, limits, permission, purchase
-/// switches). In Simple a line counts the advanced settings in use, with
-/// Show to edit them here.
+/// and gives (item picker and count) or, in a book shop, the title of the
+/// book it copies, the price, commands, and its name and lore under More.
+/// Advanced adds the id, page and slot, item details, sale prices and the
+/// rules (stock, limits, permission, purchase switches). In Simple a line
+/// counts the advanced settings in use, with Show to edit them here.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -236,10 +236,10 @@ class _ShopOfferEditorState extends State<ShopOfferEditor> {
 
   /// A labelled field for [key] of the offer; dots in [key] step into
   /// objects (`limit.perPlayer`).
-  Widget _row(String label, String key, Widget Function(String id) child, {String? tip, List<Diagnostic>? problems}) {
+  Widget _row(String label, String key, Widget Function(String id) child, {String? tip, DocLink? docs, List<Diagnostic>? problems}) {
     final String path = key.split('.').fold(_path, childPath);
     final String id = guiPathId(path);
-    return Field(label: label, forId: id, tip: tip, problems: problems ?? _at(path, nested: true), child: child(id));
+    return Field(label: label, forId: id, tip: tip, docs: docs, problems: problems ?? _at(path, nested: true), child: child(id));
   }
 
   @override
@@ -249,6 +249,9 @@ class _ShopOfferEditorState extends State<ShopOfferEditor> {
     final bool container = isContainerShop(shop);
     final bool money = type == 'buy' || type == 'sell' || type == 'command' || (type == 'trade' && !container);
     final List<String> kinds = <String>[for (final String kind in shopOfferKinds) if (!container || kind == 'trade' || kind == 'static') kind];
+    // A book shop's trade names its book in place of what it gives; gives
+    // stay on screen while the entry still has them.
+    final bool copies = type == 'trade' && (isBookShop(shop) || _entry.containsKey('book'));
     final int hidden = advanced ? 0 : offerAdvancedInUse(_entry);
     return dom.div(attributes: <String, String>{'data-path': _path}, <Widget>[stack(spacing: 16, <Widget>[
       for (final Diagnostic problem in _at(_path)) AppAlert(tone: problem.severity == DiagnosticSeverity.error ? AlertTone.error : AlertTone.warning, message: problem.message),
@@ -269,7 +272,8 @@ class _ShopOfferEditorState extends State<ShopOfferEditor> {
       ),
       if (type == 'trade') ...<Widget>[
         _goodsList('needs', 'Takes', 'What the player hands over. The trading screen shows the first two.', advanced),
-        _goodsList('gives', 'Gives', 'What the player gets. The trading screen shows the first.', advanced),
+        if (copies) _book(),
+        if (!copies || _entry.containsKey('gives')) _goodsList('gives', 'Gives', 'What the player gets. The trading screen shows the first.', advanced, optional: copies),
       ] else
         _item(type, advanced),
       if (money) _price(type, advanced),
@@ -283,6 +287,20 @@ class _ShopOfferEditorState extends State<ShopOfferEditor> {
       ],
     ])]);
   }
+
+  Widget _book() => _row(
+        'Book title',
+        'book',
+        (String id) => AutocompleteInput(
+          id: id,
+          value: asString(_entry['book']) ?? '',
+          label: 'Book title',
+          onChanged: (String v) => _set('book', v.isEmpty ? null : v),
+          profile: FieldProfile.none,
+        ),
+        tip: 'The title of the written book this trade copies out of the chest. The player gets the copy.',
+        docs: Docs.playerShops,
+      );
 
   Widget _placement() {
     final JsonList pages = asList(shop['pages']);
@@ -351,10 +369,12 @@ class _ShopOfferEditorState extends State<ShopOfferEditor> {
     ]);
   }
 
-  Widget _goodsList(String key, String title, String tip, bool advanced) {
+  /// The goods at [key]; [optional] lets the last one go, as a book trade's
+  /// gives must.
+  Widget _goodsList(String key, String title, String tip, bool advanced, {bool optional = false}) {
     final JsonList goods = asList(_entry[key]);
     final String path = childPath(_path, key);
-    void setAll(JsonList next) => _set(key, next, coalesce: '${offer.ref.key}.$key-list');
+    void setAll(JsonList next) => _set(key, next.isEmpty ? null : next, coalesce: '${offer.ref.key}.$key-list');
     return Field(
       label: title,
       tip: tip,
@@ -365,7 +385,7 @@ class _ShopOfferEditorState extends State<ShopOfferEditor> {
           dense: false,
           rows: <OrderedRow>[for (int index = 0; index < goods.length; index++) _goods(key, title, goods, index, advanced)],
           onMove: (int from, int to) => setAll(moveItem(goods, from, to)),
-          onDelete: goods.length <= 1 ? null : (int index) => setAll(<Object?>[...goods]..removeAt(index)),
+          onDelete: goods.length <= 1 && !optional ? null : (int index) => setAll(<Object?>[...goods]..removeAt(index)),
         ),
         ActionRow(
           dense: true,

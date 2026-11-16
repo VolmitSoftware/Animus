@@ -464,7 +464,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "papi": {"type": "array", "items": {"type": "string"}, "description": "PlaceholderAPI expansion identifiers, when it is installed."},
         "owners": {
           "type": "object",
-          "description": "The last known name of each player who owns an NPC, by UUID; players the server never saw are left out.",
+          "description": "The last known name of each player who owns an NPC or a shop, by UUID; players the server never saw are left out.",
           "propertyNames": {"pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
           "additionalProperties": {"type": "string"}
         }
@@ -34628,9 +34628,31 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "z": {"type": "integer", "minimum": -30000000, "maximum": 30000000}
         }
       },
-      "description": "Blocks holding an owned shop's stock. Each trade takes its gives from them and puts its needs in them; only trade and static entries, no money prices and no stock fields. The owner must be allowed to open each block."
+      "description": "Blocks holding an owned shop's stock. Each trade takes its gives from them and puts its needs in them; only trade and static entries, no money prices, no stock fields and no commands. The owner must be allowed to open each block."
+    },
+    "kind": {
+      "enum": ["selling", "buying", "trading", "book"],
+      "description": "How a player's shop trades, as Shopkeepers' player shops do: selling gives its stock for price items, buying pays from its stock for the items it buys, trading swaps items, book sells copies of the written books in its stock. Container shops only."
+    },
+    "closed": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "\\S",
+      "description": "Why the shop is closed, for its owner. A closed shop trades nothing, and players who open it are told it is closed."
     }
   },
+  "allOf": [
+    {
+      "if": {"not": {"required": ["containers"]}},
+      "then": {"properties": {"kind": false}}
+    },
+    {
+      "if": {"required": ["kind"], "properties": {"kind": {"const": "book"}}},
+      "then": {"properties": {"pages": {"items": {"$ref": "#/$defs/bookPage"}}}},
+      "else": {"properties": {"pages": {"items": {"$ref": "#/$defs/plainPage"}}}}
+    }
+  ],
   "$defs": {
     "mode": {"enum": ["buy", "sell", "trade"]},
     "match": {"enum": ["strict", "legacy"], "description": "How offered items are compared. strict compares all item data."},
@@ -34664,6 +34686,26 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "sell": {"$ref": "#/$defs/grid"},
         "trade": {"$ref": "#/$defs/grid"}
       }
+    },
+    "bookPage": {
+      "properties": {
+        "buy": {"additionalProperties": {"$ref": "#/$defs/bookTrade"}},
+        "sell": {"additionalProperties": {"$ref": "#/$defs/bookTrade"}},
+        "trade": {"additionalProperties": {"$ref": "#/$defs/bookTrade"}}
+      },
+      "description": "A book shop's page: every trade names the book it copies."
+    },
+    "bookTrade": {
+      "if": {"required": ["type"], "properties": {"type": {"const": "trade"}}},
+      "then": {"required": ["book"]}
+    },
+    "plainPage": {
+      "properties": {
+        "buy": {"additionalProperties": {"properties": {"book": false}}},
+        "sell": {"additionalProperties": {"properties": {"book": false}}},
+        "trade": {"additionalProperties": {"properties": {"book": false}}}
+      },
+      "description": "A page of any shop but a book shop: no entry copies a book."
     },
     "goods": {
       "type": "array",
@@ -34749,6 +34791,13 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           }
         },
         "match": {"$ref": "#/$defs/match"},
+        "book": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "\\S",
+          "description": "A book shop's trade: the title of the written book it copies out of the containers, in place of gives."
+        },
         "imported": {"type": "object"}
       },
       "allOf": [
@@ -34762,8 +34811,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "if": {"required": ["type"], "properties": {"type": {"const": "trade"}}},
-          "then": {"required": ["needs", "gives"], "properties": {"needs": {"minItems": 1}, "gives": {"minItems": 1}}},
-          "else": {"not": {"anyOf": [{"required": ["needs"]}, {"required": ["gives"]}]}}
+          "then": {
+            "required": ["needs"],
+            "properties": {"needs": {"minItems": 1}, "gives": {"minItems": 1}},
+            "if": {"required": ["book"]},
+            "then": {"properties": {"gives": false}},
+            "else": {"required": ["gives"]}
+          },
+          "else": {"not": {"anyOf": [{"required": ["needs"]}, {"required": ["gives"]}]}, "properties": {"book": false}}
         },
         {
           "if": {"required": ["type"], "properties": {"type": {"const": "command"}}},

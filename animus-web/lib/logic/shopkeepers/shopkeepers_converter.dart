@@ -20,7 +20,7 @@ import '../npc/npc_paths.dart' show npcSchemaVersion;
 import 'shopkeepers_items.dart';
 
 /// Must equal `ShopkeepersImporter.VERSION`; the shared golden fixtures fail when they drift.
-const int shopkeepersImporterVersion = 3;
+const int shopkeepersImporterVersion = 4;
 
 const String _namespace = 'shopkeepers';
 const int _maximumShopkeepers = 10000;
@@ -28,6 +28,7 @@ const int _perPage = 45;
 const int _maximumStack = 64;
 const int _maximumPages = 64;
 const int _maximumContainers = 8;
+const int _maximumTitle = 128;
 const int _shopSchemaVersion = 1;
 const String _shopModule = 'animus:shop';
 const String _notice =
@@ -38,7 +39,8 @@ const Set<String> _handled = <String>{
   'owner uuid', 'owner', 'containers', 'chestx', 'chesty', 'chestz', 'snapshots',
 };
 const Set<String> _ownership = <String>{'notifyOnTrades', 'forHire', 'hirecost', 'members', 'expiration', 'expirationNotifications', 'ownedSince'};
-const Set<String> _playerTypes = <String>{'sell', 'buy', 'trade', 'book'};
+/// Each Shopkeepers player shop type and the `kind` its container shop gets.
+const Map<String, String> _playerKinds = <String, String>{'sell': 'selling', 'buy': 'buying', 'trade': 'trading', 'book': 'book'};
 
 final RegExp _shopkeeperId = RegExp(r'^(?:0|[1-9][0-9]{0,9})$');
 final RegExp _offerKey = RegExp(r'^[0-9]{1,9}$');
@@ -223,7 +225,7 @@ ShopkeepersPreview convertShopkeepers(String save, {String? config, String? citi
     } else {
       report.field('/type', _converted);
     }
-    if (type != 'admin' && !_playerTypes.contains(type)) {
+    if (type != 'admin' && !_playerKinds.containsKey(type)) {
       issues.addString('$key: shop type ${type.isEmpty ? '(none)' : type} is not converted; kept in source.yml');
       continue;
     }
@@ -265,7 +267,7 @@ ShopkeepersPreview convertShopkeepers(String save, {String? config, String? citi
       report.field('/open', open ? _converted : _changed,
           open ? null : 'the shop was closed; its offers show but do not trade until you change them to trade entries');
     }
-    final bool player = _playerTypes.contains(type);
+    final bool player = _playerKinds.containsKey(type);
     bool stocked = false;
     if (player) {
       final String? ownerText = _string(record, 'owner uuid');
@@ -283,6 +285,7 @@ ShopkeepersPreview convertShopkeepers(String save, {String? config, String? citi
       }
       if (owner != null && containers.isNotEmpty) {
         shop.add('containers', containers);
+        shop.addString('kind', _playerKinds[type]!);
         stocked = true;
       } else if (owner != null) {
         report.note('the shop has no container; its offers show but do not trade until one is added');
@@ -463,16 +466,12 @@ JObject? _offer(String type, String entryId, JElement value, String path, _Curre
     return null;
   }
   final JObject offer = value;
-  if (type == 'book') {
-    report.field(path, _preserved,
-        "a book offer copies a written book from the shop's chest by title; Animus trades exact items only, so it is kept in source.yml");
-    return null;
-  }
   final List<JObject> needs = <JObject>[];
   final List<JObject> gives = <JObject>[];
   final List<String> notes = <String>[];
   bool exact = true;
-  final ShopkeepersItem icon;
+  String? book;
+  final NpcItem icon;
   if (type == 'admin' || type == 'trade') {
     final ShopkeepersItem? result = _item(offer.get('resultItem'), totals);
     final ShopkeepersItem? first = _item(offer.get('item1'), totals);
@@ -481,15 +480,34 @@ JObject? _offer(String type, String entryId, JElement value, String path, _Curre
       report.field(path, _preserved, 'the offer has no result item or no first item; kept in source.yml');
       return null;
     }
-    icon = result;
+    icon = result.item;
     for (final ShopkeepersItem need in <ShopkeepersItem>[first, ?second]) {
       needs.add(_goods(need.item, need.amount));
     }
-    gives.add(_goods(icon.item, icon.amount));
+    gives.add(_goods(icon, result.amount));
     for (final ShopkeepersItem part in <ShopkeepersItem>[result, first, ?second]) {
       exact &= part.exact;
       notes.addAll(part.notes);
     }
+  } else if (type == 'book') {
+    book = _nonBlank(_string(offer, 'book'));
+    final int? price = shopkeepersInteger(offer.get('price'));
+    if (book == null || price == null || price < 1) {
+      report.field(path, _preserved, 'the offer has no book title or no price of at least 1; kept in source.yml');
+      return null;
+    }
+    if (book.length > _maximumTitle) {
+      report.field(path, _preserved, 'the book title is longer than $_maximumTitle characters; kept in source.yml');
+      return null;
+    }
+    final ShopkeepersItem? low = currency.low;
+    if (low == null) {
+      report.field(path, _preserved, 'the currency item in config.yml is not an item; kept in source.yml');
+      return null;
+    }
+    icon = const NpcItem('minecraft:written_book', 1, null, null);
+    exact = low.exact && (currency.high?.exact ?? true);
+    if (!_pay(price, currency, low, needs, path, report)) return null;
   } else {
     final ShopkeepersItem? sold = _item(offer.get('item'), totals);
     final int? price = shopkeepersInteger(offer.get('price'));
@@ -502,32 +520,18 @@ JObject? _offer(String type, String entryId, JElement value, String path, _Curre
       report.field(path, _preserved, 'the currency item in config.yml is not an item; kept in source.yml');
       return null;
     }
-    icon = sold;
-    final ShopkeepersItem? high = currency.high;
-    exact = sold.exact && low.exact && (high?.exact ?? true);
+    icon = sold.item;
+    exact = sold.exact && low.exact && (currency.high?.exact ?? true);
     notes.addAll(sold.notes);
     if (type == 'sell') {
-      int remaining = price;
-      if (high != null && price > currency.highMinimum) {
-        final int quotient = price ~/ currency.highValue;
-        final int count = quotient < _maximumStack ? quotient : _maximumStack;
-        if (count > 0) {
-          needs.add(_goods(high.item, count));
-          remaining -= count * currency.highValue;
-        }
-      }
-      if (remaining > _maximumStack) {
-        report.field(path, _preserved, 'price $price needs more than one stack of each currency item, which Shopkeepers also skips');
-        return null;
-      }
-      if (remaining > 0) needs.add(_goods(low.item, remaining));
-      gives.add(_goods(icon.item, icon.amount));
+      if (!_pay(price, currency, low, needs, path, report)) return null;
+      gives.add(_goods(icon, sold.amount));
     } else {
       if (price > _maximumStack) {
         report.field(path, _preserved, 'price $price is more than one stack of the currency item, which Shopkeepers also skips');
         return null;
       }
-      needs.add(_goods(icon.item, icon.amount));
+      needs.add(_goods(icon, sold.amount));
       gives.add(_goods(low.item, price));
     }
   }
@@ -535,19 +539,19 @@ JObject? _offer(String type, String entryId, JElement value, String path, _Curre
   entry.addString('id', entryId);
   final bool trade = exact && tradable;
   entry.addString('type', trade ? 'trade' : 'static');
-  entry.add('item', icon.item.toJson());
+  entry.add('item', icon.toJson());
   final JArray needList = JArray(<JElement>[...needs]);
   final JArray giveList = JArray(<JElement>[...gives]);
   if (trade) {
+    if (book != null) entry.addString('book', book);
     entry.add('needs', needList);
-    entry.add('gives', giveList);
+    if (book == null) entry.add('gives', giveList);
   } else {
-    entry.add(
-        'imported',
-        JObject()
-          ..addString('source', 'Shopkeepers')
-          ..add('needs', needList)
-          ..add('gives', giveList));
+    final JObject kept = JObject()..addString('source', 'Shopkeepers');
+    if (book != null) kept.addString('book', book);
+    kept.add('needs', needList);
+    if (book == null) kept.add('gives', giveList);
+    entry.add('imported', kept);
   }
   if (!exact) {
     report.field(path, _review, 'item data Animus cannot write exactly is kept in imported, so the offer shows but does not trade: ${notes.join('; ')}');
@@ -557,6 +561,27 @@ JObject? _offer(String type, String entryId, JElement value, String path, _Curre
     report.field(path, notes.isEmpty ? _converted : _changed, notes.isEmpty ? null : notes.join('; '));
   }
   return entry;
+}
+
+/// `ShopkeepersImporter.pay`: a selling price added to [needs] as Shopkeepers asks for it, high currency first above its
+/// minimum cost and the rest in [low]. False, reported, when the rest is more than one stack.
+bool _pay(int price, _Currency currency, ShopkeepersItem low, List<JObject> needs, String path, _Report report) {
+  int remaining = price;
+  final ShopkeepersItem? high = currency.high;
+  if (high != null && price > currency.highMinimum) {
+    final int quotient = price ~/ currency.highValue;
+    final int count = quotient < _maximumStack ? quotient : _maximumStack;
+    if (count > 0) {
+      needs.add(_goods(high.item, count));
+      remaining -= count * currency.highValue;
+    }
+  }
+  if (remaining > _maximumStack) {
+    report.field(path, _preserved, 'price $price needs more than one stack of each currency item, which Shopkeepers also skips');
+    return false;
+  }
+  if (remaining > 0) needs.add(_goods(low.item, remaining));
+  return true;
 }
 
 ShopkeepersItem? _item(JElement? value, _Totals totals) {

@@ -134,6 +134,16 @@ abstract class ToolScreen<P, S> implements Screen {
         handler.click(click);
     }
 
+    /** A click on a stack in the player's own inventory ends the notice like any click, then goes to {@link #take}. */
+    @Override public final void picked(NpcItem item) {
+        toolkit.dismiss(viewer.id());
+        armed = null;
+        if (toolkit.allows(viewer.player(), node())) take(item);
+    }
+
+    /** What a screen does with a stack the player clicked in their own inventory; most do nothing. */
+    void take(NpcItem item) { }
+
     /** A screen whose NPCs all vanished since it drew leaves on the next tick; see {@link #leave}. */
     @Override public boolean tick(long tick) {
         if (held && forSelection() && toolkit.selected(viewer.id()).isEmpty()) leave();
@@ -244,6 +254,14 @@ abstract class ToolScreen<P, S> implements Screen {
     void button(int slot, NpcItem item, String name, List<String> lore, Handler handler) {
         icon(slot, item, name, lore, Optional.empty());
         handlers.put(slot, handler);
+    }
+
+    /** A clickable item drawn with its own count, such as an amount in an offer. */
+    void counted(int slot, NpcItem item, String name, List<String> lore, Handler handler) {
+        button(slot, item, name, lore, handler);
+        ScreenFrame.Item drawn = items.get(slot);
+        items.put(slot, new ScreenFrame.Item(new NpcItem(drawn.item().id(), Math.clamp(item.count(), 1, NpcItem.MAX_COUNT), drawn.item().components(), Optional.empty()),
+                drawn.name(), drawn.lore(), drawn.head()));
     }
 
     void icon(int slot, String icon, String name, List<String> lore, Optional<String> head) {

@@ -288,7 +288,28 @@ void main() {
     expect(lookups.registries[RegistryKind.item], contains('diamond_sword'));
     expect(lookups.commands, contains('spawn'));
     expect(lookups.papi, contains('player'));
-    expect(lookups.owners, <String, String>{'00000000-0000-4000-8000-000000000001': 'Alex'});
+    expect(lookups.owners, isEmpty, reason: 'nothing in the export fixture has an owner');
+  });
+
+  test('should name the players it knows who own an NPC or a shop, as EditorApi does', () async {
+    Map<String, Object?> stall(String owner) => <String, Object?>{
+          'schemaVersion': 1,
+          'id': 'town:stall',
+          'kind': 'selling',
+          'owner': <String, Object?>{'uuid': owner},
+          'containers': <Object?>[<String, Object?>{'world': 'world', 'x': 1, 'y': 64, 'z': 2}],
+          'pages': <Object?>[<String, Object?>{'name': 'Page 1'}],
+        };
+    await control('POST', '/edit', <String, Object?>{'kind': 'shop', 'id': 'town:stall', 'source': stall(fakeShopOwner)});
+    await control('POST', '/edit', <String, Object?>{'kind': 'shop', 'id': 'town:other', 'source': stall('00000000-0000-4000-8000-0000000000ff')});
+    await control('POST', '/edit', <String, Object?>{
+      'kind': 'npc',
+      'id': 'town/guard',
+      'source': <String, Object?>{'schemaVersion': 2, 'uuid': '0f0e0d0c-0b0a-4000-8000-00000000a002', 'id': 'guard', 'group': 'town', 'type': 'minecraft:villager', 'owner': fixtureSettings.viewer},
+    });
+    final Reply reply = await call('GET', '/animus/v1/lookups', token: await pairToken());
+    expectMessage('lookups-response', reply.body);
+    expect(ServerLookups.fromJson(reply.json).owners, <String, String>{fixtureSettings.viewer: 'Alex', fakeShopOwner: 'Steve'});
   });
 
   test('terrain in a world the server has not loaded answers world-unloaded', () async {

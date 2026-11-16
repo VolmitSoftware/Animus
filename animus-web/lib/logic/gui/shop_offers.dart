@@ -58,13 +58,15 @@ ShopOffer? _offer(JsonMap entry, String key) {
     case 'trade':
       final JsonList needs = asList(entry['needs']);
       final JsonList gives = asList(entry['gives']);
-      if (needs.isEmpty || gives.isEmpty) return null;
+      // A book shop's trade gives a copy of its book, drawn as the entry's icon.
+      final bool copies = entry['book'] is String;
+      if (needs.isEmpty || (gives.isEmpty && !copies)) return null;
       return ShopOffer(
         entryId: id,
         key: key,
         costA: _goods(asMap(asMap(needs.first)['item']), asInt(asMap(needs.first)['amount'])),
         costB: needs.length > 1 ? _goods(asMap(asMap(needs[1])['item']), asInt(asMap(needs[1])['amount'])) : null,
-        result: _goods(asMap(asMap(gives.first)['item']), asInt(asMap(gives.first)['amount'])),
+        result: copies ? ShopGoods(asString(asMap(entry['item'])['id']) ?? 'minecraft:written_book', 1) : _goods(asMap(asMap(gives.first)['item']), asInt(asMap(gives.first)['amount'])),
       );
     case 'buy' || 'command':
       return ShopOffer(entryId: id, key: key, costA: ShopGoods(shopMoneyToken, 1, label: price == 0 ? 'Free' : _money(price)), result: item);

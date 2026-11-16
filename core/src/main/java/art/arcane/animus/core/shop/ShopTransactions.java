@@ -37,10 +37,14 @@ public final class ShopTransactions<S> {
     public record Need<S>(S stack, int amount) {}
     /**
      * An entry with its platform stacks built once: a one-item stack of the goods, and the trade lists. {@code match} is
-     * {@link ShopDocument#rule}.
+     * {@link ShopDocument#rule}. {@code quill} is the blank book and quill a book entry uses up for each copy.
      */
-    public record Prepared<S>(ShopDocument.Entry entry, MatchRule match, S goods, List<Need<S>> needs, List<Need<S>> gives) {
-        public Prepared { Objects.requireNonNull(entry); Objects.requireNonNull(match); needs = List.copyOf(needs); gives = List.copyOf(gives); }
+    public record Prepared<S>(ShopDocument.Entry entry, MatchRule match, S goods, List<Need<S>> needs, List<Need<S>> gives, Optional<S> quill) {
+        public Prepared {
+            Objects.requireNonNull(entry); Objects.requireNonNull(match); Objects.requireNonNull(quill);
+            needs = List.copyOf(needs); gives = List.copyOf(gives);
+        }
+        public Prepared(ShopDocument.Entry entry, MatchRule match, S goods, List<Need<S>> needs, List<Need<S>> gives) { this(entry, match, goods, needs, gives, Optional.empty()); }
     }
     public record Buyer<S>(UUID id, Predicate<String> permitted, TradeInventory<S> inventory, Consumer<S> drop, Levels levels) {}
     /** What happened. {@code units} are items for buy and sell, one for a trade or command purchase. */
@@ -108,7 +112,7 @@ public final class ShopTransactions<S> {
             outcome = money && economy.unavailable().isPresent() ? new Outcome(Status.ECONOMY_UNAVAILABLE, 0, price, economy.unavailable()) : switch (entry.type()) {
                 case BUY -> buy(prepared, buyer, inventory, units, payment);
                 case SELL -> sell(prepared, buyer, inventory, units, price, money, rule);
-                case TRADE -> stock.isPresent() ? stocked(prepared, buyer, inventory, InventoryTransaction.begin(stock.get(), items), rule)
+                case TRADE -> stock.isPresent() ? stocked(prepared, buyer, inventory, stock.get(), rule)
                         : trade(prepared, buyer, inventory, payment, rule);
                 case COMMAND -> command(inventory, payment);
                 case STATIC -> Outcome.of(Status.NOT_TRADABLE);
@@ -217,17 +221,26 @@ public final class ShopTransactions<S> {
         return new Outcome(Status.DONE, 1, price, Optional.empty());
     }
 
-    /** An owned shop's trade: item for item between the buyer and the shop's containers, never money. */
-    private Outcome stocked(Prepared<S> prepared, Buyer<S> buyer, InventoryTransaction<S> inventory, InventoryTransaction<S> stock, MatchRule rule) {
+    /**
+     * An owned shop's trade: item for item between the buyer and the shop's containers, never money. A book entry
+     * leaves its original in the stock and uses up one blank book and quill from it for the buyer's copy.
+     */
+    private Outcome stocked(Prepared<S> prepared, Buyer<S> buyer, InventoryTransaction<S> inventory, TradeInventory<S> containers, MatchRule rule) {
+        InventoryTransaction<S> stock = InventoryTransaction.begin(containers, items);
         List<S> overflow = new java.util.ArrayList<>();
         try {
-            for (Need<S> give : prepared.gives())
+            List<Need<S>> handed = prepared.gives();
+            if (prepared.entry().book().isPresent()) {
+                Optional<S> copy = copy(containers, prepared.entry().book().get());
+                if (copy.isEmpty() || prepared.quill().isEmpty() || !stock.remove(prepared.quill().get(), 1, MatchRule.STRICT)) { both(inventory, stock); return Outcome.of(Status.OUT_OF_STOCK); }
+                handed = List.of(new Need<>(copy.get(), 1));
+            } else for (Need<S> give : handed)
                 if (!stock.remove(give.stack(), give.amount(), MatchRule.STRICT)) { both(inventory, stock); return Outcome.of(Status.OUT_OF_STOCK); }
             for (Need<S> need : prepared.needs())
                 if (!inventory.remove(need.stack(), need.amount(), rule)) { both(inventory, stock); return Outcome.of(Status.NOT_ENOUGH_ITEMS); }
             for (Need<S> need : prepared.needs())
                 if (!stock.add(need.stack(), need.amount())) { both(inventory, stock); return Outcome.of(Status.CONTAINER_FULL); }
-            for (Need<S> give : prepared.gives()) {
+            for (Need<S> give : handed) {
                 if (prepared.entry().dropWhenFull()) overflow.addAll(inventory.addOrOverflow(give.stack(), give.amount()));
                 else if (!inventory.add(give.stack(), give.amount())) { both(inventory, stock); return Outcome.of(Status.INVENTORY_FULL); }
             }
@@ -239,6 +252,17 @@ public final class ShopTransactions<S> {
         }
         drop(buyer, overflow);
         return new Outcome(Status.DONE, 1, BigDecimal.ZERO, Optional.empty());
+    }
+
+    /** A copy of the first written book in the stock with this title that can still be copied; the original stays. */
+    private Optional<S> copy(TradeInventory<S> containers, String title) {
+        for (int slot = 0; slot < containers.size(); slot++) {
+            S held = containers.get(slot);
+            if (items.empty(held) || !items.bookTitle(held).map(title::equals).orElse(false)) continue;
+            Optional<S> copy = items.copyBook(held);
+            if (copy.isPresent()) return copy;
+        }
+        return Optional.empty();
     }
 
     private static <S> void both(InventoryTransaction<S> inventory, InventoryTransaction<S> stock) {

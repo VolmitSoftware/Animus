@@ -19,6 +19,7 @@ import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.runtime.NpcRuntime;
+import art.arcane.animus.core.toolkit.Toolkit;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -60,6 +61,7 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
     private volatile Map<String, NpcDefinition> bindingsSource;
     private volatile Map<UUID, ShopBinding> bindings = Map.of();
     private volatile boolean closed;
+    private final PlayerShops players;
 
     /**
      * @param economy the platform's money provider; {@code economy = "none"} in {@code config.toml} replaces it
@@ -76,6 +78,8 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
         settings = runtime.shopSettings();
         data = runtime.documents().resolve(ShopCatalog.SHOP_FOLDER).getParent();
         store = new ShopStateStore(data.resolve("state/shops"), data.resolve("logs/shops"), settings.flushMillis(), log);
+        players = new PlayerShops(runtime::documents, files, () -> settings, () -> reload((ShopCatalog next) -> {}),
+                (UUID player, String text) -> living.players().deliver(player, (P online) -> host.message(online, RichText.colorize(text))), log);
         context = context(settings);
         screens = new ScreenManager<>(host, (UUID npc) -> living.active(npc).isPresent(), log);
         screens.placeholders(runtime::placeholders);
@@ -98,7 +102,7 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
 
     private ShopScreen.Context<S> context(ShopSettings active) {
         ShopTransactions<S> transactions = new ShopTransactions<>(host.items(), economy(active, host.economy()), store.ledger(), Instant::now);
-        return new ShopScreen.Context<>(active, transactions, Optional.of(store), Instant::now);
+        return new ShopScreen.Context<>(active, transactions, Optional.of(store), Instant::now, players::lost);
     }
 
     /** Re-renders every open shop and chest GUI window on its viewer's owner, after a hotload changed what they show. */
@@ -119,6 +123,8 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
     /** An online player's UUID by exact name, on any thread. */
     public Optional<UUID> playerNamed(String name) { return playerNamed.apply(name); }
     public ShopCatalog catalog() { return catalog; }
+    /** Container shops: which blocks hold whose stock, limits, and closing a shop whose chest is lost. */
+    public PlayerShops players() { return players; }
     public boolean enabled() { return settings.enabled() && !closed; }
     public String status() {
         ShopCatalog current = catalog;
@@ -143,6 +149,7 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
                     }
                     next = next.retaining(catalog, data, runtime.behaviorSettings().actions()::commandAllowed);
                     catalog = next;
+                    players.index(next);
                     notes = notes(next, settings.defaultStyle());
                     next.problems().stream().limit(40).forEach((String problem) -> log.accept("Shop or GUI refused: " + problem));
                     notes.stream().limit(40).forEach((String note) -> log.accept("Shop note: " + note));
@@ -162,14 +169,21 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
     }
 
     /**
-     * A validated NPC click on the player's owner. Opens the NPC's shop when its definition binds one. Returns true
-     * when the click belonged to a shop.
+     * A validated NPC click on the player's owner. Opens the NPC's shop when its definition binds one; the owner of a
+     * container shop who may run shops gets its menu instead, as in Shopkeepers. Returns true when the click belonged to a shop.
      */
     public boolean interacted(P player, UUID npc, boolean attack, boolean sneaking) {
         if (!enabled()) return false;
         ShopBinding binding = binding(npc);
         if (binding == null || !binding.opensOn(attack)) return false;
         if (sneaking && host.permitted(player, "animus.admin")) return false;
+        UUID clicker = host.id(player);
+        Optional<ShopDocument> owned = catalog.shop(binding.shop()).filter((ShopDocument shop) -> shop.stocked() && shop.owns(clicker));
+        Optional<Toolkit<?, ?>> menu = Toolkit.of(screens);
+        if (owned.isPresent() && menu.isPresent() && host.permitted(player, art.arcane.animus.core.command.PermissionNodes.SHOPS_CREATE)) {
+            menu.get().manageShop(clicker, owned.get().id());
+            return true;
+        }
         openShop(player, binding.shop(), Optional.of(npc), Optional.empty(), Optional.empty());
         return true;
     }
@@ -272,6 +286,36 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
         Optional<ShopBinding> opened = as;
         deliver(actor, player, (P viewer) -> openShop(viewer, shop, Optional.empty(), chosen, opened));
     }
+
+    /** {@code /animus shop create}: New shop for the container the player looks at. */
+    public void create(CommandActor actor) {
+        UUID id = actor.player().orElseThrow();
+        Optional<Toolkit<?, ?>> menu = Toolkit.of(screens);
+        if (!host.containerShops() || menu.isEmpty()) { actor.tell(Palette.error(upper(ScreenHost.NO_CONTAINER_SHOPS))); return; }
+        deliver(actor, Optional.empty(), (P player) -> {
+            Optional<ShopSpot> spot = host.lookedAtContainer(player);
+            if (spot.isEmpty()) actor.tell(Palette.error("Look at your chest, barrel or other container, within 5 blocks"));
+            else menu.get().newShop(id, spot.get());
+        });
+    }
+
+    /** {@code /animus shop item}: the shop maker item. */
+    public void item(CommandActor actor) {
+        Optional<Toolkit<?, ?>> menu = Toolkit.of(screens);
+        if (!host.containerShops() || menu.isEmpty()) { actor.tell(Palette.error(upper(ScreenHost.NO_CONTAINER_SHOPS))); return; }
+        menu.get().shopItem(actor.player().orElseThrow());
+    }
+
+    /** {@code /animus shop manage}: one shop's menu, or the list of the player's shops. */
+    public void manage(CommandActor actor, Optional<String> shop) {
+        Optional<Toolkit<?, ?>> menu = Toolkit.of(screens);
+        if (menu.isEmpty()) { actor.tell(Palette.error("The Animus menu is not running on this server")); return; }
+        UUID id = actor.player().orElseThrow();
+        if (shop.isPresent()) menu.get().manageShop(id, shop.get());
+        else menu.get().shopList(id);
+    }
+
+    private static String upper(String text) { return Character.toUpperCase(text.charAt(0)) + text.substring(1); }
 
     /** Clears the limits and stock counters of a shop, for everyone or one player by name or UUID. */
     public void reset(CommandActor actor, String shop, Optional<String> named) {

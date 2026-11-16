@@ -103,6 +103,17 @@ void main() {
       );
     });
 
+    test('should read a book trade as a copy of its book', () {
+      final JsonMap entry = <String, Object?>{
+        'type': 'trade',
+        'item': _item('minecraft:written_book'),
+        'book': 'Tales',
+        'needs': <Object?>[_goods('minecraft:emerald', 5)],
+      };
+      expect(offerSentence(entry), '1 copy of Tales for 5 emeralds');
+      expect(offerSides(entry).gives.single.item, 'minecraft:written_book');
+    });
+
     test('should add a trade money price to what it takes', () {
       final OfferSides sides = offerSides(<String, Object?>{
         'type': 'trade',
@@ -193,6 +204,23 @@ void main() {
       final ShopEdit edit = addOffer(full, 'trade');
       expect(edit.ref, const OfferRef(1, 'trade', 0));
       expect(asList(edit.shop['pages']).length, 2);
+    });
+
+    test('should add a book trade with its book and no gives to a book shop', () {
+      final JsonMap shop = <String, Object?>{
+        'id': 'a:b',
+        'kind': 'book',
+        'owner': <String, Object?>{'uuid': '069a79f4-44e9-4726-a5be-fca90e38aaf5'},
+        'containers': <Object?>[<String, Object?>{'world': 'world', 'x': 1, 'y': 64, 'z': 2}],
+        'pages': <Object?>[<String, Object?>{'rows': 3}],
+      };
+      final ShopEdit edit = addOffer(shop, 'trade');
+      final JsonMap entry = asMap(readIn(edit.shop, edit.ref!.steps));
+      expect(entry['type'], 'trade');
+      expect(entry.keys, isNot(contains('gives')));
+      expect(asString(entry['book']), isNotEmpty);
+      expect(asList(entry['needs']), hasLength(1));
+      expect(asMap(entry['item'])['id'], 'minecraft:written_book');
     });
 
     test('should start the first page of an empty shop', () {

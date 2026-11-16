@@ -260,6 +260,8 @@ final class AnimusBukkit {
             toolkit = new BukkitToolkit(host, runtime, shops.screens(), living, commands, (Player player) -> { BukkitRecordings current = recordings; return current == null ? Optional.empty() : current.skin(player); },
                     mainThread != null ? mainThread::relocate : ((RegionNpcRuntime) living)::relocate, ownerTicks);
             BukkitToolkit tools = toolkit;
+            art.arcane.animus.core.toolkit.Toolkit.of(shops.screens()).ifPresent((art.arcane.animus.core.toolkit.Toolkit<?, ?> menu) ->
+                    host.getServer().getPluginManager().registerEvents(new art.arcane.animus.bukkit.gui.BukkitPlayerShops(screenService.players(), menu), host));
             living.interactions((Player player, UUID npc, boolean attack, boolean sneaking) -> tools.interacted(player, npc, attack, sneaking) ||
                     hireDesk.interacted(player, npc, attack, sneaking) || questService.interacted(player, npc, attack, sneaking)
                     || screenService.interacted(player, npc, attack, sneaking) || holoService.interacted(player, npc, attack, sneaking));

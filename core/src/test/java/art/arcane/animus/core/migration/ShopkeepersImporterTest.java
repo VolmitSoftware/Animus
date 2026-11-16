@@ -31,7 +31,7 @@ class ShopkeepersImporterTest {
     }
 
     @Test void everyStagedShopAndNpcIsValid() throws IOException {
-        for (String save : List.of("admin.yml", "player.yml", "minimal.yml")) {
+        for (String save : List.of("admin.yml", "player.yml", "minimal.yml", "books.yml")) {
             ShopkeepersImporter.Conversion conversion = ShopkeepersImporter.convert(fixture(save), Optional.empty(), Optional.empty());
             for (Map.Entry<String, String> file : conversion.files().entrySet()) {
                 if (file.getKey().startsWith("shops/")) {
@@ -115,12 +115,54 @@ class ShopkeepersImporterTest {
         assertTrue(buying.entry("offer-2").isEmpty());
         assertEquals(2, shop(conversion, 12).containers().size());
         assertEquals(2, shop(conversion, 12).entry("offer-1").orElseThrow().needs().size());
-        assertTrue(shop(conversion, 13).entry("offer-1").isEmpty(), "book offers are preserved only");
         assertEquals(ShopDocument.Type.STATIC, shop(conversion, 14).entry("offer-1").orElseThrow().type(), "no owner, no trading");
         assertTrue(shop(conversion, 14).owner().isEmpty());
         JsonObject hired = JsonDocuments.object(conversion.files().get("shops/shopkeepers/shop-15.json")).getAsJsonObject("imported");
         assertTrue(hired.get("forHire").getAsBoolean());
         assertEquals("trade", hired.getAsJsonArray("members").get(0).getAsJsonObject().get("access").getAsString());
+    }
+
+    @Test void stockedPlayerShopsKeepTheirShopkeepersKind() throws IOException {
+        ShopkeepersImporter.Conversion conversion = ShopkeepersImporter.convert(fixture("player.yml"), Optional.of(fixture("player-config.yml")), Optional.empty());
+        assertEquals(Optional.of(ShopDocument.Kind.SELLING), shop(conversion, 10).kind());
+        assertEquals(Optional.of(ShopDocument.Kind.BUYING), shop(conversion, 11).kind());
+        assertEquals(Optional.of(ShopDocument.Kind.TRADING), shop(conversion, 12).kind());
+        assertEquals(Optional.of(ShopDocument.Kind.BOOK), shop(conversion, 13).kind());
+        assertEquals(Optional.empty(), shop(conversion, 14).kind(), "a shop without owner or container has no stock to trade");
+        assertEquals(Optional.of(ShopDocument.Kind.SELLING), shop(conversion, 15).kind());
+        List<String> keys = List.copyOf(JsonDocuments.object(conversion.files().get("shops/shopkeepers/shop-10.json")).keySet());
+        assertEquals(keys.indexOf("containers") + 1, keys.indexOf("kind"), "kind follows containers");
+    }
+
+    @Test void bookOffersSellCopiesOfTheirBookForTheCurrency() throws IOException {
+        ShopkeepersImporter.Conversion conversion = ShopkeepersImporter.convert(fixture("player.yml"), Optional.of(fixture("player-config.yml")), Optional.empty());
+        ShopDocument.Entry guide = shop(conversion, 13).entry("offer-1").orElseThrow();
+        assertEquals(ShopDocument.Type.TRADE, guide.type());
+        assertEquals("minecraft:written_book", guide.item().id());
+        assertEquals(Optional.of("Server Guide"), guide.book());
+        assertEquals(List.of(), guide.gives());
+        assertEquals(List.of("minecraft:gold_nugget"), guide.needs().stream().map((ShopDocument.Goods goods) -> goods.item().id()).toList());
+        assertEquals(List.of(10), guide.needs().stream().map(ShopDocument.Goods::amount).toList(), "10 is under the high currency minimum");
+        assertEquals("CONVERTED", JsonDocuments.object(conversion.files().get("reports/13.json")).getAsJsonObject("fields").get("/offers/1").getAsString());
+    }
+
+    @Test void bookOffersThatCannotTradeShowOrStayInTheSave() throws IOException {
+        ShopkeepersImporter.Conversion conversion = ShopkeepersImporter.convert(fixture("books.yml"), Optional.empty(), Optional.empty());
+        JsonObject shown = JsonDocuments.object(conversion.files().get("shops/shopkeepers/shop-1.json")).getAsJsonArray("pages").get(0).getAsJsonObject()
+                .getAsJsonObject("trade").getAsJsonObject("0");
+        assertEquals("static", shown.get("type").getAsString(), "a closed shop only shows");
+        assertFalse(shown.has("book"));
+        JsonObject kept = shown.getAsJsonObject("imported");
+        assertEquals(List.of("source", "book", "needs"), List.copyOf(kept.keySet()));
+        assertEquals("Field Notes", kept.get("book").getAsString());
+        assertEquals(2, kept.getAsJsonArray("needs").size(), "25 = 2 x 9 + 7 in the default emerald currency");
+        JsonObject fields = JsonDocuments.object(conversion.files().get("reports/1.json")).getAsJsonObject("fields");
+        for (String offer : List.of("2", "3", "4", "5"))
+            assertEquals("UNSUPPORTED_PRESERVED", fields.get("/offers/" + offer).getAsString(), "blank title, long title, price over a stack, no price: offer " + offer);
+        assertEquals(Optional.of(ShopDocument.Kind.BOOK), shop(conversion, 1).kind());
+        ShopDocument chestless = shop(conversion, 2);
+        assertEquals(Optional.empty(), chestless.kind());
+        assertEquals(ShopDocument.Type.STATIC, chestless.entry("offer-1").orElseThrow().type(), "no container, no trading");
     }
 
     @Test void applyBindsInstalledCitizensNpcsAndKeepsTheRestPending() throws IOException {

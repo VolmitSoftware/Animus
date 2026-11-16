@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "shopkeepers:shop-1",
+  "title": "Closed Library",
+  "style": "native",
+  "modes": [
+    "trade"
+  ],
+  "defaultMode": "trade",
+  "match": "strict",
+  "owner": {
+    "uuid": "00000000-0000-4000-8000-00000000a1e5",
+    "name": "Alex"
+  },
+  "containers": [
+    {
+      "world": "world",
+      "x": 71,
+      "y": 64,
+      "z": 5
+    }
+  ],
+  "kind": "book",
+  "pages": [
+    {
+      "name": "Page 1",
+      "rows": 2,
+      "trade": {
+        "0": {
+          "id": "offer-1",
+          "type": "static",
+          "item": {
+            "id": "minecraft:written_book",
+            "count": 1
+          },
+          "imported": {
+            "source": "Shopkeepers",
+            "book": "Field Notes",
+            "needs": [
+              {
+                "item": {
+                  "id": "minecraft:emerald_block",
+                  "count": 1
+                },
+                "amount": 2
+              },
+              {
+                "item": {
+                  "id": "minecraft:emerald",
+                  "count": 1
+                },
+                "amount": 7
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "imported": {
+    "source": "Shopkeepers",
+    "shopkeeper": 1,
+    "uniqueId": "0b5e3d8a-2222-4c2a-9e6f-000000000001",
+    "type": "book",
+    "location": {
+      "world": "world",
+      "x": 70,
+      "y": 64,
+      "z": 5,
+      "yaw": 0.0
+    },
+    "object": {
+      "type": "sign"
+    },
+    "open": false
+  }
+}

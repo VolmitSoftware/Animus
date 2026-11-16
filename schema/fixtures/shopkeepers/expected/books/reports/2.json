@@ -1,0 +1,28 @@
+{
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/object/type": "CONVERTED",
+    "/offers/1": "CONVERTED_WITH_CHANGES",
+    "/owner": "CONVERTED",
+    "/owner uuid": "CONVERTED",
+    "/type": "CONVERTED",
+    "/uniqueId": "CONVERTED",
+    "/world": "CONVERTED",
+    "/x": "CONVERTED",
+    "/y": "CONVERTED",
+    "/yaw": "CONVERTED",
+    "/z": "CONVERTED"
+  },
+  "notes": [
+    "the shop has no container; its offers show but do not trade until one is added",
+    "/offers/1: converted as a display entry; the shop cannot trade yet",
+    "a sign shopkeeper gets no NPC; open the shop with /animus shop open shopkeepers:shop-2 or bind it to an NPC"
+  ],
+  "counts": {
+    "CONVERTED": 11,
+    "CONVERTED_WITH_CHANGES": 1
+  },
+  "shopkeeper": 2,
+  "shop": "shopkeepers:shop-2"
+}

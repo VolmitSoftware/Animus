@@ -12,7 +12,7 @@ import 'protocol.dart';
 import 'relay.dart';
 import 'tokens.dart';
 
-export 'api.dart' show FakeSettings;
+export 'api.dart' show FakeSettings, fakeShopOwner;
 
 /// Which paths a pairing code carries.
 enum PairPaths { both, direct, relay }

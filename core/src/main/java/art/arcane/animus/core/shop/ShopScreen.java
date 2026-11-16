@@ -37,8 +37,12 @@ import java.util.function.Supplier;
  * it. With {@code confirm}, a chest window asks first and the shop comes back after.
  */
 public final class ShopScreen<P, S> implements Screen {
-    /** What every shop screen of one server shares. */
-    public record Context<S>(ShopSettings settings, ShopTransactions<S> transactions, Optional<ShopStateStore> store, Supplier<Instant> clock) {}
+    /**
+     * What every shop screen of one server shares. {@code lost} closes an owned shop whose containers are gone or no
+     * longer open to its owner, with the reason; it runs on the buyer's owner thread and must not block.
+     */
+    public record Context<S>(ShopSettings settings, ShopTransactions<S> transactions, Optional<ShopStateStore> store, Supplier<Instant> clock,
+                             java.util.function.BiConsumer<ShopDocument, String> lost) {}
     /**
      * How this window shows the shop. {@code villager} is the opening NPC's villager look, {@code layout} a chest GUI
      * with a list area, used with the chest style, and {@code screens} what that GUI's buttons open.
@@ -50,6 +54,8 @@ public final class ShopScreen<P, S> implements Screen {
     record Offer(ShopDocument.Entry entry, int page) {}
     private record Pending(Offer offer, boolean fullStack) {}
     private static final int CONFIRM = 11, ITEM = 13, CANCEL = 15, EMPTY_CLOSE = 22;
+    /** The blank book a book shop uses up for each copy it sells. */
+    static final String QUILL = "minecraft:writable_book";
 
     private final ShopDocument shop;
     private final ScreenManager<P, S>.Viewer viewer;
@@ -92,6 +98,10 @@ public final class ShopScreen<P, S> implements Screen {
     /** The shop in the given view for this viewer, or empty after telling them why it cannot open. */
     public static <P, S> Optional<Screen> open(ShopDocument shop, ScreenManager<P, S>.Viewer viewer, Context<S> context, View<P, S> view) {
         ScreenHost<P, S> host = viewer.host();
+        if (shop.closed().isPresent()) {
+            host.message(viewer.player(), RichText.colorize(context.settings().message("closed").replace("{shop}", shop.title())));
+            return Optional.empty();
+        }
         if (shop.permission().isPresent() && !host.permitted(viewer.player(), shop.permission().get())) {
             host.message(viewer.player(), RichText.colorize(context.settings().message("shopPermission")));
             return Optional.empty();
@@ -211,7 +221,11 @@ public final class ShopScreen<P, S> implements Screen {
         Optional<TradeInventory<S>> stock = Optional.empty();
         if (shop.stocked()) {
             ShopStock<S> opened = host.stock(shop);
-            if (opened.inventory().isEmpty()) { host.message(player, RichText.colorize(text("containerUnavailable").replace("{reason}", opened.refusal().orElse("")).replace("{shop}", shop.id()))); return; }
+            if (opened.inventory().isEmpty()) {
+                host.message(player, RichText.colorize(text("containerUnavailable").replace("{reason}", opened.refusal().orElse("")).replace("{shop}", shop.id())));
+                if (opened.lost()) { context.lost().accept(shop, opened.refusal().orElse("")); viewer.close(); }
+                return;
+            }
             stock = opened.inventory();
         }
         ShopTransactions.Outcome outcome = context.transactions().perform(shop.id(), ready.get(), buyer, fullStack, stock);
@@ -293,6 +307,7 @@ public final class ShopScreen<P, S> implements Screen {
                     for (ShopDocument.Goods need : entry.needs()) lore.add(text("goodsLine").replace("{item}", goods(need)));
                     lore.add(text("givesLine"));
                     for (ShopDocument.Goods give : entry.gives()) lore.add(text("goodsLine").replace("{item}", goods(give)));
+                    entry.book().ifPresent((String title) -> lore.add(text("goodsLine").replace("{item}", text("bookCopy").replace("{title}", title))));
                     if (price.signum() > 0) lore.add(text("priceLine").replace("{price}", price(price)));
                     if (entry.levels() > 0) lore.add(levelsLine(entry));
                 }
@@ -309,7 +324,8 @@ public final class ShopScreen<P, S> implements Screen {
         if (entry.permission().isPresent() && !viewer.host().permitted(viewer.player(), entry.permission().get())) lore.add(text("lockedLine"));
         List<String> coloured = new ArrayList<>();
         for (String line : lore) coloured.add(RichText.colorize(line));
-        return new ScreenFrame.Item(entry.item(), entry.display().name().map(RichText::colorize), coloured, Optional.empty());
+        Optional<String> name = entry.display().name().or(() -> entry.book().map((String title) -> "&f" + title));
+        return new ScreenFrame.Item(entry.item(), name.map(RichText::colorize), coloured, Optional.empty());
     }
 
     private Optional<ShopTransactions.Prepared<S>> prepare(ShopDocument.Entry entry) {
@@ -320,12 +336,14 @@ public final class ShopScreen<P, S> implements Screen {
             List<ShopTransactions.Need<S>> needs = new ArrayList<>(), gives = new ArrayList<>();
             for (ShopDocument.Goods need : key.needs()) host.stack(single(need.item()), Optional.empty(), List.of(), errors).ifPresent((S stack) -> needs.add(new ShopTransactions.Need<>(stack, need.amount())));
             for (ShopDocument.Goods give : key.gives()) host.stack(single(give.item()), Optional.empty(), List.of(), errors).ifPresent((S stack) -> gives.add(new ShopTransactions.Need<>(stack, give.amount())));
+            Optional<S> quill = key.book().isPresent() ? host.stack(item(QUILL), Optional.empty(), List.of(), errors) : Optional.empty();
             if (goods.isEmpty() || !errors.isEmpty()) return Optional.empty();
-            return Optional.of(new ShopTransactions.Prepared<>(key, shop.rule(key), goods.get(), needs, gives));
+            return Optional.of(new ShopTransactions.Prepared<>(key, shop.rule(key), goods.get(), needs, gives, quill));
         });
     }
 
     private String describe(ShopTransactions.Prepared<S> ready, ShopDocument.Entry entry, int units) {
+        if (entry.book().isPresent()) return RichText.plain(RichText.colorize(text("bookCopy").replace("{title}", entry.book().get())));
         if (entry.type() == ShopDocument.Type.TRADE) {
             List<String> parts = new ArrayList<>();
             for (ShopTransactions.Need<S> give : ready.gives()) parts.add(viewer.host().items().describe(give.stack(), give.amount()));

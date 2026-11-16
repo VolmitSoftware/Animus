@@ -60,7 +60,11 @@ import java.util.function.Supplier;
  */
 public final class Toolkit<P, S> implements AutoCloseable {
     /** The wand's item marker: a Bukkit persistent data key, and the same key in a mod item's custom data. */
-    public static final String MARKER = "animus:tool", WAND = "wand";
+    public static final String MARKER = "animus:tool", WAND = "wand", SHOP_ITEM = "shop";
+    /** The shop maker: sneaking with it, a right-click on a chest makes a shop there. The marker makes it one, not the look. */
+    public static final NpcItem SHOP_MAKER = new NpcItem("minecraft:emerald", 1, Optional.of("[enchantment_glint_override=true]"), Optional.empty());
+    public static final String SHOP_MAKER_NAME = RichText.colorize(Palette.PINK + "Shop maker");
+    public static final List<String> SHOP_MAKER_LORE = List.of(RichText.colorize("&fSneak-click: &7make a shop on your chest"));
     /** What the wand looks like: a glinting stick, which unlike a blaze rod grants no advancement. The marker, not the look, makes it a wand. */
     public static final NpcItem WAND_ITEM = new NpcItem("minecraft:stick", 1, Optional.of("[enchantment_glint_override=true]"), Optional.empty());
     public static final String WAND_NAME = RichText.colorize(Palette.PINK + "Animus wand");
@@ -82,14 +86,14 @@ public final class Toolkit<P, S> implements AutoCloseable {
 
     /**
      * What the command layer hooks into the screens: the inspect reply, the editor pairing link, {@code revive} as
-     * {@code /animus npc revive} does it, whether a player is recording now, the running behavior runs of an NPC, and how
-     * shop prices read with the server's economy now.
+     * {@code /animus npc revive} does it, whether a player is recording now, the running behavior runs of an NPC, how
+     * shop prices read with the server's economy now, and the container shops players run.
      */
     public record Commands(BiConsumer<CommandActor, String> inspect, Consumer<CommandActor> pair, BiConsumer<CommandActor, String> revive, Predicate<UUID> recording,
-                           Runs runs, Supplier<Prices> prices) {
+                           Runs runs, Supplier<Prices> prices, Supplier<art.arcane.animus.core.shop.PlayerShops> shops) {
         public Commands {
             Objects.requireNonNull(inspect); Objects.requireNonNull(pair); Objects.requireNonNull(revive); Objects.requireNonNull(recording); Objects.requireNonNull(runs);
-            Objects.requireNonNull(prices);
+            Objects.requireNonNull(prices); Objects.requireNonNull(shops);
         }
     }
 
@@ -135,6 +139,7 @@ public final class Toolkit<P, S> implements AutoCloseable {
     private final Parts<P, S> parts;
     private final ToolkitSelection selection = new ToolkitSelection();
     private final CaptureFlow<P, S> captures = new CaptureFlow<>(this);
+    private final PlayerShopFlow<P, S> shops = new PlayerShopFlow<>(this);
     private final Map<UUID, PlayerState> players = new ConcurrentHashMap<>();
     private final Map<UUID, Picker> pickers = new ConcurrentHashMap<>();
     private final Map<UUID, String> notices = new ConcurrentHashMap<>();
@@ -167,6 +172,7 @@ public final class Toolkit<P, S> implements AutoCloseable {
         captures.clear();
         players.clear();
         pickers.clear();
+        shops.clear();
         notices.clear();
     }
 
@@ -184,6 +190,8 @@ public final class Toolkit<P, S> implements AutoCloseable {
     Executor lane() { return parts.files(); }
     /** The routes and recordings players are making. */
     CaptureFlow<P, S> captures() { return captures; }
+    /** The shops players make and run themselves. */
+    PlayerShopFlow<P, S> shopFlow() { return shops; }
     /** The command layer's hooks, empty until the command tree is built. */
     Optional<Commands> hooks() { return Optional.ofNullable(hooks); }
     Optional<Relocator> relocator() { return parts.relocator(); }
@@ -311,9 +319,9 @@ public final class Toolkit<P, S> implements AutoCloseable {
 
     /**
      * The wand's right-click on air or a block, main hand: opens the Animus menu, or while sneaking clears the selection.
-     * True when the click is the wand's, so the platform cancels it.
+     * True when the click is the wand's, so the platform cancels it. While Add chest waits for a container, the click is left to it.
      */
-    public boolean used(P player, boolean sneaking) { return missed(player, sneaking ? Miss.CLEAR : Miss.HOME); }
+    public boolean used(P player, boolean sneaking) { return !shops.picking(host().id(player)) && missed(player, sneaking ? Miss.CLEAR : Miss.HOME); }
 
     /**
      * The wand swung at air: says "No NPC there" when an NPC stands within {@link #MISS_REACH} blocks or the player sneaks,
@@ -429,6 +437,7 @@ public final class Toolkit<P, S> implements AutoCloseable {
         captures.quit(player);
         players.remove(player);
         pickers.remove(player);
+        shops.forget(player);
         notices.remove(player);
         prefs.forget(player);
     }
@@ -513,6 +522,27 @@ public final class Toolkit<P, S> implements AutoCloseable {
         }));
         bar(player, label + ": click an NPC with the wand");
     }
+
+    /** {@code /animus shop create} or the shop item on a container: the New shop screen for it, on the player's owner. */
+    public void newShop(UUID player, art.arcane.animus.core.shop.ShopSpot spot) { living().players().deliver(player, (P online) -> shops.start(online, spot)); }
+
+    /** A shop's menu, for its owner or a player who may run any shop; on the player's owner. */
+    public void manageShop(UUID player, String id) { living().players().deliver(player, (P online) -> shops.manage(online, id)); }
+
+    /** The shops the player runs, every container shop for a player who may run any. */
+    public void shopList(UUID player) { living().players().deliver(player, (P online) -> show(online, PlayerShopListScreen::new)); }
+
+    /** From {@code /animus shop item}: the shop maker item, on the player's owner. */
+    public void shopItem(UUID player) { living().players().deliver(player, shops::item); }
+
+    /**
+     * A right-click on a container block, on the player's owner: true when it answered the player's Add chest, which
+     * then keeps the block from opening.
+     */
+    public boolean chestClicked(UUID player, art.arcane.animus.core.shop.ShopSpot spot) { return shops.clicked(player, spot); }
+
+    /** Whether the player's next right-click on a container answers Add chest. */
+    public boolean pickingChest(UUID player) { return shops.picking(player); }
 
     /** The pick the player is in the middle of, for the screens' hints. */
     Optional<String> picking(UUID player) { return Optional.ofNullable(pickers.get(player)).map(Picker::label); }
@@ -680,12 +710,15 @@ public final class Toolkit<P, S> implements AutoCloseable {
         });
     }
 
-    private String worldName(ScreenHost.Pose pose) {
+    private String worldName(ScreenHost.Pose pose) { return worldName(pose.worlds()); }
+
+    /** The world name NPC positions use among the names a world answers to: one an existing NPC uses, else the shortest. */
+    String worldName(Set<String> worlds) {
         for (NpcDefinition definition : npcs().stored()) {
             String world = definition.json().getAsJsonObject("position").get("world").getAsString();
-            if (pose.in(world)) return world;
+            if (worlds.contains(world)) return world;
         }
-        return pose.worlds().stream().min(Comparator.comparingInt(String::length).thenComparing(String::compareTo)).orElse("world");
+        return worlds.stream().min(Comparator.comparingInt(String::length).thenComparing(String::compareTo)).orElse("world");
     }
 
     /** Saves the player's own signed skin, labelled with their name, and puts it on the selection. */

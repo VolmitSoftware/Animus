@@ -4,9 +4,10 @@
 // heading), behaviors and shops imported with raw ids (pickers showing ids),
 // holograms drawn in block characters (solid bars for names), a 34-point
 // route and an armor stand (previews), a guard with every combat section set
-// (a page of advanced settings), a 60-frame text animation (an endless tab)
-// and a pairing revoked while open. Checks that pair a fake server give it
-// these shapes and visit the screens they broke.
+// (a page of advanced settings), a 60-frame text animation (an endless tab),
+// a player's closed book shop (Settings in Simple names its owner) and a
+// pairing revoked while open. Checks that pair a fake server give it these
+// shapes and visit the screens they broke.
 
 /** A server name as long as a real MOTD, accents included. */
 const longServerName = 'Welcome to the Oakridge survival network: towns, quests, markets and more, season four';
@@ -33,6 +34,10 @@ const artHologram = 'realshape:art';
 
 /** A text animation of 60 colour frames. */
 const longAnimation = 'realshape:rainbow';
+
+/** A player's closed book shop; the fake server knows its owner as Steve. */
+const playerShop = 'realshape:stall';
+const playerShopOwner = '00000000-0000-4000-8000-000000000002';
 
 async function control(fake, route, body) {
   const response = await fetch(`${fake}/__fake/${route}`, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body || {})});
@@ -119,6 +124,14 @@ async function addRealShape(fake) {
   await control(fake, 'edit', {kind: 'text-animation', id: longAnimation, source: {
     schemaVersion: 1, revision: 1, mode: 'ascend', frameIntervalMs: 50, frames: Array.from({length: 60}, (_, frame) => `[${hexColour(frame / 60)}]`),
   }});
+  await control(fake, 'edit', {kind: 'shop', id: playerShop, source: {
+    schemaVersion: 1, revision: 1, id: playerShop, title: '&2Market stall', kind: 'book', closed: 'Its chest at world 10 64 -3 was broken',
+    owner: {uuid: playerShopOwner}, containers: [{world: 'world', x: 10, y: 64, z: -3}], modes: ['trade'],
+    pages: [{name: 'Books', rows: 3, trade: {
+      '10': {id: 'tales', type: 'trade', item: {id: 'minecraft:written_book'}, book: 'Tales of the Valley', needs: [{item: {id: 'minecraft:emerald'}, amount: 5}]},
+      '12': {id: 'shelf', type: 'static', item: {id: 'minecraft:bookshelf'}},
+    }}],
+  }});
 }
 
 /** Ends every pairing of the fake server, as `/animus editor revoke all` does. */
@@ -142,10 +155,12 @@ function realShapeScreens(workspace) {
     ['server real stand npc', `#/workspace/${workspace}/npc/${encodeURIComponent(standNpc)}`],
     ['server real rainbow', `#/workspace/${workspace}/text-animation/${encodeURIComponent(longAnimation)}`],
     ['server real presets', `#/workspace/${workspace}/list/presets`],
+    ['server real player shop', `#/workspace/${workspace}/shop/${encodeURIComponent(playerShop)}`],
+    ['server real player shop settings', `#/workspace/${workspace}/shop/${encodeURIComponent(playerShop)}`],
   ];
 }
 
 module.exports = {
-  longServerName, walkers, blankNpc, talkerNpc, denizenBehaviors, rawShop, guardNpc, standNpc, artHologram, longAnimation,
+  longServerName, walkers, blankNpc, talkerNpc, denizenBehaviors, rawShop, guardNpc, standNpc, artHologram, longAnimation, playerShop, playerShopOwner,
   nameServer, addRealShape, revokeAll, realShapeScreens,
 };

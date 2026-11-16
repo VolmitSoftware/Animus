@@ -54,6 +54,7 @@ permissions:
       animus.import: true
       animus.editor.pair: true
       animus.shops: true
+      animus.shops.create: true
       animus.gui: true
       animus.build: true
       animus.record: true
@@ -108,6 +109,9 @@ permissions:
     default: op
   animus.shops:
     description: Open, list, reload and reset shops, and add offers with /animus shop stock.
+    default: op
+  animus.shops.create:
+    description: Make and run your own shops in game on chests you can open, up to your animus.shops.limit.<n>; each shop's NPC also counts against animus.npc.limit.<n>.
     default: op
   animus.gui:
     description: Open, reload and export chest GUIs, menus and holograms with the /animus gui commands, and make them with /animus gui create and /animus hologram create.

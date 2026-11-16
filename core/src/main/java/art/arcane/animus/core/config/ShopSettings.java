@@ -1,5 +1,7 @@
 package art.arcane.animus.core.config;
 
+import art.arcane.animus.core.npc.NpcItem;
+import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.shop.ShopDocument;
 import art.arcane.animus.core.text.Palette;
 import java.text.DecimalFormat;
@@ -10,13 +12,20 @@ import java.util.Set;
 /**
  * {@code [shops]} in {@code config.toml}. {@code economy} is {@code auto} (Vault on Bukkit when installed) or
  * {@code none}. {@code style} is the window a shop opens when neither the shop nor its NPC names one: {@code chest} or
- * {@code native}. {@code messages} overrides any of the default texts; placeholders are written {@code {name}}.
+ * {@code native}. {@code playerLimit} is how many shops a player may own without an {@code animus.shops.limit.<n>}
+ * node, and {@code currency} the item a new offer in a player's shop asks for at first. {@code messages} overrides any
+ * of the default texts; placeholders are written {@code {name}}.
  */
-public record ShopSettings(boolean enabled, String economy, String style, String priceFormat, int flushMillis, Map<String, String> messages) {
+public record ShopSettings(boolean enabled, String economy, String style, String priceFormat, int flushMillis, int playerLimit, String currency,
+                           Map<String, String> messages) {
+    public static final int MAXIMUM_PLAYER_LIMIT = 1000;
     public static final Map<String, String> DEFAULT_MESSAGES = defaults();
-    public static final ShopSettings DEFAULT = new ShopSettings(true, "auto", "chest", "#,##0.##", 2000, DEFAULT_MESSAGES);
+    public static final ShopSettings DEFAULT = new ShopSettings(true, "auto", "chest", "#,##0.##", 2000, 3, "minecraft:emerald", DEFAULT_MESSAGES);
 
     public ShopSettings {
+        if (playerLimit < 0 || playerLimit > MAXIMUM_PLAYER_LIMIT) throw new IllegalArgumentException("playerLimit must be within 0.." + MAXIMUM_PLAYER_LIMIT + ", not " + playerLimit);
+        if (!NpcItem.validId(currency)) throw new IllegalArgumentException("currency must be an item id such as minecraft:emerald, not " + currency);
+        currency = MinecraftIds.normalize(currency);
         if (!Set.of("auto", "none").contains(economy)) throw new IllegalArgumentException("economy must be auto or none");
         if (ShopDocument.Style.of(style).isEmpty()) throw new IllegalArgumentException("style must be chest or native");
         try { new DecimalFormat(priceFormat); }
@@ -58,6 +67,8 @@ public record ShopSettings(boolean enabled, String economy, String style, String
         texts.put("containerUnavailable", "&cThe shop's chest cannot be used: {reason}");
         texts.put("shopMissing", "&cThe shop {shop} is not available.");
         texts.put("shopPermission", "&cYou cannot use this shop.");
+        texts.put("closed", "&c{shop} is closed.");
+        texts.put("bookCopy", "Copy of {title}");
         texts.put("noPages", "&cThis shop has nothing you can use.");
         texts.put("empty", "&7Nothing here yet");
         texts.put("emptyHint", "&7No offers have been added to this shop");

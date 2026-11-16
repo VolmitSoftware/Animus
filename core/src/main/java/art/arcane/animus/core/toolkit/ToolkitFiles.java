@@ -86,7 +86,7 @@ final class ToolkitFiles {
             moved.add(next);
             expected.put(next.path(), "missing");
             removals.add(new DocumentStore.Change(draft.path(), draft.expectedHash(), null));
-            pointer(draft.path()).ifPresent(removals::add);
+            pointer(store, draft.path()).ifPresent(removals::add);
         }
         String where = folder.isEmpty() ? "the top level" : FolderFiles.shown(folder);
         if (moved.isEmpty()) return "Already in " + where;
@@ -191,7 +191,7 @@ final class ToolkitFiles {
         for (String id : ids) {
             NpcRepository.Draft draft = npcs.draft(id);
             changes.add(new DocumentStore.Change(draft.path(), draft.expectedHash(), null));
-            pointer(draft.path()).ifPresent(changes::add);
+            pointer(store, draft.path()).ifPresent(changes::add);
         }
         if (changes.isEmpty()) return "Nothing to delete";
         String gone = named(npcs, ids);
@@ -271,7 +271,7 @@ final class ToolkitFiles {
     }
 
     /** The last-valid copy of a definition file, removed with the file so recovery cannot bring it back. */
-    private Optional<DocumentStore.Change> pointer(String path) throws IOException {
+    static Optional<DocumentStore.Change> pointer(DocumentStore store, String path) throws IOException {
         String pointer = DocumentStore.DEFINITION_POINTERS + path, current = store.read(pointer);
         return current == null ? Optional.empty() : Optional.of(new DocumentStore.Change(pointer, JsonDocuments.hash(current), null));
     }

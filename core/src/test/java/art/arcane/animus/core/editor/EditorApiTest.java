@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -368,6 +369,20 @@ class EditorApiTest {
         assertEquals("[\"world\"]", body.getAsJsonObject("registries").get("worlds").toString());
         assertEquals("[\"animus\",\"give\",\"tp\"]", body.get("commands").toString());
         assertEquals("[\"player\",\"vault\"]", body.get("papi").toString());
+    }
+
+    @Test
+    void lookups_nameTheKnownOwnersOfShops() throws Exception {
+        UUID seller = UUID.fromString("00000000-0000-4000-8000-00000000000b"), stranger = UUID.fromString("00000000-0000-4000-8000-00000000000c");
+        harness.host.names.put(seller, "Steve");
+        for (Map.Entry<String, UUID> shop : Map.of("stall", seller, "corner", stranger).entrySet()) {
+            Path file = harness.root.resolve("shops/town/" + shop.getKey() + ".json");
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, "{\"schemaVersion\": 1, \"revision\": 1, \"id\": \"town:" + shop.getKey() + "\", \"kind\": \"selling\", \"owner\": {\"uuid\": \"" + shop.getValue()
+                    + "\"}, \"containers\": [{\"world\": \"world\", \"x\": 1, \"y\": 64, \"z\": 2}], \"pages\": [{\"name\": \"Page 1\"}]}\n");
+        }
+        JsonObject body = valid("lookups-response", harness.send("GET", "/v1/lookups", harness.token(), null));
+        assertEquals("{\"" + seller + "\":\"Steve\"}", body.get("owners").toString());
     }
 
     @Test

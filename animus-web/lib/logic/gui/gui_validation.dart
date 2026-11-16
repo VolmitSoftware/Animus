@@ -444,6 +444,8 @@ final class _Checker {
     }
     final bool container = isContainerShop(json);
     _owner(json, container);
+    final bool bookShop = _kind(json, container) == 'book';
+    _closed(json);
     final Map<String, String> entryIds = <String, String>{};
     final JsonList pages = asList(json['pages']);
     for (int pageIndex = 0; pageIndex < pages.length; pageIndex++) {
@@ -466,7 +468,7 @@ final class _Checker {
             if (control != null) warning(path, 'slot $slot sits under the $control control and is hidden while that control shows', layoutCode);
           }
           final String type = asString(entry['type']) ?? 'static';
-          _entryFields(entry, path, type, container);
+          _entryFields(entry, path, type, container: container, bookShop: bookShop);
           final List<String> grids = shopGridsFor(type);
           if (!grids.contains(mode)) {
             error(childPath(path, 'type'), "a $type entry belongs in the ${grids.join(' or ')} grid, not $mode", code: layoutCode);
@@ -528,13 +530,66 @@ final class _Checker {
     }
   }
 
-  /// The per-type field rules and, in a container shop, its three limits.
-  void _entryFields(JsonMap entry, String path, String type, bool container) {
+  /// A nonblank string of at most 1024 characters at [key] of [json], or
+  /// null after naming the problem at [path], as ShopDocument's reader does.
+  String? _shopText(JsonMap json, String key, String path) {
+    final Object? value = json[key];
+    if (value is! String || value.trim().isEmpty) {
+      error(path, 'expected nonblank string', code: layoutCode);
+      return null;
+    }
+    if (value.length > 1024) {
+      error(path, 'at most 1024 characters', code: layoutCode);
+      return null;
+    }
+    return value;
+  }
+
+  /// `kind`, as ShopDocument checks it; the kind when it names one.
+  String? _kind(JsonMap json, bool container) {
+    if (!json.containsKey('kind')) return null;
+    final String? text = _shopText(json, 'kind', r'$.kind');
+    final String? kind = shopKinds.contains(text) ? text : null;
+    if (kind == null) {
+      error(r'$.kind', 'expected selling, buying, trading or book', code: layoutCode);
+    } else if (!container) {
+      error(r'$.kind', 'a shop kind needs containers, which hold its stock', code: layoutCode);
+    }
+    return kind;
+  }
+
+  /// `closed`, the reason a shop trades nothing for now.
+  void _closed(JsonMap json) {
+    if (!json.containsKey('closed')) return;
+    final String? reason = _shopText(json, 'closed', r'$.closed');
+    if (reason != null && reason.length > 256) error(r'$.closed', 'at most 256 characters', code: layoutCode);
+  }
+
+  /// `book`, the title a book shop's trade copies; null when it has none.
+  String? _book(JsonMap entry, String path, String type, {required bool bookShop}) {
+    final String bookPath = childPath(path, 'book');
+    final String? book = entry.containsKey('book') ? _shopText(entry, 'book', bookPath) : null;
+    if (book != null && book.length > 128) error(bookPath, 'at most 128 characters', code: layoutCode);
+    if (book != null && type != 'trade') {
+      error(bookPath, 'only trade entries copy a book', code: layoutCode);
+    } else if (book != null && !bookShop) {
+      error(bookPath, 'book entries belong in a book shop, kind book', code: layoutCode);
+    } else if (book == null && type == 'trade' && bookShop) {
+      error(bookPath, "a book shop's trades name the book they copy", code: layoutCode);
+    }
+    if (book != null && entry.containsKey('gives')) error(childPath(path, 'gives'), 'a book entry gives a copy of its book; remove gives', code: layoutCode);
+    return book;
+  }
+
+  /// The per-type field rules and, in a container shop, its limits.
+  void _entryFields(JsonMap entry, String path, String type, {required bool container, required bool bookShop}) {
+    final String? book = _book(entry, path, type, bookShop: bookShop);
     if (container) {
       if (type != 'trade' && type != 'static') error(childPath(path, 'type'), 'a container shop has only trade and static entries', code: layoutCode);
       if ((asDouble(entry['price']) ?? 0) > 0) error(childPath(path, 'price'), 'a container shop trades items for items; remove the price', code: layoutCode);
       if (entry.containsKey('stock')) error(childPath(path, 'stock'), "a container shop's stock is its containers", code: layoutCode);
       if ((asInt(entry['levels']) ?? 0) > 0) error(childPath(path, 'levels'), 'a container shop trades items for items; remove the levels', code: layoutCode);
+      if (asList(entry['commands']).isNotEmpty) error(childPath(path, 'commands'), 'a container shop trades items for items; remove the commands', code: layoutCode);
     } else if (entry.containsKey('stock') && !shopEntryKeeps(type, 'stock')) {
       error(childPath(path, 'stock'), 'stock applies to buy, command and trade entries', code: layoutCode);
     }
@@ -547,7 +602,7 @@ final class _Checker {
     if (entry.containsKey('sellPartial') && type != 'sell') error(childPath(path, 'sellPartial'), 'applies only to sell entries', code: layoutCode);
     for (final String key in const <String>['needs', 'gives']) {
       if (entry.containsKey(key) && type != 'trade') error(childPath(path, key), 'needs and gives apply only to trade entries', code: layoutCode);
-      if (type == 'trade' && asList(entry[key]).isEmpty) error(childPath(path, key), 'expected a non-empty array of items', code: layoutCode);
+      if (type == 'trade' && (key == 'needs' || book == null) && asList(entry[key]).isEmpty) error(childPath(path, key), 'expected a non-empty array of items', code: layoutCode);
     }
     if (type == 'command' && asList(entry['commands']).isEmpty) error(childPath(path, 'commands'), 'command entries need at least one command', code: layoutCode);
     final JsonList commands = asList(entry['commands']);

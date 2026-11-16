@@ -370,6 +370,53 @@ class ShopTransactionsTest {
         assertArrayEquals(stock, chest.copy());
     }
 
+    private static final String BOOK_SHOP = "{\"schemaVersion\":1,\"revision\":1,\"id\":\"town:baker\",\"kind\":\"book\",\"owner\":{\"uuid\":\"00000000-0000-0000-0000-00000000000b\"},"
+            + "\"containers\":[{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0}],\"pages\":[{\"name\":\"Books\",\"trade\":{\"10\":{\"id\":\"tales\",\"type\":\"trade\","
+            + "\"item\":{\"id\":\"minecraft:written_book\"},\"book\":\"Tales\",\"needs\":[{\"item\":{\"id\":\"minecraft:emerald\"},\"amount\":5}]}}}]}";
+    private static final Stack QUILL = Stack.of("minecraft:writable_book", 1);
+
+    private static ShopTransactions.Prepared<Stack> book() {
+        ShopDocument shop = ShopDocument.parse("town:baker", BOOK_SHOP).shop().orElseThrow();
+        ShopTransactions.Prepared<Stack> plain = prepare(shop);
+        return new ShopTransactions.Prepared<>(plain.entry(), plain.match(), plain.goods(), plain.needs(), plain.gives(), Optional.of(QUILL));
+    }
+
+    @Test void aBookShopSellsACopyAndKeepsTheOriginal() {
+        MockInventory inventory = new MockInventory().with(0, Stack.of("minecraft:emerald", 7));
+        Stack original = new Stack("minecraft:written_book", 1, "Tales", "");
+        MockInventory chest = new MockInventory(27).with(0, Stack.of("minecraft:writable_book", 2)).with(3, original);
+        ShopTransactions.Outcome outcome = transactions(Economy.none("none")).perform("town:baker", book(), buyer(inventory, Set.of()), false, Optional.of(chest));
+        assertEquals(Status.DONE, outcome.status());
+        assertEquals(new Stack("minecraft:written_book", 1, "Tales", "generation=1"), inventory.get(1));
+        assertEquals(2, inventory.total("minecraft:emerald"));
+        assertEquals(original, chest.get(3), "the original stays in the chest");
+        assertEquals(1, chest.total("minecraft:writable_book"), "one book and quill is used up");
+        assertEquals(5, chest.total("minecraft:emerald"));
+    }
+
+    @Test void aBookCopyNeedsABookAndQuillAndACopyableOriginal() {
+        MockInventory inventory = new MockInventory().with(0, Stack.of("minecraft:emerald", 7));
+        Stack[] player = inventory.copy();
+        MockInventory noQuill = new MockInventory(27).with(0, new Stack("minecraft:written_book", 1, "Tales", ""));
+        assertEquals(Status.OUT_OF_STOCK, transactions(economy).perform("town:baker", book(), buyer(inventory, Set.of()), false, Optional.of(noQuill)).status());
+        MockInventory copyOfCopy = new MockInventory(27).with(0, QUILL).with(1, new Stack("minecraft:written_book", 1, "Tales", "generation=2"));
+        Stack[] stock = copyOfCopy.copy();
+        assertEquals(Status.OUT_OF_STOCK, transactions(economy).perform("town:baker", book(), buyer(inventory, Set.of()), false, Optional.of(copyOfCopy)).status());
+        MockInventory otherTitle = new MockInventory(27).with(0, QUILL).with(1, new Stack("minecraft:written_book", 1, "Other", ""));
+        assertEquals(Status.OUT_OF_STOCK, transactions(economy).perform("town:baker", book(), buyer(inventory, Set.of()), false, Optional.of(otherTitle)).status());
+        assertArrayEquals(player, inventory.copy());
+        assertArrayEquals(stock, copyOfCopy.copy());
+    }
+
+    @Test void aBookBuyerWithoutThePriceKeepsEverything() {
+        MockInventory inventory = new MockInventory().with(0, Stack.of("minecraft:emerald", 4));
+        MockInventory chest = new MockInventory(27).with(0, QUILL).with(1, new Stack("minecraft:written_book", 1, "Tales", "generation=1"));
+        Stack[] player = inventory.copy(), stock = chest.copy();
+        assertEquals(Status.NOT_ENOUGH_ITEMS, transactions(economy).perform("town:baker", book(), buyer(inventory, Set.of()), false, Optional.of(chest)).status());
+        assertArrayEquals(player, inventory.copy());
+        assertArrayEquals(stock, chest.copy());
+    }
+
     @Test void containerShopsOnlyTradeItemsForItems() {
         economy.give(ALEX, "100");
         assertEquals(Status.NOT_TRADABLE, transactions(economy).perform("town:baker", prepare(shop("buy", BREAD)), buyer(new MockInventory(), Set.of()), false, Optional.of(new MockInventory(27))).status());

@@ -215,9 +215,11 @@ ShopEdit placeOffer(JsonMap shop, int page, String grid, JsonMap entry, {int? af
   }
 }
 
-/// A new entry of [kind] with [id], with the fields that kind needs.
-JsonMap starterOffer(String kind, String id, {bool container = false}) => switch (kind) {
-      'trade' => withShopEntryType(<String, Object?>{'id': id, 'item': <String, Object?>{'id': 'minecraft:bread'}}, 'trade', container: container),
+/// A new entry of [kind] with [id], with the fields that kind needs; a book
+/// shop's trade shows a written book and names the book it copies.
+JsonMap starterOffer(String kind, String id, {bool container = false, bool bookShop = false}) => switch (kind) {
+      'trade' => withShopEntryType(<String, Object?>{'id': id, 'item': <String, Object?>{'id': bookShop ? 'minecraft:written_book' : 'minecraft:bread'}}, 'trade',
+          container: container, bookShop: bookShop),
       'buy' => withShopEntryType(<String, Object?>{'id': id, 'item': <String, Object?>{'id': 'minecraft:bread'}}, 'buy', container: container),
       'sell' => withShopEntryType(<String, Object?>{'id': id, 'item': <String, Object?>{'id': 'minecraft:wheat', 'count': 16}}, 'sell', container: container),
       'command' => withShopEntryType(<String, Object?>{'id': id, 'item': <String, Object?>{'id': 'minecraft:paper'}}, 'command', container: container),
@@ -235,7 +237,7 @@ String gridForKind(JsonMap shop, String kind, {String? current}) {
 ShopEdit addOffer(JsonMap shop, String kind, {int page = 0}) {
   final bool container = isContainerShop(shop);
   final String id = freshEntryId(shop, kind == 'static' ? 'decoration' : kind);
-  return placeOffer(shop, page, gridForKind(shop, kind), starterOffer(kind, id, container: container));
+  return placeOffer(shop, page, gridForKind(shop, kind), starterOffer(kind, id, container: container, bookShop: isBookShop(shop)));
 }
 
 /// A copy of the offer at [ref] with a fresh id, in the next free slot of
@@ -302,7 +304,7 @@ JsonMap restoreOffers(JsonMap shop, List<RemovedOffer> removed) {
 ShopEdit setOfferKind(JsonMap shop, OfferRef ref, String kind) {
   final Object? entry = readIn(shop, ref.steps);
   if (entry is! Map<String, Object?>) return (shop: shop, ref: null);
-  final JsonMap changed = withShopEntryType(entry, kind, container: isContainerShop(shop));
+  final JsonMap changed = withShopEntryType(entry, kind, container: isContainerShop(shop), bookShop: isBookShop(shop));
   final String grid = gridForKind(shop, kind, current: ref.grid);
   if (grid == ref.grid) return (shop: writeIn(shop, ref.steps, changed)! as JsonMap, ref: ref);
   final JsonMap without = removeOffers(shop, <OfferRef>[ref]).shop;
@@ -375,7 +377,7 @@ OfferSides offerSides(JsonMap entry) {
     case 'trade':
       return OfferSides(
         <ShopGoods>[for (final Object? need in asList(entry['needs'])) _goods(need), if (price != null && price > 0) _money(price)],
-        <ShopGoods>[for (final Object? give in asList(entry['gives'])) _goods(give)],
+        entry['book'] is String ? <ShopGoods>[ShopGoods(asString(asMap(entry['item'])['id']) ?? 'minecraft:written_book', 1)] : <ShopGoods>[for (final Object? give in asList(entry['gives'])) _goods(give)],
       );
     case 'buy':
       return OfferSides(<ShopGoods>[_money(price ?? 0)], <ShopGoods>[_item(entry)]);
@@ -429,7 +431,8 @@ String offerSentence(JsonMap entry) {
   final String type = asString(entry['type']) ?? 'static';
   if (type == 'static') return 'Decoration: ${itemWords(sides.gives.first.item)}';
   final String takes = sides.takes.isEmpty ? 'nothing' : sides.takes.map(_say).join(' + ');
-  final String gives = sides.gives.isEmpty ? 'nothing' : sides.gives.map(_say).join(' + ');
+  final Object? book = entry['book'];
+  final String gives = book is String ? '1 copy of $book' : (sides.gives.isEmpty ? 'nothing' : sides.gives.map(_say).join(' + '));
   final String runs = sides.commands == 0 ? '' : ', runs ${sides.commands} command${sides.commands == 1 ? '' : 's'}';
   return '$gives for $takes$runs';
 }

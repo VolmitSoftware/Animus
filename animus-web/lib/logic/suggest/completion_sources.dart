@@ -64,7 +64,7 @@ class CompletionSources {
   /// The paired server's PlaceholderAPI identifiers (`player`, `vault`).
   final List<String> papi;
 
-  /// The last known name of each player who owns an NPC, by UUID, from the paired server.
+  /// The last known name of each player who owns an NPC or a shop, by UUID, from the paired server.
   final Map<String, String> owners;
   final CompletionCatalog? catalog;
 
@@ -118,7 +118,8 @@ Map<RegistryKind, List<String>> parseRegistries(Object? json) {
 }
 
 /// What a paired server's `GET /v1/lookups` lists: its registries, command
-/// names, PlaceholderAPI identifiers and the names of players who own NPCs.
+/// names, PlaceholderAPI identifiers and the names of players who own NPCs
+/// and shops.
 class ServerLookups {
   const ServerLookups({required this.registries, required this.commands, required this.papi, this.owners = const <String, String>{}});
 

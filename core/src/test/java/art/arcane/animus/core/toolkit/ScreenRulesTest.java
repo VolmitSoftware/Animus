@@ -63,6 +63,10 @@ class ScreenRulesTest extends ToolkitHarness {
                 file("groups/guards.json", "{\"schemaVersion\":2,\"revision\":1,\"id\":\"guards\",\"description\":\"Gate watch\",\"values\":{\"tags\":[\"armed\"]}}"),
                 file("behaviors/town/talk.json", BehaviorScreensTest.fixture("talk")), file("behaviors/town/patrol.json", BehaviorScreensTest.PATROL),
                 file("shops/town/bakery.json", ToolkitShopScreensTest.BAKERY),
+                file("shops/players/alex-shop.json", "{\"schemaVersion\":1,\"revision\":1,\"id\":\"players:alex-shop\",\"title\":\"Gem stall\",\"kind\":\"selling\","
+                        + "\"owner\":{\"uuid\":\"" + new Player("Alex").id + "\",\"name\":\"Alex\"},\"containers\":[{\"world\":\"world\",\"x\":5,\"y\":64,\"z\":5}],"
+                        + "\"pages\":[{\"name\":\"Offers\",\"rows\":6,\"trade\":{\"0\":{\"id\":\"offer-1\",\"type\":\"trade\",\"item\":{\"id\":\"minecraft:diamond\"},"
+                        + "\"needs\":[{\"item\":{\"id\":\"minecraft:emerald\"},\"amount\":5}],\"gives\":[{\"item\":{\"id\":\"minecraft:diamond\"},\"amount\":1}]}}}]}"),
                 file("gui/inventories/town/board.json", "{\"schemaVersion\":1,\"title\":\"Notice board\"}"), file("gui/menus/town/main.json", "{\"schemaVersion\":1}"),
                 file("gui/holograms/town/sign.json", "{\"schemaVersion\":1,\"lines\":[\"Town board\"]}"),
                 file("gui/text-animations/town/blink.json", "{\"schemaVersion\":1,\"frames\":[\"a\",\"b\"]}"),
@@ -191,6 +195,11 @@ class ScreenRulesTest extends ToolkitHarness {
         visits.add(new Visit("Shops", false, () -> toolkit.open(alex.id, ShopBindScreen::new)));
         visits.add(new Visit("Shop", false, () -> { toolkit.open(alex.id, ShopBindScreen::new); go(">Bakery"); }));
         visits.add(new Visit("Offers", false, () -> { toolkit.open(alex.id, ShopBindScreen::new); go(">Bakery", "Offers"); }));
+        visits.add(new Visit("New shop", false, () -> toolkit.newShop(alex.id, PlayerShopScreensTest.CHEST)));
+        visits.add(new Visit("Player shop", false, () -> toolkit.manageShop(alex.id, "players:alex-shop")));
+        visits.add(new Visit("Player shop offers", false, () -> { toolkit.manageShop(alex.id, "players:alex-shop"); drain(); go("Edit offers"); }));
+        visits.add(new Visit("Player shop chests", false, () -> { toolkit.manageShop(alex.id, "players:alex-shop"); drain(); go("Chests"); }));
+        visits.add(new Visit("Your shops", false, () -> toolkit.shopList(alex.id)));
         visits.add(new Visit("GUIs", false, () -> toolkit.open(alex.id, GuiBindScreen::new)));
         visits.add(new Visit("GUI", false, () -> { toolkit.open(alex.id, GuiBindScreen::new); go(">town:board"); }));
         visits.add(new Visit("Combat", false, () -> toolkit.open(alex.id, CombatScreen::new)));

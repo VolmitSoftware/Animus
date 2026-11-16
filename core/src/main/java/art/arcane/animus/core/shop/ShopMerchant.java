@@ -70,8 +70,8 @@ final class ShopMerchant {
             case TRADE -> {
                 costA = goods(entry.needs().getFirst());
                 if (entry.needs().size() > 1) costB = Optional.of(goods(entry.needs().get(1)));
-                ShopDocument.Goods give = entry.gives().getFirst();
-                result = new ScreenFrame.Item(counted(give.item(), give.amount()), tip.name(), tip.lore(), Optional.empty());
+                result = entry.book().isPresent() ? tip
+                        : new ScreenFrame.Item(counted(entry.gives().getFirst().item(), entry.gives().getFirst().amount()), tip.name(), tip.lore(), Optional.empty());
             }
             case SELL -> {
                 costA = new ScreenFrame.Item(entry.item(), tip.name(), List.of(), Optional.empty());

@@ -9,6 +9,7 @@ import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.shop.Prices;
 import art.arcane.animus.core.shop.ShopBinding;
+import art.arcane.animus.core.shop.ShopDocument;
 import art.arcane.animus.core.text.Words;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -31,7 +32,7 @@ import java.util.function.Predicate;
  * holds who opened the menu with it.
  */
 final class ShopDetailScreen<P, S> extends ToolScreen<P, S> {
-    static final int HEADER = 4, ADD = 10, OFFERS = 11, OPEN = 12, STYLE = 19, OPEN_ON = 20, PROFESSION = 21, LEVEL = 22, RESET = 28, REMOVE = 33, DELETE = 35;
+    static final int HEADER = 4, ADD = 10, OFFERS = 11, OPEN = 12, PLAYER_SHOP = 14, STYLE = 19, OPEN_ON = 20, PROFESSION = 21, LEVEL = 22, RESET = 28, REMOVE = 33, DELETE = 35;
     static final List<String> STYLES = List.of("chest", "native", "default"), CLICKS = List.of("right", "left", "both");
     static final Map<String, String> STYLE_NAMES = Map.of("chest", "Chest window", "native", "Villager trades", "default", "Shop default"),
             CLICK_NAMES = Map.of("right", "Right-click", "left", "Left-click", "both", "Both clicks");
@@ -84,6 +85,10 @@ final class ShopDetailScreen<P, S> extends ToolScreen<P, S> {
         stock();
         button(OFFERS, "minecraft:chest", title("Offers"), lore(List.of("&fNow: " + ShopBindScreen.offers(shop.offers())), any("see and remove them")),
                 (GuiModel.Click click) -> push(new ShopOffersScreen<>(toolkit, viewer, commands, shop, this::reload)));
+        Optional<ShopDocument> owned = commands.shops().get().shop(shop.id());
+        if (owned.isPresent()) button(PLAYER_SHOP, ShopMakeScreen.ICONS.get(owned.get().kind().orElse(ShopDocument.Kind.TRADING)), title("Shop menu"),
+                lore(List.of("&fOwner: " + PlayerShopFlow.owner(owned.get())), any("open its owner's menu")),
+                (GuiModel.Click click) -> push(new PlayerShopScreen<>(toolkit, viewer, commands, shop.id())));
         Optional<String> seen = seenOn(toolkit.selected(viewer.id()));
         List<String> open = new ArrayList<>(List.of("&7Opens it as players see it"));
         seen.ifPresent((String npc) -> open.add("&fFrom: " + named(List.of(npc))));

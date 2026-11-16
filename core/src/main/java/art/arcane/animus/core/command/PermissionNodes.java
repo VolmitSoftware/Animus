@@ -36,9 +36,13 @@ public final class PermissionNodes {
     public static final java.util.Set<String> EVERY_NPC = java.util.Set.of(IMPORT, EDITOR_PAIR);
     /** {@code animus.npc.limit.<n>}: how many NPCs a player may own; the highest held wins. */
     public static final String LIMIT_PREFIX = "animus.npc.limit.";
+    /** Making and running your own shops on chests you can open, each with its own NPC. */
+    public static final String SHOPS_CREATE = "animus.shops.create";
+    /** {@code animus.shops.limit.<n>}: how many shops a player may own; the highest held wins. */
+    public static final String SHOP_LIMIT_PREFIX = "animus.shops.limit.";
     /** Every node {@link #ADMIN} grants, in the order plugin.yml lists them. */
     public static final List<String> CHILDREN = List.of(NPC_VIEW, NPC_CREATE, NPC_EDIT, NPC_DELETE, NPC_SKIN, NPC_MOVE, NPC_OTHERS, NPC_SPEAK, TOOLS, BEHAVIORS, BEHAVIOR_STATE,
-            COMBAT, IMPORT, EDITOR_PAIR, SHOPS, GUI, BUILD, RECORD, RIGS, QUESTS, OWNED_COMMANDS, OWNED_OPERATOR, OWNED_SERVER, OWNED_PLAYERS, OWNED_ITEMS);
+            COMBAT, IMPORT, EDITOR_PAIR, SHOPS, SHOPS_CREATE, GUI, BUILD, RECORD, RIGS, QUESTS, OWNED_COMMANDS, OWNED_OPERATOR, OWNED_SERVER, OWNED_PLAYERS, OWNED_ITEMS);
 
     private PermissionNodes() {}
 

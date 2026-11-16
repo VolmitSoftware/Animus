@@ -266,7 +266,7 @@
         "papi": {"type": "array", "items": {"type": "string"}, "description": "PlaceholderAPI expansion identifiers, when it is installed."},
         "owners": {
           "type": "object",
-          "description": "The last known name of each player who owns an NPC, by UUID; players the server never saw are left out.",
+          "description": "The last known name of each player who owns an NPC or a shop, by UUID; players the server never saw are left out.",
           "propertyNames": {"pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
           "additionalProperties": {"type": "string"}
         }

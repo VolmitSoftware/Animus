@@ -30,7 +30,7 @@ class ShopStyleTest {
     private final ShopLedger ledger = new ShopLedger(change -> {});
     private final ScreenManager<Player, Stack> manager = new ScreenManager<>(host, npc -> true, warning -> { throw new AssertionError(warning); });
     private final ShopScreen.Context<Stack> context = new ShopScreen.Context<>(ShopSettings.DEFAULT,
-            new ShopTransactions<>(MockInventory.OPS, economy, ledger, () -> NOW), Optional.empty(), () -> NOW);
+            new ShopTransactions<>(MockInventory.OPS, economy, ledger, () -> NOW), Optional.empty(), () -> NOW, (ShopDocument shop, String reason) -> {});
     private final Player alex = new Player("Alex");
 
     static final String MARKET = """
@@ -74,9 +74,9 @@ class ShopStyleTest {
 
     @Test void theServerDefaultStyleIsChestAndOnlyTwoStylesExist() {
         assertEquals(ShopDocument.Style.CHEST, ShopSettings.DEFAULT.defaultStyle());
-        ShopSettings custom = new ShopSettings(true, "auto", "native", "#,##0.##", 2000, Map.of());
+        ShopSettings custom = new ShopSettings(true, "auto", "native", "#,##0.##", 2000, 3, "minecraft:emerald", Map.of());
         assertEquals(ShopDocument.Style.NATIVE, custom.defaultStyle());
-        assertThrows(IllegalArgumentException.class, () -> new ShopSettings(true, "auto", "villager", "#,##0.##", 2000, Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> new ShopSettings(true, "auto", "villager", "#,##0.##", 2000, 3, "minecraft:emerald", Map.of()));
     }
 
     @Test void bareVillagerTypeAndProfessionAreMinecraftIds() throws Exception {

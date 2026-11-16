@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "importerVersion": 3,
-  "importId": "9f6af37096e27139a5cd81b01d29137ec838272ee1a550bdb98af8aa6b6b0cd4",
+  "importerVersion": 4,
+  "importId": "1dc3e8c61b06fef9ae46f1bb5e19c73a40b981e0a5be49d51ba695e50d2f0d82",
   "sourceSha256": "b325111394220d25b7f5c506800c7cebb0d031f2a0e6699792b14966d836789e",
   "notice": "Data conversion only. Shops install under shops/shopkeepers/ and open on their NPCs. Try each shop in game before relying on it.",
   "dataVersion": "4|4189",
@@ -112,7 +112,7 @@
     "shops/shopkeepers/shop-1.json": "762e84df1396925bc1ddba2c815af4a7a063d168a102e74cf5425fdd34a8f9b9",
     "shops/shopkeepers/shop-2.json": "d87518b3a3a84dcff8ba8ae79234bbbba5b8abd730947328a0fddaa9ea3db554",
     "shops/shopkeepers/shop-3.json": "8f7268103d0d0241f41682ea5d9e6ade4a09fc10df3ff509f22cf915bdb16281",
-    "npcs/shopkeepers/shopkeeper-3.json": "a3aca68f23a8015624d43cf790c5efa82f756be512c4ca6f7ea26a39156276fa",
+    "npcs/shopkeepers/shopkeeper-3.json": "db1c07524f78db4430e81afc926f8125e609cd3256ec471d7b742bea327af937",
     "shops/shopkeepers/shop-4.json": "dbbd302428b4cdf0c652b673d96959e936099a98f79261da8621e57bf60ad5bd",
     "shops/shopkeepers/shop-5.json": "20a249cae6a6ceae6c5e88decb72449a022632fa686fa500061654bb39e9dbd0",
     "shops/shopkeepers/shop-6.json": "9aa16720b414dabdb8bd7a2c7f405e004e4da43d01a4ec41477886ff0f908223"
