@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:flag-player-global",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:set-flag",
+      "arguments": {
+        "name": "met",
+        "scope": "global",
+        "player": "00000000-0000-4000-8000-000000000001"
+      }
+    }
+  }
+}

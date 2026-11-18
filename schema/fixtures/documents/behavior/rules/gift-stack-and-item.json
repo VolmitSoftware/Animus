@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:gift-stack-and-item",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:give-item",
+      "arguments": {
+        "item": "minecraft:bread",
+        "stack": {
+          "item": "minecraft:bread"
+        }
+      }
+    }
+  }
+}

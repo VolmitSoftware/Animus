@@ -398,7 +398,7 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
                 budget(trigger, "entityIntervalTicks", triggers.entityIntervalTicks(), 1, 200, "triggers"),
                 budget(trigger, "entityScansPerTick", triggers.entityScansPerTick(), 1, 256, "triggers"),
                 budget(trigger, "entityCandidates", triggers.entityCandidates(), 1, 256, "triggers"),
-                budget(trigger, "maximumEntityRadius", triggers.maximumEntityRadius(), 1, 32, "triggers"),
+                budget(trigger, "maximumEntityRadius", triggers.maximumEntityRadius(), 1, TriggerSettings.MAXIMUM_ENTITY_RADIUS, "triggers"),
                 budget(trigger, "entityTrackedPerNpc", triggers.entityTrackedPerNpc(), 1, 1024, "triggers"),
                 budget(trigger, "projectilesFollowed", triggers.projectilesFollowed(), 1, 2048, "triggers"));
         BehaviorStateStore.Limits stored = defaults.state();

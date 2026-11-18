@@ -20,12 +20,28 @@ class ExpressionLanguage {
     required this.standardFunctions,
     required this.namePattern,
     required this.maxLength,
+    this.functionDocs = const <String, FunctionDoc>{},
+    this.factTypes = const <String, Map<String, String>>{},
+    this.factFormats = const <String, String>{},
   });
 
-  factory ExpressionLanguage.fromJson(Object? json) {
+  /// [json] as published; [base] fills the function docs and fact types an
+  /// older server does not publish.
+  factory ExpressionLanguage.fromJson(Object? json, {ExpressionLanguage? base}) {
     final JsonMap raw = asMap(json);
-    if (raw.isEmpty) return fallback;
+    if (raw.isEmpty) return base ?? fallback;
     List<String> strings(Object? value) => <String>[for (final Object? item in asList(value)) if (item is String) item];
+    Map<String, String> words(Object? value) => <String, String>{
+          for (final MapEntry<String, Object?> entry in asMap(value).entries)
+            if (entry.value is String) entry.key: entry.value! as String,
+        };
+    final Map<String, FunctionDoc> docs = <String, FunctionDoc>{
+      for (final MapEntry<String, Object?> entry in asMap(raw['functionDocs']).entries) entry.key: FunctionDoc.fromJson(entry.key, asMap(entry.value)),
+    };
+    final Map<String, Map<String, String>> factTypes = <String, Map<String, String>>{
+      for (final MapEntry<String, Object?> entry in asMap(raw['factTypes']).entries) entry.key: words(entry.value),
+    };
+    final Map<String, String> factFormats = words(raw['factFormats']);
     return ExpressionLanguage(
       roots: strings(raw['roots']),
       reserved: strings(raw['reserved']).toSet(),
@@ -35,6 +51,9 @@ class ExpressionLanguage {
       standardFunctions: strings(raw['standardFunctions']),
       namePattern: RegExp(asString(raw['namePattern']) ?? r'^[a-z][a-z0-9_]{0,63}$'),
       maxLength: asInt(raw['maxLength']) ?? 4096,
+      functionDocs: docs.isEmpty ? base?.functionDocs ?? const <String, FunctionDoc>{} : docs,
+      factTypes: factTypes.isEmpty ? base?.factTypes ?? const <String, Map<String, String>>{} : factTypes,
+      factFormats: factFormats.isEmpty ? base?.factFormats ?? const <String, String>{} : factFormats,
     );
   }
 
@@ -73,21 +92,59 @@ class ExpressionLanguage {
   final RegExp namePattern;
   final int maxLength;
 
+  /// Each function's call shape, result and one sentence about it.
+  final Map<String, FunctionDoc> functionDocs;
+
+  /// Root (`player`, `npc`, `server`) to fact to its type word.
+  final Map<String, Map<String, String>> factTypes;
+
+  /// `player.location` to the shape of its text, where it has a fixed one.
+  final Map<String, String> factFormats;
+
   bool knowsFunction(String name) => functions.contains(name) || standardFunctions.contains(name);
 
   /// Whether expressions can read a declared variable called [name].
   bool readable(String name) => namePattern.hasMatch(name) && !reserved.contains(name);
 }
 
+/// One function as the editor shows it: `player_named(name)`, what it
+/// gives and what it does.
+class FunctionDoc {
+  const FunctionDoc({required this.call, this.returns = 'any', this.about = ''});
+
+  factory FunctionDoc.fromJson(String name, JsonMap raw) =>
+      FunctionDoc(call: asString(raw['call']) ?? '$name()', returns: asString(raw['returns']) ?? 'any', about: asString(raw['about']) ?? '');
+
+  final String call;
+
+  /// boolean, number, text, list, map or any.
+  final String returns;
+  final String about;
+}
+
 /// The names one expression field can read: the document's declared
-/// variables (name to type) and the context keys of the events that start
-/// it, for completion only.
+/// variables (name to type) and the context keys of the triggers that start
+/// its routine.
 class ExpressionScope {
-  const ExpressionScope({required this.language, this.variables = const <String, String>{}, this.contextKeys = const <String>[], this.server = false});
+  const ExpressionScope({
+    required this.language,
+    this.variables = const <String, String>{},
+    this.contextKeys = const <String>[],
+    this.contextTypes = const <String, String>{},
+    this.contextKnown = false,
+    this.server = false,
+  });
 
   final ExpressionLanguage language;
   final Map<String, String> variables;
   final List<String> contextKeys;
+
+  /// Context key to its type word.
+  final Map<String, String> contextTypes;
+
+  /// Whether [contextKeys] is every key the starting triggers give, so a key
+  /// outside it is worth a warning. False when a module trigger may give more.
+  final bool contextKnown;
 
   /// A server behavior has no NPC, so `npc.` facts are not offered.
   final bool server;
@@ -104,6 +161,7 @@ String? checkBehaviorExpression(String source, ExpressionScope scope) {
   try {
     parsed = parsePreviewExpr(source);
   } on PExprException catch (problem) {
+    if (_loneEquals(source)) return 'Use == to compare; a single = is not an operator.';
     return '${_sentence(problem.message)}${_column(problem.position)}.';
   }
   String? found;
@@ -153,7 +211,37 @@ String? _checkName(String name, ExpressionScope scope) {
   if (scope.variables.containsKey(head)) {
     return scope.language.readable(head) ? null : '$head cannot be read in expressions. Rename it to start with a letter and use only a-z, 0-9 and _.';
   }
+  if (parts.length == 1) return "No variable named $head. For text, put it in quotes: '$head'.";
   return 'No variable named $head. Declare it first.';
+}
+
+/// Whether [source] has an `=` outside quotes that is not part of `==`,
+/// `!=`, `<=` or `>=`.
+bool _loneEquals(String source) {
+  String? quote;
+  for (int index = 0; index < source.length; index++) {
+    final String glyph = source[index];
+    if (quote != null) {
+      if (glyph == r'\') {
+        index++;
+      } else if (glyph == quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (glyph == "'" || glyph == '"') {
+      quote = glyph;
+    } else if (glyph == '=') {
+      final String before = index > 0 ? source[index - 1] : '';
+      final String after = index + 1 < source.length ? source[index + 1] : '';
+      if (after == '=') {
+        index++;
+      } else if (!'=!<>'.contains(before) || before.isEmpty) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 /// A `{{ }}` hole of a behavior template, found the way the server finds

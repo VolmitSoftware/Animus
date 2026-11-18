@@ -63,6 +63,7 @@ class DryRunStep {
     this.assumption,
     this.animation,
     this.target,
+    this.sample,
   });
 
   /// Where the node is in the behavior, as `$.routines.main.steps[1]`.
@@ -89,6 +90,10 @@ class DryRunStep {
 
   /// For `animus:navigate`: the point walked to, when it names one.
   final (double, double, double)? target;
+
+  /// For a server read whose result a variable keeps (ray trace, read
+  /// block, ...): the sample result the run used, which the user can change.
+  final JsonMap? sample;
 }
 
 /// One run: what started it and every step it took.
@@ -140,7 +145,7 @@ class DryRunAnswer extends DryRunEvent {
 /// assumption by node path. State carries from one run to the next, so a
 /// second click sees the flags the first one set.
 class DryRunInputs {
-  const DryRunInputs({this.events = const <DryRunEvent>[], this.assumptions = const <String, bool>{}});
+  const DryRunInputs({this.events = const <DryRunEvent>[], this.assumptions = const <String, bool>{}, this.samples = const <String, JsonMap>{}});
 
   /// Starts with one trigger (null: the entry routine).
   DryRunInputs.start(String? trigger) : this(events: <DryRunEvent>[DryRunTrigger(trigger)]);
@@ -148,17 +153,23 @@ class DryRunInputs {
   final List<DryRunEvent> events;
   final Map<String, bool> assumptions;
 
-  DryRunInputs withTrigger(String? id) => DryRunInputs(events: <DryRunEvent>[...events, DryRunTrigger(id)], assumptions: assumptions);
+  /// Results the user wrote for server reads, by node path.
+  final Map<String, JsonMap> samples;
+
+  DryRunInputs withTrigger(String? id) => DryRunInputs(events: <DryRunEvent>[...events, DryRunTrigger(id)], assumptions: assumptions, samples: samples);
 
   DryRunInputs withAnswer(String dialogue, String option) =>
-      DryRunInputs(events: <DryRunEvent>[...events, DryRunAnswer(dialogue, option)], assumptions: assumptions);
+      DryRunInputs(events: <DryRunEvent>[...events, DryRunAnswer(dialogue, option)], assumptions: assumptions, samples: samples);
 
   DryRunInputs withAssumption(String path, bool value) =>
-      DryRunInputs(events: events, assumptions: <String, bool>{...assumptions, path: value});
+      DryRunInputs(events: events, assumptions: <String, bool>{...assumptions, path: value}, samples: samples);
+
+  DryRunInputs withSample(String path, JsonMap result) =>
+      DryRunInputs(events: events, assumptions: assumptions, samples: <String, JsonMap>{...samples, path: result});
 
   /// The inputs without the last event, for stepping back.
   DryRunInputs withoutLast() =>
-      DryRunInputs(events: events.isEmpty ? events : events.sublist(0, events.length - 1), assumptions: assumptions);
+      DryRunInputs(events: events.isEmpty ? events : events.sublist(0, events.length - 1), assumptions: assumptions, samples: samples);
 }
 
 class DryRunSession {
@@ -198,6 +209,28 @@ const Map<String, String> serverOnlyCapabilities = <String, String>{
   'animus:explode': 'Sets off an explosion',
   'animus:look-close': "Changes the NPC's look-close",
 };
+
+/// What a server read gives, for the steps that keep its result: the keys
+/// the server writes, with sample values a Test run starts from.
+const Map<String, JsonMap> sampleResults = <String, JsonMap>{
+  'animus:ray-trace': <String, Object?>{'location': '2.00,64.00,5.00,world', 'block': 'minecraft:stone'},
+  'animus:read-block': <String, Object?>{'block': 'minecraft:stone'},
+  'animus:read-inventory': <String, Object?>{'items': <Object?>[]},
+  'animus:give-item': <String, Object?>{'given': 1},
+  'animus:take-item': <String, Object?>{'taken': 1},
+  'animus:give-book': <String, Object?>{'given': 1},
+  'animus:charge': <String, Object?>{'charged': true},
+};
+
+/// The sample result of [capability] for [arguments]: an item step gives
+/// or takes the amount it names.
+JsonMap sampleResult(String capability, JsonMap arguments) {
+  final JsonMap sample = <String, Object?>{...?sampleResults[capability]};
+  if (capability == 'animus:give-item' || capability == 'animus:take-item') {
+    sample[capability == 'animus:give-item' ? 'given' : 'taken'] = asInt(arguments['amount']) ?? 1;
+  }
+  return sample;
+}
 
 /// Conditions a server answers; the dry run assumes them.
 const Map<String, String> assumedConditions = <String, String>{
@@ -334,7 +367,7 @@ String? testPaneNote(AnimusDocument behavior, List<AnimusDocument> workspace) =>
 /// flags by whose they are, items and documents by name ([names]),
 /// branches as Yes and No; otherwise the engine's own words.
 DryRunSession dryRun(JsonMap behavior, DryRunInputs inputs, {bool plain = false, DocumentNames names = idDocumentName}) {
-  final _Machine machine = _Machine(behavior, inputs.assumptions, plain: plain, names: names);
+  final _Machine machine = _Machine(behavior, inputs.assumptions, plain: plain, names: names, samples: inputs.samples);
   final List<DryRunStart> starts = dryRunStarts(behavior);
   final List<DryRunRun> runs = <DryRunRun>[];
   DryRunStep? open;
@@ -350,7 +383,7 @@ DryRunSession dryRun(JsonMap behavior, DryRunInputs inputs, {bool plain = false,
         final String optionText = prompt.options.firstWhere((DryRunOption candidate) => candidate.id == option, orElse: () => DryRunOption(option, option)).text;
         if (trigger == null) {
           runs.add(DryRunRun('Answer "$optionText"', <DryRunStep>[
-            DryRunStep(path: r'$.triggers', outcome: DryRunOutcome.problem, text: 'No dialogue_choice trigger answers $dialogue / $option, so nothing runs.'),
+            DryRunStep(path: r'$.triggers', outcome: DryRunOutcome.problem, text: 'No trigger answers "$optionText", so nothing runs.'),
           ]));
         } else {
           final String routine = asString(trigger['routine']) ?? asString(behavior['entry']) ?? 'main';
@@ -394,7 +427,7 @@ class _Halt extends _Jump {
 }
 
 class _Machine {
-  _Machine(this.behavior, this.assumptions, {this.plain = false, this.names = idDocumentName}) {
+  _Machine(this.behavior, this.assumptions, {this.plain = false, this.names = idDocumentName, this.samples = const <String, JsonMap>{}}) {
     for (final MapEntry<String, Object?> entry in _declared.entries) {
       final JsonMap declaration = asMap(entry.value);
       if ((asString(declaration['scope']) ?? 'execution') != 'execution') variables[entry.key] = declaration['initial'];
@@ -403,6 +436,7 @@ class _Machine {
 
   final JsonMap behavior;
   final Map<String, bool> assumptions;
+  final Map<String, JsonMap> samples;
 
   /// Simple's words (see [dryRun]).
   final bool plain;
@@ -820,7 +854,8 @@ class _Machine {
       case 'animus:navigate':
         final String? route = asString(arguments['route']);
         final bool wait = arguments['wait'] == true;
-        final double? x = asDouble(arguments['x']), y = asDouble(arguments['y']), z = asDouble(arguments['z']);
+        final (double?, double?, double?) at = _point(arguments);
+        final double? x = at.$1, y = at.$2, z = at.$3;
         final String mode = asString(arguments['mode']) ?? 'walk';
         final String where = route != null ? 'follows route ${_document(DocumentKind.route, route)}' : '${mode}s to ${_number(x) ?? '?'}, ${_number(y) ?? '?'}, ${_number(z) ?? '?'}';
         _add(DryRunStep(
@@ -833,9 +868,10 @@ class _Machine {
       case 'animus:stop-navigation':
         _add(step('Stops walking.'));
       case 'animus:look':
+        final (double?, double?, double?) at = _point(arguments);
         _add(step(arguments['target'] == 'player'
             ? 'Turns to look at the player.'
-            : 'Turns to look at ${_number(arguments['x']) ?? '?'}, ${_number(arguments['y']) ?? '?'}, ${_number(arguments['z']) ?? '?'}.'));
+            : 'Turns to look at ${_number(at.$1) ?? '?'}, ${_number(at.$2) ?? '?'}, ${_number(at.$3) ?? '?'}.'));
       case 'animus:play-sound':
         _add(step('Plays sound ${plain ? soundName('${arguments['sound']}').toLowerCase() : arguments['sound']}.'));
       case 'animus:spawn-particle':
@@ -893,9 +929,27 @@ class _Machine {
           'animus:give-item' || 'animus:take-item' => ': ${arguments['amount'] ?? 1} ${_item(arguments['item'])}',
           _ => '',
         };
+        final String? into = asString(node['result']);
+        if (into != null && sampleResults.containsKey(capability)) {
+          final JsonMap result = samples[path] ?? sampleResult(capability, arguments);
+          final (Object? converted, String? problem) = convertForType(result, _typeOf(into));
+          if (problem != null) _fail(path, depth, '$into cannot hold the result map: $problem.');
+          _write(into, converted);
+          _add(DryRunStep(path: path, outcome: DryRunOutcome.serverOnly, depth: depth, sample: result, text: '${known ?? capabilityWords(capability)}$detail. Server only; Test uses this sample result in $into:'));
+          return;
+        }
         _add(step(known != null ? '$known$detail. Server only; not run.' : '${nodeSummary(node, names: names)}. A module capability; server only, not run.',
             outcome: DryRunOutcome.serverOnly));
     }
+  }
+
+  /// The position a coordinate step names: x, y and z, or its location
+  /// text written x,y,z or x,y,z,world.
+  static (double?, double?, double?) _point(JsonMap arguments) {
+    final String? location = asString(arguments['location']);
+    if (location == null) return (asDouble(arguments['x']), asDouble(arguments['y']), asDouble(arguments['z']));
+    final List<double?> parts = <double?>[for (final String part in location.split(',').take(3)) double.tryParse(part.trim())];
+    return parts.length == 3 ? (parts[0], parts[1], parts[2]) : (null, null, null);
   }
 
   Map<String, Object?> stateLines() => <String, Object?>{

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:hole-unknown-variable",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": null
+      },
+      "templates": {
+        "/text": "Hi {{ visitor }}"
+      }
+    }
+  }
+}

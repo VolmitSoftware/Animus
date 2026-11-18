@@ -371,6 +371,68 @@ class BuiltinCapabilitiesTest {
         assertEquals(Outcome.Status.INVALID, action("navigate", "{\"route\":\"a\",\"x\":1,\"y\":2,\"z\":3}").status());
     }
 
+    private static final String LOCATION_FORM = "location must be x,y,z or x,y,z,world, such as 10,64,-5,world";
+
+    @Test void coordinateActionsTakeALocationAsLocationFactsWriteIt() throws Exception {
+        start();
+        for (String name : List.of("explode", "look", "navigate", "teleport", "build"))
+            assertTrue(host.capabilities().stream().filter((Availability entry) -> entry.descriptor().key().name().equals(name)).findFirst().orElseThrow()
+                    .descriptor().configurationSchemaJson().contains("\"location\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":128}"), name);
+        assertEquals(Outcome.Status.OK, action("look", "{\"location\":\"10.00,64.00,-5.00,world\"}").status());
+        assertEquals(Outcome.Status.OK, action("look", "{\"location\":\" 1 , 2.5 , -3 ,world_nether\"}").status(), "a look ignores the world");
+        assertEquals(Outcome.Status.OK, action("navigate", "{\"location\":\"10,64,-5\"}").status());
+        assertEquals(Outcome.Status.OK, action("navigate", "{\"location\":\"11,64,-5,world\"}").status());
+        assertEquals(Outcome.Status.OK, action("teleport", "{\"location\":\"1,2,3,world_nether\",\"yaw\":90}").status());
+        assertEquals(Outcome.Status.OK, action("teleport", "{\"target\":\"npc\",\"location\":\"4,5,6\"}").status());
+        assertEquals(Outcome.Status.OK, action("explode", "{\"location\":\"1,64,2,world_nether\"}").status());
+        assertEquals(Outcome.Status.OK, action("explode", "{\"location\":\"7,64,8\",\"world\":\"world_the_end\"}").status());
+        assertEquals(Outcome.Status.OK, action("build", "{\"operation\":\"start\",\"location\":\"5,70,5,world\"}").status());
+        assertEquals(List.of("look:-:10.0,64.0,-5.0", "look:-:1.0,2.5,-3.0", "navigate:-:10.0,64.0,-5.0", "navigate:-:11.0,64.0,-5.0", "teleport:world_nether:1.0,2.0,3.0",
+                "teleport:-:4.0,5.0,6.0", "explode:world_nether:1.0,64.0,2.0", "explode:world_the_end:7.0,64.0,8.0", "build:-:5.0,70.0,5.0"), platform.positions);
+    }
+
+    @Test void aNavigateLocationInAnotherWorldIsRefusedLikeAnAnchorThere() throws Exception {
+        start();
+        Outcome<String> refused = action("navigate", "{\"location\":\"10,64,-5,world_nether\"}");
+        assertEquals(Outcome.Status.INVALID, refused.status());
+        assertEquals("location-in-another-world", code(refused));
+        assertTrue(refused.diagnostics().getFirst().message().endsWith("is in another world; teleport the NPC there"), refused.diagnostics().toString());
+        assertTrue(platform.positions.isEmpty());
+    }
+
+    @Test void aLocationThatDoesNotParseOrClashesIsAPlainProblem() throws Exception {
+        start();
+        for (String bad : List.of("nowhere", "1,2", "1,2,3,4,5", "1,2,3,", "a,b,c", "NaN,1,2", "1e999,1,2", "40000000,1,2", "1,,3"))
+            assertEquals(List.of("$.location: " + LOCATION_FORM), builtins.validate(key("look"), "{\"location\":\"" + bad + "\"}").stream()
+                    .map((Diagnostic problem) -> problem.field() + ": " + problem.message()).toList(), bad);
+        assertFalse(builtins.validate(key("explode"), "{\"location\":\"1,2,3\",\"x\":1}").isEmpty(), "a location stands instead of x, y and z");
+        assertFalse(builtins.validate(key("build"), "{\"operation\":\"start\",\"location\":\"1,2,3\",\"y\":2}").isEmpty());
+        assertFalse(builtins.validate(key("navigate"), "{\"location\":\"1,2,3\",\"z\":2}").isEmpty());
+        assertFalse(builtins.validate(key("build"), "{\"operation\":\"pause\",\"location\":\"1,2,3\"}").isEmpty(), "only a start takes an origin");
+        for (String name : List.of("explode", "teleport")) {
+            List<Diagnostic> named = builtins.validate(key(name), "{\"location\":\"1,2,3,world\",\"world\":\"world\"}");
+            assertEquals(List.of("$.world: the location already names its world"), named.stream().map((Diagnostic problem) -> problem.field() + ": " + problem.message()).toList(), name);
+            assertTrue(builtins.validate(key(name), "{\"location\":\"1,2,3\",\"world\":\"world\"}").isEmpty(), name);
+        }
+        assertEquals(Outcome.Status.INVALID, action("look", "{\"location\":\"1,2,3\",\"x\":1,\"y\":2,\"z\":3}").status(), "look takes one of target, x, y and z, or location");
+        assertEquals(Outcome.Status.INVALID, action("teleport", "{\"location\":\"1,2,3\",\"to\":\"npc\"}").status());
+        Outcome<String> invalid = action("explode", "{\"location\":\"up there\"}");
+        assertEquals(Outcome.Status.INVALID, invalid.status());
+        assertEquals(LOCATION_FORM, invalid.diagnostics().getFirst().message());
+        assertTrue(platform.calls.isEmpty());
+    }
+
+    @Test void aComputedLocationRunsAndABadOneEndsTheRunWithThePlainProblem() throws Exception {
+        start();
+        BehaviorEngine.Report moved = run(program("{\"type\":\"action\",\"capability\":\"animus:look\",\"arguments\":{\"location\":null},\"expressions\":{\"/location\":\"offset('1,2,3,world', 0, 1, 0)\"}}"), false, behavior -> false);
+        assertEquals(BehaviorEngine.State.COMPLETED, moved.state(), moved.toString());
+        assertEquals(List.of("look:-:1.0,3.0,3.0"), platform.positions);
+        BehaviorEngine.Report refused = run(program("{\"type\":\"action\",\"capability\":\"animus:explode\",\"arguments\":{\"location\":null},\"expressions\":{\"/location\":\"'by the well'\"}}"), false, behavior -> false);
+        assertEquals(BehaviorEngine.State.FAILED, refused.state(), refused.toString());
+        assertTrue(refused.diagnostics().stream().anyMatch((Diagnostic problem) -> problem.message().contains(LOCATION_FORM)), refused.diagnostics().toString());
+        assertEquals(List.of("look:-:1.0,3.0,3.0"), platform.positions);
+    }
+
     @Test void previewRefusesCommandCombatAndWorldMutationWithoutTouchingThePlatform() throws Exception {
         start();
         Map<String, String> refused = Map.ofEntries(

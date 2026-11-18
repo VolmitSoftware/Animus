@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:bossbar-remove-with-title",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:bossbar",
+      "arguments": {
+        "id": "raid",
+        "operation": "remove",
+        "title": "Raid"
+      }
+    }
+  }
+}

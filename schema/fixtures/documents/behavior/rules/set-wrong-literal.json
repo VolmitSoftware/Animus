@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:set-wrong-literal",
+  "entry": "main",
+  "variables": {
+    "count": {
+      "type": "integer",
+      "initial": 0
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "set",
+      "variable": "count",
+      "value": "five"
+    }
+  }
+}

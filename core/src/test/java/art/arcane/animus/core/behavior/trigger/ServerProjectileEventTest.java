@@ -100,8 +100,8 @@ class ServerProjectileEventTest {
     }
 
     @Test void schemaContextListsWhatEachFiringCarries() {
-        assertTrue(ServerEvent.contextKeys(TriggerKind.PROJECTILE_HIT).containsAll(List.of("projectile", "shooter", "entity", "block", "location")));
-        assertTrue(ServerEvent.contextKeys(TriggerKind.ENTITY_SHOOT_BOW).containsAll(List.of("bow", "force", "hand", "projectile")));
-        assertFalse(ServerEvent.contextKeys(TriggerKind.PROJECTILE_LAUNCH).contains("entity"));
+        assertTrue(TriggerKind.PROJECTILE_HIT.context().keySet().containsAll(List.of("projectile", "shooter", "entity", "block", "location")));
+        assertTrue(TriggerKind.ENTITY_SHOOT_BOW.context().keySet().containsAll(List.of("bow", "force", "hand", "projectile")));
+        assertFalse(TriggerKind.PROJECTILE_LAUNCH.context().keySet().contains("entity"));
     }
 }

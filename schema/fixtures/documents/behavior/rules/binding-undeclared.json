@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:binding-undeclared",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": null
+      },
+      "bindings": {
+        "/text": {
+          "variable": "greeting"
+        }
+      }
+    }
+  }
+}

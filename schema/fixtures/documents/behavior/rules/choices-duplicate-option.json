@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:choices-duplicate-option",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:choices",
+      "arguments": {
+        "id": "pick",
+        "prompt": "Pick",
+        "options": [
+          {
+            "id": "a",
+            "text": "A"
+          },
+          {
+            "id": "a",
+            "text": "B"
+          }
+        ]
+      }
+    }
+  }
+}

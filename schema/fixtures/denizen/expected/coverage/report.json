@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "converterVersion": 9,
-  "importId": "88a8bbc4539c0f713c134e3eac7ee980147decbdd91d9e5fea16dcfc5ef92265",
+  "importId": "d6c65283c31a4ab8c69d5d880a3cb19ce1244182b4dc755a2e8eb10f468c7efe",
   "notice": "Data conversion only. Apply lists the generated behaviors on their NPCs and turns the server behaviors on, except held behaviors, whose guard did not convert.",
   "sources": {
-    "scripts/smith.dsc": "594b1499c5ee8be5983e8c926512ddaa1039df3ee111e0525e844351046e36a6",
+    "scripts/smith.dsc": "b0e7750d77ebfd741ec76af4a5e78b2b811cd36eed313f73b33526a90935a966",
     "citizens": "a4d74ac1e363d90b300853e730e13edd1827a3d3abce45f98f20ca1639a043bb"
   },
   "behaviors": 13,
@@ -86,7 +86,7 @@
       "preserved": 0
     },
     "explode": {
-      "converted": 1,
+      "converted": 2,
       "preserved": 0
     },
     "flag": {
@@ -202,7 +202,7 @@
       "unmapped": 0
     },
     "[definition]": {
-      "mapped": 58,
+      "mapped": 59,
       "unmapped": 0
     },
     "context.args": {
@@ -375,7 +375,7 @@
     "behaviors/denizen/interact/smith_interact.json": "952ee546adf57d43772dc0cd4ea7ffc90bfb49e846016e2c3ee1e47e10aa9323",
     "behaviors/denizen/task/smith_board.json": "8a65126080a68b920497dc5fb4cdc324bef458fff340422184d2725289b544ed",
     "behaviors/denizen/task/smith_clock.json": "8c3262596a8b37bc560d7501252c43b516dd4f73f0d1319ff354868be525aa77",
-    "behaviors/denizen/task/smith_crew.json": "0d150d79f9de569a9d26afbc28d3674ab3dc34ae368bd575a08933da27cbae65",
+    "behaviors/denizen/task/smith_crew.json": "5fa6fa47c69e3263cabdb81fbfe3427c249eada8a35279dc9854b9ca61f49950",
     "behaviors/denizen/task/smith_forge.json": "5bea00d2cf7b77607b4e49b8876044ebd842b9aea3017619122555457e47174d",
     "behaviors/denizen/task/smith_mark.json": "e07dbf73cb510444c8557252fe1e3c1b17f71777032ac5e512edc8a957aa143b",
     "behaviors/denizen/task/smith_quote.json": "3fab249429ec5633a76139bb3e36b590c27b19ef4adaed8b9d40d8851381463b",

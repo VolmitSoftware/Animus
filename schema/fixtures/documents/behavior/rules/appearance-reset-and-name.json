@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:appearance-reset-and-name",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:set-appearance",
+      "arguments": {
+        "reset": true,
+        "name": "Bob"
+      }
+    }
+  }
+}

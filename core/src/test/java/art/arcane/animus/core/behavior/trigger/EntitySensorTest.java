@@ -244,6 +244,25 @@ class EntitySensorTest {
         assertEquals(3L, events.stream().filter((TriggerEvent.Entity event) -> event.binding().endsWith("gift")).findFirst().orElseThrow().context().get("amount"));
     }
 
+    @Test void everySensedEventCarriesExactlyTheContextItsKindPublishes() {
+        EntitySensor sensor = new EntitySensor(NPC);
+        List<EntitySensor.Watch> watches = watches("""
+                [{"id":"gift","event":"item_dropped","radius":3},{"id":"cart","event":"vehicle_bump"},{"id":"near","event":"entity_proximity","phase":"enter","radius":6},
+                 {"id":"touch","event":"entity_collide"},{"id":"led","event":"leash_pass","radius":3},{"id":"guard","event":"npc_proximity","phase":"enter","radius":5},
+                 {"id":"shot","event":"hit_by_projectile"},{"id":"tie","event":"leash_tie"},{"id":"ear","event":"npc_speech","radius":8}]""");
+        EntitySensor.Seen led = new EntitySensor.Seen(subject(UUID.randomUUID(), "minecraft:sheep", ""), EntitySensor.Role.LIVING, false, new Vec3(2, 64, 0),
+                Hitbox.atFeet(new Vec3(2, 64, 0), 0.9, 1.3), Vec3.ZERO, Optional.empty(), Optional.empty(), Optional.of(player()), Optional.empty(), 0, 100);
+        List<TriggerEvent.Entity> events = new ArrayList<>(sensor.sense(BODY, watches, List.of(item(ITEM, new Vec3(2, 64, 0), Vec3.ZERO, "minecraft:emerald", 4),
+                cart(new Vec3(0.5, 0, 0), Optional.of(player())), sheep(new Vec3(0.4, 64, 0)), led), Set.of(), true,
+                List.of(new EntitySensor.Neighbour(UUID.randomUUID(), "town:guard", new Vec3(3, 64, 0))), NOBODY, LIMITS).events());
+        events.addAll(EntitySensor.projectile(NPC, watches, Optional.of(player()), "minecraft:arrow", UUID.randomUUID(), new Vec3(0, 65, 0), true, NOBODY));
+        events.addAll(EntitySensor.leashTie(NPC, watches, subject(UUID.randomUUID(), "minecraft:horse", ""), new Vec3(1, 64, 0), player(), NOBODY));
+        events.addAll(EntitySensor.speech(NPC, watches, UUID.randomUUID(), "crier", "Hear ye", 2));
+        Set<TriggerKind> covered = new java.util.HashSet<>();
+        for (TriggerEvent.Entity event : events) { TriggerContextTest.carries(event.kind(), event.context()); covered.add(event.kind()); }
+        for (TriggerKind kind : TriggerKind.values()) if (kind.sensed()) assertTrue(covered.contains(kind), kind.jsonName() + " has no event here");
+    }
+
     @Test void aSensedEventKeepsOnlyValuesARunCanRead() {
         TriggerEvent.Entity event = new TriggerEvent.Entity(NPC, TriggerKind.ITEM_DROPPED, "town:sense#gift", Optional.empty(), Optional.empty(), java.util.Map.of("amount", 3, "scale", 1.5f));
         assertEquals(3L, event.context().get("amount"));

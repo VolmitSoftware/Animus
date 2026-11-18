@@ -36,7 +36,7 @@ const Map<String, Object?> sampleFacts = <String, Object?>{
   'player.x': 0.0,
   'player.y': 64.0,
   'player.z': 0.0,
-  'player.location': 'world, 0, 64, 0',
+  'player.location': '0.00,64.00,0.00,world',
   'player.gamemode': 'survival',
   'player.op': false,
   'player.sneaking': false,
@@ -52,11 +52,14 @@ const Map<String, Object?> sampleFacts = <String, Object?>{
   'npc.x': 0.0,
   'npc.y': 64.0,
   'npc.z': 0.0,
-  'npc.location': 'world, 0, 64, 0',
+  'npc.location': '0.00,64.00,0.00,world',
+  'npc.citizens_id': '',
+  'npc.behaviors': <Object?>[],
   'server.online_players': 1.0,
   'server.max_players': 20.0,
   'server.tick': 0.0,
   'server.time_millis': 0.0,
+  'server.players': <Object?>['00000000-0000-4000-8000-000000000000'],
 };
 
 /// What one evaluation reads: variables, flags, quest stages and the
@@ -323,9 +326,161 @@ class BehaviorEvalScope implements PExprScope {
       case 'quest':
         arity(2, 2);
         return quest(scope(args[0]), expressionText(args[1])).toDouble();
+      case 'has_player':
+        arity(0, 0);
+        return true;
+      case 'now':
+        arity(0, 0);
+        factsRead['now()'] = sampleNow;
+        return sampleNow;
+      case 'type_of':
+        arity(1, 1);
+        return switch (args[0]) {
+          List<Object?>() => 'list',
+          Map<String, Object?>() => 'map',
+          bool() => 'boolean',
+          num() => 'number',
+          _ => 'text',
+        };
+      case 'distance':
+        arity(2, 2);
+        final List<String> from = _location(name, args[0]), to = _location(name, args[1]);
+        if (from.length > 3 && to.length > 3 && from[3].trim().toLowerCase() != to[3].trim().toLowerCase()) return 1.0e9;
+        final double dx = number(from[0]) - number(to[0]), dy = number(from[1]) - number(to[1]), dz = number(from[2]) - number(to[2]);
+        return math.sqrt(dx * dx + dy * dy + dz * dz);
+      case 'offset':
+        arity(4, 4);
+        final List<String> at = _location(name, args[0]);
+        String fixed(double value) => value.toStringAsFixed(2);
+        return '${fixed(number(at[0]) + number(args[1]))},${fixed(number(at[1]) + number(args[2]))},${fixed(number(at[2]) + number(args[3]))}${at.length > 3 ? ',${at[3].trim()}' : ''}';
+      case 'within':
+        arity(2, 2);
+        final List<String> at = _location(name, args[0]);
+        final Object? area = args[1];
+        final List<Object?> bounds = area is Map<String, Object?> && area['bounds'] is List<Object?> ? area['bounds']! as List<Object?> : const <Object?>[];
+        if (area is! Map<String, Object?> || bounds.length != 6 || area['world'] is! String) throw const BehaviorEvalFailure('within: expected an area map with world, shape and six bounds');
+        if (at.length > 3 && _sampleWorld(at[3].trim()) != _sampleWorld(area['world']! as String)) return false;
+        final double x = number(at[0]), y = number(at[1]), z = number(at[2]);
+        final List<double> b = <double>[for (final Object? bound in bounds) number(bound)];
+        if (area['shape'] == 'ellipsoid') {
+          final double dx = (x - b[0]) / b[3], dy = (y - b[1]) / b[4], dz = (z - b[2]) / b[5];
+          return dx * dx + dy * dy + dz * dz <= 1;
+        }
+        bool inside(double value, double one, double other) => value >= math.min(one, other).floorToDouble() && value < math.max(one, other).floorToDouble() + 1;
+        return inside(x, b[0], b[3]) && inside(y, b[1], b[4]) && inside(z, b[2], b[5]);
+      case 'duration_seconds':
+        arity(1, 1);
+        return _durationSeconds(args[0]);
+      case 'duration_text':
+        arity(1, 1);
+        return _durationText(number(args[0]));
+      case 'players':
+        arity(1, 1);
+        final List<Object?> found = <Object?>[];
+        for (final Object? item in args[0] is List<Object?> ? args[0]! as List<Object?> : <Object?>[args[0]]) {
+          final String? id = _playerId(item);
+          if (id != null && !found.contains(id) && found.length < 100) found.add(id);
+        }
+        return found;
+      case 'player_info':
+        arity(1, 1);
+        if (_playerId(args[0]) != sampleFacts['player.uuid']) return <String, Object?>{};
+        return _sampleRoot('player');
+      case 'player_named':
+        arity(1, 1);
+        if (expressionText(args[0]).trim().isEmpty) return '';
+        factsRead['player_named()'] = sampleFacts['player.uuid'];
+        return sampleFacts['player.uuid'];
+      case 'players_near':
+        arity(2, 2);
+        final double radius = number(args[1]);
+        final double far = evaluateBehaviorExpression("distance('${expressionText(args[0])}', '${sampleFacts['player.location']}')", this) as double;
+        factsRead['player.location'] = sampleFacts['player.location'];
+        return far <= radius ? <Object?>[sampleFacts['player.uuid']] : <Object?>[];
+      case 'npcs':
+        arity(0, 0);
+        return <Object?>[sampleFacts['npc.uuid']];
+      case 'npc_info':
+        arity(1, 1);
+        final String id = expressionText(args[0]).trim();
+        return (id.startsWith('n@') ? id.substring(2) : id) == sampleFacts['npc.uuid'] ? _sampleRoot('npc') : <String, Object?>{};
+      case 'player_flag' || 'npc_flag':
+        arity(2, 3);
+        if (args.length == 3) return args[2];
+        throw BehaviorEvalFailure("flag '${expressionText(args[1])}' is not set for that ${name == 'player_flag' ? 'player' : 'NPC'}");
+      case 'player_has_flag' || 'npc_has_flag':
+        arity(2, 2);
+        return false;
+      case 'flag_expiry' || 'player_flag_expiry':
+        arity(2, 2);
+        return 0.0;
     }
     return null;
   }
+
+  /// The facts of the sample player or NPC as `player_info` gives them.
+  Map<String, Object?> _sampleRoot(String root) {
+    final Map<String, Object?> out = <String, Object?>{};
+    for (final MapEntry<String, Object?> fact in sampleFacts.entries) {
+      if (!fact.key.startsWith('$root.')) continue;
+      out[fact.key.substring(root.length + 1)] = expressionValue(fact.value);
+      factsRead[fact.key] = fact.value;
+    }
+    return out;
+  }
+}
+
+/// The time the dry run reads as now(): noon on 1 January 2026, UTC.
+const double sampleNow = 1767268800000.0;
+
+/// A location written x,y,z or x,y,z,world, split at its commas.
+List<String> _location(String name, Object? value) {
+  final List<String> parts = expressionText(value).split(',');
+  if (parts.length < 3 || parts.length > 4 || parts.take(3).any((String part) => double.tryParse(part.trim()) == null)) {
+    throw BehaviorEvalFailure('$name: expected a location x,y,z,world, got ${expressionText(value)}');
+  }
+  return parts;
+}
+
+/// A player UUID, also written `p@` and the UUID, in lowercase; null for anything else.
+String? _playerId(Object? value) {
+  if (value is! String) return null;
+  final Match? match = RegExp(r'^(?:p@)?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$').firstMatch(value.trim());
+  return match?.group(1)!.toLowerCase();
+}
+
+const Map<String, double> _durationUnits = <String, double>{'t': 0.05, 's': 1, 'm': 60, 'h': 3600, 'd': 86400, 'w': 604800, 'y': 31536000};
+
+/// Seconds in a Denizen duration: a number, or text such as 10m, 30t or d@1d1h.
+double _durationSeconds(Object? value) {
+  if (value is double) return value;
+  final double? plain = value is String ? double.tryParse(value.trim()) : null;
+  if (plain != null) return plain;
+  String text = expressionText(value).trim().toLowerCase();
+  if (text.startsWith('d@')) text = text.substring(2);
+  final Iterable<RegExpMatch> parts = RegExp(r'([0-9]+(?:\.[0-9]+)?)([tsmhdwy])').allMatches(text);
+  int at = 0;
+  double total = 0;
+  for (final RegExpMatch part in parts) {
+    if (part.start != at) break;
+    total += double.parse(part.group(1)!) * _durationUnits[part.group(2)!]!;
+    at = part.end;
+  }
+  if (at == 0 || at != text.length) throw BehaviorEvalFailure("'${expressionText(value)}' is not a duration");
+  return total;
+}
+
+/// A duration as Denizen writes it: days and hours, minutes under a day, seconds under ten minutes.
+String _durationText(double seconds) {
+  final int total = math.max(0, seconds.floor());
+  final int days = total ~/ 86400, hours = total % 86400 ~/ 3600, minutes = total % 3600 ~/ 60, rest = total % 60;
+  final List<String> parts = <String>[
+    if (days > 0) '${days}d',
+    if (hours > 0) '${hours}h',
+    if (minutes > 0 && days == 0) '${minutes}m',
+    if (rest > 0 && total < 600) '${rest}s',
+  ];
+  return parts.isEmpty ? '0s' : parts.join(' ');
 }
 
 /// A world as the sample server, whose main world is `world`, resolves it: the three vanilla dimension keys name its

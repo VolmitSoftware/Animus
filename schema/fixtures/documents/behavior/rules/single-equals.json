@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:single-equals",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "condition",
+      "expression": "player.level = 3",
+      "then": {
+        "type": "action",
+        "capability": "animus:say",
+        "arguments": {
+          "text": "Hello"
+        }
+      }
+    }
+  }
+}

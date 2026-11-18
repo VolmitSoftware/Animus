@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:return-in-parallel",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "parallel",
+      "branches": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Hello"
+          }
+        },
+        {
+          "type": "return"
+        }
+      ]
+    }
+  }
+}

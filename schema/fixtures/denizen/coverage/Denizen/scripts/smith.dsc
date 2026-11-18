@@ -175,7 +175,7 @@ smith_board:
 
 smith_crew:
   type: task
-  definitions: apprentice|caller
+  definitions: apprentice|caller|spot
   script:
   - define partner <server.match_player[<[caller]>]||nobody>
   - define aim <player.cursor_on[16]>
@@ -192,6 +192,7 @@ smith_crew:
   - teleport <npc> <[bench].above[1]>
   - lookclose state:true range:8 realistic
   - explode power:1 <[bench]>
+  - explode power:2 <[spot]>
   - sidebar add "values:Hammer|Tongs"
   - sidebar set_line scores:1 "values:Anvil"
   - run smith_song player:<[apprentice]>

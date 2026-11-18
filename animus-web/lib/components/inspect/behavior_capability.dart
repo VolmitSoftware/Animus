@@ -10,11 +10,13 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
+import '../../logic/inspect/action_groups.dart';
 import '../../logic/inspect/behavior_edit.dart';
 import '../../logic/inspect/behavior_kept.dart';
 import '../../logic/inspect/typed_values.dart';
 import '../../logic/inspect/behavior_operands.dart';
 import '../../logic/inspect/behavior_words.dart';
+import '../../logic/inspect/command_scope.dart';
 import '../../logic/inspect/completion_catalog.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/suggest/field_profile.dart';
@@ -58,11 +60,18 @@ class CapabilityFields extends StatelessWidget {
 
   String get _blockId => 'animus-capability:${_at(const <JsonStep>[])}';
 
+  /// Picker values that turn the step into another type of step (Flow).
+  static const String _flowPrefix = 'step:';
+
   @override
   Widget build(BuildContext build) {
     final String? id = asString(node['capability']);
     final CapabilitySpec? spec = context.catalog.capability(id);
-    final List<CapabilitySpec> choices = context.catalog.capabilitiesFor(kind, server: context.server);
+    final List<CapabilitySpec> choices = <CapabilitySpec>[...context.catalog.capabilitiesFor(kind, server: context.server)]
+      ..sort((CapabilitySpec a, CapabilitySpec b) {
+        final int group = actionGroupRank(actionGroup(a.id)).compareTo(actionGroupRank(actionGroup(b.id)));
+        return group != 0 ? group : actionLabel(a.id).compareTo(actionLabel(b.id));
+      });
     final JsonMap arguments = asMap(node['arguments']);
     final Set<String> declared = argumentKnownKeys(spec);
     final Set<String> topPointers = <String>{for (final String key in declared) argumentPointer(key)};
@@ -78,18 +87,39 @@ class CapabilityFields extends StatelessWidget {
             : <String>[
                 if (!spec.available && spec.reason != offlineCatalogReason) 'Not available on this server.',
                 if (spec.privileged) 'Allowed behaviors only.',
+                if (stepNeedsCommands(node, privilegedCapabilities(context.catalog)) != null) 'Applying it needs the Run commands permission.',
                 if (context.server && spec.npcOnly) 'Needs an NPC: a server behavior cannot run it.',
               ].join(' '),
         problems: diagnosticsAt(context.diagnostics, _at(<JsonStep>['capability'])),
         child: stack(<Widget>[
           AnimusSelect.values(
             value: id,
-            values: <String>[for (final CapabilitySpec choice in choices) choice.id],
-            labels: <String, String>{for (final CapabilitySpec choice in choices) choice.id: capabilityChoiceLabel(choice)},
+            values: <String>[
+              for (final CapabilitySpec choice in choices) choice.id,
+              if (action)
+                for (final String type in flowTypes)
+                  if (context.nodeTypes.contains(type)) '$_flowPrefix$type',
+            ],
+            labels: <String, String>{
+              for (final CapabilitySpec choice in choices) choice.id: capabilityChoiceLabel(choice),
+              for (final String type in flowTypes) '$_flowPrefix$type': nodeLabel(type),
+            },
+            groups: <String, String>{
+              for (final CapabilitySpec choice in choices) choice.id: actionGroup(choice.id),
+              for (final String type in flowTypes) '$_flowPrefix$type': 'Flow',
+            },
+            keywords: <String, List<String>>{
+              for (final CapabilitySpec choice in choices) choice.id: actionKeywords(choice.id, choice.description),
+              for (final String type in flowTypes) '$_flowPrefix$type': flowKeywords(type),
+            },
             noneLabel: action ? 'Pick what it does' : 'Pick what it checks',
             hiddenLabel: action ? 'What this step does' : 'What this step checks',
             onChanged: (String? next) {
               if (next == null) return;
+              if (next.startsWith(_flowPrefix)) {
+                _put(changeNodeType(node, next.substring(_flowPrefix.length), context.catalog, routine: context.entry, variables: context.variables, server: context.server));
+                return;
+              }
               // The new required arguments start empty: they are pending,
               // with focus on the first, until the user leaves the step.
               final FieldSpec? first = context.catalog.capability(next)?.arguments.where((FieldSpec argument) => argument.required).firstOrNull;
@@ -116,7 +146,7 @@ class CapabilityFields extends StatelessWidget {
             argument: argument,
             path: _at(<JsonStep>['arguments', argument.key]),
             variables: context.variables,
-            scope: context.scope,
+            scope: context.scopeAt(steps),
             problems: <Diagnostic>[
               ...diagnosticsAt(context.diagnostics, _at(<JsonStep>['arguments', argument.key]), nested: true),
               for (final String field in slotFields) ...diagnosticsAt(context.diagnostics, '${_at(<JsonStep>[field])}[${argumentPointer(argument.key)}]', nested: true),
@@ -124,6 +154,7 @@ class CapabilityFields extends StatelessWidget {
             onNode: _put,
             bounds: !(argument.kind == FieldKind.string && _personArguments.containsKey(argument.key)),
             literal: _literal(id, argument, arguments),
+            textual: _textual(id, argument),
           ),
       if (unknownEntries(arguments, declared) case final JsonMap other when (spec == null && (id ?? '').isNotEmpty) || other.isNotEmpty)
         Field(
@@ -148,12 +179,21 @@ class CapabilityFields extends StatelessWidget {
     ]);
   }
 
+  /// Whether [argument] is text players read or a command, where `{{ }}`
+  /// holes make it a template as it is typed.
+  static bool _textual(String? id, FieldSpec argument) => argument.kind == FieldKind.string && argumentProfile(id, argument.key).holes == ExpressionSyntax.behavior;
+
   /// The control for an argument written as a value. An argument of any
   /// type holding text, a number or true or false is edited as that, never
-  /// as JSON with quotes.
+  /// as JSON with quotes. Text with holes is shown as typed and stored as a
+  /// template.
   Widget _literal(String? id, FieldSpec argument, JsonMap arguments) {
-    final Object? value = arguments[argument.key];
-    void write(Object? next) => context.write(<JsonStep>[...steps, 'arguments', argument.key], next);
+    final bool textual = _textual(id, argument);
+    final bool template = textual && argumentSource(node, argument.key) == ArgumentSource.template;
+    final Object? value = template ? argumentSlotText(node, argument.key) : arguments[argument.key];
+    void write(Object? next) => textual
+        ? _put(setArgumentText(node, argument.key, next as String?))
+        : context.write(<JsonStep>[...steps, 'arguments', argument.key], next);
     if (argument.kind == FieldKind.any && (value == null || value is String || value is num || value is bool)) {
       return JsonValueEditor(value: value ?? '', label: humanizeKey(argument.key), onChanged: write);
     }
@@ -185,7 +225,6 @@ class CapabilityFields extends StatelessWidget {
         for (final MapEntry<String, Object?> entry in asMap(node[field]).entries)
           if (!topPointers.contains(entry.key)) (field, entry.key, entry.value),
     ];
-    final List<String> stray = strayPointers(node);
     final List<FieldOption> pointers = <FieldOption>[
       for (final String key in <String>{...declared, ...asMap(node['arguments']).keys}) FieldOption(argumentPointer(key), description: 'argument $key'),
     ];
@@ -210,7 +249,6 @@ class CapabilityFields extends StatelessWidget {
           label: '${humanizeKey(field)} $pointer',
           problems: <Diagnostic>[
             ...diagnosticsAt(context.diagnostics, '${_at(<JsonStep>[field])}[$pointer]', nested: true),
-            if (stray.contains(pointer)) Diagnostic(DiagnosticSeverity.warning, _at(<JsonStep>[field]), 'No null argument at $pointer. Set it to null or remove this slot.'),
           ],
           child: stack(<Widget>[
             SuggestInput(
@@ -232,7 +270,7 @@ class CapabilityFields extends StatelessWidget {
             else
               BehaviorExpressionInput(
                 value: asString(value) ?? '',
-                scope: context.scope,
+                scope: context.scopeAt(steps),
                 template: field == 'templates',
                 label: '${field == 'templates' ? 'Template' : 'Expression'} for $pointer',
                 onChanged: (String next) => putSlot(field, pointer, next),
@@ -278,7 +316,7 @@ class CallArguments extends StatelessWidget {
                     value: entry.value,
                     type: asString(asMap(context.variables[entry.key])['type']) ?? 'any',
                     variables: context.variables,
-                    scope: context.scope,
+                    scope: context.scopeAt(steps),
                     label: 'Argument ${entry.key}',
                     onChanged: (Object? next) => put(<String, Object?>{...arguments, entry.key: next}),
                   ),

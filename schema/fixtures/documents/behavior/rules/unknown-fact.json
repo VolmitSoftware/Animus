@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:unknown-fact",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "condition",
+      "expression": "player.wealth > 1",
+      "then": {
+        "type": "action",
+        "capability": "animus:say",
+        "arguments": {
+          "text": "Hello"
+        }
+      }
+    }
+  }
+}

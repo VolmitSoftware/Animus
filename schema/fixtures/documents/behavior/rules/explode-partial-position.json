@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:explode-partial-position",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:explode",
+      "arguments": {
+        "x": 1,
+        "y": 64
+      }
+    }
+  }
+}

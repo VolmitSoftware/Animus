@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:loop-variable-kept",
+  "entry": "main",
+  "variables": {
+    "names": {
+      "type": "list",
+      "initial": []
+    },
+    "name": {
+      "type": "any",
+      "initial": "",
+      "scope": "player",
+      "lifetime": "persistent"
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "foreach",
+      "list": {
+        "variable": "names"
+      },
+      "as": "name",
+      "body": {
+        "type": "action",
+        "capability": "animus:say",
+        "arguments": {
+          "text": "Hello"
+        }
+      }
+    }
+  }
+}

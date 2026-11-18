@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:accepted",
+  "entry": "main",
+  "variables": {
+    "round": {
+      "type": "integer",
+      "initial": 0
+    },
+    "count": {
+      "type": "integer",
+      "initial": 0
+    },
+    "seen": {
+      "type": "map",
+      "initial": {}
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "repeat",
+          "count": 3,
+          "index": "round",
+          "body": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "condition",
+                "expression": "round == 2",
+                "then": {
+                  "type": "break"
+                }
+              },
+              {
+                "type": "continue"
+              }
+            ]
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": null,
+            "bubbleTicks": 40
+          },
+          "templates": {
+            "/text": "Hello {{ player.name }}, round {{ round }}"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null,
+            "to": "trigger"
+          },
+          "expressions": {
+            "/text": "'Seen ' + text(count)"
+          }
+        },
+        {
+          "type": "set",
+          "variable": "count",
+          "value": {
+            "expression": "count + 1"
+          }
+        },
+        {
+          "type": "call",
+          "routine": "greet",
+          "arguments": {
+            "count": 1
+          },
+          "result": "count"
+        },
+        {
+          "type": "action",
+          "capability": "animus:ray-trace",
+          "arguments": {
+            "range": 20
+          },
+          "result": "seen"
+        },
+        {
+          "type": "wait",
+          "ticks": {
+            "expression": "random(20, 60)"
+          }
+        },
+        {
+          "type": "parallel",
+          "branches": [
+            {
+              "type": "action",
+              "capability": "animus:look",
+              "arguments": {
+                "target": "player"
+              }
+            },
+            {
+              "type": "action",
+              "capability": "animus:explode",
+              "arguments": {
+                "power": 1
+              }
+            }
+          ]
+        },
+        {
+          "type": "action",
+          "capability": "animus:navigate",
+          "arguments": {
+            "location": "10,64,-5",
+            "wait": true
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:look",
+          "arguments": {
+            "location": "2.00,64.00,5.00,world"
+          }
+        }
+      ]
+    },
+    "greet": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Hello"
+          }
+        },
+        {
+          "type": "return",
+          "value": 2
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction"
+    },
+    {
+      "id": "near",
+      "event": "proximity",
+      "phase": "enter",
+      "radius": 6,
+      "routine": "greet"
+    }
+  ]
+}

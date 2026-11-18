@@ -605,7 +605,10 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   InspectSchemas get _schemas => InspectSchemas.from(component.liveSchemas);
 
-  List<Diagnostic> _allDiagnostics(AnimusDocument document) => <Diagnostic>[..._shown(document), ...component.serverDiagnostics];
+  List<Diagnostic> _allDiagnostics(AnimusDocument document) {
+    final List<Diagnostic> shown = _shown(document);
+    return <Diagnostic>[...shown, ...serverOnly(shown, component.serverDiagnostics)];
+  }
 
   List<String> _ids(DocumentKind kind) => <String>[
         for (final AnimusDocument other in component.workspaceDocuments)

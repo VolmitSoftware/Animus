@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:variable-type-mismatch",
+  "entry": "main",
+  "variables": {
+    "count": {
+      "type": "integer",
+      "initial": 0
+    },
+    "names": {
+      "type": "list",
+      "initial": []
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "set",
+      "variable": "count",
+      "value": {
+        "variable": "names"
+      }
+    }
+  }
+}

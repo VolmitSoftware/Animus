@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:reserved-variable",
+  "entry": "main",
+  "variables": {
+    "context": {
+      "type": "string",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Hello"
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:charge-nothing",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:charge",
+      "arguments": {
+        "money": 0
+      }
+    }
+  }
+}

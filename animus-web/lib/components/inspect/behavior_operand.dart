@@ -13,6 +13,7 @@ import 'package:jaspr/dom.dart' as dom;
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/behavior_language.dart';
 import '../../logic/inspect/behavior_operands.dart';
+import '../../logic/inspect/behavior_types.dart';
 import '../../logic/inspect/behavior_words.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../model/animus_document.dart';
@@ -85,6 +86,11 @@ class OperandControl extends StatelessWidget {
               scope: scope,
               label: '$label expression',
               placeholder: type == 'boolean' ? 'count < 3' : 'count + 1',
+              expected: switch (type) {
+                'boolean' => ValueType.boolean,
+                'integer' || 'decimal' => ValueType.number,
+                _ => ValueType.any,
+              },
               onChanged: (String next) => onChanged(<String, Object?>{'expression': next}),
             ),
             OperandMode.template => BehaviorExpressionInput(
@@ -154,6 +160,7 @@ class ArgumentField extends StatelessWidget {
     required this.scope,
     this.problems = const <Diagnostic>[],
     this.bounds = true,
+    this.textual = false,
     super.key,
   });
 
@@ -162,6 +169,10 @@ class ArgumentField extends StatelessWidget {
 
   /// Whether the argument's limits show under it; a picker of names has none to type.
   final bool bounds;
+
+  /// Text players read or a command: [literal] edits it with its `{{ }}`
+  /// holes, stored as a template, so Fill from offers no template.
+  final bool textual;
 
   /// The argument's diagnostic path.
   final String path;
@@ -178,22 +189,27 @@ class ArgumentField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String key = argument.key;
-    final ArgumentSource source = argumentSource(node, key);
+    final ArgumentSource stored = argumentSource(node, key);
+    final ArgumentSource source = textual && stored == ArgumentSource.template ? ArgumentSource.literal : stored;
+    final List<ArgumentSource> sources = <ArgumentSource>[
+      for (final ArgumentSource option in ArgumentSource.values)
+        if (!(textual && option == ArgumentSource.template)) option,
+    ];
     final String text = argumentSlotText(node, key);
-    final bool literalNull = source == ArgumentSource.literal && asMap(node['arguments']).containsKey(key) && asMap(node['arguments'])[key] == null;
+    final bool literalNull = stored == ArgumentSource.literal && asMap(node['arguments']).containsKey(key) && asMap(node['arguments'])[key] == null;
     void pick(ArgumentSource picked) {
       if (picked == source) return;
       final String start = switch (picked) {
         ArgumentSource.binding => variables.keys.firstOrNull ?? '',
         ArgumentSource.literal => '',
-        _ => source == ArgumentSource.literal ? _literalText(asMap(node['arguments'])[key]) : text,
+        _ => stored == ArgumentSource.literal ? _literalText(asMap(node['arguments'])[key]) : text,
       };
       onNode(setArgumentSource(node, key, picked, text: start, literal: _literalFor(argument)));
     }
 
     return Field(
       label: fieldLabel(argument, label: argumentLabel(argument.key)),
-      help: bounds ? argument.boundsHint : null,
+      help: bounds ? argumentHint(key, argument.boundsHint) : null,
       tip: argument.description,
       problems: problems,
       child: dom.div(
@@ -207,8 +223,8 @@ class ArgumentField extends StatelessWidget {
                 ? null
                 : AnimusSelect.values(
                     value: source.name,
-                    values: <String>[for (final ArgumentSource option in ArgumentSource.values) option.name],
-                    labels: <String, String>{for (final ArgumentSource option in ArgumentSource.values) option.name: option.label},
+                    values: <String>[for (final ArgumentSource option in sources) option.name],
+                    labels: <String, String>{for (final ArgumentSource option in sources) option.name: option.label},
                     hiddenLabel: '${humanizeKey(key)} source',
                     onChanged: (String? next) {
                       final ArgumentSource? picked = ArgumentSource.values.where((ArgumentSource option) => option.name == next).firstOrNull;
@@ -231,6 +247,11 @@ class ArgumentField extends StatelessWidget {
                 value: text,
                 scope: scope,
                 label: '${humanizeKey(key)} expression',
+                expected: switch (argument.kind) {
+                  FieldKind.boolean => ValueType.boolean,
+                  FieldKind.integer || FieldKind.number => ValueType.number,
+                  _ => ValueType.any,
+                },
                 onChanged: (String next) => onNode(setArgumentSlotText(node, key, next)),
               ),
               ArgumentSource.template => BehaviorExpressionInput(
@@ -246,7 +267,7 @@ class ArgumentField extends StatelessWidget {
                 ? FillFromMenu(
                     label: humanizeKey(key),
                     entries: <AppMenuEntry>[
-                      for (final ArgumentSource option in ArgumentSource.values)
+                      for (final ArgumentSource option in sources)
                         if (option != ArgumentSource.literal) AppMenuEntry(option.label, () => pick(option)),
                     ],
                   )

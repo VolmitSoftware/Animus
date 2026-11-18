@@ -18,6 +18,8 @@ import java.util.Set;
 public final class TriggerCompiler {
     public static final int MAX_TRIGGERS = 32, MAX_COOLDOWN_TICKS = 72000, MAX_INTERVAL_TICKS = 72000, MAX_WAYPOINT = 4095;
     public static final double MAX_RADIUS = 64;
+    /** The setting that caps the radius of an event the platform looks for. */
+    public static final String ENTITY_RADIUS_SETTING = "behaviors.triggers.maximumEntityRadius";
     /** Server behavior bounds: timers fire at most once a second; commands are lowercase words with a few aliases. */
     public static final int MIN_SERVER_INTERVAL_TICKS = 20, MAX_ALIASES = 8, MAX_PATTERN = 256, MAX_COMMAND_TEXT = 256, MAX_WORLD_NAME = 64;
     public static final String COMMAND_NAME = "[a-z0-9_-]{1,32}", PERMISSION = "[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*";
@@ -103,7 +105,7 @@ public final class TriggerCompiler {
             case PROXIMITY -> {
                 if (!object.has("phase")) throw new Invalid(path + ".phase", "expected enter or leave");
                 TriggerBinding.Phase phase = named(TriggerBinding.Phase.class, text(object, "phase", path), path + ".phase", "enter or leave");
-                yield new TriggerBinding.Proximity(phase, radius(object, path),
+                yield new TriggerBinding.Proximity(phase, radius(object, path, MAX_RADIUS),
                         object.has("playerCooldownTicks") ? OptionalInt.of(integer(object, "playerCooldownTicks", path, 0, MAX_COOLDOWN_TICKS)) : OptionalInt.empty());
             }
             case SPAWN, DESPAWN, DAMAGE, DEATH, BUILD_FINISHED, BUILD_PAUSED, PLAYER_QUIT, SERVER_START, PLAYER_DEATH, PLAYER_RESPAWN -> new TriggerBinding.Lifecycle(kind);
@@ -156,7 +158,7 @@ public final class TriggerCompiler {
             if (!object.has("phase")) throw new Invalid(path + ".phase", "expected enter or leave");
             phase = Optional.of(named(TriggerBinding.Phase.class, text(object, "phase", path), path + ".phase", "enter or leave"));
         }
-        double radius = fields.contains("radius") ? radius(object, path) : 0;
+        double radius = fields.contains("radius") ? radius(object, path, kind.scanned() ? TriggerSettings.MAXIMUM_ENTITY_RADIUS : MAX_RADIUS) : 0;
         TriggerBinding.Contact contact = object.has("contact")
                 ? named(TriggerBinding.Contact.class, text(object, "contact", path), path + ".contact", "any, top or side") : TriggerBinding.Contact.ANY;
         java.util.TreeMap<String, String> patterns = new java.util.TreeMap<>();
@@ -306,14 +308,16 @@ public final class TriggerCompiler {
             return number;
         } catch (ArithmeticException | NumberFormatException invalid) { throw new Invalid(path + "." + key, message); }
     }
-    private static double radius(JsonObject object, String path) {
-        String message = "expected a radius above 0 and at most " + (int) MAX_RADIUS + " blocks";
+    /** A radius above 0 and at most {@code maximum}; below {@link #MAX_RADIUS} the server's entity radius setting is what caps it. */
+    private static double radius(JsonObject object, String path, double maximum) {
+        String message = "expected a radius above 0 and at most " + (int) maximum + " blocks"
+                + (maximum < MAX_RADIUS ? "; the server's " + ENTITY_RADIUS_SETTING + " (" + TriggerSettings.DEFAULT.maximumEntityRadius() + " by default) caps it" : "");
         JsonElement value = object.get("radius");
         if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) throw new Invalid(path + ".radius", message);
         double radius;
         try { radius = value.getAsDouble(); }
         catch (NumberFormatException invalid) { throw new Invalid(path + ".radius", message); }
-        if (!Double.isFinite(radius) || radius <= 0 || radius > MAX_RADIUS) throw new Invalid(path + ".radius", message);
+        if (!Double.isFinite(radius) || radius <= 0 || radius > maximum) throw new Invalid(path + ".radius", message);
         return radius;
     }
     private static <E extends Enum<E>> E named(Class<E> type, String value, String field, String expected) {

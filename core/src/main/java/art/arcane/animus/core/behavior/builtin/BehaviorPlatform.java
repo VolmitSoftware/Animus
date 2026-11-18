@@ -181,6 +181,8 @@ public interface BehaviorPlatform {
     void lookAtPlayer(NpcHandle npc, UUID player);
     /** Turns the NPC to one of its definition's named poses; refuses a pose it does not declare. */
     void pose(NpcHandle npc, String pose);
+    /** Whether the NPC stands in the world a name, UUID or dimension key names. A platform that cannot tell answers true. */
+    default boolean inWorld(NpcHandle npc, String world) { return true; }
     /** The NPC's anchor by name as a teleport destination; its world is empty when the anchor is in the NPC's own world. */
     default Point anchor(NpcHandle npc, String name) { throw refused("Anchors"); }
     /** Shows a vanilla animation on the NPC to everyone who sees it. */

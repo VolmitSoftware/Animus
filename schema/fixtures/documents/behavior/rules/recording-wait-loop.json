@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:recording-wait-loop",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:play-recording",
+      "arguments": {
+        "recording": "patrol",
+        "playback": "loop",
+        "wait": true
+      }
+    }
+  }
+}

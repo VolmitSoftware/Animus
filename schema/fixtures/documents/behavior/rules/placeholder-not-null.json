@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:placeholder-not-null",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Hi"
+      },
+      "templates": {
+        "/text": "Hi {{ player.name }}"
+      }
+    }
+  }
+}

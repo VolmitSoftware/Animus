@@ -244,7 +244,7 @@
         },
         {
           "const": "animus:build",
-          "description": "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z or where the NPC stands. Protection still applies."
+          "description": "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z, at a location written x,y,z or x,y,z,world such as a ray-trace result, or where the NPC stands. Protection still applies."
         },
         {
           "const": "animus:charge",
@@ -268,11 +268,11 @@
         },
         {
           "const": "animus:explode",
-          "description": "Sets off an explosion of power (0-16, default 1) at x, y, z of the NPC's world, or of world, or with no position at the NPC, or another NPC named by npc. fire and breakBlocks start fires and break blocks only when behaviors.actions explosionsDamageBlocks allows it; protection plugins decide as for any explosion."
+          "description": "Sets off an explosion of power (0-16, default 1) at x, y, z or at a location written x,y,z or x,y,z,world such as a ray-trace result, in the location's world, else world, else the NPC's; with no position at the NPC, or another NPC named by npc. fire and breakBlocks start fires and break blocks only when behaviors.actions explosionsDamageBlocks allows it; protection plugins decide as for any explosion."
         },
         {
           "const": "animus:give-book",
-          "description": "Gives the triggering player, or the player named by player, a written book. Pages use the dialogue colour codes. Reports given."
+          "description": "Gives the triggering player, or the player named by player, a written book. Pages take the colour codes Say takes. Reports given."
         },
         {
           "const": "animus:give-item",
@@ -280,11 +280,11 @@
         },
         {
           "const": "animus:look",
-          "description": "Turns the NPC, or another NPC named by npc, toward a position or the triggering player."
+          "description": "Turns the NPC, or another NPC named by npc, toward the triggering player, toward x, y and z, or toward a location written x,y,z or x,y,z,world such as player.location or a ray-trace result."
         },
         {
           "const": "animus:look-close",
-          "description": "Turns the NPC's look-close, or another NPC's named by npc, on or off until a restart or a definition change, with an optional range (1-64) and lineOfSight."
+          "description": "Makes the NPC, or another NPC named by npc, turn its head toward players near it (enabled true) or stop (enabled false) until a restart or a definition change; range (1-64) is how near they must be, and lineOfSight true needs a clear view."
         },
         {
           "const": "animus:message",
@@ -292,7 +292,7 @@
         },
         {
           "const": "animus:navigate",
-          "description": "Starts a route to a position in the NPC's world, or follows a reusable route. Completes when requested, or on arrival with wait."
+          "description": "Starts a route to a position in the NPC's world: x, y and z, a location written x,y,z or x,y,z,world such as player.location or a ray-trace result, or one of the NPC's anchors. A location in another world is refused. Or follows a reusable route. Completes when requested, or on arrival with wait."
         },
         {
           "const": "animus:open-gui",
@@ -340,7 +340,7 @@
         },
         {
           "const": "animus:say",
-          "description": "Sends dialogue text to the triggering player, the player named by player, or nearby players; {player_name} becomes that player's name."
+          "description": "Sends a line the NPC says to the triggering player, the player named by player, or nearby players; {player_name} becomes that player's name."
         },
         {
           "const": "animus:set-appearance",
@@ -388,7 +388,7 @@
         },
         {
           "const": "animus:teleport",
-          "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, to the NPC or the player, or the NPC to one of its anchors."
+          "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with an optional world, or to a location written x,y,z or x,y,z,world such as player.location, in its world when it names one; yaw and pitch are optional. Or teleports to the NPC or the player, or the NPC to one of its anchors."
         },
         {
           "const": "animus:title",
@@ -1553,6 +1553,11 @@
                       "minimum": -3.0E+7,
                       "maximum": 3.0E+7
                     },
+                    "location": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
                     "rotation": {
                       "type": "integer",
                       "minimum": 0,
@@ -1599,7 +1604,7 @@
                   "required": [
                     "operation"
                   ],
-                  "description": "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z or where the NPC stands. Protection still applies."
+                  "description": "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z, at a location written x,y,z or x,y,z,world such as a ray-trace result, or where the NPC stands. Protection still applies."
                 }
               },
               "required": [
@@ -2198,6 +2203,11 @@
                       "minimum": -3.0E+7,
                       "maximum": 3.0E+7
                     },
+                    "location": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
                     "world": {
                       "type": "string",
                       "minLength": 1,
@@ -2220,7 +2230,7 @@
                       "maxLength": 36
                     }
                   },
-                  "description": "Sets off an explosion of power (0-16, default 1) at x, y, z of the NPC's world, or of world, or with no position at the NPC, or another NPC named by npc. fire and breakBlocks start fires and break blocks only when behaviors.actions explosionsDamageBlocks allows it; protection plugins decide as for any explosion."
+                  "description": "Sets off an explosion of power (0-16, default 1) at x, y, z or at a location written x,y,z or x,y,z,world such as a ray-trace result, in the location's world, else world, else the NPC's; with no position at the NPC, or another NPC named by npc. fire and breakBlocks start fires and break blocks only when behaviors.actions explosionsDamageBlocks allows it; protection plugins decide as for any explosion."
                 }
               }
             }
@@ -2308,7 +2318,7 @@
                     "author",
                     "pages"
                   ],
-                  "description": "Gives the triggering player, or the player named by player, a written book. Pages use the dialogue colour codes. Reports given."
+                  "description": "Gives the triggering player, or the player named by player, a written book. Pages take the colour codes Say takes. Reports given."
                 }
               },
               "required": [
@@ -2550,6 +2560,11 @@
                       "minimum": -3.0E+7,
                       "maximum": 3.0E+7
                     },
+                    "location": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
                     "target": {
                       "const": "player"
                     },
@@ -2571,9 +2586,14 @@
                         "y",
                         "z"
                       ]
+                    },
+                    {
+                      "required": [
+                        "location"
+                      ]
                     }
                   ],
-                  "description": "Turns the NPC, or another NPC named by npc, toward a position or the triggering player."
+                  "description": "Turns the NPC, or another NPC named by npc, toward the triggering player, toward x, y and z, or toward a location written x,y,z or x,y,z,world such as player.location or a ray-trace result."
                 }
               },
               "required": [
@@ -2654,7 +2674,7 @@
                   "required": [
                     "enabled"
                   ],
-                  "description": "Turns the NPC's look-close, or another NPC's named by npc, on or off until a restart or a definition change, with an optional range (1-64) and lineOfSight."
+                  "description": "Makes the NPC, or another NPC named by npc, turn its head toward players near it (enabled true) or stop (enabled false) until a restart or a definition change; range (1-64) is how near they must be, and lineOfSight true needs a clear view."
                 }
               },
               "required": [
@@ -2829,6 +2849,11 @@
                       "minimum": -3.0E+7,
                       "maximum": 3.0E+7
                     },
+                    "location": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
                     "mode": {
                       "enum": [
                         "walk",
@@ -2867,9 +2892,14 @@
                         "y",
                         "z"
                       ]
+                    },
+                    {
+                      "required": [
+                        "location"
+                      ]
                     }
                   ],
-                  "description": "Starts a route to a position in the NPC's world, or follows a reusable route. Completes when requested, or on arrival with wait."
+                  "description": "Starts a route to a position in the NPC's world: x, y and z, a location written x,y,z or x,y,z,world such as player.location or a ray-trace result, or one of the NPC's anchors. A location in another world is refused. Or follows a reusable route. Completes when requested, or on arrival with wait."
                 }
               },
               "required": [
@@ -3822,7 +3852,7 @@
                   "required": [
                     "text"
                   ],
-                  "description": "Sends dialogue text to the triggering player, the player named by player, or nearby players; {player_name} becomes that player's name."
+                  "description": "Sends a line the NPC says to the triggering player, the player named by player, or nearby players; {player_name} becomes that player's name."
                 }
               },
               "required": [
@@ -4858,6 +4888,11 @@
                       "minimum": -3.0E+7,
                       "maximum": 3.0E+7
                     },
+                    "location": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
                     "world": {
                       "type": "string",
                       "minLength": 1,
@@ -4900,6 +4935,11 @@
                     },
                     {
                       "required": [
+                        "location"
+                      ]
+                    },
+                    {
+                      "required": [
                         "to"
                       ]
                     },
@@ -4909,7 +4949,7 @@
                       ]
                     }
                   ],
-                  "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, to the NPC or the player, or the NPC to one of its anchors."
+                  "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with an optional world, or to a location written x,y,z or x,y,z,world such as player.location, in its world when it names one; yaw and pitch are optional. Or teleports to the NPC or the player, or the NPC to one of its anchors."
                 }
               },
               "required": [
@@ -7606,8 +7646,8 @@
         "radius": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "maximum": 64.0,
-          "description": "Blocks, above 0."
+          "maximum": 32,
+          "description": "Blocks, above 0 and at most 32. The server's behaviors.triggers.maximumEntityRadius (16 by default) caps it; a larger radius leaves the trigger unbound."
         },
         "entity": {
           "type": "string",
@@ -7804,8 +7844,8 @@
         "radius": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "maximum": 64.0,
-          "description": "Blocks, above 0."
+          "maximum": 32,
+          "description": "Blocks, above 0 and at most 32. The server's behaviors.triggers.maximumEntityRadius (16 by default) caps it; a larger radius leaves the trigger unbound."
         },
         "item": {
           "type": "string",
@@ -7997,8 +8037,8 @@
         "radius": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "maximum": 64.0,
-          "description": "Blocks, above 0."
+          "maximum": 32,
+          "description": "Blocks, above 0 and at most 32. The server's behaviors.triggers.maximumEntityRadius (16 by default) caps it; a larger radius leaves the trigger unbound."
         },
         "entity": {
           "type": "string",
@@ -8070,8 +8110,8 @@
         "radius": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "maximum": 64.0,
-          "description": "Blocks, above 0."
+          "maximum": 32,
+          "description": "Blocks, above 0 and at most 32. The server's behaviors.triggers.maximumEntityRadius (16 by default) caps it; a larger radius leaves the trigger unbound."
         },
         "npc": {
           "type": "string",

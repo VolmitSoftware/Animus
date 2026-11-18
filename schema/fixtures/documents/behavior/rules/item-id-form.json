@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:item-id-form",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:take-item",
+      "arguments": {
+        "item": "Gold Ingot"
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:attribute-unknown",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:set-attribute",
+      "arguments": {
+        "attribute": "wingspan",
+        "value": 2
+      }
+    }
+  }
+}

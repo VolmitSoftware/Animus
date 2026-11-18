@@ -8,6 +8,8 @@ public record TriggerSettings(boolean enabled, int eventQueue, int eventsPerTick
                               int proximityIntervalTicks, int proximityViewersPerTick, int proximityCandidates,
                               int proximityTrackedPerViewer, int playerCooldownTicks, int entityIntervalTicks, int entityScansPerTick,
                               int entityCandidates, int maximumEntityRadius, int entityTrackedPerNpc, int projectilesFollowed) {
+    /** The highest maximumEntityRadius the server accepts, so no larger radius of an event looked for can ever be bound. */
+    public static final int MAXIMUM_ENTITY_RADIUS = 32;
     public static final TriggerSettings DEFAULT = new TriggerSettings(true, 256, 32, 8, 128, 4, 2, 100, 32, 2, 1, 20, 0,
             4096, 1024, 20, 32, 5, 16, 32, 64, 20, 5, 16, 32, 16, 64, 256);
 
@@ -36,7 +38,7 @@ public record TriggerSettings(boolean enabled, int eventQueue, int eventsPerTick
         bound("entityIntervalTicks", entityIntervalTicks, 1, 200);
         bound("entityScansPerTick", entityScansPerTick, 1, 256);
         bound("entityCandidates", entityCandidates, 1, 256);
-        bound("maximumEntityRadius", maximumEntityRadius, 1, 32);
+        bound("maximumEntityRadius", maximumEntityRadius, 1, MAXIMUM_ENTITY_RADIUS);
         bound("entityTrackedPerNpc", entityTrackedPerNpc, 1, 1024);
         bound("projectilesFollowed", projectilesFollowed, 1, 2048);
     }

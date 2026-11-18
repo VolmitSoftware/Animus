@@ -104,6 +104,58 @@ public enum TriggerKind {
             java.util.Map.entry("click", "click"), java.util.Map.entry("item", "item"), java.util.Map.entry("block", "block"), java.util.Map.entry("cause", "cause"),
             java.util.Map.entry("damager", "damager"), java.util.Map.entry("entity", "entity"), java.util.Map.entry("projectile", "projectile"),
             java.util.Map.entry("shooter", "shooter"), java.util.Map.entry("bow", "bow"), java.util.Map.entry("quest", "quest"));
+    /** What a context value is when an expression reads it. */
+    public static final String BOOLEAN = "boolean", NUMBER = "number", TEXT = "text", LIST = "list", MAP = "map";
+    private static final String[] SENSED_ENTITY = {"x", NUMBER, "y", NUMBER, "z", NUMBER, "entity", TEXT, "entity_type", TEXT, "entity_name", TEXT};
+    private static final String[] AT_BLOCK = {"world", TEXT, "x", NUMBER, "y", NUMBER, "z", NUMBER, "location", TEXT};
+    private static final String[] SHOT = {"projectile", TEXT, "projectile_uuid", TEXT, "shooter", TEXT, "shooter_uuid", TEXT};
+
+    /**
+     * The keys a run of this event reads as {@code context.<key>}, in order, each with its type. The event producers are
+     * held to it by tests; a key a firing may leave out, such as a death's message, is still listed.
+     */
+    public java.util.Map<String, String> context() {
+        return switch (this) {
+            case INTERACTION -> keys("action", TEXT, "sneaking", BOOLEAN, "hand", TEXT);
+            case DAMAGE -> keys("damage", NUMBER, "attacker", TEXT, "attacker_type", TEXT);
+            case DEATH -> keys("killer", TEXT, "killer_type", TEXT);
+            case ENTITY_PROXIMITY -> keys(SENSED_ENTITY, "phase", TEXT);
+            case ENTITY_COLLIDE -> keys(SENSED_ENTITY, "contact", TEXT);
+            case HIT_BY_PROJECTILE -> keys(SENSED_ENTITY, "projectile", TEXT, "projectile_uuid", TEXT, "stopped", BOOLEAN);
+            case ITEM_DROPPED -> keys(SENSED_ENTITY, "item", TEXT, "amount", NUMBER, "item_entity", TEXT, "thrown", BOOLEAN);
+            case VEHICLE_BUMP -> keys(SENSED_ENTITY, "speed", NUMBER, "rider", TEXT);
+            case LEASH_TIE, LEASH_PASS -> keys(SENSED_ENTITY, "holder", TEXT, "holder_type", TEXT);
+            case NPC_PROXIMITY -> keys("x", NUMBER, "y", NUMBER, "z", NUMBER, "npc", TEXT, "npc_uuid", TEXT, "phase", TEXT);
+            case NPC_SPEECH -> keys("npc", TEXT, "npc_uuid", TEXT, "text", TEXT);
+            case PLAYER_JOIN -> keys("first", BOOLEAN);
+            case PLAYER_CHAT, PLAYER_DEATH -> keys("message", TEXT);
+            case COMMAND -> keys("command", TEXT, "alias", TEXT, "args", LIST, "raw_args", TEXT);
+            case PLAYER_WORLD_CHANGE -> keys("from", TEXT, "to", TEXT);
+            case PLAYER_AREA -> keys("phase", TEXT, "area", TEXT, "world", TEXT, "cause", TEXT);
+            case PLAYER_INVENTORY_OPEN, PLAYER_INVENTORY_CLOSE -> keys("inventory_type", TEXT, "inventory_items", LIST, "inventory_location", TEXT);
+            case PLAYER_INVENTORY_CLICK -> keys("inventory_type", TEXT, "click", TEXT, "slot", NUMBER, "item", TEXT);
+            case PLAYER_ITEM_DROP, PLAYER_ITEM_PICKUP, PLAYER_ITEM_CONSUME -> keys("item", TEXT, "amount", NUMBER);
+            case PLAYER_BLOCK_CLICK -> keys(new String[] {"block", TEXT}, AT_BLOCK, new String[] {"click", TEXT, "hand", TEXT});
+            case PLAYER_BLOCK_PLACE, PLAYER_BLOCK_BREAK -> keys(new String[] {"block", TEXT}, AT_BLOCK);
+            case PLAYER_DAMAGED -> keys("cause", TEXT, "damage", NUMBER, "damager", TEXT);
+            case PLAYER_DAMAGE_ENTITY -> keys("entity", TEXT, "entity_uuid", TEXT, "cause", TEXT, "damage", NUMBER);
+            case PLAYER_KILL -> keys("entity", TEXT, "entity_uuid", TEXT);
+            case PROJECTILE_LAUNCH -> keys(AT_BLOCK, SHOT);
+            case PROJECTILE_HIT -> keys(new String[] {"block", TEXT}, AT_BLOCK, SHOT, new String[] {"entity", TEXT, "entity_uuid", TEXT});
+            case ENTITY_SHOOT_BOW -> keys(AT_BLOCK, SHOT, new String[] {"bow", TEXT, "force", NUMBER, "hand", TEXT});
+            case QUEST_STARTED, QUEST_STAGE, QUEST_COMPLETED -> keys("quest", TEXT, "stage", NUMBER, "title", TEXT);
+            case PROXIMITY, SPAWN, DESPAWN, WAYPOINT, TIMER, DIALOGUE_CHOICE, MODULE, BUILD_FINISHED, BUILD_PAUSED, ANIMATION_FINISHED, PLAYER_QUIT, SERVER_START,
+                 PLAYER_RESPAWN -> java.util.Map.of();
+        };
+    }
+    private static java.util.Map<String, String> keys(String... pairs) { return keys(new String[][] {pairs}); }
+    private static java.util.Map<String, String> keys(String[] first, String... rest) { return keys(new String[][] {first, rest}); }
+    private static java.util.Map<String, String> keys(String[]... groups) {
+        java.util.Map<String, String> keys = new java.util.LinkedHashMap<>();
+        for (String[] pairs : groups) for (int index = 0; index < pairs.length; index += 2) keys.put(pairs[index], pairs[index + 1]);
+        return java.util.Collections.unmodifiableMap(keys);
+    }
+
     /** Whether a trigger of this event may name a {@code cancel} condition: the platform event can be cancelled. */
     public boolean cancellable() { return fields.contains("cancel"); }
     /** Events about real entities and other NPCs near an NPC, which the platform senses because NPC bodies are not entities. */
@@ -113,6 +165,11 @@ public enum TriggerKind {
             default -> false;
         };
     }
+    /**
+     * Sensed events the platform finds by looking around the NPC, so the server's maximumEntityRadius caps their radius.
+     * Speech is heard and projectiles and lead ties are reported, so those are not looked for.
+     */
+    public boolean scanned() { return sensed() && this != HIT_BY_PROJECTILE && this != LEASH_TIE && this != NPC_SPEECH; }
     public static List<String> names() {
         List<String> names = new ArrayList<>();
         for (TriggerKind kind : values()) names.add(kind.jsonName);

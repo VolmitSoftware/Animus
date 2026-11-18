@@ -15,7 +15,9 @@ import 'package:jaspr/jaspr.dart' show Component;
 import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_text.dart';
+import '../../logic/inspect/behavior_eval.dart' show displayValue;
 import '../../logic/inspect/behavior_words.dart';
+import '../../logic/suggest/field_profile.dart';
 import '../../logic/offline/dry_run.dart';
 import '../../logic/offline/new_documents.dart';
 import '../../mc/npc/npc_look.dart';
@@ -32,6 +34,8 @@ import '../../ui/stage_frame.dart';
 import '../gui/gui_fields.dart';
 import '../mc/mc_stage.dart';
 import '../select/animus_select.dart';
+import '../suggest/autocomplete_input.dart';
+import '../../ui/number_input.dart';
 import '../select/picker_scope.dart';
 import '../../ui/stack.dart';
 import '../../ui/problem_text.dart';
@@ -261,13 +265,13 @@ class _DryRunPanelState extends State<DryRunPanel> {
     if (step.speech != null) {
       return dom.li(classes: 'animus-conv-chat-npc', <Widget>[
         dom.span(classes: 'animus-conv-chat-name', <Widget>[Component.text('$name »')]),
-        GuiStyledText(step.speech!, defaultColor: null),
+        GuiStyledText(step.speech!, defaultColor: null, sample: false),
       ]);
     }
     if (step.prompt != null) {
       return dom.li(classes: 'animus-conv-chat-npc is-question', <Widget>[
         dom.span(classes: 'animus-conv-chat-name', <Widget>[Component.text('$name »')]),
-        GuiStyledText(step.prompt!, defaultColor: null),
+        GuiStyledText(step.prompt!, defaultColor: null, sample: false),
         dom.div(classes: 'animus-conv-chat-answers', attributes: const <String, String>{'role': 'group', 'aria-label': 'Answers'}, <Widget>[
           for (final DryRunOption option in step.options)
             Button.secondary(
@@ -291,11 +295,37 @@ class _DryRunPanelState extends State<DryRunPanel> {
         ),
       ]);
     }
+    final JsonMap? sample = step.sample;
+    if (sample != null) {
+      return dom.li(classes: 'animus-conv-chat-note animus-test-sample', attributes: <String, String>{'data-outcome': step.outcome.name}, <Widget>[
+        Component.text('On the server only: ${step.text}'),
+        stack(spacing: 4, <Widget>[
+          for (final MapEntry<String, Object?> entry in sample.entries)
+            if (entry.value is String || entry.value is num)
+              _sampleField(step, sample, entry.key, entry.value)
+            else
+              noteLine('${entry.key}: ${displayValue(entry.value)}'),
+        ]),
+      ]);
+    }
     return dom.li(
       classes: 'animus-conv-chat-note${step.outcome == DryRunOutcome.problem ? ' is-error' : ''}',
       attributes: <String, String>{'data-outcome': step.outcome.name, if (step.outcome == DryRunOutcome.problem) 'role': 'alert'},
       <Widget>[Component.text(step.outcome == DryRunOutcome.serverOnly ? 'On the server only: ${step.text}' : step.text)],
     );
+  }
+
+  /// One key of a sample result, which reruns the test as it changes.
+  Widget _sampleField(DryRunStep step, JsonMap sample, String key, Object? value) {
+    void put(Object? next) => _next(_inputs!.withSample(step.path, <String, Object?>{...sample, key: next}));
+    return Row(gapSize: Gap.sm, crossAxisAlignment: CrossAxisAlignment.center, children: <Widget>[
+      dom.code(<Widget>[Component.text(key)]),
+      Expanded(
+        child: value is num
+            ? NumberInput(value: value, integer: value is int, label: 'Sample $key', onChanged: (num? next) => put(next ?? 0))
+            : AutocompleteInput(value: value! as String, label: 'Sample $key', profile: FieldProfile.none, onChanged: put),
+      ),
+    ]);
   }
 
   /// "If flag met is true (assumed true)" reads "If flag met is true".

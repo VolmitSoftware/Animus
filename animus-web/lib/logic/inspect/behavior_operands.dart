@@ -176,31 +176,24 @@ JsonMap setArgumentSlotText(JsonMap node, String key, String text) {
   return setArgumentSource(node, key, source, text: text);
 }
 
-/// Pointers in the slot maps that name no null placeholder in `arguments`.
-List<String> strayPointers(JsonMap node) {
-  final JsonMap arguments = asMap(node['arguments']);
-  return <String>[
-    for (final String field in slotFields)
-      for (final String pointer in asMap(node[field]).keys)
-        if (!_placeholderAt(arguments, pointer)) pointer,
-  ];
+/// [node] with text argument [key] set to [text]: a template when the text
+/// has `{{ }}` holes, so the server fills them as the step runs, else the
+/// text as written. Null removes the argument.
+JsonMap setArgumentText(JsonMap node, String key, String? text) {
+  if (text != null && text.contains('{{')) return setArgumentSource(node, key, ArgumentSource.template, text: text);
+  final JsonMap out = setArgumentSource(node, key, ArgumentSource.literal, literal: text ?? '');
+  if (text == null) out['arguments'] = <String, Object?>{...asMap(out['arguments'])}..remove(key);
+  return out;
 }
 
-bool _placeholderAt(Object? arguments, String pointer) {
-  if (!pointer.startsWith('/')) return false;
-  Object? current = arguments;
-  for (final String raw in pointer.substring(1).split('/')) {
-    final String segment = raw.replaceAll('~1', '/').replaceAll('~0', '~');
-    if (current is Map<String, Object?>) {
-      if (!current.containsKey(segment)) return false;
-      current = current[segment];
-    } else if (current is List<Object?>) {
-      final int? index = int.tryParse(segment);
-      if (index == null || index < 0 || index >= current.length) return false;
-      current = current[index];
-    } else {
-      return false;
-    }
-  }
-  return current == null;
-}
+/// A name for the variable that keeps [capability]'s result.
+String resultVariableName(String? capability) => switch (capability) {
+      'animus:ray-trace' => 'seen',
+      'animus:read-block' => 'block',
+      'animus:read-inventory' => 'inventory',
+      _ => 'result',
+    };
+
+/// The hint under argument [key]: the shape of a location, else the field's
+/// own bounds.
+String? argumentHint(String key, String? bounds) => key == 'location' ? 'Written x,y,z,world' : bounds;

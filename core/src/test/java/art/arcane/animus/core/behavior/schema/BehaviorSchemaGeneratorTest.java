@@ -101,6 +101,107 @@ class BehaviorSchemaGeneratorTest {
         assertEquals(Set.copyOf(art.arcane.animus.core.behavior.trigger.TriggerCompiler.ACTIONS), names(completions.getAsJsonObject("triggers").getAsJsonObject("interaction").getAsJsonObject("fields").getAsJsonObject("action").getAsJsonArray("enum")));
     }
 
+    @Test void aLookedForRadiusPublishesTheServerCapAndOtherRadiiKeepTheirOwn() {
+        JsonObject triggers = BehaviorSchemaGenerator.completions(withModules()).getAsJsonObject("triggers");
+        JsonObject definitions = BehaviorSchemaGenerator.behaviorSchema(withModules()).getAsJsonObject("$defs");
+        for (String sensed : List.of("entity_proximity", "item_dropped", "leash_pass", "npc_proximity")) {
+            JsonObject radius = triggers.getAsJsonObject(sensed).getAsJsonObject("fields").getAsJsonObject("radius");
+            assertEquals(32, radius.get("maximum").getAsInt(), sensed);
+            assertTrue(radius.get("description").getAsString().contains("behaviors.triggers.maximumEntityRadius (16 by default)"), radius.toString());
+            assertEquals(32, definitions.getAsJsonObject("trigger-" + sensed).getAsJsonObject("properties").getAsJsonObject("radius").get("maximum").getAsInt(), sensed);
+        }
+        for (String own : List.of("proximity", "npc_speech")) {
+            JsonObject radius = triggers.getAsJsonObject(own).getAsJsonObject("fields").getAsJsonObject("radius");
+            assertEquals(64, radius.get("maximum").getAsInt(), own);
+            assertFalse(radius.get("description").getAsString().contains("maximumEntityRadius"), own);
+        }
+    }
+
+    @Test void everyEventPublishesTheContextARunReadsWithItsTypes() {
+        JsonObject triggers = BehaviorSchemaGenerator.completions(withModules()).getAsJsonObject("triggers");
+        for (TriggerKind kind : TriggerKind.values()) {
+            JsonObject trigger = triggers.getAsJsonObject(kind.jsonName());
+            List<String> keys = new ArrayList<>();
+            for (JsonElement key : trigger.getAsJsonArray("context")) keys.add(key.getAsString());
+            assertEquals(List.copyOf(kind.context().keySet()), keys, kind.jsonName());
+            assertEquals(kind.context().keySet(), trigger.getAsJsonObject("contextTypes").keySet(), kind.jsonName());
+            for (Map.Entry<String, String> type : kind.context().entrySet())
+                assertEquals(type.getValue(), trigger.getAsJsonObject("contextTypes").get(type.getKey()).getAsString(), kind.jsonName() + " " + type.getKey());
+        }
+        assertEquals(List.of("action", "sneaking", "hand"), List.copyOf(TriggerKind.INTERACTION.context().keySet()));
+        assertEquals("boolean", TriggerKind.INTERACTION.context().get("sneaking"));
+        assertEquals("list", TriggerKind.COMMAND.context().get("args"));
+        assertEquals("number", TriggerKind.ITEM_DROPPED.context().get("amount"));
+        assertEquals(Map.of(), TriggerKind.SPAWN.context());
+    }
+
+    @Test void everyPublishedFunctionIsDocumentedWithItsArityAndNoDocNamesAMissingOne() {
+        JsonObject expressions = BehaviorSchemaGenerator.completions(withModules()).getAsJsonObject("language").getAsJsonObject("expressions");
+        Set<String> published = new java.util.TreeSet<>(names(expressions.getAsJsonArray("functions")));
+        published.addAll(names(expressions.getAsJsonArray("standardFunctions")));
+        JsonObject docs = expressions.getAsJsonObject("functionDocs");
+        assertEquals(published, new java.util.TreeSet<>(docs.keySet()));
+        assertEquals(published, new java.util.TreeSet<>(ExpressionDocs.FUNCTIONS.keySet()));
+        for (Map.Entry<String, JsonElement> entry : docs.entrySet()) {
+            String name = entry.getKey();
+            JsonObject doc = entry.getValue().getAsJsonObject();
+            assertEquals(Set.of("call", "returns", "about"), doc.keySet(), name);
+            String call = doc.get("call").getAsString();
+            assertTrue(call.startsWith(name + "(") && call.endsWith(")"), call);
+            assertTrue(Set.of("boolean", "number", "text", "list", "map", "any").contains(doc.get("returns").getAsString()), name);
+            String about = doc.get("about").getAsString();
+            assertTrue(!about.isBlank() && about.endsWith(".") && !about.contains("—"), name + ": " + about);
+            String inside = call.substring(name.length() + 1, call.length() - 1).strip();
+            List<String> parameters = inside.isEmpty() ? List.of() : List.of(inside.split(",\\s*"));
+            int required = (int) parameters.stream().filter((String parameter) -> !parameter.startsWith("[")).count();
+            assertTrue(parameters.subList(0, required).stream().noneMatch((String parameter) -> parameter.startsWith("[")), "optional parameters come last: " + call);
+            for (int count = required; count <= parameters.size(); count++) assertFalse(arityRefused(name, count), call + " refuses " + count + " arguments");
+            if (required > 0) assertTrue(arityRefused(name, required - 1), call + " accepts " + (required - 1) + " arguments");
+            assertTrue(arityRefused(name, parameters.size() + 1), call + " accepts " + (parameters.size() + 1) + " arguments");
+        }
+    }
+    /** Whether calling the function with that many arguments fails for the count itself rather than their values. */
+    private static boolean arityRefused(String name, int count) {
+        String source = name + "(" + String.join(", ", java.util.Collections.nCopies(count, "1")) + ")";
+        try { art.arcane.animus.core.behavior.BehaviorExpression.compile(source, Set.of(), "$.expression").evaluate(ENVIRONMENT); return false; }
+        catch (RuntimeException failed) {
+            String message = String.valueOf(failed.getMessage());
+            return message.startsWith(name + " takes ") || message.startsWith(name + " expects ");
+        }
+    }
+    private static final art.arcane.animus.core.behavior.BehaviorExpression.Environment ENVIRONMENT = new art.arcane.animus.core.behavior.BehaviorExpression.Environment() {
+        @Override public art.arcane.animus.core.behavior.BehaviorProgram.Value variable(String name) { return null; }
+        @Override public art.arcane.animus.core.behavior.BehaviorFacts facts() { return art.arcane.animus.core.behavior.BehaviorFacts.NONE; }
+        @Override public java.util.Optional<java.util.UUID> player() { return java.util.Optional.empty(); }
+        @Override public java.util.UUID npc() { return new java.util.UUID(0, 1); }
+        @Override public Map<String, Object> context() { return Map.of(); }
+        @Override public java.util.Optional<art.arcane.animus.core.behavior.BehaviorProgram.Value> flag(String scope, String name) { return java.util.Optional.empty(); }
+        @Override public long quest(String scope, String name) { return 0; }
+        @Override public java.util.random.RandomGenerator random() { return new java.util.Random(7); }
+    };
+
+    @Test void everyFactIsTypedAndFormatsNameRealFacts() {
+        JsonObject expressions = BehaviorSchemaGenerator.completions(withModules()).getAsJsonObject("language").getAsJsonObject("expressions");
+        JsonObject types = expressions.getAsJsonObject("factTypes");
+        assertEquals(Set.of("player", "npc", "server"), types.keySet());
+        Map<String, List<String>> facts = Map.of("player", art.arcane.animus.core.behavior.BehaviorExpression.PLAYER_FACTS, "npc", art.arcane.animus.core.behavior.BehaviorExpression.NPC_FACTS,
+                "server", art.arcane.animus.core.behavior.BehaviorExpression.SERVER_FACTS);
+        for (Map.Entry<String, List<String>> root : facts.entrySet()) {
+            assertEquals(root.getValue(), List.copyOf(types.getAsJsonObject(root.getKey()).keySet()), root.getKey());
+            for (Map.Entry<String, JsonElement> type : types.getAsJsonObject(root.getKey()).entrySet())
+                assertTrue(Set.of("boolean", "number", "text", "list", "map").contains(type.getValue().getAsString()), root.getKey() + "." + type.getKey());
+        }
+        assertEquals("list", types.getAsJsonObject("server").get("players").getAsString());
+        assertEquals("list", types.getAsJsonObject("npc").get("behaviors").getAsString());
+        JsonObject formats = expressions.getAsJsonObject("factFormats");
+        assertEquals("x,y,z,world", formats.get("player.location").getAsString());
+        assertEquals("x,y,z,world", formats.get("npc.location").getAsString());
+        for (String fact : formats.keySet()) {
+            String[] parts = fact.split("\\.", 2);
+            assertTrue(facts.containsKey(parts[0]) && facts.get(parts[0]).contains(parts[1]), fact);
+        }
+    }
+
     @Test void schemaCarriesEveryLanguageElement() {
         String behavior = BehaviorSchemaGenerator.behaviorSchema(withModules()).toString();
         for (BehaviorNodeType node : BehaviorNodeType.values()) assertTrue(behavior.contains("\"const\":\"" + node.jsonName() + "\""), node.jsonName());

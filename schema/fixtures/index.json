@@ -296,7 +296,8 @@
       "id": "town:stray-break",
       "expect": {
         "schema": true,
-        "java": false
+        "java": false,
+        "field": "$.routines.main.steps[0].then"
       }
     },
     {
@@ -414,6 +415,475 @@
       "expect": {
         "schema": true,
         "java": false
+      }
+    },
+    {
+      "path": "documents/behavior/rules/continue-in-parallel.json",
+      "kind": "behavior",
+      "id": "rules:continue-in-parallel",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.body.branches[0]"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/return-in-parallel.json",
+      "kind": "behavior",
+      "id": "rules:return-in-parallel",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.branches[1]"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/duplicate-trigger-id.json",
+      "kind": "behavior",
+      "id": "rules:duplicate-trigger-id",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.triggers[1].id"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/command-name-taken.json",
+      "kind": "behavior",
+      "id": "rules:command-name-taken",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.triggers[1].aliases[0]"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/unknown-entry.json",
+      "kind": "behavior",
+      "id": "rules:unknown-entry",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.entry"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/unknown-call.json",
+      "kind": "behavior",
+      "id": "rules:unknown-call",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.routine"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/unknown-trigger-routine.json",
+      "kind": "behavior",
+      "id": "rules:unknown-trigger-routine",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.triggers[0].routine"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/set-undeclared.json",
+      "kind": "behavior",
+      "id": "rules:set-undeclared",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.variable"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/result-undeclared.json",
+      "kind": "behavior",
+      "id": "rules:result-undeclared",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.result"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/reserved-variable.json",
+      "kind": "behavior",
+      "id": "rules:reserved-variable",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.variables.context"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/set-wrong-literal.json",
+      "kind": "behavior",
+      "id": "rules:set-wrong-literal",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.value"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/variable-type-mismatch.json",
+      "kind": "behavior",
+      "id": "rules:variable-type-mismatch",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.value.variable"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/template-for-ticks.json",
+      "kind": "behavior",
+      "id": "rules:template-for-ticks",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.ticks.template"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/unknown-fact.json",
+      "kind": "behavior",
+      "id": "rules:unknown-fact",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.expression"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/single-equals.json",
+      "kind": "behavior",
+      "id": "rules:single-equals",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.expression"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/call-argument-undeclared.json",
+      "kind": "behavior",
+      "id": "rules:call-argument-undeclared",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.name"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/loop-index-type.json",
+      "kind": "behavior",
+      "id": "rules:loop-index-type",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.index"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/loop-variable-kept.json",
+      "kind": "behavior",
+      "id": "rules:loop-variable-kept",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.as"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/binding-undeclared.json",
+      "kind": "behavior",
+      "id": "rules:binding-undeclared",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.bindings[/text].variable"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/placeholder-not-null.json",
+      "kind": "behavior",
+      "id": "rules:placeholder-not-null",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.templates[/text]"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/placeholder-missing.json",
+      "kind": "behavior",
+      "id": "rules:placeholder-missing",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.expressions[/radius]"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/hole-unknown-variable.json",
+      "kind": "behavior",
+      "id": "rules:hole-unknown-variable",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.templates[/text]"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/explode-partial-position.json",
+      "kind": "behavior",
+      "id": "rules:explode-partial-position",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.x"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/message-player-to-all.json",
+      "kind": "behavior",
+      "id": "rules:message-player-to-all",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.player"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/say-blank.json",
+      "kind": "behavior",
+      "id": "rules:say-blank",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.text"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/command-slash.json",
+      "kind": "behavior",
+      "id": "rules:command-slash",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.command"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/choices-duplicate-option.json",
+      "kind": "behavior",
+      "id": "rules:choices-duplicate-option",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.options"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/flag-clear-and-value.json",
+      "kind": "behavior",
+      "id": "rules:flag-clear-and-value",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.clear"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/sidebar-without-title.json",
+      "kind": "behavior",
+      "id": "rules:sidebar-without-title",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.title"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/navigate-timeout-without-wait.json",
+      "kind": "behavior",
+      "id": "rules:navigate-timeout-without-wait",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.timeoutTicks"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/teleport-anchor-player.json",
+      "kind": "behavior",
+      "id": "rules:teleport-anchor-player",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.anchor"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/combat-target-missing.json",
+      "kind": "behavior",
+      "id": "rules:combat-target-missing",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.target"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/build-option-on-pause.json",
+      "kind": "behavior",
+      "id": "rules:build-option-on-pause",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.schematic"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/attribute-unknown.json",
+      "kind": "behavior",
+      "id": "rules:attribute-unknown",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.attribute"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/gift-stack-and-item.json",
+      "kind": "behavior",
+      "id": "rules:gift-stack-and-item",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.stack"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/charge-nothing.json",
+      "kind": "behavior",
+      "id": "rules:charge-nothing",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/flag-player-global.json",
+      "kind": "behavior",
+      "id": "rules:flag-player-global",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.player"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/bossbar-remove-with-title.json",
+      "kind": "behavior",
+      "id": "rules:bossbar-remove-with-title",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.operation"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/recording-wait-loop.json",
+      "kind": "behavior",
+      "id": "rules:recording-wait-loop",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.wait"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/appearance-reset-and-name.json",
+      "kind": "behavior",
+      "id": "rules:appearance-reset-and-name",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.reset"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/quest-id-form.json",
+      "kind": "behavior",
+      "id": "rules:quest-id-form",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.quest"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/item-id-form.json",
+      "kind": "behavior",
+      "id": "rules:item-id-form",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.item"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/permission-form.json",
+      "kind": "behavior",
+      "id": "rules:permission-form",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.permission"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/accepted.json",
+      "kind": "behavior",
+      "id": "rules:accepted",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "documents/behavior/rules/location-form.json",
+      "kind": "behavior",
+      "id": "rules:location-form",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.location"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/location-and-coordinates.json",
+      "kind": "behavior",
+      "id": "rules:location-and-coordinates",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.location"
+      }
+    },
+    {
+      "path": "documents/behavior/rules/location-and-world.json",
+      "kind": "behavior",
+      "id": "rules:location-and-world",
+      "expect": {
+        "schema": true,
+        "java": false,
+        "field": "$.routines.main.arguments.world"
       }
     }
   ],

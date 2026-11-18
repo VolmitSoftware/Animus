@@ -160,7 +160,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         });
         waits = new NavigationWaits(settings.navigationWaits(), platform);
         choices = new PendingChoices(settings.pendingChoices(), choiceSink, System::nanoTime,
-                failure -> this.log.accept("Dialogue choice listener failed: " + failure.getClass().getSimpleName()));
+                failure -> this.log.accept("Answer listener failed: " + failure.getClass().getSimpleName()));
         registerConditions();
         registerActions();
     }
@@ -317,7 +317,9 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         register(name, effect, Kind.CONDITION, description, schema, semantics, null, body);
     }
 
-    private static final String COORDINATES = number("x", -30_000_000, 30_000_000) + "," + number("y", -30_000_000, 30_000_000) + "," + number("z", -30_000_000, 30_000_000);
+    private static final String COORDINATES = number("x", -MAXIMUM_COORDINATE, MAXIMUM_COORDINATE) + "," + number("y", -MAXIMUM_COORDINATE, MAXIMUM_COORDINATE) + "," + number("z", -MAXIMUM_COORDINATE, MAXIMUM_COORDINATE);
+    /** A position written as the location facts write it, instead of x, y and z. */
+    private static final String LOCATION = string("location", 128);
     private static final String AUDIENCE = choice("audience", "trigger", "nearby") + "," + number("radius", 1, 64);
     private static final String STATE = string("name", 64) + "," + choice("scope", "global", "npc", "player", "relationship");
     /** Names an online player by UUID instead of the triggering player. */
@@ -391,7 +393,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     }
 
     private void registerActions() {
-        action("say", Effect.PRESENTATION, "Sends dialogue text to the triggering player, the player named by player, or nearby players; {player_name} becomes that player's name.",
+        action("say", Effect.PRESENTATION, "Sends a line the NPC says to the triggering player, the player named by player, or nearby players; {player_name} becomes that player's name.",
                 schema(string("text", 1024) + "," + AUDIENCE + "," + PLAYER + "," + integer("bubbleTicks", 1, MAXIMUM_BUBBLE_TICKS) + "," + bool("chat"), required("text")),
                 (arguments, problems) -> { plainText(arguments, "text", problems); checkPlayer(arguments, problems); },
                 call -> {
@@ -418,9 +420,9 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                 schema(string("command", 1024) + "," + choice("as", "console", "player") + "," + bool("asOperator") + "," + PLAYER + "," + texts("permissions", 1, MAXIMUM_COMMAND_PERMISSIONS, 128)
                         + "," + integer("permissionTicks", 0, MAXIMUM_PERMISSION_TICKS), required("command")),
                 BuiltinArguments::checkCommand, this::runCommand);
-        action("navigate", Effect.WORLD, "Starts a route to a position in the NPC's world, or follows a reusable route. Completes when requested, or on arrival with wait.",
-                schema(string("route", 64) + "," + string("anchor", 32) + "," + COORDINATES + "," + choice("mode", "walk", "swim", "fly") + "," + number("speed", 1, 5) + "," + bool("wait") + "," + integer("timeoutTicks", MINIMUM_WAIT_TICKS, MAXIMUM_WAIT_TICKS),
-                        "\"oneOf\":[{" + required("route") + "},{" + required("anchor") + "},{" + required("x", "y", "z") + "}]"),
+        action("navigate", Effect.WORLD, "Starts a route to a position in the NPC's world: x, y and z, a location written x,y,z or x,y,z,world such as player.location or a ray-trace result, or one of the NPC's anchors. A location in another world is refused. Or follows a reusable route. Completes when requested, or on arrival with wait.",
+                schema(string("route", 64) + "," + string("anchor", 32) + "," + COORDINATES + "," + LOCATION + "," + choice("mode", "walk", "swim", "fly") + "," + number("speed", 1, 5) + "," + bool("wait") + "," + integer("timeoutTicks", MINIMUM_WAIT_TICKS, MAXIMUM_WAIT_TICKS),
+                        "\"oneOf\":[{" + required("route") + "},{" + required("anchor") + "},{" + required("x", "y", "z") + "},{" + required("location") + "}]"),
                 BuiltinArguments::checkNavigate, this::navigate);
         action("stop-navigation", Effect.WORLD, "Stops the NPC's current route and any route it is following.", schema(""),
                 (arguments, problems) -> {},
@@ -432,9 +434,9 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         action("resume-patrol", Effect.WORLD, "Restarts the route or recording the NPC's definition declares; a stopped recording continues where it stopped. Reports resumed or nothing-to-resume.",
                 schema(""), (arguments, problems) -> {},
                 call -> onOwner(call, () -> status(platform.resumePatrol(call.npc()) ? "resumed" : "nothing-to-resume")));
-        action("look", Effect.WORLD, "Turns the NPC, or another NPC named by npc, toward a position or the triggering player.",
-                schema(COORDINATES + ",\"target\":{\"const\":\"player\"}," + NPC, "\"oneOf\":[{" + required("target") + "},{" + required("x", "y", "z") + "}]"),
-                BuiltinCapabilities::checkNpc,
+        action("look", Effect.WORLD, "Turns the NPC, or another NPC named by npc, toward the triggering player, toward x, y and z, or toward a location written x,y,z or x,y,z,world such as player.location or a ray-trace result.",
+                schema(COORDINATES + "," + LOCATION + ",\"target\":{\"const\":\"player\"}," + NPC, "\"oneOf\":[{" + required("target") + "},{" + required("x", "y", "z") + "},{" + required("location") + "}]"),
+                (arguments, problems) -> { checkNpc(arguments, problems); checkLocation(arguments, problems); },
                 this::look);
         action("pose", Effect.WORLD, "Turns the NPC to one of the named poses in its definition's poses.",
                 schema(string("pose", 32), required("pose")),
@@ -528,8 +530,8 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                 (arguments, problems) -> { matches(arguments, "gui", screenKind(arguments) == BehaviorPlatform.ScreenKind.GLOSS
                         ? art.arcane.animus.core.gui.GuiBinding.GLOSS_ID : art.arcane.animus.core.shop.ShopDocument.ID, problems); checkPlayer(arguments, problems); },
                 call -> openScreen(call, screenKind(call.arguments), "gui"));
-        action("build", Effect.WORLD, "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z or where the NPC stands. Protection still applies.",
-                schema(choice("operation", "start", "pause", "resume", "cancel", "undo") + "," + string("schematic", 132) + "," + COORDINATES + ","
+        action("build", Effect.WORLD, "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z, at a location written x,y,z or x,y,z,world such as a ray-trace result, or where the NPC stands. Protection still applies.",
+                schema(choice("operation", "start", "pause", "resume", "cancel", "undo") + "," + string("schematic", 132) + "," + COORDINATES + "," + LOCATION + ","
                         + integer("rotation", 0, 270) + "," + choice("mirror", "none", "x", "z") + "," + choice("anchor", "center", "corner", "schematic") + ","
                         + choice("pattern", "spiral", "reversespiral", "linear", "reverselinear") + "," + choice("materials", "creative", "donate") + ","
                         + bool("excavate") + "," + bool("ignoreAir") + "," + bool("ignoreLiquids"), required("operation")),
@@ -537,7 +539,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                 call -> {
                     BuildOperation operation = BuildOperation.valueOf(text(call.arguments, "operation").orElseThrow().toUpperCase(Locale.ROOT));
                     Optional<String> schematic = text(call.arguments, "schematic");
-                    Optional<Vec3> origin = call.arguments.has("x") ? Optional.of(point(call.arguments)) : Optional.empty();
+                    Optional<Vec3> origin = position(call.arguments).map(Place::position);
                     Map<String, String> options = new LinkedHashMap<>();
                     for (String name : List.of("rotation", "mirror", "anchor", "pattern", "materials", "excavate", "ignoreAir", "ignoreLiquids"))
                         if (call.arguments.has(name)) options.put(name.toLowerCase(Locale.ROOT), call.arguments.get(name).getAsString());
@@ -761,10 +763,11 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                     };
                     return server(call) ? onPlayer(call, requirePlayer(call), read) : onOwner(call, read);
                 });
-        action("explode", Effect.WORLD, "Sets off an explosion of power (0-16, default 1) at x, y, z of the NPC's world, or of world, or with no position at the NPC, or another NPC named by npc. fire and breakBlocks start fires and break blocks only when behaviors.actions explosionsDamageBlocks allows it; protection plugins decide as for any explosion.",
-                schema(COORDINATES + "," + string("world", 64) + "," + number("power", 0, 16) + "," + bool("fire") + "," + bool("breakBlocks") + "," + NPC),
+        action("explode", Effect.WORLD, "Sets off an explosion of power (0-16, default 1) at x, y, z or at a location written x,y,z or x,y,z,world such as a ray-trace result, in the location's world, else world, else the NPC's; with no position at the NPC, or another NPC named by npc. fire and breakBlocks start fires and break blocks only when behaviors.actions explosionsDamageBlocks allows it; protection plugins decide as for any explosion.",
+                schema(COORDINATES + "," + LOCATION + "," + string("world", 64) + "," + number("power", 0, 16) + "," + bool("fire") + "," + bool("breakBlocks") + "," + NPC),
                 (arguments, problems) -> {
                     checkNpc(arguments, problems);
+                    checkLocation(arguments, problems);
                     if (arguments.has("world")) matches(arguments, "world", "[A-Za-z0-9_./:-]{1,64}", problems);
                     long given = java.util.stream.Stream.of("x", "y", "z").filter(arguments::has).count();
                     if (given != 0 && given != 3) problems.add(problem("$.x", "explode-position", "give x, y and z together, or none to explode at the NPC"));
@@ -772,12 +775,13 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                 call -> {
                     requireNpc(call);
                     boolean grief = settings.explosionsDamageBlocks();
-                    Optional<Vec3> at = call.arguments.has("x") ? Optional.of(point(call.arguments)) : Optional.empty();
+                    Optional<Place> at = position(call.arguments);
+                    Optional<String> world = at.flatMap(Place::world).or(() -> text(call.arguments, "world"));
                     float power = (float) decimal(call.arguments, "power").orElse(1);
                     boolean fire = grief && flag(call.arguments, "fire", false), breakBlocks = grief && flag(call.arguments, "breakBlocks", false);
-                    return onOwner(call, () -> { platform.explode(call.npc(), new BehaviorPlatform.Explosion(text(call.arguments, "world"), at, power, fire, breakBlocks)); return "{}"; });
+                    return onOwner(call, () -> { platform.explode(call.npc(), new BehaviorPlatform.Explosion(world, at.map(Place::position), power, fire, breakBlocks)); return "{}"; });
                 });
-        action("look-close", Effect.WORLD, "Turns the NPC's look-close, or another NPC's named by npc, on or off until a restart or a definition change, with an optional range (1-64) and lineOfSight.",
+        action("look-close", Effect.WORLD, "Makes the NPC, or another NPC named by npc, turn its head toward players near it (enabled true) or stop (enabled false) until a restart or a definition change; range (1-64) is how near they must be, and lineOfSight true needs a clear view.",
                 schema(bool("enabled") + "," + number("range", 1, 64) + "," + bool("lineOfSight") + "," + NPC, required("enabled")),
                 BuiltinCapabilities::checkNpc,
                 call -> {
@@ -786,9 +790,9 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                     Optional<Boolean> sight = call.arguments.has("lineOfSight") ? Optional.of(call.arguments.get("lineOfSight").getAsBoolean()) : Optional.empty();
                     return onOwner(call, () -> { platform.lookClose(call.npc(), enabled, range, sight); return "{}"; });
                 });
-        action("teleport", Effect.WORLD, "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, to the NPC or the player, or the NPC to one of its anchors.",
-                schema(choice("target", "player", "npc") + "," + COORDINATES + "," + string("world", 64) + "," + number("yaw", -360, 360) + "," + number("pitch", -90, 90) + "," + choice("to", "npc", "player") + "," + string("anchor", 32) + "," + PLAYER,
-                        "\"oneOf\":[{" + required("x", "y", "z") + "},{" + required("to") + "},{" + required("anchor") + "}]"),
+        action("teleport", Effect.WORLD, "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with an optional world, or to a location written x,y,z or x,y,z,world such as player.location, in its world when it names one; yaw and pitch are optional. Or teleports to the NPC or the player, or the NPC to one of its anchors.",
+                schema(choice("target", "player", "npc") + "," + COORDINATES + "," + LOCATION + "," + string("world", 64) + "," + number("yaw", -360, 360) + "," + number("pitch", -90, 90) + "," + choice("to", "npc", "player") + "," + string("anchor", 32) + "," + PLAYER,
+                        "\"oneOf\":[{" + required("x", "y", "z") + "},{" + required("location") + "},{" + required("to") + "},{" + required("anchor") + "}]"),
                 BuiltinArguments::checkTeleport, this::teleport);
         action("give-item", Effect.WORLD, "Gives the triggering player, or the player named by player, amount of an item (1 by default), with an optional name, lore and enchantments. Reports given.",
                 schema(GIFT + "," + PLAYER, GIFT_REQUIRED),
@@ -836,7 +840,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                         return result("charged", true);
                     });
                 });
-        action("give-book", Effect.WORLD, "Gives the triggering player, or the player named by player, a written book. Pages use the dialogue colour codes. Reports given.",
+        action("give-book", Effect.WORLD, "Gives the triggering player, or the player named by player, a written book. Pages take the colour codes Say takes. Reports given.",
                 schema(string("title", 32) + "," + string("author", 32) + "," + texts("pages", 1, 50, 1024) + "," + PLAYER, required("title", "author", "pages")),
                 (arguments, problems) -> { plainText(arguments, "title", problems); plainText(arguments, "author", problems); checkPlayer(arguments, problems); },
                 call -> {
@@ -893,7 +897,10 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         if (call.arguments.has("to")) {
             if (text(call.arguments, "to").orElseThrow().equals("npc")) { requireNpc(call); destination = new BehaviorPlatform.ToNpc(); }
             else destination = new BehaviorPlatform.ToPlayer(target(call));
-        } else destination = new BehaviorPlatform.Point(text(call.arguments, "world"), point(call.arguments), decimal(call.arguments, "yaw"), decimal(call.arguments, "pitch"));
+        } else {
+            Place place = position(call.arguments).orElseThrow();
+            destination = new BehaviorPlatform.Point(place.world().or(() -> text(call.arguments, "world")), place.position(), decimal(call.arguments, "yaw"), decimal(call.arguments, "pitch"));
+        }
         if (text(call.arguments, "target").orElse("player").equals("npc")) {
             requireNpc(call);
             BehaviorPlatform.Destination to = destination;
@@ -1038,11 +1045,13 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         Optional<String> route = text(call.arguments, "route");
         if (route.isPresent()) return () -> { platform.followRoute(call.npc(), route.get()); return new JsonObject(); };
         Optional<String> anchor = text(call.arguments, "anchor");
-        Vec3 given = anchor.isPresent() ? null : point(call.arguments);
+        Place given = anchor.isPresent() ? null : position(call.arguments).orElseThrow();
         MovementProfile.Mode mode = MovementProfile.Mode.valueOf(text(call.arguments, "mode").orElse("walk").toUpperCase(Locale.ROOT));
         double speed = decimal(call.arguments, "speed").orElse(2);
         return () -> {
-            Vec3 destination = given;
+            Vec3 destination = given == null ? null : given.position();
+            if (given != null && given.world().isPresent() && !platform.inWorld(call.npc(), given.world().get()))
+                throw new CapabilityRefusal(Outcome.Status.INVALID, "location-in-another-world", "Location " + text(call.arguments, "location").orElseThrow().strip() + " is in another world; teleport the NPC there");
             if (anchor.isPresent()) {
                 BehaviorPlatform.Point place = platform.anchor(call.npc(), anchor.get());
                 if (place.world().isPresent())
@@ -1064,7 +1073,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
             UUID player = requirePlayer(call);
             return onOwner(call, () -> { platform.lookAtPlayer(call.npc(), player); return "{}"; });
         }
-        Vec3 target = point(call.arguments);
+        Vec3 target = position(call.arguments).orElseThrow().position();
         return onOwner(call, () -> { platform.look(call.npc(), target); return "{}"; });
     }
 
@@ -1240,9 +1249,6 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         return call.player().orElseThrow(() -> new CapabilityRefusal(Outcome.Status.INVALID, "no-triggering-player", "This behavior was not started by a player"));
     }
 
-    private static Vec3 point(JsonObject arguments) {
-        return new Vec3(arguments.get("x").getAsDouble(), arguments.get("y").getAsDouble(), arguments.get("z").getAsDouble());
-    }
 
 
 

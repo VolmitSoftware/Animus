@@ -55,6 +55,20 @@ class EntityTriggerCompilerTest {
         assertEquals("$.triggers[0].thrown", problem("{\"id\":\"near\",\"event\":\"entity_collide\",\"thrown\":true}"));
     }
 
+    @Test void aLookedForRadiusStopsAtTheHighestEntityRadiusTheServerAllows() {
+        for (String trigger : List.of("{\"id\":\"near\",\"event\":\"entity_proximity\",\"phase\":\"enter\",\"radius\":33}", "{\"id\":\"gift\",\"event\":\"item_dropped\",\"radius\":40}",
+                "{\"id\":\"led\",\"event\":\"leash_pass\",\"radius\":32.5}", "{\"id\":\"guard\",\"event\":\"npc_proximity\",\"phase\":\"enter\",\"radius\":64}")) {
+            BehaviorCompiler.Result result = compile("[" + trigger + "]", false);
+            assertTrue(result.program().isEmpty(), trigger);
+            assertEquals("$.triggers[0].radius", result.diagnostics().getFirst().field(), trigger);
+            assertEquals("expected a radius above 0 and at most 32 blocks; the server's behaviors.triggers.maximumEntityRadius (16 by default) caps it",
+                    result.diagnostics().getFirst().message(), trigger);
+        }
+        assertEquals(32.0, only("{\"id\":\"near\",\"event\":\"entity_proximity\",\"phase\":\"enter\",\"radius\":32}").radius());
+        assertEquals(64.0, only("{\"id\":\"ear\",\"event\":\"npc_speech\",\"radius\":64}").radius(), "speech is heard, not looked for, so the setting does not cap it");
+        assertEquals(List.of(), compile("[{\"id\":\"walk\",\"event\":\"proximity\",\"phase\":\"enter\",\"radius\":64}]", false).diagnostics(), "plain proximity keeps its own limit");
+    }
+
     @Test void serverBehaviorsCannotSenseAroundAnNpc() {
         BehaviorCompiler.Result result = compile("[{\"id\":\"near\",\"event\":\"entity_collide\"}]", true);
         assertEquals("$.triggers[0].event", result.diagnostics().getFirst().field());

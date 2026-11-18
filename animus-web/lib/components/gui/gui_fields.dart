@@ -134,27 +134,32 @@ class GuiLinesEditor extends StatelessWidget {
 /// text on the editor's own surfaces (the Test chat) rather than a game
 /// window's.
 class GuiStyledText extends StatelessWidget {
-  const GuiStyledText(this.text, {this.defaultColor = mcDefaultTextColor, this.item = false, super.key}) : runs = null;
+  const GuiStyledText(this.text, {this.defaultColor = mcDefaultTextColor, this.item = false, this.sample = true, super.key}) : runs = null;
 
   /// Runs already read, such as one row of a text display whose style
   /// carries on from the rows above it ([guiDisplayRows]).
   const GuiStyledText.runs(List<McTextRun> this.runs, {super.key})
       : text = '',
         defaultColor = mcDefaultTextColor,
-        item = false;
+        item = false,
+        sample = true;
 
   final String text;
   final int? defaultColor;
 
   /// An item's name or lore line: italic until a colour or reset code.
   final bool item;
+
+  /// Whether `{{ }}` holes show sample values; off for text already filled,
+  /// where braces are what players read.
+  final bool sample;
   final List<McTextRun>? runs;
 
   @override
   Widget build(BuildContext context) {
     final int? themed = defaultColor;
     return dom.span(classes: 'animus-mc-styled', <Widget>[
-      for (final McTextRun run in runs ?? guiTextRuns(text, defaultColor: themed ?? mcDefaultTextColor, item: item))
+      for (final McTextRun run in runs ?? guiTextRuns(text, defaultColor: themed ?? mcDefaultTextColor, item: item, sample: sample))
         dom.span(
           styles: dom.Styles(raw: <String, String>{
             if (themed != null || run.color != mcDefaultTextColor) 'color': run.cssColor,

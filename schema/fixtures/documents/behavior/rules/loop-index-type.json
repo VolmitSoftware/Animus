@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:loop-index-type",
+  "entry": "main",
+  "variables": {
+    "label": {
+      "type": "string",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "repeat",
+      "count": 2,
+      "index": "label",
+      "body": {
+        "type": "action",
+        "capability": "animus:say",
+        "arguments": {
+          "text": "Hello"
+        }
+      }
+    }
+  }
+}

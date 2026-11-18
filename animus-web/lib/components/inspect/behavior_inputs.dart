@@ -12,6 +12,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/behavior_language.dart';
+import '../../logic/inspect/behavior_types.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../model/animus_document.dart' show DiagnosticSeverity;
 import '../../ui/action_row.dart';
@@ -31,11 +32,23 @@ int _nextId = 0;
 /// facts, context keys and functions; a problem shows under the field as
 /// you type.
 class BehaviorExpressionInput extends StatefulWidget {
-  const BehaviorExpressionInput({required this.value, required this.onChanged, required this.scope, required this.label, this.template = false, this.placeholder, super.key});
+  const BehaviorExpressionInput({
+    required this.value,
+    required this.onChanged,
+    required this.scope,
+    required this.label,
+    this.template = false,
+    this.placeholder,
+    this.expected = ValueType.any,
+    super.key,
+  });
 
   final String value;
   final void Function(String value) onChanged;
   final ExpressionScope scope;
+
+  /// What the field needs; another known type is a problem at the field.
+  final ValueType expected;
 
   /// The accessible name.
   final String label;
@@ -63,7 +76,10 @@ class _BehaviorExpressionInputState extends State<BehaviorExpressionInput> {
   @override
   Widget build(BuildContext context) {
     final String text = _typed ?? component.value;
-    final String? problem = text.isEmpty && component.template ? null : (component.template ? checkBehaviorTemplate(text, component.scope) : checkBehaviorExpression(text, component.scope));
+    final String? syntax = text.isEmpty && component.template ? null : (component.template ? checkBehaviorTemplate(text, component.scope) : checkBehaviorExpression(text, component.scope));
+    final ExpressionNote? note = syntax != null ? ExpressionNote(DiagnosticSeverity.error, syntax) : _note(text);
+    final String? problem = note?.message;
+    final ValueType gives = component.template || syntax != null || text.trim().isEmpty ? ValueType.any : expressionType(text, component.scope);
     final BehaviorNames names = BehaviorNames(scope: component.scope, variableScopes: SuggestScope.of(context).behavior?.variableScopes ?? const <String, String>{});
     return stack(spacing: 4, <Widget>[
       AutocompleteInput(
@@ -76,15 +92,30 @@ class _BehaviorExpressionInputState extends State<BehaviorExpressionInput> {
         oneLine: true,
         classes: 'animus-expr-input',
         code: true,
-        invalid: problem != null,
-        describedBy: problem != null ? '$_id-problem' : null,
+        invalid: note?.severity == DiagnosticSeverity.error,
+        describedBy: problem != null ? '$_id-problem' : (gives != ValueType.any ? '$_id-type' : null),
         onChanged: (String next) {
           setState(() => _typed = next);
           component.onChanged(next);
         },
       ),
-      if (problem != null) problemLine(DiagnosticSeverity.error, problem, id: '$_id-problem'),
+      if (note != null)
+        problemLine(note.severity, note.message, id: '$_id-problem')
+      else if (gives != ValueType.any)
+        noteLine('Gives ${gives.words}', attributes: <String, String>{'id': '$_id-type'}),
     ]);
+  }
+
+  /// The first type problem or warning: in the whole expression, or in each
+  /// hole of a template.
+  ExpressionNote? _note(String text) {
+    if (!component.template) return expressionNotes(text, component.scope, expected: component.expected).firstOrNull;
+    final (List<BehaviorHole> holes, int? _) = behaviorHoles(text);
+    for (final BehaviorHole hole in holes) {
+      final ExpressionNote? found = expressionNotes(hole.source, component.scope).firstOrNull;
+      if (found != null) return ExpressionNote(found.severity, '{{ ${hole.source.trim()} }}: ${found.message}');
+    }
+    return null;
   }
 }
 

@@ -8,10 +8,10 @@ import art.arcane.animus.core.behavior.BehaviorProgram;
 import art.arcane.animus.core.behavior.BehaviorValues;
 import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
 import art.arcane.animus.core.behavior.catalog.PackManifest;
-import art.arcane.animus.core.behavior.trigger.ServerEvent;
 import art.arcane.animus.core.behavior.trigger.TriggerBinding;
 import art.arcane.animus.core.behavior.trigger.TriggerCompiler;
 import art.arcane.animus.core.behavior.trigger.TriggerKind;
+import art.arcane.animus.core.behavior.trigger.TriggerSettings;
 import art.arcane.animus.core.gui.GuiExpression;
 import art.arcane.animus.core.schema.CapabilitySchema;
 import art.arcane.animus.core.storage.JsonDocuments;
@@ -471,13 +471,22 @@ public final class BehaviorSchemaGenerator {
         JsonObject properties = new JsonObject();
         List<String> required = new ArrayList<>();
         for (String name : kind.keys()) {
-            Field field = name.equals("event") ? new Field(constant(kind.jsonName()), "event", true) : triggerField(name);
+            Field field = name.equals("event") ? new Field(constant(kind.jsonName()), "event", true) : triggerField(kind, name);
             properties.add(name, field.schema());
             if (field.required()) required.add(name);
         }
         trigger.add("properties", properties);
         trigger.add("required", strings(required.toArray(String[]::new)));
         return trigger;
+    }
+    /** A field of one event's triggers; only the radius differs between events. */
+    private static Field triggerField(TriggerKind kind, String name) {
+        if (!name.equals("radius") || !kind.scanned()) return triggerField(name);
+        JsonObject radius = type("number");
+        radius.addProperty("exclusiveMinimum", 0);
+        radius.addProperty("maximum", TriggerSettings.MAXIMUM_ENTITY_RADIUS);
+        return new Field(described(radius, "Blocks, above 0 and at most " + TriggerSettings.MAXIMUM_ENTITY_RADIUS + ". The server's "
+                + TriggerCompiler.ENTITY_RADIUS_SETTING + " (" + TriggerSettings.DEFAULT.maximumEntityRadius() + " by default) caps it; a larger radius leaves the trigger unbound."), "number", true);
     }
     private static Field triggerField(String name) {
         return switch (name) {
@@ -619,11 +628,13 @@ public final class BehaviorSchemaGenerator {
             trigger.addProperty("description", kind.description());
             trigger.addProperty("carriesPlayer", kind.carriesPlayer());
             trigger.addProperty("reach", kind.reach().name().toLowerCase(Locale.ROOT));
-            List<String> context = ServerEvent.contextKeys(kind);
-            if (!context.isEmpty()) trigger.add("context", strings(context.toArray(String[]::new)));
+            trigger.add("context", strings(kind.context().keySet().toArray(String[]::new)));
+            JsonObject contextTypes = new JsonObject();
+            for (Map.Entry<String, String> key : kind.context().entrySet()) contextTypes.addProperty(key.getKey(), key.getValue());
+            trigger.add("contextTypes", contextTypes);
             JsonObject fields = new JsonObject();
             for (String name : kind.keys()) {
-                Field field = name.equals("event") ? new Field(constant(kind.jsonName()), "event", true) : triggerField(name);
+                Field field = name.equals("event") ? new Field(constant(kind.jsonName()), "event", true) : triggerField(kind, name);
                 fields.add(name, completion(field));
             }
             trigger.add("fields", fields);
@@ -666,6 +677,29 @@ public final class BehaviorSchemaGenerator {
         language.add("flagScopes", strings(BehaviorExpression.FLAG_SCOPES.toArray(String[]::new)));
         language.add("functions", strings(BehaviorExpression.FUNCTIONS.toArray(String[]::new)));
         language.add("standardFunctions", strings(GuiExpression.STANDARD_FUNCTIONS.toArray(String[]::new)));
+        JsonObject docs = new JsonObject();
+        List<String> documented = new ArrayList<>(BehaviorExpression.FUNCTIONS);
+        documented.addAll(GuiExpression.STANDARD_FUNCTIONS);
+        for (String name : documented) {
+            ExpressionDocs.Function function = ExpressionDocs.FUNCTIONS.get(name);
+            if (function == null) throw new IllegalStateException("No documentation for expression function " + name);
+            JsonObject doc = new JsonObject();
+            doc.addProperty("call", function.call());
+            doc.addProperty("returns", function.returns());
+            doc.addProperty("about", function.about());
+            docs.add(name, doc);
+        }
+        language.add("functionDocs", docs);
+        JsonObject factTypes = new JsonObject();
+        for (Map.Entry<String, Map<String, String>> root : ExpressionDocs.FACT_TYPES.entrySet()) {
+            JsonObject types = new JsonObject();
+            for (Map.Entry<String, String> fact : root.getValue().entrySet()) types.addProperty(fact.getKey(), fact.getValue());
+            factTypes.add(root.getKey(), types);
+        }
+        language.add("factTypes", factTypes);
+        JsonObject formats = new JsonObject();
+        for (Map.Entry<String, String> format : ExpressionDocs.FACT_FORMATS.entrySet()) formats.addProperty(format.getKey(), format.getValue());
+        language.add("factFormats", formats);
         return language;
     }
 

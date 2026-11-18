@@ -15,6 +15,7 @@ import 'package:animus_editor/logic/offline/new_documents.dart';
 import 'package:animus_editor/logic/shared_schemas.dart';
 import 'package:animus_editor/logic/suggest/completion_item.dart';
 import 'package:animus_editor/logic/suggest/field_profile.dart';
+import 'package:animus_editor/logic/suggest/field_profiles.dart';
 import 'package:animus_editor/logic/suggest/text_completion.dart';
 import 'package:animus_editor/model/animus_document.dart';
 import 'package:animus_editor/model/document_kind.dart';
@@ -62,7 +63,7 @@ void main() {
           ];
       expect(labels('co'), contains('count'));
       expect(labels('player.he'), contains('player.health'));
-      expect(labels('su'), contains('sum()'));
+      expect(labels('su'), contains('sum(list)'));
       expect(labels('Hi {{ pl', template: true), contains('player'));
       expect(labels('Hi pl', template: true), isEmpty, reason: 'outside a hole a template is plain text');
     });
@@ -86,6 +87,36 @@ void main() {
       expect(convertForType(3.0, 'string'), ('3', null));
     });
 
+    test('should run every server function on sample facts written as the server writes them', () {
+      final Map<String, Object?> area = <String, Object?>{'world': 'world', 'shape': 'cuboid', 'bounds': <Object?>[0, 60, 0, 4, 70, 4]};
+      BehaviorEvalScope scope() => BehaviorEvalScope(read: (String name) => name == 'area' ? area : null, flag: (String scope, String name) => null, quest: (String scope, String name) => 0, random: math.Random(1));
+      expect(evaluateBehaviorExpression('player.location', scope()), '0.00,64.00,0.00,world');
+      expect(evaluateBehaviorExpression('offset(player.location, 1, -1, 2.5)', scope()), '1.00,63.00,2.50,world');
+      expect(evaluateBehaviorExpression("distance('0,64,0,world', '3,68,0,world')", scope()), 5.0);
+      expect(evaluateBehaviorExpression("player_named('Alex')", scope()), sampleFacts['player.uuid']);
+      expect(evaluateBehaviorExpression("player_named('')", scope()), '');
+      expect(evaluateBehaviorExpression('now() > 0', scope()), isTrue);
+      expect(evaluateBehaviorExpression('has_player()', scope()), isTrue);
+      expect(evaluateBehaviorExpression('len(players(server.players))', scope()), 1.0);
+      expect(evaluateBehaviorExpression("get(player_info(player.uuid), 'name')", scope()), 'Player');
+      expect(evaluateBehaviorExpression('len(players_near(npc.location, 16))', scope()), 1.0);
+      expect(evaluateBehaviorExpression("type_of([1])", scope()), 'list');
+      expect(evaluateBehaviorExpression("duration_seconds('1m30s')", scope()), 90.0);
+      expect(evaluateBehaviorExpression('duration_text(3700)', scope()), '1h 1m');
+      expect(evaluateBehaviorExpression("within('1,64,1,world', area)", scope()), isTrue);
+      expect(evaluateBehaviorExpression("player_flag(player.uuid, 'met', 'no')", scope()), 'no');
+      final BehaviorEvalScope facts = scope();
+      evaluateBehaviorExpression('now()', facts);
+      expect(facts.factsRead.keys, contains('now()'), reason: 'a condition that reads the time is an assumption');
+      for (final String name in catalog.expressions.functions) {
+        try {
+          evaluateBehaviorExpression('$name()', scope());
+        } on BehaviorEvalFailure catch (failure) {
+          expect(failure.message, isNot(contains('unknown function')), reason: '$name runs in Test; an arity error is fine');
+        }
+      }
+    });
+
     test('should match a world by Bukkit name or dimension key when the sample server resolves both', () {
       final BehaviorEvalScope scope = BehaviorEvalScope(read: (String name) => null, flag: (String scope, String name) => null, quest: (String scope, String name) => 0, random: math.Random(1));
       expect(evaluateBehaviorExpression("same_world(player.world, 'minecraft:overworld')", scope), isTrue);
@@ -96,6 +127,23 @@ void main() {
   });
 
   group('operands and placeholders', () {
+    test('should store text with {{ }} holes as a template, so the server fills it', () {
+      final JsonMap say = <String, Object?>{'type': 'action', 'capability': 'animus:say', 'arguments': <String, Object?>{'text': 'Hi'}};
+      final JsonMap held = setArgumentText(say, 'text', 'Halt, {{ player.name }}!');
+      expect(asMap(held['arguments']), <String, Object?>{'text': null});
+      expect(held['templates'], <String, Object?>{'/text': 'Halt, {{ player.name }}!'});
+      final JsonMap plain = setArgumentText(held, 'text', 'Halt!');
+      expect(plain.containsKey('templates'), isFalse);
+      expect(asMap(plain['arguments'])['text'], 'Halt!');
+      expect(asMap(setArgumentText(plain, 'text', null)['arguments']).containsKey('text'), isFalse);
+      expect(argumentProfile('animus:say', 'text').holes, ExpressionSyntax.behavior);
+      expect(argumentProfile('animus:command', 'command').holes, ExpressionSyntax.behavior);
+      expect(argumentProfile('animus:give-item', 'item').holes, ExpressionSyntax.none, reason: 'ids keep the explicit Fill from');
+      expect(argumentHint('location', '1 to 128 characters'), 'Written x,y,z,world', reason: 'a location says its shape, not its length');
+      expect(argumentHint('range', '1 to 128'), '1 to 128');
+      expect(resultVariableName('animus:ray-trace'), 'seen');
+    });
+
     test('should read and switch operand modes without corrupting the value', () {
       expect(operandMode(<String, Object?>{'expression': 'count + 1'}, type: 'integer'), OperandMode.expression);
       expect(operandMode(<String, Object?>{'variable': 'x', 'other': 1}, type: 'map'), OperandMode.literal, reason: 'a map literal with other keys stays a literal');
@@ -123,7 +171,6 @@ void main() {
       expect(back.containsKey('expressions'), isFalse);
       expect(asMap(back['arguments'])['text'], '');
       expect(argumentPointer('a/b~c'), '/a~1b~0c');
-      expect(strayPointers(<String, Object?>{'arguments': <String, Object?>{'text': 'x'}, 'expressions': <String, Object?>{'/text': '1'}}), <String>['/text']);
     });
   });
 

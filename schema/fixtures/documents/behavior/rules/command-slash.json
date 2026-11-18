@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:command-slash",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:command",
+      "arguments": {
+        "command": "/say hi"
+      }
+    }
+  }
+}

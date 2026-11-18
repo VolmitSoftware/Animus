@@ -20,6 +20,10 @@ final class RecordingPlatform implements BehaviorPlatform {
     /** Where each effect at a player went: the player it was placed at, then who it was for ({@code nearby} for everyone near). */
     final List<String> places = new CopyOnWriteArrayList<>();
     final List<String> targets = new CopyOnWriteArrayList<>();
+    /** Where each positioned action went: the action, then the world it named (- for none) and the point. */
+    final List<String> positions = new CopyOnWriteArrayList<>();
+    /** The world the NPC stands in, as a location names it. */
+    volatile String world = "world";
     /** Where each piece of owner work was placed: npc, player:<uuid> or global. */
     final List<String> routes = new CopyOnWriteArrayList<>();
     volatile int taken = 3;
@@ -80,8 +84,16 @@ final class RecordingPlatform implements BehaviorPlatform {
     @Override public int actionbar(UUID player, String text) { record("actionbar:" + text); return delivered; }
     @Override public int playSoundAtPlayer(UUID player, Audience audience, SoundEffect sound) { places.add(player + ">" + audience.player().map(UUID::toString).orElse("nearby")); record("sound-at-player:" + sound.sound()); return delivered; }
     @Override public int spawnParticleAtPlayer(UUID player, Audience audience, ParticleEffect particle) { places.add(player + ">" + audience.player().map(UUID::toString).orElse("nearby")); record("particle-at-player:" + particle.particle() + (particle.height().isPresent() ? ":" + particle.height().getAsDouble() : "")); return delivered; }
-    @Override public boolean teleportPlayer(UUID player, NpcHandle npc, Destination to) { record("teleport-player:" + to.getClass().getSimpleName()); return true; }
-    @Override public void teleportNpc(NpcHandle npc, Destination to) { record("teleport-npc:" + to.getClass().getSimpleName()); }
+    @Override public boolean teleportPlayer(UUID player, NpcHandle npc, Destination to) { record("teleport-player:" + to.getClass().getSimpleName()); placed("teleport", to); return true; }
+    @Override public void teleportNpc(NpcHandle npc, Destination to) { record("teleport-npc:" + to.getClass().getSimpleName()); placed("teleport", to); }
+    private void placed(String action, Destination to) { if (to instanceof Point point) positions.add(action + ":" + point.world().orElse("-") + ":" + at(point.position())); }
+    private static String at(Vec3 point) { return point.x() + "," + point.y() + "," + point.z(); }
+    @Override public boolean inWorld(NpcHandle npc, String named) { return world.equals(named); }
+    @Override public String build(NpcHandle npc, BuildOperation operation, Optional<String> schematic, Optional<Vec3> origin, java.util.Map<String, String> options) {
+        record("build:" + operation);
+        origin.ifPresent((Vec3 point) -> positions.add("build:-:" + at(point)));
+        return "{}";
+    }
     @Override public int giveItem(UUID player, ItemGift gift) { record("give:" + gift.item() + ":" + gift.amount() + ":" + gift.name().orElse("") + ":" + gift.lore().size() + (gift.enchantments().isEmpty() ? "" : ":" + new java.util.TreeMap<>(gift.enchantments()))); return gift.amount(); }
     @Override public int bossBar(UUID player, BossBar bar) { record("bossbar:" + bar.id() + (bar.remove() ? ":remove" : ":show:" + bar.title().orElse("") + ":" + (bar.progress().isPresent() ? bar.progress().getAsDouble() : "") + ":" + bar.color().orElse("") + ":" + bar.style().orElse(""))); return delivered; }
     @Override public int sidebar(UUID player, Optional<Sidebar> sidebar) { record("sidebar:" + sidebar.map((Sidebar shown) -> shown.title() + ":" + shown.lines().size()).orElse("none")); return delivered; }
@@ -89,7 +101,10 @@ final class RecordingPlatform implements BehaviorPlatform {
     volatile Optional<BlockHit> hit = Optional.empty();
     @Override public Optional<BlockHit> rayTrace(UUID player, double range) { record("ray-trace:" + range); return hit; }
     @Override public Optional<String> blockAt(String location) { record("block-at:" + location); return Optional.of("minecraft:stone"); }
-    @Override public void explode(NpcHandle npc, Explosion explosion) { record("explode:" + explosion.point().isPresent() + ":" + explosion.power() + ":" + explosion.fire() + ":" + explosion.breakBlocks()); }
+    @Override public void explode(NpcHandle npc, Explosion explosion) {
+        record("explode:" + explosion.point().isPresent() + ":" + explosion.power() + ":" + explosion.fire() + ":" + explosion.breakBlocks());
+        explosion.point().ifPresent((Vec3 point) -> positions.add("explode:" + explosion.world().orElse("-") + ":" + at(point)));
+    }
     @Override public void lookClose(NpcHandle npc, boolean enabled, java.util.OptionalDouble range, Optional<Boolean> lineOfSight) { acting.add(npc.uuid()); record("look-close:" + enabled + ":" + (range.isPresent() ? range.getAsDouble() : "") + ":" + lineOfSight.map(String::valueOf).orElse("")); }
     volatile List<HeldItem> held = List.of();
     volatile boolean fits = true;
@@ -131,6 +146,7 @@ final class RecordingPlatform implements BehaviorPlatform {
     }
     @Override public String navigate(NpcHandle npc, Vec3 destination, MovementProfile.Mode mode, double speed) {
         record("navigate:" + mode + ":" + speed);
+        positions.add("navigate:-:" + at(destination));
         return "route-id";
     }
     @Override public void followRoute(NpcHandle npc, String route) { record("route:" + route); }
@@ -143,7 +159,7 @@ final class RecordingPlatform implements BehaviorPlatform {
     @Override public boolean stopNavigation(NpcHandle npc) { record("stop"); return true; }
     @Override public void playRecording(NpcHandle npc, String recording, Optional<Playback> playback) { record("recording:" + recording + ":" + playback.map(Playback::key).orElse("own")); }
     @Override public boolean resumePatrol(NpcHandle npc) { record("resume"); return resumable; }
-    @Override public void look(NpcHandle npc, Vec3 target) { record("look-point"); }
+    @Override public void look(NpcHandle npc, Vec3 target) { record("look-point"); positions.add("look:-:" + at(target)); }
     @Override public void lookAtPlayer(NpcHandle npc, UUID player) { record("look-player"); }
     @Override public void pose(NpcHandle npc, String pose) { record("pose:" + pose); }
     @Override public void animate(NpcHandle npc, art.arcane.animus.core.npc.NpcAnimation animation) { record("animate:" + animation.key()); }

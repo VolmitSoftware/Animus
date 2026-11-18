@@ -1690,11 +1690,11 @@ final class DenizenCommands {
                 action.put("y", at.get()[1]);
                 action.put("z", at.get()[2]);
             } else {
-                Optional<String> problem = coordinates(plain.getFirst().value(), action, scope, pending, false);
+                Optional<String> problem = place(plain.getFirst().value(), action, scope, pending, false);
                 if (problem.isPresent()) return Converted.kept(problem.get());
             }
         }
-        return Converted.of(reorder(action, List.of("target", "x", "y", "z", "npc")).node("animus:look"));
+        return Converted.of(reorder(action, List.of("target", "x", "y", "z", "location", "npc")).node("animus:look"));
     }
 
     /**
@@ -1712,20 +1712,16 @@ final class DenizenCommands {
         return Optional.empty();
     }
 
-    /** x, y and z (and world when {@code world}) from a location value, such as a definition holding one. Empty when it converts. */
-    private Optional<String> coordinates(String raw, Action action, Scope scope, Pending pending, boolean world) {
-        return coordinates(raw, action, scope, pending, world, false);
-    }
-
-    /** As above; {@code anything} also reads a value of unknown kind as location text, written with or without {@code l@}. */
-    private Optional<String> coordinates(String raw, Action action, Scope scope, Pending pending, boolean world, boolean anything) {
+    /**
+     * The {@code location} argument from a location value, such as a definition holding one, which names its own world.
+     * {@code anything} also reads a value of unknown kind as location text, written with or without {@code l@}. Empty when it converts.
+     */
+    private Optional<String> place(String raw, Action action, Scope scope, Pending pending, boolean anything) {
         Result<Expr> place = expressions.value(raw, scope, pending);
         if (place.failed()) return Optional.of(place.reason());
         boolean unknown = anything && place.value().kind() == 'a';
         if (place.value().kind() != 'L' && !unknown) return Optional.of("the target must be the player, the NPC, a literal location or a location value");
-        String parts = unknown ? "split(replace(text(" + place.value().text() + "), 'l@', ''), ',')" : "split(" + place.value().text() + ", ',')";
-        for (int axis = 0; axis < 3; axis++) action.expression(List.of("x", "y", "z").get(axis), "num(get(" + parts + ", " + axis + ", 0))");
-        if (world) action.expression("world", "get(" + parts + ", 3, '')");
+        action.expression("location", unknown ? "replace(text(" + place.value().text() + "), 'l@', '')" : place.value().text());
         return Optional.empty();
     }
 
@@ -2059,7 +2055,7 @@ final class DenizenCommands {
             if (at.isEmpty() || extras.isEmpty()) {
                 Action computed = new Action();
                 for (Map.Entry<String, JsonElement> entry : arguments.entrySet()) computed.put(entry.getKey(), entry.getValue());
-                Optional<String> problem = destination.startsWith("<") ? coordinates(destination, computed, scope, pending, true) : Optional.of("teleport destination must be the player, the NPC, a literal location or a location value");
+                Optional<String> problem = destination.startsWith("<") ? place(destination, computed, scope, pending, false) : Optional.of("teleport destination must be the player, the NPC, a literal location or a location value");
                 if (problem.isPresent()) return Converted.kept(problem.get());
                 return Converted.of(computed.node("animus:teleport"));
             }
@@ -2279,13 +2275,13 @@ final class DenizenCommands {
                         continue;
                     }
                     // A definition given to explode holds a place, which Denizen writes as location text.
-                    Optional<String> problem = arg.value().startsWith("<") ? coordinates(arg.value(), action, scope, pending, true, true) : Optional.of("explode argument " + arg.value() + " has no Animus equivalent");
+                    Optional<String> problem = arg.value().startsWith("<") ? place(arg.value(), action, scope, pending, true) : Optional.of("explode argument " + arg.value() + " has no Animus equivalent");
                     if (problem.isPresent()) return Converted.kept(problem.get());
                 }
                 default -> { return Converted.kept("explode argument " + arg.prefix() + ": has no Animus equivalent"); }
             }
         }
-        return Converted.of(reorder(action, List.of("x", "y", "z", "world", "power", "fire", "breakBlocks")).node("animus:explode"));
+        return Converted.of(reorder(action, List.of("x", "y", "z", "location", "world", "power", "fire", "breakBlocks")).node("animus:explode"));
     }
 
     /** One action for the triggering player, or for each player a list names, up to 100, as the player argument. */

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:quest-id-form",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:start-quest",
+      "arguments": {
+        "quest": "Gold Rush"
+      }
+    }
+  }
+}

@@ -40,6 +40,10 @@
       "type": "any",
       "initial": ""
     },
+    "d_spot": {
+      "type": "any",
+      "initial": ""
+    },
     "d_tune": {
       "type": "any",
       "initial": ""
@@ -231,16 +235,10 @@
           "capability": "animus:teleport",
           "arguments": {
             "target": "npc",
-            "x": null,
-            "y": null,
-            "z": null,
-            "world": null
+            "location": null
           },
           "expressions": {
-            "/x": "num(get(split(offset(d_bench, 0, 1, 0), ','), 0, 0))",
-            "/y": "num(get(split(offset(d_bench, 0, 1, 0), ','), 1, 0))",
-            "/z": "num(get(split(offset(d_bench, 0, 1, 0), ','), 2, 0))",
-            "/world": "get(split(offset(d_bench, 0, 1, 0), ','), 3, '')"
+            "/location": "offset(d_bench, 0, 1, 0)"
           }
         },
         {
@@ -256,17 +254,22 @@
           "type": "action",
           "capability": "animus:explode",
           "arguments": {
-            "x": null,
-            "y": null,
-            "z": null,
-            "world": null,
+            "location": null,
             "power": 1.0
           },
           "expressions": {
-            "/x": "num(get(split(d_bench, ','), 0, 0))",
-            "/y": "num(get(split(d_bench, ','), 1, 0))",
-            "/z": "num(get(split(d_bench, ','), 2, 0))",
-            "/world": "get(split(d_bench, ','), 3, '')"
+            "/location": "d_bench"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:explode",
+          "arguments": {
+            "location": null,
+            "power": 2.0
+          },
+          "expressions": {
+            "/location": "replace(text(d_spot), 'l@', '')"
           }
         },
         {

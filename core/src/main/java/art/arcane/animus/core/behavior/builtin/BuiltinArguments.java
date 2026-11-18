@@ -1,10 +1,13 @@
 package art.arcane.animus.core.behavior.builtin;
 
 import art.arcane.animus.api.Diagnostic;
+import art.arcane.animus.api.Outcome;
 import art.arcane.animus.core.behavior.BehaviorValues;
+import art.arcane.animus.core.extension.CapabilityRefusal;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.npc.NpcAttributes;
 import art.arcane.animus.core.recording.Playback;
+import art.arcane.animus.core.virtual.Vec3;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.util.HashSet;
@@ -13,11 +16,16 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /** The argument schemas and checks the built-in capabilities share: schema builders, validators and argument readers. */
 final class BuiltinArguments {
     static final String IDENTIFIER = "[a-z0-9][a-z0-9_-]*";
     static final String RECORDING_ID = "[a-z0-9][a-z0-9_-]{0,63}";
+    /** The farthest a coordinate may lie from the origin: the world border's limit. */
+    static final double MAXIMUM_COORDINATE = 30_000_000;
+    static final String LOCATION_FORM = "location must be x,y,z or x,y,z,world, such as 10,64,-5,world";
+    private static final Pattern COORDINATE = Pattern.compile("\\s*-?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)([eE][-+]?[0-9]+)?\\s*");
 
     private BuiltinArguments() {}
 
@@ -43,8 +51,47 @@ final class BuiltinArguments {
         return "\"" + name + "\":{\"type\":\"array\",\"minItems\":" + minimum + ",\"maxItems\":" + maximum + ",\"items\":{\"type\":\"string\",\"maxLength\":" + length + "}}";
     }
 
+    /** A position and the world it names, as a {@code location} argument gives them; an empty world is the action's own. */
+    record Place(Vec3 position, Optional<String> world) {}
+
+    /** Location text written {@code x,y,z} or {@code x,y,z,world}, as the location facts, ray-trace and read-block give it. */
+    static Optional<Place> place(String text) {
+        String[] parts = text.split(",", -1);
+        if (parts.length < 3 || parts.length > 4) return Optional.empty();
+        double[] axes = new double[3];
+        for (int axis = 0; axis < 3; axis++) {
+            if (!COORDINATE.matcher(parts[axis]).matches()) return Optional.empty();
+            axes[axis] = Double.parseDouble(parts[axis].strip());
+            if (!Double.isFinite(axes[axis]) || Math.abs(axes[axis]) > MAXIMUM_COORDINATE) return Optional.empty();
+        }
+        if (parts.length == 3) return Optional.of(new Place(new Vec3(axes[0], axes[1], axes[2]), Optional.empty()));
+        String world = parts[3].strip();
+        if (world.isEmpty() || world.codePoints().anyMatch(Character::isISOControl)) return Optional.empty();
+        return Optional.of(new Place(new Vec3(axes[0], axes[1], axes[2]), Optional.of(world)));
+    }
+
+    /** The position {@code location} or x, y and z give, empty when neither is given. Arguments are checked before a run reads them. */
+    static Optional<Place> position(JsonObject arguments) {
+        if (arguments.has("location"))
+            return Optional.of(place(arguments.get("location").getAsString()).orElseThrow(() -> new CapabilityRefusal(Outcome.Status.INVALID, "location-syntax", LOCATION_FORM)));
+        if (!arguments.has("x")) return Optional.empty();
+        return Optional.of(new Place(new Vec3(arguments.get("x").getAsDouble(), arguments.get("y").getAsDouble(), arguments.get("z").getAsDouble()), Optional.empty()));
+    }
+
+    /** A {@code location} parses, stands instead of x, y and z, and names its world only when no {@code world} argument does. */
+    static void checkLocation(JsonObject arguments, List<Diagnostic> problems) {
+        if (!arguments.has("location")) return;
+        Optional<Place> place = place(arguments.get("location").getAsString());
+        if (place.isEmpty()) problems.add(problem("$.location", "location-syntax", LOCATION_FORM));
+        if (arguments.has("x") || arguments.has("y") || arguments.has("z"))
+            problems.add(problem("$.location", "location-and-coordinates", "give location or x, y and z, not both"));
+        if (arguments.has("world") && place.flatMap(Place::world).isPresent())
+            problems.add(problem("$.world", "location-names-world", "the location already names its world"));
+    }
+
     static void checkTeleport(JsonObject arguments, List<Diagnostic> problems) {
         checkPlayer(arguments, problems);
+        checkLocation(arguments, problems);
         if (arguments.has("anchor")) {
             matches(arguments, "anchor", art.arcane.animus.core.npc.NpcAnchors.NAME, problems);
             if (!text(arguments, "target").orElse("player").equals("npc"))
@@ -54,7 +101,7 @@ final class BuiltinArguments {
         if (arguments.has("to") && arguments.get("to").getAsString().equals(target))
             problems.add(problem("$.to", "teleport-to-self", "to names the target itself"));
         if (arguments.has("to") && (arguments.has("world") || arguments.has("yaw") || arguments.has("pitch")))
-            problems.add(problem("$.to", "teleport-destination", "world, yaw and pitch belong to an x, y, z destination"));
+            problems.add(problem("$.to", "teleport-destination", "world, yaw and pitch belong to an x, y, z or location destination"));
         if (arguments.has("world")) matches(arguments, "world", "[A-Za-z0-9_./:-]{1,64}", problems);
     }
 
@@ -121,6 +168,7 @@ final class BuiltinArguments {
     }
 
     static void checkNavigate(JsonObject arguments, List<Diagnostic> problems) {
+        checkLocation(arguments, problems);
         if (arguments.has("timeoutTicks") && !flag(arguments, "wait", false))
             problems.add(problem("$.timeoutTicks", "navigation-timeout-without-wait", "timeoutTicks applies only with wait set to true"));
         if (arguments.has("anchor")) matches(arguments, "anchor", art.arcane.animus.core.npc.NpcAnchors.NAME, problems);
@@ -160,7 +208,8 @@ final class BuiltinArguments {
 
     static void checkBuild(JsonObject arguments, List<Diagnostic> problems) {
         boolean start = arguments.get("operation").getAsString().equals("start");
-        for (String name : List.of("schematic", "x", "y", "z", "rotation", "mirror", "anchor", "pattern", "materials", "excavate", "ignoreAir", "ignoreLiquids"))
+        checkLocation(arguments, problems);
+        for (String name : List.of("schematic", "x", "y", "z", "location", "rotation", "mirror", "anchor", "pattern", "materials", "excavate", "ignoreAir", "ignoreLiquids"))
             if (!start && arguments.has(name)) problems.add(problem("$." + name, "build-option", name + " is used only by the start operation"));
         if (arguments.has("x") != arguments.has("y") || arguments.has("y") != arguments.has("z"))
             problems.add(problem("$.x", "build-origin", "give all of x, y and z, or none to build where the NPC stands"));

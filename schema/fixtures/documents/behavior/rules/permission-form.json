@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:permission-form",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "condition",
+      "capability": "animus:has-permission",
+      "arguments": {
+        "permission": "vip rank"
+      },
+      "then": {
+        "type": "action",
+        "capability": "animus:say",
+        "arguments": {
+          "text": "Hello"
+        }
+      }
+    }
+  }
+}

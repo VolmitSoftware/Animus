@@ -99,7 +99,11 @@ String _action(JsonMap node, DocumentNames names) {
     'animus:set-quest-state' => 'Set quest ${_flagName(node)} to ${argument('value')}',
     'animus:advance-quest-state' => 'Advance quest ${_flagName(node)} by ${arguments.containsKey('by') ? argument('by') : '1'}',
     'animus:choices' => 'Ask: ${shown('prompt')}',
-    'animus:navigate' => arguments['route'] != null ? 'Walk route ${document(DocumentKind.route, 'route')}' : 'Walk to ${argument('x')}, ${argument('y')}, ${argument('z')}',
+    'animus:navigate' => arguments['route'] != null
+        ? 'Walk route ${document(DocumentKind.route, 'route')}'
+        : arguments.containsKey('location')
+            ? 'Walk to ${argument('location')}'
+            : 'Walk to ${argument('x')}, ${argument('y')}, ${argument('z')}',
     'animus:command' => 'Run command /${argument('command')}${arguments['asOperator'] == true ? ' as operator' : ''}',
     'animus:give-item' => 'Give ${arguments.containsKey('amount') ? '${argument('amount')} ' : ''}${arguments.containsKey('stack') ? 'item ${argument('stack')}' : item('item')}',
     'animus:read-inventory' => 'Read the inventory${node['result'] is String ? ' into ${node['result']}' : ''}',
@@ -121,7 +125,11 @@ String _action(JsonMap node, DocumentNames names) {
     'animus:spawn-particle' => 'Show particle ${_named(argument('particle'), (String value) => particleName(value).toLowerCase())}',
     'animus:play-animation' => 'Play animation ${document(DocumentKind.animation, 'animation')}',
     'animus:teleport' => 'Teleport the player',
-    'animus:look' => arguments['target'] == 'player' ? 'Look at the player' : 'Look at ${argument('x')}, ${argument('y')}, ${argument('z')}',
+    'animus:look' => arguments['target'] == 'player'
+        ? 'Look at the player'
+        : arguments.containsKey('location')
+            ? 'Look at ${argument('location')}'
+            : 'Look at ${argument('x')}, ${argument('y')}, ${argument('z')}',
     _ => <String>[
         capabilityWords(id),
         if (arguments.isNotEmpty) arguments.keys.take(2).map((String key) => '$key ${argument(key)}').join(', '),

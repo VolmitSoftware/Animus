@@ -238,6 +238,11 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         PlatformRefusals.mapped(() -> { living.lookAt(active.id(), new WorldPosition(active.state().position().world(), target)); return true; });
     }
 
+    @Override public boolean inWorld(NpcHandle npc, String world) {
+        World named = BukkitWorldLookup.find(server, world);
+        return named != null && named.getUID().toString().equals(require(npc).state().position().world());
+    }
+
     @Override public Point anchor(NpcHandle npc, String name) {
         NpcRuntime.ActiveNpc active = require(npc);
         art.arcane.animus.core.npc.NpcAnchors.Anchor anchor = PlatformRefusals.mapped(() -> living.anchor(active.id(), name));

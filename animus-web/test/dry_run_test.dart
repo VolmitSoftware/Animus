@@ -236,4 +236,34 @@ void main() {
     expect(testPaneNote(behavior(server: false), listed), isNull);
     expect(testPaneNote(behavior(server: false), const <AnimusDocument>[]), isNull);
   });
+
+  test('should fill ray trace and read block results with samples the user can change', () {
+    final JsonMap guard = jsonDecode(r'''
+{"entry": "main", "variables": {"seen": {"type": "map", "initial": {}}}, "routines": {"main": {"type": "sequence", "steps": [
+  {"type": "action", "capability": "animus:ray-trace", "arguments": {"range": 20}, "result": "seen"},
+  {"type": "condition", "expression": "seen.block == 'minecraft:tnt'",
+   "then": {"type": "action", "capability": "animus:say", "arguments": {"text": "TNT!"}},
+   "else": {"type": "action", "capability": "animus:read-block", "arguments": {"location": null}, "expressions": {"/location": "seen.location"}, "result": "seen"}}
+]}}}''') as JsonMap;
+    final DryRunSession first = dryRun(guard, DryRunInputs.start(null));
+    final List<DryRunStep> steps = first.runs.single.steps;
+    expect(steps.where((DryRunStep step) => step.outcome == DryRunOutcome.problem), isEmpty, reason: 'the server fills the result, so the run goes on');
+    final DryRunStep trace = steps.first;
+    expect(trace.sample, <String, Object?>{'location': '2.00,64.00,5.00,world', 'block': 'minecraft:stone'});
+    expect(trace.text, contains('sample result'));
+    expect(steps.last.sample, <String, Object?>{'block': 'minecraft:stone'});
+    final DryRunSession tnt = dryRun(guard, DryRunInputs.start(null).withSample(trace.path, <String, Object?>{'location': '1.00,64.00,1.00,world', 'block': 'minecraft:tnt'}));
+    expect(speech(tnt), <String>['TNT!']);
+  });
+
+  test('should show literal braces as the server prints them and fill template holes', () {
+    final JsonMap guard = jsonDecode(r'''
+{"entry": "main", "routines": {"main": {"type": "sequence", "steps": [
+  {"type": "action", "capability": "animus:say", "arguments": {"text": "Halt, {{ player.name }}!"}},
+  {"type": "action", "capability": "animus:say", "arguments": {"text": null}, "templates": {"/text": "Halt, {{ player.name }}!"}}
+]}}}''') as JsonMap;
+    final List<DryRunStep> steps = dryRun(guard, DryRunInputs.start(null)).runs.single.steps;
+    expect(steps.first.speech, 'Halt, {{ player.name }}!');
+    expect(steps.last.speech, 'Halt, Player!');
+  });
 }

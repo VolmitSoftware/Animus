@@ -16,6 +16,7 @@ import '../../logic/inspect/behavior_edit.dart';
 import '../../logic/inspect/behavior_language.dart';
 import '../../logic/inspect/behavior_operands.dart';
 import '../../logic/inspect/behavior_summary.dart';
+import '../../logic/inspect/behavior_types.dart';
 import '../../logic/inspect/behavior_words.dart';
 import '../../logic/inspect/completion_catalog.dart';
 import '../../logic/inspect/schema_fields.dart';
@@ -68,17 +69,14 @@ class BehaviorContext {
 
   String? get entry => asString(document['entry']);
 
-  /// The names expressions in this document can read.
-  ExpressionScope get scope => ExpressionScope(
-        language: catalog.expressions,
-        variables: <String, String>{
-          for (final MapEntry<String, Object?> entry in variables.entries) entry.key: asString(asMap(entry.value)['type']) ?? 'any',
-        },
-        contextKeys: <String>{
-          for (final Object? trigger in asList(document['triggers'])) ...catalog.triggers[asString(asMap(trigger)['event'])]?.context ?? const <String>[],
-        }.toList(),
-        server: server,
-      );
+  /// The names expressions in this document can read, with every trigger's
+  /// context keys.
+  ExpressionScope get scope => behaviorScope(document, catalog);
+
+  /// The names an expression at [steps] can read: the context keys are those
+  /// of the triggers that start its routine.
+  ExpressionScope scopeAt(List<JsonStep> steps) =>
+      behaviorScope(document, catalog, routine: steps.length > 1 && steps.first == 'routines' && steps[1] is String ? steps[1] as String : null);
 
   JsonMap newNode(String type) => defaultNode(type, catalog, routine: entry ?? routines.firstOrNull, variables: variables, server: server);
 
@@ -134,7 +132,6 @@ class BehaviorNodeView extends StatelessWidget {
     this.onDown,
     this.onDuplicate,
     this.caption,
-    this.inLoop = false,
     this.flat = false,
     super.key,
   });
@@ -150,9 +147,6 @@ class BehaviorNodeView extends StatelessWidget {
   /// Where the node sits: `Yes`, `Step 2`, ...
   final String? caption;
 
-  /// Whether a loop of this routine encloses the node, outside parallel
-  /// branches: `break` and `continue` need one.
-  final bool inLoop;
   final bool flat;
 
   BehaviorContext get ctx => context;
@@ -207,7 +201,6 @@ class BehaviorNodeView extends StatelessWidget {
     final NodeSpec? spec = ctx.catalog.nodes[type];
     final List<Diagnostic> own = diagnosticsAt(ctx.diagnostics, _path);
     final bool failing = diagnosticsAt(ctx.diagnostics, _path, nested: true).any((Diagnostic d) => d.severity == DiagnosticSeverity.error);
-    final bool strayJump = (type == 'break' || type == 'continue') && !inLoop;
     final List<String> kept = unknownKeys(value, spec?.fields.map((FieldSpec field) => field.key) ?? const <String>[]);
     final String line = _line(value);
     final List<AppMenuEntry> menu = <AppMenuEntry>[
@@ -239,7 +232,6 @@ class BehaviorNodeView extends StatelessWidget {
         more: menu,
       ),
       for (final Diagnostic problem in own) _problem(problem.severity, problem.message),
-      if (strayJump) _problem(DiagnosticSeverity.warning, '${nodeLabel(type)} only works inside a repeat, a for each or a repeat while.'),
       ..._fields(value, type, spec),
       if (kept.isNotEmpty) noteLine('Kept as written: ${kept.join(', ')}'),
     ];
@@ -254,7 +246,6 @@ class BehaviorNodeView extends StatelessWidget {
         TipLabel(label: Component.text(nodeLabel(type)), tip: _tip(type, spec), docs: Docs.behaviorNodes),
         Text(line, size: FontSize.sm, color: TextColor.muted),
         if (failing) const StatusBadge('Problem', tone: BadgeTone.error),
-        if (strayJump) const StatusBadge('Outside a loop', tone: BadgeTone.warning),
       ],
       children: body,
     );
@@ -274,15 +265,13 @@ class BehaviorNodeView extends StatelessWidget {
   FieldSpec _field(NodeSpec? spec, String key) => spec?.field(key) ?? FieldSpec(key: key, kind: FieldKind.any);
 
   List<Widget> _fields(JsonMap value, String? type, NodeSpec? spec) {
-    final bool loop = const <String>{'repeat', 'foreach', 'while'}.contains(type);
-    final bool childLoop = loop || (type != 'parallel' && inLoop);
     final List<Widget> out = <Widget>[];
     switch (type) {
       case 'action':
         out.add(CapabilityFields(context: ctx, node: value, steps: steps, kind: 'action'));
         // Only a capability that reads something gives a result worth keeping.
         if (value.containsKey('result') || const <String>{'animus:read-inventory', 'animus:ray-trace', 'animus:read-block'}.contains(value['capability'])) {
-          out.add(_variablePicker(value, _field(spec, 'result'), ctx.variables.keys.toList(), optional: true));
+          out.add(_resultPicker(value, _field(spec, 'result')));
         }
       case 'condition':
         out.add(_conditionMode(value));
@@ -323,9 +312,9 @@ class BehaviorNodeView extends StatelessWidget {
     for (final FieldSpec field in spec?.fields ?? const <FieldSpec>[]) {
       final String kind = fieldType(field);
       if (kind == nodeListType) {
-        out.add(_list(value, field, childLoop));
+        out.add(_list(value, field));
       } else if (kind == nodeType) {
-        out.add(_slot(value, field, childLoop));
+        out.add(_slot(value, field));
       } else if (!(customType && custom.contains(field.key))) {
         out.add(InspectField(
           key: ValueKey<String>(formatPath(<JsonStep>[...steps, field.key])),
@@ -378,9 +367,10 @@ class BehaviorNodeView extends StatelessWidget {
         problems: _problems('expression'),
         child: BehaviorExpressionInput(
           value: asString(value['expression']) ?? '',
-          scope: ctx.scope,
+          scope: ctx.scopeAt(steps),
           label: 'Expression of ${_label.toLowerCase()}',
           placeholder: 'count < 3',
+          expected: ValueType.boolean,
           onChanged: (String next) => ctx.write(<JsonStep>[...steps, 'expression'], next),
         ),
       );
@@ -394,7 +384,7 @@ class BehaviorNodeView extends StatelessWidget {
           value: value[field.key],
           type: type,
           variables: ctx.variables,
-          scope: ctx.scope,
+          scope: ctx.scopeAt(steps),
           label: '${label ?? humanizeKey(field.key)} of ${_label.toLowerCase()}',
           literal: literal,
           onChanged: (Object? next) => ctx.write(<JsonStep>[...steps, field.key], next),
@@ -443,7 +433,7 @@ class BehaviorNodeView extends StatelessWidget {
           OperandControl(
             value: value['value'],
             variables: ctx.variables,
-            scope: ctx.scope,
+            scope: ctx.scopeAt(steps),
             label: 'Returned value',
             onChanged: (Object? next) => ctx.write(<JsonStep>[...steps, 'value'], next),
           ),
@@ -486,6 +476,40 @@ class BehaviorNodeView extends StatelessWidget {
               ),
       );
 
+  /// The variable an action's result map goes into, with New variable to
+  /// declare one for it in place.
+  Widget _resultPicker(JsonMap value, FieldSpec field) {
+    final List<String> options = <String>[
+      for (final MapEntry<String, Object?> variable in ctx.variables.entries)
+        if (const <String>{'map', 'any'}.contains(asString(asMap(variable.value)['type']))) variable.key,
+    ];
+    void create() {
+      final String name = uniqueName(resultVariableName(asString(value['capability'])), ctx.variables.keys);
+      final JsonMap base = <String, Object?>{...ctx.document, 'variables': <String, Object?>{...ctx.variables, name: <String, Object?>{'type': 'map', 'initial': <String, Object?>{}}}};
+      ctx.writeDocument(asMap(writeIn(base, <JsonStep>[...steps, field.key], name)));
+    }
+
+    return Field(
+      label: humanizeKey(field.key),
+      tip: field.description,
+      problems: _problems(field.key, nested: false),
+      child: Row(gapSize: Gap.sm, crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+        if (options.isNotEmpty)
+          Expanded(
+            child: AnimusSelect.values(
+              value: asString(value[field.key]),
+              values: options,
+              allowNone: true,
+              noneLabel: 'Not kept',
+              hiddenLabel: '${humanizeKey(field.key)} of ${_label.toLowerCase()}',
+              onChanged: (String? next) => ctx.write(<JsonStep>[...steps, field.key], next),
+            ),
+          ),
+        Button.outline(label: 'New variable', onPressed: create),
+      ]),
+    );
+  }
+
   /// A loop's `as`, `index` or `key`: execution variables of [types].
   Widget _loopVariable(JsonMap value, FieldSpec field, List<String> types) {
     final List<String> options = executionVariables(ctx.variables, types: types);
@@ -505,7 +529,7 @@ class BehaviorNodeView extends StatelessWidget {
     );
   }
 
-  Widget _list(JsonMap value, FieldSpec field, bool childLoop) {
+  Widget _list(JsonMap value, FieldSpec field) {
     final List<JsonStep> at = <JsonStep>[...steps, field.key];
     final JsonList items = asList(value[field.key]);
     final bool branches = field.key == 'branches';
@@ -519,7 +543,6 @@ class BehaviorNodeView extends StatelessWidget {
           node: items[index],
           steps: <JsonStep>[...at, index],
           caption: '$noun ${index + 1}',
-          inLoop: childLoop,
           onUp: index == 0 ? null : () => ctx.write(at, moveItem(items, index, index - 1)),
           onDown: index == items.length - 1 ? null : () => ctx.write(at, moveItem(items, index, index + 1)),
           onDuplicate: () => ctx.write(at, <Object?>[...items]..insert(index + 1, deepCopy(items[index]))),
@@ -541,7 +564,7 @@ class BehaviorNodeView extends StatelessWidget {
         _ => humanizeKey(key),
       };
 
-  Widget _slot(JsonMap value, FieldSpec field, bool childLoop) {
+  Widget _slot(JsonMap value, FieldSpec field) {
     final List<JsonStep> at = <JsonStep>[...steps, field.key];
     final Object? child = value[field.key];
     final String caption = slotCaption(field.key);
@@ -562,7 +585,6 @@ class BehaviorNodeView extends StatelessWidget {
         node: child,
         steps: at,
         caption: caption,
-        inLoop: childLoop,
         onRemove: field.required ? null : () => ctx.write(at, null),
       ),
     ]);

@@ -217,11 +217,11 @@ List<CompletionItem> _behaviorItems(String query, BehaviorNames? names) {
     final String head = query.substring(0, dot);
     if (head == 'context') {
       for (final String key in scope.contextKeys) {
-        out.add(CompletionItem(label: 'context.$key', insert: 'context.$key', kind: CompletionKind.fact, detail: 'From the event'));
+        out.add(_contextItem(scope, key));
       }
     } else if (!(head == 'npc' && scope.server)) {
       for (final String fact in language.facts[head] ?? const <String>[]) {
-        out.add(CompletionItem(label: '$head.$fact', insert: '$head.$fact', kind: CompletionKind.fact, detail: '${_capital(head)} fact'));
+        out.add(_factItem(language, head, fact));
       }
     }
     return out;
@@ -246,18 +246,43 @@ List<CompletionItem> _behaviorItems(String query, BehaviorNames? names) {
     for (final MapEntry<String, List<String>> facts in language.facts.entries) {
       if (facts.key == 'npc' && scope.server) continue;
       for (final String fact in facts.value) {
-        out.add(CompletionItem(label: '${facts.key}.$fact', insert: '${facts.key}.$fact', kind: CompletionKind.fact, detail: '${_capital(facts.key)} fact'));
+        out.add(_factItem(language, facts.key, fact));
       }
     }
     for (final String key in scope.contextKeys) {
-      out.add(CompletionItem(label: 'context.$key', insert: 'context.$key', kind: CompletionKind.fact, detail: 'From the event'));
+      out.add(_contextItem(scope, key));
     }
   }
   for (final String function in <String>{...language.functions, ...language.standardFunctions}) {
-    out.add(CompletionItem(label: '$function()', insert: '$function(\$1)', kind: CompletionKind.function, detail: 'Function'));
+    out.add(_functionItem(function, language.functionDocs[function]));
   }
   return out;
 }
+
+/// A fact with its type, and the shape of its text where it has one.
+CompletionItem _factItem(ExpressionLanguage language, String root, String fact) {
+  final String? format = language.factFormats['$root.$fact'];
+  return CompletionItem(
+    label: '$root.$fact',
+    insert: '$root.$fact',
+    kind: CompletionKind.fact,
+    type: language.factTypes[root]?[fact] ?? '',
+    detail: format == null ? '${_capital(root)} fact' : '${_capital(root)} fact: $format',
+  );
+}
+
+/// A key the starting triggers give, with its type.
+CompletionItem _contextItem(ExpressionScope scope, String key) =>
+    CompletionItem(label: 'context.$key', insert: 'context.$key', kind: CompletionKind.fact, type: scope.contextTypes[key] ?? '', detail: 'From the trigger');
+
+/// A function by its call shape, `player_named(name)`, and what it does.
+CompletionItem _functionItem(String function, FunctionDoc? doc) => CompletionItem(
+      label: doc?.call ?? '$function()',
+      insert: '$function(\$1)',
+      kind: CompletionKind.function,
+      type: doc == null || doc.returns == 'any' ? '' : doc.returns,
+      detail: doc == null || doc.about.isEmpty ? 'Function' : doc.about,
+    );
 
 List<CompletionItem> _guiItems(String query, ExpressionNames names) {
   final List<CompletionItem> out = <CompletionItem>[

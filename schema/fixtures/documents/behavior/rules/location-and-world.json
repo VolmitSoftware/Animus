@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:location-and-world",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:teleport",
+      "arguments": {
+        "location": "1,64,1,world_nether",
+        "world": "world"
+      }
+    }
+  }
+}

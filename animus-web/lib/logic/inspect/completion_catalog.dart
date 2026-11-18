@@ -6,7 +6,7 @@ library;
 
 import '../gui/gui_json.dart';
 import 'behavior_language.dart';
-import 'behavior_summary.dart' show capabilityWords;
+import 'action_groups.dart';
 import 'schema_fields.dart';
 
 /// One action or condition capability.
@@ -62,7 +62,7 @@ String capabilityChoiceLabel(CapabilitySpec spec) {
     if (!spec.available) spec.reason == offlineCatalogReason ? 'unavailable offline' : 'not on this server',
     if (spec.privileged) 'privileged',
   ];
-  final String words = capabilityWords(spec.id);
+  final String words = actionLabel(spec.id);
   return notes.isEmpty ? words : '$words (${notes.join('; ')})';
 }
 
@@ -75,6 +75,7 @@ class TriggerSpec {
     required this.fields,
     this.reach = 'npc',
     this.context = const <String>[],
+    this.contextTypes = const <String, String>{},
   });
 
   final String event;
@@ -87,6 +88,9 @@ class TriggerSpec {
 
   /// Keys expressions read as `context.<key>` when this event starts a run.
   final List<String> context;
+
+  /// Each context key's type word: boolean, number, text, list or map.
+  final Map<String, String> contextTypes;
 
   /// Whether a behavior with [server] set may use this event.
   bool allowedIn({required bool server}) => server ? reach != 'npc' : reach != 'server';
@@ -118,7 +122,9 @@ class CompletionCatalog {
     this.expressionLanguage,
   });
 
-  factory CompletionCatalog.fromJson(Object? json) {
+  /// [base] fills what an older server's catalog leaves out of the
+  /// expression language.
+  factory CompletionCatalog.fromJson(Object? json, {CompletionCatalog? base}) {
     final JsonMap root = asMap(json);
     final JsonMap language = asMap(root['language']);
     return CompletionCatalog(
@@ -148,6 +154,10 @@ class CompletionCatalog {
             fields: _fields(asMap(entry.value)['fields']),
             reach: asString(asMap(entry.value)['reach']) ?? 'npc',
             context: <String>[for (final Object? key in asList(asMap(entry.value)['context'])) if (key is String) key],
+            contextTypes: <String, String>{
+              for (final MapEntry<String, Object?> type in asMap(asMap(entry.value)['contextTypes']).entries)
+                if (type.value is String) type.key: type.value! as String,
+            },
           ),
       },
       nodes: <String, NodeSpec>{
@@ -161,7 +171,7 @@ class CompletionCatalog {
       variableTypes: <String>[for (final Object? value in asList(language['variableTypes'])) if (value is String) value],
       variableScopes: <String>[for (final Object? value in asList(language['variableScopes'])) if (value is String) value],
       variableLifetimes: <String>[for (final Object? value in asList(language['variableLifetimes'])) if (value is String) value],
-      expressionLanguage: ExpressionLanguage.fromJson(language['expressions']),
+      expressionLanguage: ExpressionLanguage.fromJson(language['expressions'], base: base?.expressions),
     );
   }
 
@@ -198,6 +208,45 @@ class CompletionCatalog {
   static List<FieldSpec> _fields(Object? raw) => <FieldSpec>[
         for (final MapEntry<String, Object?> entry in asMap(raw).entries) fieldFromSpec(entry.key, asMap(entry.value)),
       ];
+}
+
+/// The names an expression in [routine] of behavior [document] can read:
+/// its variables, and the context keys of the triggers that start that
+/// routine. A routine no trigger starts may be called from any of them, so
+/// it gets every trigger's keys.
+ExpressionScope behaviorScope(JsonMap document, CompletionCatalog catalog, {String? routine}) {
+  final String entry = asString(document['entry']) ?? 'main';
+  final List<JsonMap> triggers = <JsonMap>[for (final Object? raw in asList(document['triggers'])) asMap(raw)];
+  final List<JsonMap> starting = <JsonMap>[
+    for (final JsonMap trigger in triggers)
+      if (routine != null && (asString(trigger['routine']) ?? entry) == routine) trigger,
+  ];
+  final List<JsonMap> sources = starting.isEmpty ? triggers : starting;
+  final List<String> keys = <String>[];
+  final Map<String, String> types = <String, String>{};
+  bool known = sources.isNotEmpty;
+  for (final JsonMap trigger in sources) {
+    final TriggerSpec? spec = catalog.triggers[asString(trigger['event'])];
+    if (spec == null || spec.event == 'module') {
+      known = false;
+      continue;
+    }
+    for (final String key in spec.context) {
+      if (!keys.contains(key)) keys.add(key);
+      final String? type = spec.contextTypes[key];
+      if (type != null) types[key] = types.containsKey(key) && types[key] != type ? 'any' : type;
+    }
+  }
+  return ExpressionScope(
+    language: catalog.expressions,
+    variables: <String, String>{
+      for (final MapEntry<String, Object?> variable in asMap(document['variables']).entries) variable.key: asString(asMap(variable.value)['type']) ?? 'any',
+    },
+    contextKeys: keys,
+    contextTypes: types,
+    contextKnown: known,
+    server: document['server'] == true,
+  );
 }
 
 /// A completions.json argument or field spec as a [FieldSpec].

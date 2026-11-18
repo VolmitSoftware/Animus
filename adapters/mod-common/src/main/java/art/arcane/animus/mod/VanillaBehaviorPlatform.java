@@ -171,6 +171,10 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         NpcRuntime.ActiveNpc active = require(npc);
         PlatformRefusals.mapped(() -> { living.lookAt(active.id(), new WorldPosition(active.state().position().world(), target)); return true; });
     }
+    @Override public boolean inWorld(NpcHandle npc, String world) {
+        String at = require(npc).state().position().world();
+        return ModWorldKeys.resolve(server, world).map(at::equals).orElse(false);
+    }
     @Override public Point anchor(NpcHandle npc, String name) {
         NpcRuntime.ActiveNpc active = require(npc);
         art.arcane.animus.core.npc.NpcAnchors.Anchor anchor = PlatformRefusals.mapped(() -> living.anchor(active.id(), name));

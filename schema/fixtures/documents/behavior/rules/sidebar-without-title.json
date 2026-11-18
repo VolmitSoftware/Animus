@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:sidebar-without-title",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:sidebar",
+      "arguments": {
+        "lines": [
+          "One"
+        ]
+      }
+    }
+  }
+}

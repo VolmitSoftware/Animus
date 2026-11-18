@@ -5,6 +5,10 @@
 library;
 
 import '../../logic/change_sets.dart';
+import '../../logic/inspect/command_scope.dart';
+import '../../logic/inspect/inspect_schemas.dart';
+import '../../model/document_kind.dart';
+import '../../services/server/server_profiles.dart';
 import '../../state/editor_store.dart';
 import '../../state/live_session.dart';
 
@@ -25,15 +29,27 @@ enum ApplyOutcome {
 }
 
 /// The changes that stop Apply: a source that is not JSON, problems found
-/// here or by the server, or a document changed on the server too.
+/// here or by the server, a document changed on the server too, or a
+/// behavior that needs Run commands when the pairing does not have it.
 List<DraftChange> applyBlockers(LiveSession session) => <DraftChange>[
       for (final DraftChange draft in session.drafts)
         if (draft.problem != null ||
             session.stale.contains(draft.key) ||
             session.conflicts.containsKey(draft.key) ||
-            (session.store.libraryEntry(draft.kind, draft.id)?.problems ?? 0) > 0)
+            (session.store.libraryEntry(draft.kind, draft.id)?.problems ?? 0) > 0 ||
+            commandsBlock(session, draft) != null)
           draft,
     ];
+
+/// Why [draft] cannot be applied with this pairing: a behavior that runs
+/// commands, gives items or pays quest rewards needs Run commands
+/// (`apply:commands`). Null when the pairing has it or the server cannot say.
+String? commandsBlock(LiveSession session, DraftChange draft) {
+  final ServerToken? token = session.connection.token;
+  if (draft.kind != DocumentKind.behavior || token == null || token.has('apply:commands')) return null;
+  final String? why = behaviorNeedsCommands(session.store.document(draft.kind, draft.id)?.json, privilegedCapabilities(InspectSchemas.from(session.schemas).catalog));
+  return why == null ? null : 'It $why; applying it needs Run commands (apply:commands).';
+}
 
 Future<ApplyOutcome> applyChecked(LiveSession session, {String? message}) async {
   if (session.busy != null) return ApplyOutcome.failed;

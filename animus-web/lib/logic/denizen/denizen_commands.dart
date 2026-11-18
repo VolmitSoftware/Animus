@@ -2208,7 +2208,7 @@ class _Commands {
           computed.put(entry.key, entry.value);
         }
         final String? problem = destination.startsWith('<')
-            ? coordinates(destination, computed, scope, pending, true)
+            ? place(destination, computed, scope, pending, false)
             : 'teleport destination must be the player, the NPC, a literal location or a location value';
         if (problem != null) return _Converted.kept(problem);
         return _Converted.of(<JObject>[computed.node('animus:teleport')]);
@@ -2254,11 +2254,11 @@ class _Commands {
         action.put('y', JDouble(at[1]));
         action.put('z', JDouble(at[2]));
       } else {
-        final String? problem = coordinates(plain.first.value, action, scope, pending, false);
+        final String? problem = place(plain.first.value, action, scope, pending, false);
         if (problem != null) return _Converted.kept(problem);
       }
     }
-    return _Converted.of(<JObject>[_reorder(action, <String>['target', 'x', 'y', 'z', 'npc']).node('animus:look')]);
+    return _Converted.of(<JObject>[_reorder(action, <String>['target', 'x', 'y', 'z', 'location', 'npc']).node('animus:look')]);
   }
 
   /// The entity a command acts on, written first: the NPC itself, or another NPC held in a definition as the `npc`
@@ -2274,19 +2274,14 @@ class _Commands {
     return null;
   }
 
-  /// x, y and z (and world when [world]) from a location value, such as a definition holding one; [anything] also reads a
-  /// value of unknown kind as location text, written with or without `l@`. Null when it converts.
-  String? coordinates(String raw, _Action action, _Scope scope, _Pending pending, bool world, [bool anything = false]) {
+  /// The `location` argument from a location value, such as a definition holding one, which names its own world. [anything]
+  /// also reads a value of unknown kind as location text, written with or without `l@`. Null when it converts.
+  String? place(String raw, _Action action, _Scope scope, _Pending pending, bool anything) {
     final _Result<_Expr> place = expressions.value(raw, scope, pending);
     if (place.failed) return place.reason;
     final bool unknown = anything && place.value!.kind == 'a';
     if (place.value!.kind != 'L' && !unknown) return 'the target must be the player, the NPC, a literal location or a location value';
-    final String parts = unknown ? "split(replace(text(${place.value!.text}), 'l@', ''), ',')" : "split(${place.value!.text}, ',')";
-    const List<String> axes = <String>['x', 'y', 'z'];
-    for (int axis = 0; axis < 3; axis++) {
-      action.expression(axes[axis], 'num(get($parts, $axis, 0))');
-    }
-    if (world) action.expression('world', "get($parts, 3, '')");
+    action.expression('location', unknown ? "replace(text(${place.value!.text}), 'l@', '')" : place.value!.text);
     return null;
   }
 
@@ -2394,13 +2389,13 @@ class _Commands {
             continue;
           }
           // A definition given to explode holds a place, which Denizen writes as location text.
-          final String? problem = arg.value.startsWith('<') ? coordinates(arg.value, action, scope, pending, true, true) : 'explode argument ${arg.value} has no Animus equivalent';
+          final String? problem = arg.value.startsWith('<') ? place(arg.value, action, scope, pending, true) : 'explode argument ${arg.value} has no Animus equivalent';
           if (problem != null) return _Converted.kept(problem);
         default:
           return _Converted.kept('explode argument ${arg.prefix}: has no Animus equivalent');
       }
     }
-    return _Converted.of(<JObject>[_reorder(action, <String>['x', 'y', 'z', 'world', 'power', 'fire', 'breakBlocks']).node('animus:explode')]);
+    return _Converted.of(<JObject>[_reorder(action, <String>['x', 'y', 'z', 'location', 'world', 'power', 'fire', 'breakBlocks']).node('animus:explode')]);
   }
 
   /// Mechanisms with an Animus action: the NPC's name and held or worn items, and showing a book script to the player.

@@ -14,9 +14,10 @@ const Map<String, String> _commandTokens = <String, String>{
   'player': "The player's UUID",
 };
 
-/// Text the formatter colours, with `{player_name}`.
-const FieldProfile _spoken = FieldProfile(miniMessage: true, papi: true, placeholders: _playerName);
-const FieldProfile _styled = FieldProfile(miniMessage: true, papi: true);
+/// Text the formatter colours, with `{player_name}`. `{{ }}` holes make the
+/// argument a template, which the server fills when the step runs.
+const FieldProfile _spoken = FieldProfile(holes: ExpressionSyntax.behavior, miniMessage: true, papi: true, placeholders: _playerName);
+const FieldProfile _styled = FieldProfile(holes: ExpressionSyntax.behavior, miniMessage: true, papi: true);
 
 /// The profile of argument [key] of [capability].
 FieldProfile argumentProfile(String? capability, String key) {
@@ -30,7 +31,7 @@ FieldProfile argumentProfile(String? capability, String key) {
     case ('animus:set-appearance', 'name'):
       return _styled;
     case ('animus:command', 'command'):
-      return const FieldProfile(command: true, placeholders: _commandTokens, papi: true);
+      return const FieldProfile(holes: ExpressionSyntax.behavior, command: true, placeholders: _commandTokens, papi: true);
     case ('animus:flag-state' || 'animus:set-flag', 'name'):
       return const FieldProfile(values: <ValueRef>[ValueRef.flags()]);
     case ('animus:quest-state' || 'animus:set-quest-state' || 'animus:advance-quest-state', 'name'):

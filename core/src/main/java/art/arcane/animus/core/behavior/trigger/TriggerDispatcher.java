@@ -59,7 +59,6 @@ public final class TriggerDispatcher implements TriggerSink {
         }
     }
     /** Sensed events found by looking around; those that only need an event of their own are not looked for. */
-    static boolean scanned(TriggerKind kind) { return kind.sensed() && kind != TriggerKind.HIT_BY_PROJECTILE && kind != TriggerKind.LEASH_TIE && kind != TriggerKind.NPC_SPEECH; }
     /** An immutable NPC, accepted program and trigger combination. A source change produces a new one. */
     public static final class Binding {
         private final NpcDefinition definition; private final String behavior; private final BehaviorCatalog.Accepted accepted;
@@ -403,7 +402,7 @@ public final class TriggerDispatcher implements TriggerSink {
                     if (trigger.spec() instanceof TriggerBinding.Proximity proximity && proximity.radius() > settings.maximumProximityRadius()) {
                         problems.add("trigger-proximity-budget", triggerField, "Radius exceeds behaviors.triggers.maximumProximityRadius"); continue;
                     }
-                    if (trigger.spec() instanceof TriggerBinding.EntityEvent sensed && scanned(sensed.kind()) && sensed.radius() > settings.maximumEntityRadius()) {
+                    if (trigger.spec() instanceof TriggerBinding.EntityEvent sensed && sensed.kind().scanned() && sensed.radius() > settings.maximumEntityRadius()) {
                         problems.add("trigger-entity-budget", triggerField, "Radius exceeds behaviors.triggers.maximumEntityRadius"); continue;
                     }
                     if (trigger.spec() instanceof TriggerBinding.Timer timer && timer.intervalTicks() < settings.minimumTimerTicks()) {
@@ -445,7 +444,7 @@ public final class TriggerDispatcher implements TriggerSink {
             switch (binding.trigger.spec()) {
                 case TriggerBinding.EntityEvent event -> {
                     sensed.computeIfAbsent(npc, ignored -> new ArrayList<>()).add(new EntitySensor.Watch(binding.key(), event));
-                    if (scanned(event.kind())) reach.merge(npc, event.radius(), Math::max);
+                    if (event.kind().scanned()) reach.merge(npc, event.radius(), Math::max);
                     if (event.kind() == TriggerKind.NPC_SPEECH && !hearing.contains(npc)) hearing.add(npc);
                 }
                 case TriggerBinding.Timer timer -> {

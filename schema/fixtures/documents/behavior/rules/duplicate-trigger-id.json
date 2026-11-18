@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:duplicate-trigger-id",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Hello"
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction"
+    },
+    {
+      "id": "click",
+      "event": "proximity",
+      "phase": "enter",
+      "radius": 4
+    }
+  ]
+}

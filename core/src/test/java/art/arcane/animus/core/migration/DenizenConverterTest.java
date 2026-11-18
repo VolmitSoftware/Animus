@@ -1399,6 +1399,13 @@ class DenizenConverterTest {
         assertEquals("bossbar color teal has no Animus equivalent", reasonAt(output, "a.dsc:11"));
     }
 
+    @Test void aPlaceOfUnknownKindExplodesAtItsLocationTextWithoutTheDenizenPrefix() throws IOException {
+        JsonObject blast = main("t:\n  type: task\n  definitions: spot\n  script:\n  - explode <[spot]>\n");
+        assertEquals("animus:explode", blast.get("capability").getAsString());
+        assertEquals(object("{\"location\":null}"), blast.getAsJsonObject("arguments"));
+        assertEquals("replace(text(d_spot), 'l@', '')", blast.getAsJsonObject("expressions").get("/location").getAsString());
+    }
+
     @Test void otherEntitiesCursorsMatchedPlayersAndRunsForOthersConvert() throws IOException {
         DenizenConverter.Output output = convert("""
                 t:
@@ -1445,10 +1452,9 @@ class DenizenConverterTest {
         assertTrue(main.contains("\"capability\":\"animus:look\",\"arguments\":{\"target\":\"player\",\"npc\":null},\"expressions\":{\"/npc\":\"d_helper\"}"), main);
         assertTrue(main.contains("\"capability\":\"animus:animate\",\"arguments\":{\"animation\":\"swing\",\"npc\":null},\"expressions\":{\"/npc\":\"d_helper\"}"), main);
         assertTrue(main.contains("\"capability\":\"animus:spawn-particle\",\"arguments\":{\"particle\":\"minecraft:heart\",\"count\":3,\"height\":2.0,\"audience\":\"nearby\",\"npc\":null},\"expressions\":{\"/npc\":\"d_helper\"}"), main);
-        assertTrue(main.contains("\"capability\":\"animus:teleport\",\"arguments\":{\"target\":\"npc\",\"x\":null,\"y\":null,\"z\":null,\"world\":null}"), main);
-        assertTrue(main.contains("\"/y\":\"num(get(split(offset(d_base, 0, 1, 0), ','), 1, 0))\""), main);
+        assertTrue(main.contains("\"capability\":\"animus:teleport\",\"arguments\":{\"target\":\"npc\",\"location\":null},\"expressions\":{\"/location\":\"offset(d_base, 0, 1, 0)\"}"), main);
         assertTrue(main.contains("{\"type\":\"action\",\"capability\":\"animus:look-close\",\"arguments\":{\"enabled\":true,\"range\":6.0,\"lineOfSight\":true}}"), main);
-        assertTrue(main.contains("\"capability\":\"animus:explode\",\"arguments\":{\"x\":null,\"y\":null,\"z\":null,\"world\":null,\"power\":2.0,\"fire\":true}"), main);
+        assertTrue(main.contains("\"capability\":\"animus:explode\",\"arguments\":{\"location\":null,\"power\":2.0,\"fire\":true},\"expressions\":{\"/location\":\"d_base\"}"), main);
         assertTrue(main.contains("\"capability\":\"animus:sidebar\",\"arguments\":{\"operation\":\"add\",\"lines\":null}"), main);
         assertTrue(main.contains("\"arguments\":{\"operation\":\"set_line\",\"line\":2,\"lines\":null},\"expressions\":{\"/lines\":\"slice(split(join(['Second'], '|'), '|'), 0, 1)\"}"), main);
         assertTrue(main.contains("{\"type\":\"call\",\"routine\":\"task-greet\",\"player\":{\"expression\":\"get(players(d_guest), 0, '')\"}}"), main);

@@ -1184,7 +1184,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:build",
-          "description": "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z or where the NPC stands. Protection still applies."
+          "description": "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z, at a location written x,y,z or x,y,z,world such as a ray-trace result, or where the NPC stands. Protection still applies."
         },
         {
           "const": "animus:charge",
@@ -1208,11 +1208,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:explode",
-          "description": "Sets off an explosion of power (0-16, default 1) at x, y, z of the NPC's world, or of world, or with no position at the NPC, or another NPC named by npc. fire and breakBlocks start fires and break blocks only when behaviors.actions explosionsDamageBlocks allows it; protection plugins decide as for any explosion."
+          "description": "Sets off an explosion of power (0-16, default 1) at x, y, z or at a location written x,y,z or x,y,z,world such as a ray-trace result, in the location's world, else world, else the NPC's; with no position at the NPC, or another NPC named by npc. fire and breakBlocks start fires and break blocks only when behaviors.actions explosionsDamageBlocks allows it; protection plugins decide as for any explosion."
         },
         {
           "const": "animus:give-book",
-          "description": "Gives the triggering player, or the player named by player, a written book. Pages use the dialogue colour codes. Reports given."
+          "description": "Gives the triggering player, or the player named by player, a written book. Pages take the colour codes Say takes. Reports given."
         },
         {
           "const": "animus:give-item",
@@ -1220,11 +1220,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:look",
-          "description": "Turns the NPC, or another NPC named by npc, toward a position or the triggering player."
+          "description": "Turns the NPC, or another NPC named by npc, toward the triggering player, toward x, y and z, or toward a location written x,y,z or x,y,z,world such as player.location or a ray-trace result."
         },
         {
           "const": "animus:look-close",
-          "description": "Turns the NPC's look-close, or another NPC's named by npc, on or off until a restart or a definition change, with an optional range (1-64) and lineOfSight."
+          "description": "Makes the NPC, or another NPC named by npc, turn its head toward players near it (enabled true) or stop (enabled false) until a restart or a definition change; range (1-64) is how near they must be, and lineOfSight true needs a clear view."
         },
         {
           "const": "animus:message",
@@ -1232,7 +1232,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:navigate",
-          "description": "Starts a route to a position in the NPC's world, or follows a reusable route. Completes when requested, or on arrival with wait."
+          "description": "Starts a route to a position in the NPC's world: x, y and z, a location written x,y,z or x,y,z,world such as player.location or a ray-trace result, or one of the NPC's anchors. A location in another world is refused. Or follows a reusable route. Completes when requested, or on arrival with wait."
         },
         {
           "const": "animus:open-gui",
@@ -1280,7 +1280,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:say",
-          "description": "Sends dialogue text to the triggering player, the player named by player, or nearby players; {player_name} becomes that player's name."
+          "description": "Sends a line the NPC says to the triggering player, the player named by player, or nearby players; {player_name} becomes that player's name."
         },
         {
           "const": "animus:set-appearance",
@@ -1328,7 +1328,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:teleport",
-          "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, to the NPC or the player, or the NPC to one of its anchors."
+          "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with an optional world, or to a location written x,y,z or x,y,z,world such as player.location, in its world when it names one; yaw and pitch are optional. Or teleports to the NPC or the player, or the NPC to one of its anchors."
         },
         {
           "const": "animus:title",
@@ -2493,6 +2493,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       "minimum": -3.0E+7,
                       "maximum": 3.0E+7
                     },
+                    "location": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
                     "rotation": {
                       "type": "integer",
                       "minimum": 0,
@@ -2539,7 +2544,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   "required": [
                     "operation"
                   ],
-                  "description": "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z or where the NPC stands. Protection still applies."
+                  "description": "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z, at a location written x,y,z or x,y,z,world such as a ray-trace result, or where the NPC stands. Protection still applies."
                 }
               },
               "required": [
@@ -3138,6 +3143,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       "minimum": -3.0E+7,
                       "maximum": 3.0E+7
                     },
+                    "location": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
                     "world": {
                       "type": "string",
                       "minLength": 1,
@@ -3160,7 +3170,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       "maxLength": 36
                     }
                   },
-                  "description": "Sets off an explosion of power (0-16, default 1) at x, y, z of the NPC's world, or of world, or with no position at the NPC, or another NPC named by npc. fire and breakBlocks start fires and break blocks only when behaviors.actions explosionsDamageBlocks allows it; protection plugins decide as for any explosion."
+                  "description": "Sets off an explosion of power (0-16, default 1) at x, y, z or at a location written x,y,z or x,y,z,world such as a ray-trace result, in the location's world, else world, else the NPC's; with no position at the NPC, or another NPC named by npc. fire and breakBlocks start fires and break blocks only when behaviors.actions explosionsDamageBlocks allows it; protection plugins decide as for any explosion."
                 }
               }
             }
@@ -3248,7 +3258,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     "author",
                     "pages"
                   ],
-                  "description": "Gives the triggering player, or the player named by player, a written book. Pages use the dialogue colour codes. Reports given."
+                  "description": "Gives the triggering player, or the player named by player, a written book. Pages take the colour codes Say takes. Reports given."
                 }
               },
               "required": [
@@ -3490,6 +3500,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       "minimum": -3.0E+7,
                       "maximum": 3.0E+7
                     },
+                    "location": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
                     "target": {
                       "const": "player"
                     },
@@ -3511,9 +3526,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         "y",
                         "z"
                       ]
+                    },
+                    {
+                      "required": [
+                        "location"
+                      ]
                     }
                   ],
-                  "description": "Turns the NPC, or another NPC named by npc, toward a position or the triggering player."
+                  "description": "Turns the NPC, or another NPC named by npc, toward the triggering player, toward x, y and z, or toward a location written x,y,z or x,y,z,world such as player.location or a ray-trace result."
                 }
               },
               "required": [
@@ -3594,7 +3614,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   "required": [
                     "enabled"
                   ],
-                  "description": "Turns the NPC's look-close, or another NPC's named by npc, on or off until a restart or a definition change, with an optional range (1-64) and lineOfSight."
+                  "description": "Makes the NPC, or another NPC named by npc, turn its head toward players near it (enabled true) or stop (enabled false) until a restart or a definition change; range (1-64) is how near they must be, and lineOfSight true needs a clear view."
                 }
               },
               "required": [
@@ -3769,6 +3789,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       "minimum": -3.0E+7,
                       "maximum": 3.0E+7
                     },
+                    "location": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
                     "mode": {
                       "enum": [
                         "walk",
@@ -3807,9 +3832,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         "y",
                         "z"
                       ]
+                    },
+                    {
+                      "required": [
+                        "location"
+                      ]
                     }
                   ],
-                  "description": "Starts a route to a position in the NPC's world, or follows a reusable route. Completes when requested, or on arrival with wait."
+                  "description": "Starts a route to a position in the NPC's world: x, y and z, a location written x,y,z or x,y,z,world such as player.location or a ray-trace result, or one of the NPC's anchors. A location in another world is refused. Or follows a reusable route. Completes when requested, or on arrival with wait."
                 }
               },
               "required": [
@@ -4762,7 +4792,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   "required": [
                     "text"
                   ],
-                  "description": "Sends dialogue text to the triggering player, the player named by player, or nearby players; {player_name} becomes that player's name."
+                  "description": "Sends a line the NPC says to the triggering player, the player named by player, or nearby players; {player_name} becomes that player's name."
                 }
               },
               "required": [
@@ -5798,6 +5828,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       "minimum": -3.0E+7,
                       "maximum": 3.0E+7
                     },
+                    "location": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
                     "world": {
                       "type": "string",
                       "minLength": 1,
@@ -5840,6 +5875,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     },
                     {
                       "required": [
+                        "location"
+                      ]
+                    },
+                    {
+                      "required": [
                         "to"
                       ]
                     },
@@ -5849,7 +5889,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       ]
                     }
                   ],
-                  "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, to the NPC or the player, or the NPC to one of its anchors."
+                  "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with an optional world, or to a location written x,y,z or x,y,z,world such as player.location, in its world when it names one; yaw and pitch are optional. Or teleports to the NPC or the player, or the NPC to one of its anchors."
                 }
               },
               "required": [
@@ -8546,8 +8586,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "radius": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "maximum": 64.0,
-          "description": "Blocks, above 0."
+          "maximum": 32,
+          "description": "Blocks, above 0 and at most 32. The server's behaviors.triggers.maximumEntityRadius (16 by default) caps it; a larger radius leaves the trigger unbound."
         },
         "entity": {
           "type": "string",
@@ -8744,8 +8784,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "radius": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "maximum": 64.0,
-          "description": "Blocks, above 0."
+          "maximum": 32,
+          "description": "Blocks, above 0 and at most 32. The server's behaviors.triggers.maximumEntityRadius (16 by default) caps it; a larger radius leaves the trigger unbound."
         },
         "item": {
           "type": "string",
@@ -8937,8 +8977,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "radius": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "maximum": 64.0,
-          "description": "Blocks, above 0."
+          "maximum": 32,
+          "description": "Blocks, above 0 and at most 32. The server's behaviors.triggers.maximumEntityRadius (16 by default) caps it; a larger radius leaves the trigger unbound."
         },
         "entity": {
           "type": "string",
@@ -9010,8 +9050,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "radius": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "maximum": 64.0,
-          "description": "Blocks, above 0."
+          "maximum": 32,
+          "description": "Blocks, above 0 and at most 32. The server's behaviors.triggers.maximumEntityRadius (16 by default) caps it; a larger radius leaves the trigger unbound."
         },
         "npc": {
           "type": "string",
@@ -10381,7 +10421,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:build",
       "kind": "action",
-      "description": "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z or where the NPC stands. Protection still applies.",
+      "description": "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z, at a location written x,y,z or x,y,z,world such as a ray-trace result, or where the NPC stands. Protection still applies.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -10421,6 +10461,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "required": false,
           "minimum": -3.0E+7,
           "maximum": 3.0E+7
+        },
+        "location": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 128
         },
         "rotation": {
           "type": "integer",
@@ -10785,7 +10831,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:explode",
       "kind": "action",
-      "description": "Sets off an explosion of power (0-16, default 1) at x, y, z of the NPC's world, or of world, or with no position at the NPC, or another NPC named by npc. fire and breakBlocks start fires and break blocks only when behaviors.actions explosionsDamageBlocks allows it; protection plugins decide as for any explosion.",
+      "description": "Sets off an explosion of power (0-16, default 1) at x, y, z or at a location written x,y,z or x,y,z,world such as a ray-trace result, in the location's world, else world, else the NPC's; with no position at the NPC, or another NPC named by npc. fire and breakBlocks start fires and break blocks only when behaviors.actions explosionsDamageBlocks allows it; protection plugins decide as for any explosion.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -10808,6 +10854,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "required": false,
           "minimum": -3.0E+7,
           "maximum": 3.0E+7
+        },
+        "location": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 128
         },
         "world": {
           "type": "string",
@@ -10884,7 +10936,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:give-book",
       "kind": "action",
-      "description": "Gives the triggering player, or the player named by player, a written book. Pages use the dialogue colour codes. Reports given.",
+      "description": "Gives the triggering player, or the player named by player, a written book. Pages take the colour codes Say takes. Reports given.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -10989,7 +11041,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:look",
       "kind": "action",
-      "description": "Turns the NPC, or another NPC named by npc, toward a position or the triggering player.",
+      "description": "Turns the NPC, or another NPC named by npc, toward the triggering player, toward x, y and z, or toward a location written x,y,z or x,y,z,world such as player.location or a ray-trace result.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -11013,6 +11065,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "minimum": -3.0E+7,
           "maximum": 3.0E+7
         },
+        "location": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 128
+        },
         "target": {
           "type": "string",
           "required": false,
@@ -11033,13 +11091,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "x",
           "y",
           "z"
+        ],
+        [
+          "location"
         ]
       ]
     },
     {
       "id": "animus:look-close",
       "kind": "action",
-      "description": "Turns the NPC's look-close, or another NPC's named by npc, on or off until a restart or a definition change, with an optional range (1-64) and lineOfSight.",
+      "description": "Makes the NPC, or another NPC named by npc, turn its head toward players near it (enabled true) or stop (enabled false) until a restart or a definition change; range (1-64) is how near they must be, and lineOfSight true needs a clear view.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -11110,7 +11171,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:navigate",
       "kind": "action",
-      "description": "Starts a route to a position in the NPC's world, or follows a reusable route. Completes when requested, or on arrival with wait.",
+      "description": "Starts a route to a position in the NPC's world: x, y and z, a location written x,y,z or x,y,z,world such as player.location or a ray-trace result, or one of the NPC's anchors. A location in another world is refused. Or follows a reusable route. Completes when requested, or on arrival with wait.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -11145,6 +11206,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "required": false,
           "minimum": -3.0E+7,
           "maximum": 3.0E+7
+        },
+        "location": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 128
         },
         "mode": {
           "type": "string",
@@ -11183,6 +11250,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "x",
           "y",
           "z"
+        ],
+        [
+          "location"
         ]
       ]
     },
@@ -11655,7 +11725,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:say",
       "kind": "action",
-      "description": "Sends dialogue text to the triggering player, the player named by player, or nearby players; {player_name} becomes that player's name.",
+      "description": "Sends a line the NPC says to the triggering player, the player named by player, or nearby players; {player_name} becomes that player's name.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -12113,7 +12183,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:teleport",
       "kind": "action",
-      "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, to the NPC or the player, or the NPC to one of its anchors.",
+      "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with an optional world, or to a location written x,y,z or x,y,z,world such as player.location, in its world when it names one; yaw and pitch are optional. Or teleports to the NPC or the player, or the NPC to one of its anchors.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -12144,6 +12214,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "required": false,
           "minimum": -3.0E+7,
           "maximum": 3.0E+7
+        },
+        "location": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 128
         },
         "world": {
           "type": "string",
@@ -12189,6 +12265,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "x",
           "y",
           "z"
+        ],
+        [
+          "location"
         ],
         [
           "to"
@@ -12259,6 +12338,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A viewer's validated click on the NPC, or the drop or swap-hands key pressed while looking at it in reach. Runs read context.action, context.sneaking and context.hand (main_hand or off_hand).",
       "carriesPlayer": true,
       "reach": "npc",
+      "context": [
+        "action",
+        "sneaking",
+        "hand"
+      ],
+      "contextTypes": {
+        "action": "text",
+        "sneaking": "boolean",
+        "hand": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -12327,6 +12416,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A viewer crosses a radius around the NPC.",
       "carriesPlayer": true,
       "reach": "npc",
+      "context": [],
+      "contextTypes": {},
       "fields": {
         "id": {
           "type": "identifier",
@@ -12379,6 +12470,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "The runtime first presents the NPC.",
       "carriesPlayer": false,
       "reach": "npc",
+      "context": [],
+      "contextTypes": {},
       "fields": {
         "id": {
           "type": "identifier",
@@ -12408,6 +12501,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A spawned NPC is despawned.",
       "carriesPlayer": false,
       "reach": "npc",
+      "context": [],
+      "contextTypes": {},
       "fields": {
         "id": {
           "type": "identifier",
@@ -12437,6 +12532,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "Authoritative NPC health falls. Runs read context.damage, context.attacker and context.attacker_type (player, mob, npc or empty); a player attacker is the run's player.",
       "carriesPlayer": false,
       "reach": "npc",
+      "context": [
+        "damage",
+        "attacker",
+        "attacker_type"
+      ],
+      "contextTypes": {
+        "damage": "number",
+        "attacker": "text",
+        "attacker_type": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -12466,6 +12571,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "Authoritative NPC health reaches zero. Runs read context.killer and context.killer_type (player, mob, npc or empty); a player killer is the run's player.",
       "carriesPlayer": false,
       "reach": "npc",
+      "context": [
+        "killer",
+        "killer_type"
+      ],
+      "contextTypes": {
+        "killer": "text",
+        "killer_type": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -12495,6 +12608,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "The NPC arrives at a route point.",
       "carriesPlayer": false,
       "reach": "npc",
+      "context": [],
+      "contextTypes": {},
       "fields": {
         "id": {
           "type": "identifier",
@@ -12531,6 +12646,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "An interval passes while the NPC is active, or while the server runs in a server behavior.",
       "carriesPlayer": false,
       "reach": "both",
+      "context": [],
+      "contextTypes": {},
       "fields": {
         "id": {
           "type": "identifier",
@@ -12567,6 +12684,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A viewer clicks an option of an animus:choices prompt from this NPC.",
       "carriesPlayer": true,
       "reach": "npc",
+      "context": [],
+      "contextTypes": {},
       "fields": {
         "id": {
           "type": "identifier",
@@ -12606,6 +12725,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "The owning module publishes a trigger.",
       "carriesPlayer": true,
       "reach": "both",
+      "context": [],
+      "contextTypes": {},
       "fields": {
         "id": {
           "type": "identifier",
@@ -12641,6 +12762,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A build this NPC works on places its last block.",
       "carriesPlayer": false,
       "reach": "npc",
+      "context": [],
+      "contextTypes": {},
       "fields": {
         "id": {
           "type": "identifier",
@@ -12670,6 +12793,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A build this NPC works on is paused by command or starts waiting for terrain, materials or builders.",
       "carriesPlayer": false,
       "reach": "npc",
+      "context": [],
+      "contextTypes": {},
       "fields": {
         "id": {
           "type": "identifier",
@@ -12699,6 +12824,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "An animation started by animus:play-animation reaches its end: a once clip stops, a hold clip starts holding.",
       "carriesPlayer": false,
       "reach": "npc",
+      "context": [],
+      "contextTypes": {},
       "fields": {
         "id": {
           "type": "identifier",
@@ -12734,6 +12861,24 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A real entity, players included, crosses a radius around the NPC. Runs read context.entity, context.entity_type, context.entity_name and context.phase.",
       "carriesPlayer": true,
       "reach": "npc",
+      "context": [
+        "x",
+        "y",
+        "z",
+        "entity",
+        "entity_type",
+        "entity_name",
+        "phase"
+      ],
+      "contextTypes": {
+        "x": "number",
+        "y": "number",
+        "z": "number",
+        "entity": "text",
+        "entity_type": "text",
+        "entity_name": "text",
+        "phase": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -12769,9 +12914,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "radius": {
           "type": "number",
           "required": true,
-          "maximum": 64.0,
+          "maximum": 32,
           "exclusiveMinimum": 0,
-          "description": "Blocks, above 0."
+          "description": "Blocks, above 0 and at most 32. The server's behaviors.triggers.maximumEntityRadius (16 by default) caps it; a larger radius leaves the trigger unbound."
         },
         "entity": {
           "type": "string",
@@ -12816,6 +12961,24 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A real entity starts to touch the NPC's hitbox or stands on top of it. Runs read context.entity, context.entity_type and context.contact (top or side).",
       "carriesPlayer": true,
       "reach": "npc",
+      "context": [
+        "x",
+        "y",
+        "z",
+        "entity",
+        "entity_type",
+        "entity_name",
+        "contact"
+      ],
+      "contextTypes": {
+        "x": "number",
+        "y": "number",
+        "z": "number",
+        "entity": "text",
+        "entity_type": "text",
+        "entity_name": "text",
+        "contact": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -12892,6 +13055,28 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A real projectile flies into the NPC's hitbox. Runs read context.projectile, context.projectile_uuid, context.stopped and the shooter as context.entity; a player shooter is the run's player.",
       "carriesPlayer": true,
       "reach": "npc",
+      "context": [
+        "x",
+        "y",
+        "z",
+        "entity",
+        "entity_type",
+        "entity_name",
+        "projectile",
+        "projectile_uuid",
+        "stopped"
+      ],
+      "contextTypes": {
+        "x": "number",
+        "y": "number",
+        "z": "number",
+        "entity": "text",
+        "entity_type": "text",
+        "entity_name": "text",
+        "projectile": "text",
+        "projectile_uuid": "text",
+        "stopped": "boolean"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -12964,6 +13149,30 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player or mob drops an item within a radius of the NPC, or throws it into its hitbox. Runs read context.item, context.amount, context.item_entity, context.thrown and the thrower as context.entity.",
       "carriesPlayer": true,
       "reach": "npc",
+      "context": [
+        "x",
+        "y",
+        "z",
+        "entity",
+        "entity_type",
+        "entity_name",
+        "item",
+        "amount",
+        "item_entity",
+        "thrown"
+      ],
+      "contextTypes": {
+        "x": "number",
+        "y": "number",
+        "z": "number",
+        "entity": "text",
+        "entity_type": "text",
+        "entity_name": "text",
+        "item": "text",
+        "amount": "number",
+        "item_entity": "text",
+        "thrown": "boolean"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -12990,9 +13199,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "radius": {
           "type": "number",
           "required": true,
-          "maximum": 64.0,
+          "maximum": 32,
           "exclusiveMinimum": 0,
-          "description": "Blocks, above 0."
+          "description": "Blocks, above 0 and at most 32. The server's behaviors.triggers.maximumEntityRadius (16 by default) caps it; a larger radius leaves the trigger unbound."
         },
         "item": {
           "type": "string",
@@ -13048,6 +13257,26 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A moving minecart or boat runs into the NPC's hitbox. Runs read the vehicle as context.entity, context.speed and context.rider; a player riding it is the run's player.",
       "carriesPlayer": true,
       "reach": "npc",
+      "context": [
+        "x",
+        "y",
+        "z",
+        "entity",
+        "entity_type",
+        "entity_name",
+        "speed",
+        "rider"
+      ],
+      "contextTypes": {
+        "x": "number",
+        "y": "number",
+        "z": "number",
+        "entity": "text",
+        "entity_type": "text",
+        "entity_name": "text",
+        "speed": "number",
+        "rider": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -13114,6 +13343,26 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player leading mobs on a lead right-clicks the NPC, once for each mob. Runs read the mob as context.entity and context.holder; the player is the run's player.",
       "carriesPlayer": true,
       "reach": "npc",
+      "context": [
+        "x",
+        "y",
+        "z",
+        "entity",
+        "entity_type",
+        "entity_name",
+        "holder",
+        "holder_type"
+      ],
+      "contextTypes": {
+        "x": "number",
+        "y": "number",
+        "z": "number",
+        "entity": "text",
+        "entity_type": "text",
+        "entity_name": "text",
+        "holder": "text",
+        "holder_type": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -13180,6 +13429,26 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A mob on a lead is led within a radius of the NPC. Runs read the mob as context.entity and context.holder; a player holding the lead is the run's player.",
       "carriesPlayer": true,
       "reach": "npc",
+      "context": [
+        "x",
+        "y",
+        "z",
+        "entity",
+        "entity_type",
+        "entity_name",
+        "holder",
+        "holder_type"
+      ],
+      "contextTypes": {
+        "x": "number",
+        "y": "number",
+        "z": "number",
+        "entity": "text",
+        "entity_type": "text",
+        "entity_name": "text",
+        "holder": "text",
+        "holder_type": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -13206,9 +13475,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "radius": {
           "type": "number",
           "required": true,
-          "maximum": 64.0,
+          "maximum": 32,
           "exclusiveMinimum": 0,
-          "description": "Blocks, above 0."
+          "description": "Blocks, above 0 and at most 32. The server's behaviors.triggers.maximumEntityRadius (16 by default) caps it; a larger radius leaves the trigger unbound."
         },
         "entity": {
           "type": "string",
@@ -13253,6 +13522,22 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "Another NPC crosses a radius around this one. Runs read context.npc (its id), context.npc_uuid and context.phase.",
       "carriesPlayer": false,
       "reach": "npc",
+      "context": [
+        "x",
+        "y",
+        "z",
+        "npc",
+        "npc_uuid",
+        "phase"
+      ],
+      "contextTypes": {
+        "x": "number",
+        "y": "number",
+        "z": "number",
+        "npc": "text",
+        "npc_uuid": "text",
+        "phase": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -13288,9 +13573,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "radius": {
           "type": "number",
           "required": true,
-          "maximum": 64.0,
+          "maximum": 32,
           "exclusiveMinimum": 0,
-          "description": "Blocks, above 0."
+          "description": "Blocks, above 0 and at most 32. The server's behaviors.triggers.maximumEntityRadius (16 by default) caps it; a larger radius leaves the trigger unbound."
         },
         "npc": {
           "type": "string",
@@ -13311,6 +13596,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "Another NPC within the radius speaks with animus:say. Runs read context.npc, context.npc_uuid and context.text.",
       "carriesPlayer": false,
       "reach": "npc",
+      "context": [
+        "npc",
+        "npc_uuid",
+        "text"
+      ],
+      "contextTypes": {
+        "npc": "text",
+        "npc_uuid": "text",
+        "text": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -13370,6 +13665,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "context": [
         "first"
       ],
+      "contextTypes": {
+        "first": "boolean"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -13404,6 +13702,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player leaves the server.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [],
+      "contextTypes": {},
       "fields": {
         "id": {
           "type": "identifier",
@@ -13436,6 +13736,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "context": [
         "message"
       ],
+      "contextTypes": {
+        "message": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -13478,6 +13781,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "args",
         "raw_args"
       ],
+      "contextTypes": {
+        "command": "text",
+        "alias": "text",
+        "args": "list",
+        "raw_args": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -13538,6 +13847,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "The server behavior is first enabled after the server starts.",
       "carriesPlayer": false,
       "reach": "server",
+      "context": [],
+      "contextTypes": {},
       "fields": {
         "id": {
           "type": "identifier",
@@ -13570,6 +13881,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "context": [
         "message"
       ],
+      "contextTypes": {
+        "message": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -13599,6 +13913,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player respawns.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [],
+      "contextTypes": {},
       "fields": {
         "id": {
           "type": "identifier",
@@ -13632,6 +13948,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "from",
         "to"
       ],
+      "contextTypes": {
+        "from": "text",
+        "to": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -13675,6 +13995,18 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player enters or leaves a cuboid or ellipsoid area, checked every half second and on join and quit. Runs read context.area, context.world and context.cause (join, move or quit).",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "phase",
+        "area",
+        "world",
+        "cause"
+      ],
+      "contextTypes": {
+        "phase": "text",
+        "area": "text",
+        "world": "text",
+        "cause": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -13740,6 +14072,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "inventory_items",
         "inventory_location"
       ],
+      "contextTypes": {
+        "inventory_type": "text",
+        "inventory_items": "list",
+        "inventory_location": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -13787,6 +14124,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "inventory_items",
         "inventory_location"
       ],
+      "contextTypes": {
+        "inventory_type": "text",
+        "inventory_items": "list",
+        "inventory_location": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -13822,6 +14164,18 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player clicks a slot of an open inventory. Runs read context.inventory_type, context.click, context.slot and context.item. cancel undoes the click.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "inventory_type",
+        "click",
+        "slot",
+        "item"
+      ],
+      "contextTypes": {
+        "inventory_type": "text",
+        "click": "text",
+        "slot": "number",
+        "item": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -13876,6 +14230,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player drops an item. Runs read context.item and context.amount. cancel keeps it in the inventory.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "item",
+        "amount"
+      ],
+      "contextTypes": {
+        "item": "text",
+        "amount": "number"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -13918,6 +14280,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player picks up an item. Runs read context.item and context.amount. cancel leaves it on the ground.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "item",
+        "amount"
+      ],
+      "contextTypes": {
+        "item": "text",
+        "amount": "number"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -13960,6 +14330,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player finishes eating or drinking an item. Runs read context.item. cancel keeps the item.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "item",
+        "amount"
+      ],
+      "contextTypes": {
+        "item": "text",
+        "amount": "number"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -14002,6 +14380,26 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player left or right clicks a block. Runs read context.block, context.click (left or right), context.hand, context.location, context.world, context.x, context.y and context.z. cancel stops the click.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "block",
+        "world",
+        "x",
+        "y",
+        "z",
+        "location",
+        "click",
+        "hand"
+      ],
+      "contextTypes": {
+        "block": "text",
+        "world": "text",
+        "x": "number",
+        "y": "number",
+        "z": "number",
+        "location": "text",
+        "click": "text",
+        "hand": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -14050,6 +14448,22 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player places a block. Runs read context.block and its location. cancel stops the placement.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "block",
+        "world",
+        "x",
+        "y",
+        "z",
+        "location"
+      ],
+      "contextTypes": {
+        "block": "text",
+        "world": "text",
+        "x": "number",
+        "y": "number",
+        "z": "number",
+        "location": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -14092,6 +14506,22 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player breaks a block. Runs read context.block and its location. cancel keeps the block.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "block",
+        "world",
+        "x",
+        "y",
+        "z",
+        "location"
+      ],
+      "contextTypes": {
+        "block": "text",
+        "world": "text",
+        "x": "number",
+        "y": "number",
+        "z": "number",
+        "location": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -14134,6 +14564,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player takes damage. Runs read context.cause, context.damage and context.damager (an entity type, empty for none). cancel prevents the damage.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "cause",
+        "damage",
+        "damager"
+      ],
+      "contextTypes": {
+        "cause": "text",
+        "damage": "number",
+        "damager": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -14182,6 +14622,18 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player hits a living entity that is not an NPC. Runs read context.entity, context.entity_uuid, context.cause and context.damage. cancel prevents the damage.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "entity",
+        "entity_uuid",
+        "cause",
+        "damage"
+      ],
+      "contextTypes": {
+        "entity": "text",
+        "entity_uuid": "text",
+        "cause": "text",
+        "damage": "number"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -14224,6 +14676,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player kills a living entity. Runs read context.entity and context.entity_uuid.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "entity",
+        "entity_uuid"
+      ],
+      "contextTypes": {
+        "entity": "text",
+        "entity_uuid": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -14260,16 +14720,27 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "carriesPlayer": true,
       "reach": "server",
       "context": [
-        "projectile",
-        "projectile_uuid",
-        "shooter",
-        "shooter_uuid",
-        "location",
         "world",
         "x",
         "y",
-        "z"
+        "z",
+        "location",
+        "projectile",
+        "projectile_uuid",
+        "shooter",
+        "shooter_uuid"
       ],
+      "contextTypes": {
+        "world": "text",
+        "x": "number",
+        "y": "number",
+        "z": "number",
+        "location": "text",
+        "projectile": "text",
+        "projectile_uuid": "text",
+        "shooter": "text",
+        "shooter_uuid": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -14319,19 +14790,33 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "carriesPlayer": true,
       "reach": "server",
       "context": [
+        "block",
+        "world",
+        "x",
+        "y",
+        "z",
+        "location",
         "projectile",
         "projectile_uuid",
         "shooter",
         "shooter_uuid",
         "entity",
-        "entity_uuid",
-        "block",
-        "location",
-        "world",
-        "x",
-        "y",
-        "z"
+        "entity_uuid"
       ],
+      "contextTypes": {
+        "block": "text",
+        "world": "text",
+        "x": "number",
+        "y": "number",
+        "z": "number",
+        "location": "text",
+        "projectile": "text",
+        "projectile_uuid": "text",
+        "shooter": "text",
+        "shooter_uuid": "text",
+        "entity": "text",
+        "entity_uuid": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -14393,19 +14878,33 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "carriesPlayer": true,
       "reach": "server",
       "context": [
-        "shooter",
-        "shooter_uuid",
-        "bow",
-        "projectile",
-        "projectile_uuid",
-        "force",
-        "hand",
-        "location",
         "world",
         "x",
         "y",
-        "z"
+        "z",
+        "location",
+        "projectile",
+        "projectile_uuid",
+        "shooter",
+        "shooter_uuid",
+        "bow",
+        "force",
+        "hand"
       ],
+      "contextTypes": {
+        "world": "text",
+        "x": "number",
+        "y": "number",
+        "z": "number",
+        "location": "text",
+        "projectile": "text",
+        "projectile_uuid": "text",
+        "shooter": "text",
+        "shooter_uuid": "text",
+        "bow": "text",
+        "force": "number",
+        "hand": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -14465,6 +14964,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "stage",
         "title"
       ],
+      "contextTypes": {
+        "quest": "text",
+        "stage": "number",
+        "title": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -14505,6 +15009,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "stage",
         "title"
       ],
+      "contextTypes": {
+        "quest": "text",
+        "stage": "number",
+        "title": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -14545,6 +15054,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "stage",
         "title"
       ],
+      "contextTypes": {
+        "quest": "text",
+        "stage": "number",
+        "title": "text"
+      },
       "fields": {
         "id": {
           "type": "identifier",
@@ -15036,7 +15550,540 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "upper",
         "wave",
         "wipe"
-      ]
+      ],
+      "functionDocs": {
+        "get": {
+          "call": "get(list_or_map, key, [fallback])",
+          "returns": "any",
+          "about": "The item at a 0-based index of a list or a key of a map; without a fallback, a missing item fails."
+        },
+        "has": {
+          "call": "has(map, key)",
+          "returns": "boolean",
+          "about": "Whether the map has the key."
+        },
+        "keys": {
+          "call": "keys(map)",
+          "returns": "list",
+          "about": "The keys of the map."
+        },
+        "values": {
+          "call": "values(map)",
+          "returns": "list",
+          "about": "The values of the map."
+        },
+        "put": {
+          "call": "put(map, key, value)",
+          "returns": "map",
+          "about": "A new map with the key set to the value."
+        },
+        "remove": {
+          "call": "remove(list_or_map, key)",
+          "returns": "any",
+          "about": "A new list or map without the item at that 0-based index or key."
+        },
+        "append": {
+          "call": "append(list, value)",
+          "returns": "list",
+          "about": "A new list with the value added at the end."
+        },
+        "insert": {
+          "call": "insert(list, index, value)",
+          "returns": "list",
+          "about": "A new list with the value added at the 0-based index."
+        },
+        "index_of": {
+          "call": "index_of(list, value)",
+          "returns": "number",
+          "about": "The 0-based index of the value in the list, or -1 when it is not there."
+        },
+        "first": {
+          "call": "first(list)",
+          "returns": "any",
+          "about": "The first item of the list; an empty list fails."
+        },
+        "last": {
+          "call": "last(list)",
+          "returns": "any",
+          "about": "The last item of the list; an empty list fails."
+        },
+        "slice": {
+          "call": "slice(list_or_text, from, to)",
+          "returns": "any",
+          "about": "The items or characters from the index from up to but not including the index to."
+        },
+        "reverse": {
+          "call": "reverse(list_or_text)",
+          "returns": "any",
+          "about": "The list or text in reverse order."
+        },
+        "sort": {
+          "call": "sort(list)",
+          "returns": "list",
+          "about": "A list of only numbers or only text, in order."
+        },
+        "sum": {
+          "call": "sum(list)",
+          "returns": "number",
+          "about": "The total of a list of numbers."
+        },
+        "join": {
+          "call": "join(list, separator)",
+          "returns": "text",
+          "about": "The items as text with the separator between them."
+        },
+        "split": {
+          "call": "split(text, separator)",
+          "returns": "list",
+          "about": "The text cut at each separator."
+        },
+        "range": {
+          "call": "range(from, to)",
+          "returns": "list",
+          "about": "The whole numbers from from to to, both included, at most 256."
+        },
+        "trim": {
+          "call": "trim(text)",
+          "returns": "text",
+          "about": "The text without spaces around it."
+        },
+        "replace": {
+          "call": "replace(text, find, with)",
+          "returns": "text",
+          "about": "The text with every find replaced by with."
+        },
+        "starts_with": {
+          "call": "starts_with(text, prefix)",
+          "returns": "boolean",
+          "about": "Whether the text starts with the prefix."
+        },
+        "ends_with": {
+          "call": "ends_with(text, suffix)",
+          "returns": "boolean",
+          "about": "Whether the text ends with the suffix."
+        },
+        "num": {
+          "call": "num(value)",
+          "returns": "number",
+          "about": "A number from a number or numeric text; anything else fails."
+        },
+        "int": {
+          "call": "int(value)",
+          "returns": "number",
+          "about": "The number rounded toward zero."
+        },
+        "truthy": {
+          "call": "truthy(value)",
+          "returns": "boolean",
+          "about": "True for true, the text true in any case, and numbers other than zero."
+        },
+        "same": {
+          "call": "same(a, b)",
+          "returns": "boolean",
+          "about": "Equal as numbers when both are numbers or numeric text, otherwise equal as text ignoring case."
+        },
+        "same_world": {
+          "call": "same_world(a, b)",
+          "returns": "boolean",
+          "about": "Whether both name the same world, each by its name, UUID or dimension key such as minecraft:the_nether."
+        },
+        "text": {
+          "call": "text(value)",
+          "returns": "text",
+          "about": "Any value as text."
+        },
+        "random": {
+          "call": "random(min, max)",
+          "returns": "number",
+          "about": "A whole number from min to max, both included."
+        },
+        "random_decimal": {
+          "call": "random_decimal()",
+          "returns": "number",
+          "about": "A number from 0 up to but not including 1."
+        },
+        "chance": {
+          "call": "chance(percent)",
+          "returns": "boolean",
+          "about": "True with that percent chance."
+        },
+        "pick": {
+          "call": "pick(list)",
+          "returns": "any",
+          "about": "A random item of the list; an empty list fails."
+        },
+        "flag": {
+          "call": "flag(scope, name, [fallback])",
+          "returns": "any",
+          "about": "A flag of this behavior's namespace in the scope player, npc, relationship or global; without a fallback it must be set."
+        },
+        "has_flag": {
+          "call": "has_flag(scope, name)",
+          "returns": "boolean",
+          "about": "Whether that flag of this behavior's namespace is set."
+        },
+        "quest": {
+          "call": "quest(scope, name)",
+          "returns": "number",
+          "about": "A quest stage of this behavior's namespace, 0 when unset."
+        },
+        "players": {
+          "call": "players(value)",
+          "returns": "list",
+          "about": "The player UUIDs in a list or a single value, in order and without repeats, at most 100."
+        },
+        "player_info": {
+          "call": "player_info(player)",
+          "returns": "map",
+          "about": "Another online player's facts as a map with the player fact keys; an empty map when that player is offline."
+        },
+        "player_flag": {
+          "call": "player_flag(player, name, [fallback])",
+          "returns": "any",
+          "about": "A player flag of this behavior's namespace for another player; without a fallback it must be set."
+        },
+        "player_has_flag": {
+          "call": "player_has_flag(player, name)",
+          "returns": "boolean",
+          "about": "Whether another player has that player flag of this behavior's namespace."
+        },
+        "npcs": {
+          "call": "npcs()",
+          "returns": "list",
+          "about": "The UUIDs of every NPC the server knows, spawned or not, at most 1,024."
+        },
+        "npc_info": {
+          "call": "npc_info(npc)",
+          "returns": "map",
+          "about": "An NPC's facts as a map with the npc fact keys; an empty map for anything that is no NPC."
+        },
+        "npc_flag": {
+          "call": "npc_flag(npc, name, [fallback])",
+          "returns": "any",
+          "about": "An npc flag of this behavior's namespace for another NPC; without a fallback it must be set."
+        },
+        "npc_has_flag": {
+          "call": "npc_has_flag(npc, name)",
+          "returns": "boolean",
+          "about": "Whether another NPC has that npc flag of this behavior's namespace."
+        },
+        "distance": {
+          "call": "distance(from, to)",
+          "returns": "number",
+          "about": "The distance in blocks between two locations written x,y,z or x,y,z,world; locations in different worlds are 1,000,000,000 apart."
+        },
+        "duration_seconds": {
+          "call": "duration_seconds(value)",
+          "returns": "number",
+          "about": "The seconds in a number or in duration text such as 10m, 30t, 1h30m or d@1d."
+        },
+        "duration_text": {
+          "call": "duration_text(seconds)",
+          "returns": "text",
+          "about": "Seconds written as text such as 2h 30m, or 0s for none."
+        },
+        "flag_expiry": {
+          "call": "flag_expiry(scope, name)",
+          "returns": "number",
+          "about": "When a flag of this behavior's namespace expires, in epoch milliseconds; 0 when it never expires or is unset."
+        },
+        "player_flag_expiry": {
+          "call": "player_flag_expiry(player, name)",
+          "returns": "number",
+          "about": "When another player's player flag of this behavior's namespace expires, in epoch milliseconds; 0 when it never expires or is unset."
+        },
+        "type_of": {
+          "call": "type_of(value)",
+          "returns": "text",
+          "about": "The value's type: list, map, text, number or boolean."
+        },
+        "has_player": {
+          "call": "has_player()",
+          "returns": "boolean",
+          "about": "Whether a player started the run; a command run from the console has none."
+        },
+        "offset": {
+          "call": "offset(location, x, y, z)",
+          "returns": "text",
+          "about": "The location moved by those blocks, written x,y,z,world to two decimals."
+        },
+        "players_near": {
+          "call": "players_near(location, radius)",
+          "returns": "list",
+          "about": "The UUIDs of the online players within radius blocks of the location in its world, nearest first, at most 100."
+        },
+        "within": {
+          "call": "within(location, area)",
+          "returns": "boolean",
+          "about": "Whether the location is inside an area map with a world, a shape of cuboid or ellipsoid and six bounds."
+        },
+        "now": {
+          "call": "now()",
+          "returns": "number",
+          "about": "The time now in epoch milliseconds, read as the expression runs."
+        },
+        "player_named": {
+          "call": "player_named(name)",
+          "returns": "text",
+          "about": "The UUID of the online player with that name ignoring case, else the shortest name that starts with it, then one that contains it; empty text for none."
+        },
+        "abs": {
+          "call": "abs(x)",
+          "returns": "number",
+          "about": "The number without its sign."
+        },
+        "align": {
+          "call": "align(text, width, mode)",
+          "returns": "text",
+          "about": "The text padded with spaces to width visible characters, where mode is left, center, middle or right."
+        },
+        "alpha": {
+          "call": "alpha(color, alpha)",
+          "returns": "number",
+          "about": "The color with its alpha channel set to alpha, from 0 to 255."
+        },
+        "argb": {
+          "call": "argb(alpha, red, green, blue)",
+          "returns": "number",
+          "about": "A color from four channels, each from 0 to 255."
+        },
+        "bar": {
+          "call": "bar(value, maximum, width, filled, empty)",
+          "returns": "text",
+          "about": "A progress bar width characters wide: filled text for the share value has of maximum, empty text for the rest."
+        },
+        "ceil": {
+          "call": "ceil(x)",
+          "returns": "number",
+          "about": "The smallest whole number not below x."
+        },
+        "clamp": {
+          "call": "clamp(x, low, high)",
+          "returns": "number",
+          "about": "x held between low and high."
+        },
+        "contains": {
+          "call": "contains(list_or_text, value)",
+          "returns": "boolean",
+          "about": "Whether the list holds the value, or the text contains it."
+        },
+        "cos": {
+          "call": "cos(radians)",
+          "returns": "number",
+          "about": "The cosine of an angle in radians."
+        },
+        "fixed": {
+          "call": "fixed(x, digits)",
+          "returns": "text",
+          "about": "The number written with that many decimals, from 0 to 20."
+        },
+        "flash": {
+          "call": "flash(first, second, step)",
+          "returns": "text",
+          "about": "first on even steps and second on odd steps."
+        },
+        "floor": {
+          "call": "floor(x)",
+          "returns": "number",
+          "about": "The largest whole number not above x."
+        },
+        "hex": {
+          "call": "hex(color)",
+          "returns": "text",
+          "about": "The color written [RRGGBB]."
+        },
+        "len": {
+          "call": "len(list_or_text)",
+          "returns": "number",
+          "about": "The number of items in the list or characters in the text."
+        },
+        "lerp": {
+          "call": "lerp(a, b, t)",
+          "returns": "number",
+          "about": "The number t of the way from a to b; t is not held between 0 and 1."
+        },
+        "lower": {
+          "call": "lower(text)",
+          "returns": "text",
+          "about": "The text in lowercase."
+        },
+        "marquee": {
+          "call": "marquee(text, width, step)",
+          "returns": "text",
+          "about": "The text scrolling left through a window of width characters, from 1 to 64."
+        },
+        "max": {
+          "call": "max(a, b)",
+          "returns": "number",
+          "about": "The larger of the two numbers."
+        },
+        "min": {
+          "call": "min(a, b)",
+          "returns": "number",
+          "about": "The smaller of the two numbers."
+        },
+        "mix": {
+          "call": "mix(first, second, t)",
+          "returns": "number",
+          "about": "A blend of two colors channel by channel, t of the way from the first to the second."
+        },
+        "mod": {
+          "call": "mod(a, b)",
+          "returns": "number",
+          "about": "What is left of a after taking away whole multiples of b, with the sign of b; b of 0 fails."
+        },
+        "number": {
+          "call": "number(text)",
+          "returns": "number",
+          "about": "The number in a number or in formatted text, with color codes and thousands commas ignored."
+        },
+        "odometer": {
+          "call": "odometer(from, to, progress, digits)",
+          "returns": "text",
+          "about": "The whole number progress of the way from from to to, padded with zeros to digits, from 1 to 16."
+        },
+        "palette": {
+          "call": "palette(list, index)",
+          "returns": "number",
+          "about": "The number at the index of the list, counting around past its end."
+        },
+        "plain": {
+          "call": "plain(text)",
+          "returns": "text",
+          "about": "The text without its & color codes."
+        },
+        "pow": {
+          "call": "pow(base, exponent)",
+          "returns": "number",
+          "about": "base raised to the power exponent."
+        },
+        "readable": {
+          "call": "readable(text)",
+          "returns": "text",
+          "about": "A key such as IRON_ORE written as Iron Ore."
+        },
+        "rgb": {
+          "call": "rgb(red, green, blue)",
+          "returns": "number",
+          "about": "An opaque color from three channels, each from 0 to 255."
+        },
+        "round": {
+          "call": "round(x)",
+          "returns": "number",
+          "about": "x rounded to the nearest whole number, halves rounded up."
+        },
+        "scanner": {
+          "call": "scanner(text, base_style, highlight_style, step)",
+          "returns": "text",
+          "about": "The text with one highlighted character moving across it a step at a time."
+        },
+        "scramble": {
+          "call": "scramble(text, step)",
+          "returns": "text",
+          "about": "Random characters that settle into the text a step at a time."
+        },
+        "select": {
+          "call": "select(list, index)",
+          "returns": "any",
+          "about": "The item at the index of the list, counting around past its end."
+        },
+        "sin": {
+          "call": "sin(radians)",
+          "returns": "number",
+          "about": "The sine of an angle in radians."
+        },
+        "smoothstep": {
+          "call": "smoothstep(edge0, edge1, x)",
+          "returns": "number",
+          "about": "A smooth step from 0 to 1 as x moves from edge0 to edge1."
+        },
+        "str": {
+          "call": "str(value)",
+          "returns": "text",
+          "about": "The value as text."
+        },
+        "timeline": {
+          "call": "timeline(scenes, seconds)",
+          "returns": "text",
+          "about": "The text of the scene showing after that many seconds of a looping list of [text, seconds] scenes."
+        },
+        "typewriter": {
+          "call": "typewriter(text, step, hold_steps)",
+          "returns": "text",
+          "about": "The text typed out, held for hold_steps and erased, a character a step."
+        },
+        "upper": {
+          "call": "upper(text)",
+          "returns": "text",
+          "about": "The text in uppercase."
+        },
+        "wave": {
+          "call": "wave(text, styles, step)",
+          "returns": "text",
+          "about": "The text with a list of 1 to 16 color styles moving across its characters."
+        },
+        "wipe": {
+          "call": "wipe(text, step)",
+          "returns": "text",
+          "about": "The text revealed and hidden a character a step, keeping its width."
+        }
+      },
+      "factTypes": {
+        "player": {
+          "name": "text",
+          "uuid": "text",
+          "online": "boolean",
+          "health": "number",
+          "max_health": "number",
+          "food": "number",
+          "level": "number",
+          "world": "text",
+          "x": "number",
+          "y": "number",
+          "z": "number",
+          "location": "text",
+          "gamemode": "text",
+          "op": "boolean",
+          "sneaking": "boolean",
+          "flying": "boolean",
+          "item_in_hand": "text",
+          "item_in_hand_amount": "number"
+        },
+        "npc": {
+          "name": "text",
+          "id": "text",
+          "citizens_id": "text",
+          "uuid": "text",
+          "spawned": "boolean",
+          "health": "number",
+          "world": "text",
+          "x": "number",
+          "y": "number",
+          "z": "number",
+          "location": "text",
+          "behaviors": "list"
+        },
+        "server": {
+          "online_players": "number",
+          "players": "list",
+          "max_players": "number",
+          "tick": "number",
+          "time_millis": "number"
+        }
+      },
+      "factFormats": {
+        "player.uuid": "player UUID such as 069a79f4-44e9-4726-a5be-fca90e38aaf5",
+        "player.world": "world name such as world_nether on Bukkit, dimension key such as minecraft:the_nether on mod servers",
+        "player.location": "x,y,z,world",
+        "player.gamemode": "survival, creative, adventure or spectator",
+        "player.item_in_hand": "namespaced item id such as minecraft:wheat, minecraft:air for an empty hand",
+        "npc.uuid": "NPC UUID such as 2f1c9a54-7e3b-4d0a-9b8e-5a6c7d8e9f01",
+        "npc.world": "world name such as world_nether on Bukkit, dimension key such as minecraft:the_nether on mod servers",
+        "npc.location": "x,y,z,world",
+        "npc.behaviors": "list of behavior ids such as town:greeter",
+        "server.players": "list of player UUIDs",
+        "server.time_millis": "epoch milliseconds"
+      }
     }
   }
 }

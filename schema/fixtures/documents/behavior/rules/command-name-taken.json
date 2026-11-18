@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:command-name-taken",
+  "server": true,
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": "Hi"
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "one",
+      "event": "command",
+      "name": "hello"
+    },
+    {
+      "id": "two",
+      "event": "command",
+      "name": "greet",
+      "aliases": [
+        "hello"
+      ]
+    }
+  ]
+}

@@ -34,7 +34,7 @@ class InspectSchemas {
       behavior: pick('behavior', fallback.behavior),
       pack: pick('pack', fallback.pack),
       serverBehaviors: fallback.serverBehaviors,
-      catalog: completions is Map<String, Object?> ? CompletionCatalog.fromJson(completions) : fallback.catalog,
+      catalog: completions is Map<String, Object?> ? CompletionCatalog.fromJson(completions, base: fallback.catalog) : fallback.catalog,
       live: true,
     );
     _liveSource = live;

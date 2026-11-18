@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:call-argument-undeclared",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "call",
+      "routine": "greet",
+      "arguments": {
+        "name": "Alex"
+      }
+    },
+    "greet": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Hello"
+      }
+    }
+  }
+}

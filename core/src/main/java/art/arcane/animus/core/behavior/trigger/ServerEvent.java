@@ -24,22 +24,6 @@ public record ServerEvent(TriggerKind kind, Optional<UUID> player, Map<String, O
         context = Collections.unmodifiableMap(new LinkedHashMap<>(context));
     }
 
-    /** The context keys a firing of this event carries; expressions read them as {@code context.<key>}. */
-    public static List<String> contextKeys(TriggerKind kind) {
-        return switch (kind) {
-            case PLAYER_JOIN -> List.of("first");
-            case PLAYER_CHAT, PLAYER_DEATH -> List.of("message");
-            case PLAYER_WORLD_CHANGE -> List.of("from", "to");
-            case COMMAND -> List.of("command", "alias", "args", "raw_args");
-            case PROJECTILE_LAUNCH -> List.of("projectile", "projectile_uuid", "shooter", "shooter_uuid", "location", "world", "x", "y", "z");
-            case PROJECTILE_HIT -> List.of("projectile", "projectile_uuid", "shooter", "shooter_uuid", "entity", "entity_uuid", "block", "location", "world", "x", "y", "z");
-            case ENTITY_SHOOT_BOW -> List.of("shooter", "shooter_uuid", "bow", "projectile", "projectile_uuid", "force", "hand", "location", "world", "x", "y", "z");
-            case QUEST_STARTED, QUEST_STAGE, QUEST_COMPLETED -> List.of("quest", "stage", "title");
-            case PLAYER_INVENTORY_OPEN, PLAYER_INVENTORY_CLOSE -> List.of("inventory_type", "inventory_items", "inventory_location");
-            default -> List.of();
-        };
-    }
-
     public static ServerEvent join(UUID player, boolean first) { return of(TriggerKind.PLAYER_JOIN, player, Map.of("first", first)); }
     public static ServerEvent quit(UUID player) { return of(TriggerKind.PLAYER_QUIT, player, Map.of()); }
     public static ServerEvent chat(UUID player, String message) { return of(TriggerKind.PLAYER_CHAT, player, Map.of("message", bounded(message))); }

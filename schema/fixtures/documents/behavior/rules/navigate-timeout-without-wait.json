@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:navigate-timeout-without-wait",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:navigate",
+      "arguments": {
+        "x": 1,
+        "y": 64,
+        "z": 1,
+        "timeoutTicks": 100
+      }
+    }
+  }
+}

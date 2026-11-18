@@ -1,8 +1,8 @@
 package art.arcane.animus.core.editor;
 
-import art.arcane.animus.core.behavior.BehaviorCompiler;
 import art.arcane.animus.core.behavior.catalog.PackManifest;
 import art.arcane.animus.core.behavior.schema.BehaviorSchemaGenerator;
+import art.arcane.animus.core.behavior.schema.OfflineBehaviorValidation;
 import art.arcane.animus.core.behavior.schema.OfflineCapabilities;
 import art.arcane.animus.core.gui.GuiDocument;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -57,10 +57,34 @@ class SharedSchemaContractTest {
             List<String> problems = problems(kind, id, SharedFixtures.text(SharedFixtures.fixture(path)));
             boolean accepted = problems.isEmpty();
             if (accepted != expected.getAsBoolean()) disagreements.add(path + " expected " + (expected.getAsBoolean() ? "accepted" : "refused") + " but " + problems);
+            JsonElement field = entry.getAsJsonObject("expect").get("field");
+            if (field != null && problems.stream().noneMatch((String problem) -> problem.contains("| " + field.getAsString() + " |")))
+                disagreements.add(path + " expected a problem at " + field.getAsString() + " but " + problems);
             checked++;
         }
         assertTrue(disagreements.isEmpty(), () -> String.join("\n", disagreements));
         assertTrue(checked >= 16, "expected the index to list the Java-checked documents");
+    }
+
+    /**
+     * What the server's catalog refuses in a behavior file: the compiler and the argument checks of the built-in
+     * capabilities, as {@code /animus validate} reports them, one line per problem.
+     */
+    private static List<String> behaviorProblems(String id, String source) {
+        Path directory = null;
+        try (OfflineCapabilities capabilities = new OfflineCapabilities()) {
+            directory = Files.createTempDirectory("animus-behavior-fixture");
+            Path file = directory.resolve("behaviors").resolve(id.substring(0, id.indexOf(':'))).resolve(id.substring(id.indexOf(':') + 1) + ".json");
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, source);
+            OfflineBehaviorValidation.Report report = OfflineBehaviorValidation.validate(directory, capabilities);
+            return report.valid() ? List.of() : report.lines().stream().filter((String line) -> !line.startsWith("Not checked offline")).toList();
+        } catch (IOException failed) {
+            return List.of(failed.getMessage());
+        } finally {
+            if (directory != null) try (var files = Files.walk(directory)) { files.sorted(java.util.Comparator.reverseOrder()).forEach((Path path) -> path.toFile().delete()); }
+            catch (IOException ignored) { /* A leftover temporary folder is harmless. */ }
+        }
     }
 
     private static List<String> problems(String kind, String id, String source) {
@@ -69,17 +93,7 @@ class SharedSchemaContractTest {
                 try { NpcDefinition.parse(source); yield List.of(); }
                 catch (IOException invalid) { yield List.of(invalid.getMessage()); }
             }
-            case "behavior" -> {
-                JsonObject object;
-                try { object = art.arcane.animus.core.storage.JsonDocuments.object(source); }
-                catch (IOException invalid) { yield List.of(invalid.getMessage()); }
-                JsonElement revision = object.remove("revision");
-                if (revision == null || !revision.isJsonPrimitive() || !revision.getAsJsonPrimitive().isNumber() || revision.getAsLong() < 1)
-                    yield List.of("$.revision: expected integer of at least 1");
-                // The catalog checks and removes the revision before compiling, as BehaviorCatalog does.
-                BehaviorCompiler.Result result = BehaviorCompiler.compile(object.toString());
-                yield result.program().isPresent() ? List.of() : result.diagnostics().stream().map(Object::toString).toList();
-            }
+            case "behavior" -> behaviorProblems(id, source);
             case "route" -> {
                 try { art.arcane.animus.core.navigation.WaypointSettings.document(source); yield List.of(); }
                 catch (IOException | IllegalArgumentException invalid) { yield List.of(invalid.getMessage()); }

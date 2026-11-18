@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:build-option-on-pause",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:build",
+      "arguments": {
+        "operation": "pause",
+        "schematic": "hut.schem"
+      }
+    }
+  }
+}

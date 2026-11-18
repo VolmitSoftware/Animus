@@ -97,7 +97,7 @@ void main() {
       expect(_field(say.arguments, 'text').required, isTrue);
       expect(_field(say.arguments, 'audience').kind, FieldKind.choice);
       final CapabilitySpec look = catalog.capability('animus:look')!;
-      expect(look.oneOfRequired, <List<String>>[<String>['target'], <String>['x', 'y', 'z']]);
+      expect(look.oneOfRequired, <List<String>>[<String>['target'], <String>['x', 'y', 'z'], <String>['location']]);
       expect(catalog.capability('animus:command')!.note, contains('privileged'));
       expect(catalog.triggers['proximity']!.fields.map((FieldSpec field) => field.key), containsAll(<String>['phase', 'radius']));
       expect(nodeListFields('sequence', catalog), <String>['steps']);

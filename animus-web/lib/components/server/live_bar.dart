@@ -336,7 +336,7 @@ class _LiveBarState extends State<LiveBar> {
             name: _nameOf(draft.key),
             meta: <Widget>[
               StatusBadge(_problemLabel(draft), tone: BadgeTone.error),
-              _meta(draft.problem ?? listNoun(draft.kind)),
+              _meta(draft.problem ?? commandsBlock(_session, draft) ?? listNoun(draft.kind)),
             ],
             actions: _href(draft.kind, draft.id) == null
                 ? null
@@ -349,6 +349,7 @@ class _LiveBarState extends State<LiveBar> {
   String _problemLabel(DraftChange draft) {
     if (draft.problem != null) return 'Not valid JSON';
     final int count = _store.libraryEntry(draft.kind, draft.id)?.problems ?? 0;
+    if (count == 0 && commandsBlock(_session, draft) != null) return 'Needs Run commands';
     return count == 1 ? '1 problem' : '$count problems';
   }
 

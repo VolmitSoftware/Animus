@@ -50,6 +50,30 @@ class SnapshotFactsTest {
         assertEquals(List.of(), new SnapshotFacts((UUID id) -> Optional.empty()).npcs(), "a lookup alone lists no NPCs");
     }
 
+    @Test void theFactTypesTheEditorShowsAreWhatTheFactsGive() throws Exception {
+        art.arcane.animus.core.virtual.VirtualNpcState.Snapshot body = new art.arcane.animus.core.virtual.VirtualNpcState.Snapshot(NPC,
+                new art.arcane.animus.core.virtual.WorldPosition("world", new art.arcane.animus.core.virtual.Vec3(1, 64, 2)),
+                art.arcane.animus.core.virtual.Hitbox.atFeet(new art.arcane.animus.core.virtual.Vec3(1, 64, 2), 0.6, 1.8), 20, true, 1);
+        Map<String, NpcDefinition> definitions = Map.of("guard", definition("guard", NPC, "[\"town:guard\"]"));
+        Map<String, Map<String, Object>> given = Map.of(
+                "player", SnapshotFacts.player("Alex", NPC, 20, 20, 18, 3, "world", 1, 64, 2, "SURVIVAL", false, true, false, "minecraft:wheat", 4),
+                "npc", new SnapshotFacts(SnapshotFacts.npcs(() -> definitions, (UUID id) -> Optional.of(body))).npc(NPC).orElseThrow(),
+                "server", SnapshotFacts.server(1, 20, 5, 1000, List.of(NPC)));
+        assertEquals(given.keySet(), art.arcane.animus.core.behavior.schema.ExpressionDocs.FACT_TYPES.keySet());
+        for (Map.Entry<String, Map<String, Object>> root : given.entrySet()) {
+            Map<String, String> types = art.arcane.animus.core.behavior.schema.ExpressionDocs.FACT_TYPES.get(root.getKey());
+            assertEquals(types.keySet(), root.getValue().keySet(), root.getKey());
+            for (Map.Entry<String, Object> fact : root.getValue().entrySet())
+                assertEquals(types.get(fact.getKey()), switch (fact.getValue()) {
+                    case Boolean ignored -> "boolean";
+                    case Number ignored -> "number";
+                    case String ignored -> "text";
+                    case List<?> ignored -> "list";
+                    default -> "map";
+                }, root.getKey() + "." + fact.getKey());
+        }
+    }
+
     private static NpcDefinition definition(String id, UUID uuid, String behaviors) throws Exception {
         return NpcDefinition.parse("{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"" + uuid + "\",\"id\":\"" + id + "\",\"group\":\"test\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":false,\"behaviors\":"
                 + behaviors + ",\"position\":{\"world\":\"world\",\"x\":0,\"y\":61,\"z\":0,\"yaw\":0,\"pitch\":0}}");

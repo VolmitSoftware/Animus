@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "rules:continue-in-parallel",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "repeat",
+      "count": 2,
+      "body": {
+        "type": "parallel",
+        "branches": [
+          {
+            "type": "continue"
+          }
+        ]
+      }
+    }
+  }
+}
