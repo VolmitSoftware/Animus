@@ -414,7 +414,6 @@ class BehaviorNodeView extends StatelessWidget {
     ];
     final List<Widget> body = <Widget>[
       ActionRow(
-        dense: true,
         label: _label,
         leading: <Widget>[
           AnimusSelect.values(
@@ -773,7 +772,7 @@ class BehaviorNodeView extends StatelessWidget {
           },
         },
         <Widget>[
-          ActionRow(dense: true, leading: <Widget>[
+          ActionRow(leading: <Widget>[
             AddNodeMenu(
               context: ctx,
               label: 'Add ${noun.toLowerCase()}',
@@ -804,7 +803,7 @@ class BehaviorNodeView extends StatelessWidget {
         label: caption,
         tip: field.description,
         problems: diagnosticsAt(ctx.diagnostics, formatPath(at)),
-        child: ActionRow(dense: true, leading: <Widget>[
+        child: ActionRow(leading: <Widget>[
           AddNodeMenu(context: ctx, label: 'Add', onAdd: (String type) => ctx.addAt(at, type), onPaste: () => ctx.pasteIn(at)),
         ]),
       );
@@ -829,7 +828,7 @@ class BehaviorNodeView extends StatelessWidget {
 Widget? growStep(BehaviorContext ctx, List<JsonStep> slot, Object? child) {
   final String? type = asString(asMap(child)['type']);
   if (type == null || type == 'sequence' || type == 'parallel') return null;
-  return ActionRow(dense: true, leading: <Widget>[
+  return ActionRow(leading: <Widget>[
     AddNodeMenu(context: ctx, label: 'Add step', onAdd: (String added) => ctx.addAfter(slot, added), onPaste: () => ctx.pasteIn(slot)),
   ]);
 }

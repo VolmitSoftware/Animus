@@ -227,7 +227,6 @@ class TypedValueEditor extends StatelessWidget {
                   ],
                 ),
               ActionRow(
-                dense: true,
                 secondary: <RowAction>[
                   RowAction('Add item', () => onChanged(<Object?>[...items, ''])),
                 ],
@@ -271,7 +270,6 @@ class TypedValueEditor extends StatelessWidget {
                   ],
                 ),
               ActionRow(
-                dense: true,
                 secondary: <RowAction>[
                   RowAction('Add key', () {
                     String key = 'key';

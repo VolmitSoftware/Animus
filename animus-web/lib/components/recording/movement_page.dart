@@ -149,14 +149,14 @@ class _MovementPageState extends State<MovementPage> {
     final int tab = _routes ? 0 : 1;
     return dom.div(classes: 'ui-list-page animus-movement', <Widget>[
       PageHeader(
-        title: 'Movement',
-        crumbs: <Crumb>[Crumb(workspace.name, href: WorkspaceRoute(workspace.id).format()), const Crumb('Movement')],
+        title: 'Routes',
+        crumbs: <Crumb>[Crumb(workspace.name, href: WorkspaceRoute(workspace.id).format()), const Crumb('Routes')],
         // An empty list's own New is the one primary.
         primary: _rows.isEmpty ? null : RowAction('New $noun', _start, icon: ArcaneIcon.plus(), attributes: const <String, String>{'data-testid': 'list-new'}),
       ),
       AppTabs(
         id: 'movement-tabs',
-        label: 'Movement',
+        label: 'Routes',
         tabs: const <String>['Routes', 'Recordings'],
         selected: tab,
         onSelect: (int index) => navigate(KindListRoute(workspace.id, movementKinds[index]).format()),

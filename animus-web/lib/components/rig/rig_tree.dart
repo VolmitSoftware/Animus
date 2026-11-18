@@ -109,7 +109,6 @@ class _RigTreeState extends State<RigTree> {
     final Set<String> under = selected == null ? const <String>{} : subtree(rig, selected).toSet();
     return dom.div(classes: 'animus-rig-tree', styles: stackStyles(), <Widget>[
       ActionRow(
-        dense: true,
         label: 'Bones',
         moreId: 'rig-bone-more',
         leading: <Widget>[

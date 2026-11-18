@@ -77,7 +77,6 @@ class RigKeyframePanel extends StatelessWidget {
 
     return dom.section(styles: stackStyles(gap: Gap.xs), attributes: const <String, String>{'aria-label': 'Track'}, <Widget>[
       ActionRow(
-        dense: true,
         label: 'Track',
         leading: <Widget>[
           dom.h4(styles: groupHeadingStyles, <Widget>[Component.text('Track ${index + 1}: ${trackLabel(entry)}')]),
@@ -135,7 +134,6 @@ class RigKeyframePanel extends StatelessWidget {
 
     return dom.section(styles: stackStyles(gap: Gap.xs), attributes: const <String, String>{'aria-label': 'Keyframe'}, <Widget>[
       ActionRow(
-        dense: true,
         label: 'Keyframe',
         leading: <Widget>[
           dom.h4(styles: groupHeadingStyles, <Widget>[Component.text(where)]),

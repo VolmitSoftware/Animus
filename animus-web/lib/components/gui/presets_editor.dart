@@ -26,6 +26,7 @@ import '../suggest/autocomplete_input.dart';
 import '../../ui/field.dart';
 import 'gui_stack.dart';
 import '../../ui/stack.dart';
+import '../../ui/density.dart';
 
 /// A preset kind by plain name: "Damage indicators" for `damage-indicators`.
 String presetKindLabel(String kind) => switch (kind) {
@@ -61,8 +62,8 @@ class PresetFix extends StatelessWidget {
           title: 'Uses preset ${doc['preset']}',
           message: inlined != null ? 'Animus does not read presets. Copy its fields into this file to keep the look.' : 'Animus does not read presets, and this one cannot be copied in: $problem.',
           action: inlined != null
-              ? Button.outline(label: 'Copy fields in', size: ButtonSize.sm, onPressed: () => onJson(writeAt(doc, const <JsonStep>[], inlined)))
-              : Button.outline(label: 'Remove preset', size: ButtonSize.sm, onPressed: () => onJson(writeAt(doc, const <JsonStep>['preset'], null))),
+              ? Button.outline(label: 'Copy fields in', size: buttonSize(DensityScope.of(context)), onPressed: () => onJson(writeAt(doc, const <JsonStep>[], inlined)))
+              : Button.outline(label: 'Remove preset', size: buttonSize(DensityScope.of(context)), onPressed: () => onJson(writeAt(doc, const <JsonStep>['preset'], null))),
         ),
       ],
     );
@@ -175,7 +176,6 @@ class _PresetsEditorState extends State<PresetsEditor> {
                   onDelete: (int index) => _write(<JsonStep>['presets', _kind], named.length == 1 ? null : (<String, Object?>{...named}..remove(names[index]))),
                 ),
               ActionRow(
-                dense: true,
                 label: 'Presets',
                 secondary: <RowAction>[
                   RowAction('Add preset', () {

@@ -21,6 +21,7 @@ import 'shop_offer_editor.dart' show CountStepper;
 import '../select/animus_select.dart';
 import '../../ui/field.dart';
 import '../../ui/stack.dart';
+import '../../ui/density.dart';
 
 const String shopModuleKey = 'animus:shop';
 
@@ -185,7 +186,7 @@ class _ShopLinksState extends State<ShopLinks> {
       name: _name(document),
       open: open,
       attributes: <String, String>{'data-user': key},
-      line: Button.ghost(label: _name(document), size: ButtonSize.sm, onPressed: opener, attributes: <String, String>{'aria-label': 'Open ${_name(document)}'}),
+      line: Button.ghost(label: _name(document), size: buttonSize(DensityScope.of(context)), onPressed: opener, attributes: <String, String>{'aria-label': 'Open ${_name(document)}'}),
       entries: <AppMenuEntry>[
         AppMenuEntry('Open', opener),
         if (advanced) AppMenuEntry(open ? 'Hide window settings' : 'Window settings', () => setState(() => _open = open ? null : key)),

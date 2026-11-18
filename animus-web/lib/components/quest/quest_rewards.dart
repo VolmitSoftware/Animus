@@ -55,7 +55,6 @@ class QuestRewards extends StatelessWidget {
       stack(<Widget>[
         if (rows.isNotEmpty) OrderedRows(label: label, rows: rows, onDelete: (int index) => _remove(key, index)),
         ActionRow(
-          dense: true,
           label: label,
           secondary: <RowAction>[RowAction(add, rows.length >= max ? null : onAdd, icon: ArcaneIcon.plus())],
         ),

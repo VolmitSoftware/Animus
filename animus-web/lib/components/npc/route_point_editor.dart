@@ -105,7 +105,6 @@ class RoutePointEditor extends StatelessWidget {
             children: more,
           ),
         ActionRow(
-          dense: true,
           label: '$label actions',
           moreId: '$grid-point-more',
           more: <AppMenuEntry>[

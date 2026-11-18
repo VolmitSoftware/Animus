@@ -1,12 +1,13 @@
 /* The behavior step tree and the JSON code view. Their controls are library
    components and their stacks the library's Column and Row. */
 
-/* Child steps sit on one rail per level: structure, not a box in a box. */
+/* Child steps sit on one rail per level: structure, not a box in a box.
+   Narrow screens indent less, so deep steps keep their width. */
 .animus-node-children {
   display: grid;
   gap: 0.5rem;
   min-width: 0;
-  padding-inline-start: 0.75rem;
+  padding-inline-start: clamp(0.375rem, 2vw, 0.75rem);
   border-inline-start: 1px solid var(--border);
 }
 

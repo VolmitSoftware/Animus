@@ -27,6 +27,7 @@ import '../../logic/suggest/field_profile.dart';
 import '../../ui/number_input.dart';
 import 'gui_stack.dart';
 import '../../ui/stack.dart';
+import '../../ui/density.dart';
 
 /// Writes [value] at [key] of [map], removing the key for null or empty text.
 JsonMap withField(JsonMap map, String key, Object? value) {
@@ -202,7 +203,7 @@ class IconEditor extends StatelessWidget {
           GuiNote(
             tone: box['enabled'] == true ? AlertTone.error : AlertTone.warning,
             message: box['enabled'] == true ? 'Box panels are not supported; use a background colour in Style.' : 'The box is off and has no effect.',
-            action: Button.outline(label: 'Remove box', size: ButtonSize.sm, onPressed: () => onChanged(withField(icon, 'box', null))),
+            action: Button.outline(label: 'Remove box', size: buttonSize(DensityScope.of(context)), onPressed: () => onChanged(withField(icon, 'box', null))),
           ),
         if (!chest && type != 'entity')
           DisplayStyleEditor(
@@ -483,7 +484,6 @@ class ComponentEditor extends StatelessWidget {
       for (final Diagnostic problem in diagnosticsAt(diagnostics, tabsPath)) GuiNote(tone: AlertTone.warning, message: problem.message),
       OrderedRows(
         label: 'Tabs',
-        dense: false,
         rows: <OrderedRow>[
           for (int index = 0; index < tabs.length; index++)
             OrderedRow(
@@ -514,7 +514,6 @@ class ComponentEditor extends StatelessWidget {
         onDelete: tabs.length <= 1 ? null : (int index) => setTabs(<Object?>[...tabs]..removeAt(index)),
       ),
       ActionRow(
-        dense: true,
         label: 'Tabs',
         secondary: <RowAction>[
           RowAction('Add tab', tabs.length >= 32 ? null : () {

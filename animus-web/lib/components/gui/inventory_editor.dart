@@ -247,7 +247,6 @@ class _InventoryEditorState extends State<InventoryEditor> {
     final bool keyed = cell.source != ChestCellSource.slot && cell.source != ChestCellSource.list && cell.source != ChestCellSource.entry;
     return stack(spacing: 16, <Widget>[
       ActionRow(
-        dense: true,
         label: 'Slot',
         leading: <Widget>[
           mutedText(where),
@@ -436,7 +435,6 @@ class _InventoryEditorState extends State<InventoryEditor> {
               onDelete: (int index) => _write(<JsonStep>[...owner, letters[index]], null),
             ),
           ActionRow(
-            dense: true,
             label: 'Keys',
             secondary: <RowAction>[
               RowAction('Add key', () {
@@ -468,7 +466,6 @@ class _InventoryEditorState extends State<InventoryEditor> {
         docs: Docs.chestGuis,
         children: <Widget>[
           ActionRow(
-            dense: true,
             label: 'List',
             secondary: <RowAction>[
               RowAction(
@@ -558,7 +555,6 @@ class _InventoryEditorState extends State<InventoryEditor> {
           ],
         ),
         ActionRow(
-          dense: true,
           label: 'List',
           more: <AppMenuEntry>[
             AppMenuEntry('Remove list', () => _write(const <JsonStep>['list'], null), destructive: true),
@@ -682,7 +678,6 @@ class _InventoryEditorState extends State<InventoryEditor> {
               },
             ),
           ActionRow(
-            dense: true,
             label: 'Variants',
             secondary: <RowAction>[
               RowAction('Add variant', () {

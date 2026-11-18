@@ -94,9 +94,10 @@ class _StageShowControlsState extends State<StageShowControls> {
     return dom.div(id: _rootId, classes: 'animus-stage-show${fits ? '' : ' is-folded'}', <Widget>[
       dom.div(
         classes: 'animus-stage-show-wide',
-        attributes: <String, String>{'role': 'group', 'aria-label': 'Show', if (!fits) 'aria-hidden': 'true', if (!fits) 'inert': ''},
+        attributes: <String, String>{if (!fits) 'aria-hidden': 'true', if (!fits) 'inert': ''},
         <Widget>[
           ArcaneToggleGroup.multiple(
+            ariaLabel: 'Show',
             items: <ToggleGroupItem>[
               for (int index = 0; index < options.length; index++)
                 ToggleGroupItem(

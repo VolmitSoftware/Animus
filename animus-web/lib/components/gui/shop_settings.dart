@@ -332,7 +332,6 @@ class _ShopSettingsState extends State<ShopSettings> {
             onDelete: pages.length <= 1 ? null : (int index) => setAll(<Object?>[...pages]..removeAt(index)),
           ),
           ActionRow(
-            dense: true,
             label: 'Pages',
             secondary: <RowAction>[
               RowAction(
@@ -479,7 +478,6 @@ class _ShopSettingsState extends State<ShopSettings> {
             for (final Diagnostic problem in diagnosticsAt(_diagnostics, '\$.containers[$index]', nested: true))
               AppAlert(tone: AlertTone.warning, message: 'Chest ${index + 1}: ${diagnosticSentence(problem)}'),
           ActionRow(
-            dense: true,
             label: 'Chests',
             secondary: <RowAction>[
               RowAction(

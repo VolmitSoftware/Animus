@@ -15,7 +15,6 @@ import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../ui/action_row.dart';
 import '../../ui/confirm_dialog.dart';
-import '../../ui/density.dart';
 import 'gui_fields.dart';
 import '../../ui/menu.dart';
 import '../../ui/section.dart';
@@ -51,7 +50,6 @@ class OrderedRows extends StatefulWidget {
     this.onDuplicate,
     this.onDelete,
     this.deleteNoun,
-    this.dense = true,
     this.classes,
     super.key,
   });
@@ -67,7 +65,6 @@ class OrderedRows extends StatefulWidget {
 
   /// With it, Delete asks first ("Delete offer?").
   final String? deleteNoun;
-  final bool dense;
   final String? classes;
 
   @override
@@ -107,13 +104,10 @@ class _OrderedRowsState extends State<OrderedRows> {
     return list;
   }
 
-  /// The row's line, in the dense size unless the list says otherwise; the
-  /// open form under it keeps the form's size. Controls line up on the first
+  /// The row's line, at the form's size. Controls line up on the first
   /// line, so a formatted sample under a field does not pull the menu down.
-  Widget _line(List<Widget> children) {
-    final Widget row = Row(gapSize: Gap.sm, crossAxisAlignment: CrossAxisAlignment.start, children: children);
-    return component.dense ? DenseBox(classes: 'animus-rows-line', children: <Widget>[row]) : dom.div(classes: 'animus-rows-line', <Widget>[row]);
-  }
+  Widget _line(List<Widget> children) =>
+      dom.div(classes: 'animus-rows-line', <Widget>[Row(gapSize: Gap.sm, crossAxisAlignment: CrossAxisAlignment.start, children: children)]);
 
   Widget _row(OrderedRow row, int index, int count, bool moves) {
     final List<AppMenuEntry> entries = <AppMenuEntry>[
@@ -288,7 +282,6 @@ class GuiLines extends StatelessWidget {
       if (lines.isNotEmpty)
         OrderedRows(
           label: label,
-          dense: false,
           rows: <OrderedRow>[
             for (int index = 0; index < lines.length; index++)
               OrderedRow(

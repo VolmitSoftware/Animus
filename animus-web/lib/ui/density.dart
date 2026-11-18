@@ -1,8 +1,9 @@
 /// How tall the controls in a part of the page are. Two sizes, the
-/// library's own: regular (36 px: page headers, forms, dialogs, the save
-/// bar) and dense (32 px: the top bar, list and filter bars, stage headers,
-/// rows of cards). A [DensityScope] sets it for everything inside; kit
-/// controls read it, so a screen never picks a height.
+/// library's own: regular (36 px: pages, forms, behavior steps, dialogs,
+/// the save bar) and dense (32 px: the top bar, list bars and rows, stage
+/// headers, timelines). Phones and touch screens raise both to 44 px. A
+/// [DensityScope] sets it for everything inside; kit controls and
+/// [ActionRow]s read it, so a screen never picks a height.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -41,6 +42,10 @@ class DenseBox extends StatelessWidget {
         child: dom.div(classes: classes == null ? 'ui-dense' : 'ui-dense $classes', attributes: attributes, children),
       );
 }
+
+/// A row's pick box: as wide as the touch size on touch screens, so the
+/// box's tap area never runs under the row's text.
+const dom.Styles pickBox = dom.Styles(raw: <String, String>{'justify-content': 'center', 'min-width': 'var(--shadcn-hit-min, 0px)'});
 
 /// The one icon size inside controls (16 px, shadcn's).
 const IconSize controlIconSize = IconSize.sm;

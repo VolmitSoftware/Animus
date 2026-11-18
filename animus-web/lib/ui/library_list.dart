@@ -253,13 +253,17 @@ class _LibraryListState extends State<LibraryList> {
     return shown == total ? of(total) : '$shown of ${of(total)}';
   }
 
-  /// Search, filters, the count and the sort: one dense row on a wide list;
-  /// on a narrow one search and sort share a line above the filters.
-  Widget _bar(List<LibraryRow> rows) {
+  /// A list page's bars and rows are dense; a list inside a form or dialog
+  /// takes the size of the part it sits in.
+  Density _density(BuildContext context) => component.fill ? Density.dense : DensityScope.of(context);
+
+  /// Search, filters, the count and the sort: one row on a wide list; on a
+  /// narrow one search and sort share a line above the filters.
+  Widget _bar(List<LibraryRow> rows, Density density) {
     final LibrarySort sort = component.sorts.firstWhere((LibrarySort each) => each.id == _sort, orElse: () => LibrarySort.name);
     final bool foldable = _phone && (component.toolbar.isNotEmpty || component.filters.isNotEmpty);
     final bool showFilters = !foldable || _filtersOpen;
-    return DenseBox(classes: 'ui-library-bar', children: <Widget>[
+    return DensityScope(density: density, child: dom.div(classes: density == Density.dense ? 'ui-dense ui-library-bar' : 'ui-library-bar', <Widget>[
       // One line each, the full width of a narrow list, so no filter is cut off.
       if (showFilters && component.toolbar.isNotEmpty)
         dom.div(classes: 'ui-library-tools', <Widget>[
@@ -271,7 +275,7 @@ class _LibraryListState extends State<LibraryList> {
         TextInput(
           value: _search,
           placeholder: 'Search',
-          size: controlSize(Density.dense),
+          size: controlSize(density),
           attributes: <String, String>{'aria-label': 'Search ${component.label.toLowerCase()}', 'aria-controls': _viewportId},
           onChanged: (String value) => setState(() {
             _search = value;
@@ -311,7 +315,7 @@ class _LibraryListState extends State<LibraryList> {
             ],
           ),
       ]),
-    ]);
+    ]));
   }
 
   /// Whether a search found [row] by its id alone, so Simple shows the id
@@ -348,8 +352,9 @@ class _LibraryListState extends State<LibraryList> {
         if (component.selectable)
           dom.span(
             classes: 'ui-library-pick',
+            styles: pickBox,
             events: <String, void Function(web.Event)>{'click': (web.Event event) => event.stopPropagation()},
-            <Widget>[ArcaneCheckbox(checked: picked, size: ComponentSize.sm, onChanged: (bool _) => _toggle(row))],
+            <Widget>[ArcaneCheckbox(checked: picked, size: ComponentSize.sm, ariaLabel: 'Pick ${row.title}', onChanged: (bool _) => _toggle(row))],
           ),
         if (row.leading != null) dom.span(classes: 'ui-library-leading', <Widget>[row.leading!]),
         dom.span(classes: 'ui-library-text', <Widget>[
@@ -368,13 +373,13 @@ class _LibraryListState extends State<LibraryList> {
     );
   }
 
-  Widget _body(List<LibraryRow> rows, bool advanced) {
+  Widget _body(List<LibraryRow> rows, bool advanced, Density density) {
     if (component.error != null) {
       return AppAlert(
         tone: AlertTone.error,
         message: component.error!,
         live: true,
-        action: component.onRetry == null ? null : Button.outline(label: 'Retry', size: ButtonSize.sm, onPressed: component.onRetry),
+        action: component.onRetry == null ? null : Button.outline(label: 'Retry', size: buttonSize(_density(context)), onPressed: component.onRetry),
       );
     }
     if (component.loading) return Skeleton(rows: 6, label: 'Loading ${component.label.toLowerCase()}');
@@ -393,7 +398,7 @@ class _LibraryListState extends State<LibraryList> {
     }
     final (int first, int end) = visibleRange(count: rows.length, rowHeight: component.rowHeight, scrollTop: _scrollTop, viewport: _viewport);
     final int active = _active.clamp(0, rows.length - 1);
-    return DensityScope.dense(child: dom.div(
+    return DensityScope(density: density, child: dom.div(
       id: _viewportId,
       classes: 'ui-library-rows',
       attributes: <String, String>{
@@ -420,13 +425,12 @@ class _LibraryListState extends State<LibraryList> {
     ));
   }
 
-  Widget? _bulk(List<LibraryRow> rows) {
+  Widget? _bulk(List<LibraryRow> rows, Density density) {
     if (!component.selectable || _picked.isEmpty) return null;
     final List<LibraryRow> picked = <LibraryRow>[for (final LibraryRow row in component.rows) if (_picked.contains(row.key)) row];
     return dom.div(classes: 'ui-library-bulk', <Widget>[
       const ArcaneSeparator(),
-      Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), child: ActionRow(
-        dense: true,
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), child: DensityScope(density: density, child: ActionRow(
         label: 'Picked rows',
         leading: <Widget>[
           dom.span(classes: 'ui-library-count', attributes: const <String, String>{'role': 'status'}, <Widget>[Component.text('${picked.length} picked')]),
@@ -435,7 +439,7 @@ class _LibraryListState extends State<LibraryList> {
           for (final LibraryBulkAction action in component.bulkActions) RowAction(action.label, () => action.run(picked), destructive: action.destructive),
         ],
         cancel: RowAction('Clear', () => setState(() => _picked = <String>{})),
-      )),
+      ))),
     ]);
   }
 
@@ -456,9 +460,9 @@ class _LibraryListState extends State<LibraryList> {
       attributes: <String, String>{'id': _id},
       styles: fill ? _filling : _column,
       children: <Widget>[
-        if (!empty) _bar(rows),
-        _body(rows, advanced),
-        ?_bulk(rows),
+        if (!empty) _bar(rows, _density(context)),
+        _body(rows, advanced, _density(context)),
+        ?_bulk(rows, _density(context)),
       ],
     );
   }

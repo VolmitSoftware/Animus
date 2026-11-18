@@ -180,7 +180,7 @@ class BehaviorEditor extends StatelessWidget {
       );
 
   /// An "Add ..." menu at the end of a section.
-  static Widget _addMenu(String label, List<AppMenuEntry> entries) => ActionRow(dense: true, leading: <Widget>[
+  static Widget _addMenu(String label, List<AppMenuEntry> entries) => ActionRow(leading: <Widget>[
         AppMenu(label: label, icon: ArcaneIcon.plus(), outline: true, entries: entries),
       ]);
 
@@ -443,7 +443,6 @@ class BehaviorEditor extends StatelessWidget {
       ],
       children: <Widget>[
         ActionRow(
-          dense: true,
           label: 'Trigger ${index + 1}',
           leading: <Widget>[
             AnimusSelect.values(

@@ -1,8 +1,17 @@
 // Button sizes, heights and order on every main screen, at 1600, 768 and
-// 390 px. The allowed heights are the library's own: a default and a small
-// button, cloned into a box outside every screen and measured there. A
-// screen fails on:
+// 390 px, in dark and light (support/schemes.cjs). The allowed heights are
+// the library's own: a default and a small button, cloned into a box
+// outside every screen and measured there. Phones are touch screens, where
+// both are the 44 px touch height. A screen fails on:
 //   - a button, field, dropdown or toggle whose height is not one of them;
+//   - a small (dense) control on a document page or in a dialog: forms,
+//     behavior steps, page headers and dialogs take the default height, and
+//     only the frame's bars, list rows and stage headers below are dense;
+//   - a tab strip whose height is not a control height (the default one on
+//     a document page), or a tab whose corners differ from a button's;
+//   - a text button whose side padding is not its size's;
+//   - a box other than the page that scrolls by a few pixels (1 to 24): it
+//     should fit;
 //   - controls of one row with different heights (a button beside a taller
 //     field included);
 //   - a group of buttons with uneven gaps;
@@ -48,6 +57,7 @@ const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {documentHrefs, startAction} = require('./support/shell.cjs');
 const {nameServer, addRealShape, realShapeScreens} = require('./support/real_shape.cjs');
+const {schemes, themedContext} = require('./support/schemes.cjs');
 
 const url = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site'); })()).replace(/\/$/, '');
 const fake = (process.env.ANIMUS_FAKE_URL || (() => { throw new Error('Set ANIMUS_FAKE_URL to your own fake server'); })()).replace(/\/$/, '');
@@ -84,6 +94,21 @@ const exempt = [
   '[data-arcane-command-input]',
 ];
 
+/** Parts of a document page or dialog whose controls may be dense, each with its reason. */
+const denseParts = [
+  // A preview's stage header and the cards drawn on the stage are its toolbar.
+  '.ui-stage',
+  // The rig timeline's lanes and key bars are a timeline's toolbar.
+  '.animus-rig-timeline',
+  // The Code view's problems by line are list rows.
+  '.ui-doc-body.is-code', '.ui-doc-side',
+  // Review lists the changed documents as rows with their actions.
+  '#ui-review',
+];
+
+/** Where controls take the default height: document pages and dialogs. */
+const regularParts = '.ui-doc, [role="dialog"], [role="alertdialog"]';
+
 /** The library's default and small button heights, measured outside every screen. */
 async function reference(page) {
   return page.evaluate(() => {
@@ -92,6 +117,8 @@ async function reference(page) {
     box.style.cssText = 'position:absolute;left:-10000px;top:0;display:block';
     root.appendChild(box);
     const heights = {};
+    const pads = {};
+    let radius = null;
     for (const size of ['md', 'sm']) {
       const source = document.querySelector(`.arcane-button[data-size="${size}"]`);
       if (!source) continue;
@@ -99,15 +126,17 @@ async function reference(page) {
       clone.removeAttribute('id');
       box.appendChild(clone);
       heights[size] = Math.round(clone.getBoundingClientRect().height * 10) / 10;
+      pads[size] = parseFloat(getComputedStyle(clone).paddingLeft);
+      if (size === 'md') radius = parseFloat(getComputedStyle(clone).borderTopLeftRadius);
     }
     box.remove();
-    return heights;
+    return {...heights, pads, radius};
   });
 }
 
 /** Every problem on the page. */
-async function scan(page, allowed, skip) {
-  return page.evaluate(({allowed, skip, within}) => {
+async function scan(page, allowed, skip, sizes) {
+  return page.evaluate(({allowed, skip, within, sizes, denseParts, regularParts}) => {
     const problems = [];
     const controlSelector = 'button, [role="button"], select, input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]):not([type="color"]):not([type="file"])';
     const notButtons = '[role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], [role="switch"], [role="checkbox"], [role="treeitem"], summary, [data-arcane-command-item]';
@@ -218,15 +247,15 @@ async function scan(page, allowed, skip) {
     }
 
     // Icon sizes inside buttons.
-    const sizes = new Map();
+    const iconSizes = new Map();
     for (const el of controls) {
       for (const icon of el.querySelectorAll('i, svg')) {
         if (!shown(icon)) continue;
         const w = Math.round(icon.getBoundingClientRect().width);
-        if (!sizes.has(w)) sizes.set(w, describe(el));
+        if (!iconSizes.has(w)) iconSizes.set(w, describe(el));
       }
     }
-    if (sizes.size > 1) problems.push(`icons at ${[...sizes.keys()].sort((a, b) => a - b).join(', ')} px: ${[...sizes].map(([w, el]) => `${w} in ${el}`).join('; ')}`);
+    if (iconSizes.size > 1) problems.push(`icons at ${[...iconSizes.keys()].sort((a, b) => a - b).join(', ')} px: ${[...iconSizes].map(([w, el]) => `${w} in ${el}`).join('; ')}`);
 
     // Controls cut off by the strip or bar holding them: a tab strip
     // squeezed to a line, a toggle group scrolled past its last item.
@@ -268,8 +297,52 @@ async function scan(page, allowed, skip) {
     // A page heading always says something.
     const heading = document.getElementById('animus-main-heading');
     if (heading && heading.isConnected && !heading.closest('[hidden], [aria-hidden="true"]') && !heading.textContent.trim()) problems.push('blank page heading');
+    // One height on document pages and in dialogs: the default one.
+    const inRegular = el => el.closest(regularParts) && !el.closest(denseParts.join(', '));
+    if (sizes.sm < sizes.md - 0.75) {
+      for (const el of controls) {
+        if (!inRegular(el)) continue;
+        if (Math.abs(el.getBoundingClientRect().height - sizes.sm) <= 0.75) problems.push(`dense control on a page: ${describe(el)}`);
+      }
+    }
+
+    // Tab strips: a control height, the default one on a page; tabs with a button's corners.
+    for (const strip of document.querySelectorAll('[role="tablist"]')) {
+      if (!shown(strip) || strip.matches(skip) || strip.closest(skip) || (within && !strip.closest(within))) continue;
+      const h = strip.getBoundingClientRect().height;
+      const want = inRegular(strip) ? [sizes.md] : allowed;
+      if (!want.some(a => Math.abs(a - h) <= 0.75)) problems.push(`tab strip ${Math.round(h * 10) / 10} not ${want.join(' or ')}: ${where(strip)} "${name(strip)}"`);
+      for (const tab of strip.querySelectorAll('[role="tab"]')) {
+        if (!shown(tab)) continue;
+        const r = parseFloat(getComputedStyle(tab).borderTopLeftRadius);
+        if (Math.abs(r - sizes.radius) > 0.5) problems.push(`tab corners ${r} not ${sizes.radius}: ${describe(tab)}`);
+      }
+    }
+
+    // One side padding per button size.
+    for (const el of controls) {
+      if (!el.matches('.arcane-button[data-size="md"], .arcane-button[data-size="sm"]')) continue;
+      if (!el.textContent.trim()) continue;
+      const want = sizes.pads[el.dataset.size];
+      const cs = getComputedStyle(el);
+      const left = parseFloat(cs.paddingLeft);
+      const right = parseFloat(cs.paddingRight);
+      if (Math.abs(left - want) > 0.5 || Math.abs(right - want) > 0.5) problems.push(`padding ${left}/${right} not ${want}: ${describe(el)}`);
+    }
+
+    // A box that scrolls by a few pixels should fit. The page itself (main)
+    // scrolls with whatever its content is, and fields scroll their text.
+    for (const el of document.querySelectorAll('body *')) {
+      if (el.matches('main, textarea, input, select, [role="listbox"], .animus-code-area') || (within && !el.closest(within))) continue;
+      const cs = getComputedStyle(el);
+      const over = /(auto|scroll)/.test(cs.overflowY) ? el.scrollHeight - el.clientHeight : 0;
+      const across = /(auto|scroll)/.test(cs.overflowX) ? el.scrollWidth - el.clientWidth : 0;
+      for (const [amount, axis] of [[over, 'down'], [across, 'across']]) {
+        if (amount > 1 && amount <= 24 && shown(el)) problems.push(`scrolls ${axis} by ${amount} px: ${where(el)}`);
+      }
+    }
     return problems;
-  }, {allowed, skip, within});
+  }, {allowed, skip, within, sizes, denseParts, regularParts});
 }
 
 async function settle(page) {
@@ -282,22 +355,22 @@ async function control(route, body) {
   return response.json();
 }
 
-async function run(browser, width, failures, allowedSeen) {
-  const viewport = {width, height: width <= 390 ? 844 : 900};
-  const context = await browser.newContext({viewport, colorScheme: 'dark', hasTouch: width <= 390});
+async function run(browser, width, scheme, failures, allowedSeen) {
+  const {context, viewport} = await themedContext(browser, width, scheme);
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   let count = 0;
   let allowed = null;
+  let sizes = null;
   const wanted = name => !screens || screens.test(name);
   const visit = async name => {
     if (!wanted(name)) return;
     await page.mouse.move(0, 0);
     await settle(page);
-    for (const problem of await scan(page, allowed, exempt.join(', '))) failures.push(`${width} ${name} | ${problem}`);
+    for (const problem of await scan(page, allowed, exempt.join(', '), sizes)) failures.push(`${width} ${scheme} ${name} | ${problem}`);
     if (shots) {
       fs.mkdirSync(shots, {recursive: true});
-      await page.screenshot({path: path.join(shots, `buttons-${width}-${String(++count).padStart(3, '0')}-${name.replace(/[^a-z0-9]+/gi, '-')}.png`)});
+      await page.screenshot({path: path.join(shots, `buttons-${width}-${scheme}-${String(++count).padStart(3, '0')}-${name.replace(/[^a-z0-9]+/gi, '-')}.png`)});
     }
   };
   const hash = async value => {
@@ -345,6 +418,7 @@ async function run(browser, width, failures, allowedSeen) {
   const first = await reference(page);
   if (first.md && first.sm) {
     allowed = [first.md, first.sm];
+    sizes = first;
     await visit('start');
   }
   await page.getByRole('button', {name: 'Open examples'}).click();
@@ -358,6 +432,7 @@ async function run(browser, width, failures, allowedSeen) {
   const heights = await reference(page);
   assert.ok(heights.md && heights.sm, `${width}: no default or small library button to measure: ${JSON.stringify(heights)}`);
   allowed = [heights.md, heights.sm];
+  sizes = heights;
   allowedSeen.add(allowed.join('/'));
 
   await page.goto(url);
@@ -468,11 +543,13 @@ async function run(browser, width, failures, allowedSeen) {
   const failures = [];
   const allowedSeen = new Set();
   try {
-    for (const width of widths) {
-      const started = Date.now();
-      const before = failures.length;
-      await run(browser, width, failures, allowedSeen);
-      console.log(`button_uniformity_browser: ${width} ${failures.length - before} problems, ${Math.round((Date.now() - started) / 1000)} s`);
+    for (const scheme of schemes()) {
+      for (const width of widths) {
+        const started = Date.now();
+        const before = failures.length;
+        await run(browser, width, scheme, failures, allowedSeen);
+        console.log(`button_uniformity_browser: ${width} ${scheme} ${failures.length - before} problems, ${Math.round((Date.now() - started) / 1000)} s`);
+      }
     }
   } finally {
     await browser.close();

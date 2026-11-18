@@ -115,7 +115,6 @@ class RigEventEditor extends StatelessWidget {
     final List<FieldSpec> fields = _fields;
     return dom.section(classes: 'animus-rig-event-editor', styles: stackStyles(gap: Gap.xs), attributes: <String, String>{'aria-label': 'Event at tick $_tick'}, <Widget>[
       ActionRow(
-        dense: true,
         label: 'Event',
         leading: <Widget>[
           dom.h4(styles: groupHeadingStyles, <Widget>[

@@ -1,8 +1,10 @@
 /// The one way to lay out buttons. Actions sit at the end in a fixed order:
 /// the "..." menu, secondary actions, Cancel, then the primary action last.
 /// Content controls (filters, a view switch, a title) go in [leading] on
-/// the left. Every button is the row's size: regular (36 px) or [dense]
-/// (32 px), icons 16 px, 8 px between buttons and 16 px between groups.
+/// the left. Every button is the size of the part it sits in
+/// ([DensityScope]): regular on pages, forms and dialogs, dense in the
+/// frame's bars, list rows and stage headers. Icons are 16 px, 8 px between
+/// buttons and 16 px between groups.
 ///
 /// A toolbar never wraps. When it does not fit, measured after layout,
 /// secondary actions with an icon first drop their text, then move into the
@@ -68,7 +70,6 @@ class ActionRow extends StatefulWidget {
     this.secondary = const <RowAction>[],
     this.cancel,
     this.primary,
-    this.dense = false,
     this.label,
     this.moreId,
     super.key,
@@ -79,7 +80,6 @@ class ActionRow extends StatefulWidget {
     this.secondary = const <RowAction>[],
     this.cancel,
     this.primary,
-    this.dense = false,
     this.label,
     super.key,
   })  : leading = const <Widget>[],
@@ -101,8 +101,6 @@ class ActionRow extends StatefulWidget {
   /// The one filled button, always last.
   final RowAction? primary;
 
-  /// 32 px controls (toolbars, list bars, stage headers) instead of 36 px.
-  final bool dense;
   final bool footer;
 
   /// Names the row for assistive technology (a toolbar's purpose).
@@ -228,7 +226,7 @@ class _ActionRowState extends State<ActionRow> {
   @override
   Widget build(BuildContext context) {
     final ActionRow row = component;
-    final Density density = row.dense ? Density.dense : Density.regular;
+    final Density density = DensityScope.of(context);
     final int folded = _fold <= 1 ? 0 : (_fold - 1).clamp(0, row.secondary.length);
     final bool textless = _fold >= 1;
     final List<AppMenuEntry> menu = <AppMenuEntry>[
@@ -246,7 +244,7 @@ class _ActionRowState extends State<ActionRow> {
       density: density,
       child: dom.div(
         id: _id,
-        classes: 'ui-actions${row.dense ? ' is-dense ui-dense' : ''}${row.footer ? ' is-footer' : ''}',
+        classes: 'ui-actions${density == Density.dense ? ' is-dense ui-dense' : ''}${row.footer ? ' is-footer' : ''}',
         attributes: <String, String>{
           'data-action-row': row.footer ? 'footer' : 'toolbar',
           if (!row.footer && row.label != null) 'role': 'toolbar',
@@ -283,16 +281,15 @@ class DialogFooter extends StatelessWidget {
 
 /// The buttons that end a form or an editor pane (Apply, Discard).
 class FormFooter extends StatelessWidget {
-  const FormFooter({this.primary, this.cancel, this.secondary = const <RowAction>[], this.dense = false, super.key});
+  const FormFooter({this.primary, this.cancel, this.secondary = const <RowAction>[], super.key});
 
   final RowAction? primary;
   final RowAction? cancel;
   final List<RowAction> secondary;
-  final bool dense;
 
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(top: 12),
-        child: ActionRow.footer(secondary: secondary, cancel: cancel, primary: primary, dense: dense),
+        child: ActionRow.footer(secondary: secondary, cancel: cancel, primary: primary),
       );
 }

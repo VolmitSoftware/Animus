@@ -101,7 +101,6 @@ class RigToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ActionRow(
-        dense: true,
         label: 'Rig',
         moreId: 'rig-toolbar-more',
         leading: <Widget>[

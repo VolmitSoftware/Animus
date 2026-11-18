@@ -140,7 +140,6 @@ class _RigAnimationsPanelState extends State<RigAnimationsPanel> {
           mutedLine('Make an animation first, then name it here.')
         else
           ActionRow(
-            dense: true,
             leading: <Widget>[
               wrapItem('0 1 10rem', TextInput(
                   size: ComponentSize.sm,
@@ -173,7 +172,6 @@ class _RigAnimationsPanelState extends State<RigAnimationsPanel> {
     final String? role = _role(name);
     return dom.div(classes: 'animus-rig-name', styles: stackStyles(gap: Gap.xs), attributes: <String, String>{'data-name': name, if (!exists || foreign) 'data-broken': ''}, <Widget>[
       ActionRow(
-        dense: true,
         leading: <Widget>[
           wrapItem('0 1 10rem', TextInput(
               size: ComponentSize.sm,

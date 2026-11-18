@@ -97,7 +97,6 @@ class _NpcStandCheckState extends State<NpcStandCheck> {
     final String line = ground == null ? what : '$what The ground here is at Y $ground.';
     return dom.div(attributes: const <String, String>{'data-npc': 'stand-check'}, <Widget>[
       ActionRow(
-        dense: true,
         label: 'Where it stands',
         leading: <Widget>[problemText(line, severity: DiagnosticSeverity.warning)],
         secondary: <RowAction>[if (ground != null && ground != y.floor()) RowAction('Stand on ground', () => component.onStand(ground))],

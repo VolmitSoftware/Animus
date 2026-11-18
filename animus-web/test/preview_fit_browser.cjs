@@ -1,6 +1,7 @@
 // Every preview fits its frame: at 1600 (preview beside the form), 768 (the
-// band above it) and 390 px (behind the Preview button), in the Form and
-// Split views, and in fullscreen, a screen fails when
+// band above it) and 390 px (behind the Preview button), dark and light
+// (support/schemes.cjs), in the Form and Split views, and in fullscreen, a
+// screen fails when
 //   - a preview frame (the StageFrame, a 3D stage's frame, the route grid,
 //     the recording and rig stages) or the frame's body is larger inside
 //     than its box (scrollHeight > clientHeight + 1 or scrollWidth >
@@ -34,6 +35,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {walkScreens} = require('./support/screens.cjs');
+const {schemes, themedContext} = require('./support/schemes.cjs');
 
 const url = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site'); })()).replace(/\/$/, '');
 const fake = (process.env.ANIMUS_FAKE_URL || (() => { throw new Error('Set ANIMUS_FAKE_URL to your own fake server'); })()).replace(/\/$/, '');
@@ -127,9 +129,8 @@ async function settle(page) {
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
 
-async function run(browser, width, failures, counts) {
-  const viewport = {width, height: width <= 390 ? 844 : 900};
-  const context = await browser.newContext({viewport, colorScheme: 'dark', hasTouch: width <= 390});
+async function run(browser, width, scheme, failures, counts) {
+  const {context} = await themedContext(browser, width, scheme);
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   let count = 0;
@@ -138,11 +139,11 @@ async function run(browser, width, failures, counts) {
     await settle(page);
     const {frames, problems} = await scan(page);
     counts.screens++;
-    if (framed && !frames) failures.push(`${width} ${name} | no preview frame`);
-    for (const problem of problems) failures.push(`${width} ${name} | ${problem}`);
+    if (framed && !frames) failures.push(`${width} ${scheme} ${name} | no preview frame`);
+    for (const problem of problems) failures.push(`${width} ${scheme} ${name} | ${problem}`);
     if (shots) {
       fs.mkdirSync(shots, {recursive: true});
-      await page.screenshot({path: path.join(shots, `fit-${width}-${String(++count).padStart(3, '0')}-${name.replace(/[^a-z0-9]+/gi, '-')}.png`)});
+      await page.screenshot({path: path.join(shots, `fit-${width}-${scheme}-${String(++count).padStart(3, '0')}-${name.replace(/[^a-z0-9]+/gi, '-')}.png`)});
     }
   };
   await walkScreens(page, {url, fake, width, check, wanted: name => !screens || screens.test(name)});
@@ -154,12 +155,14 @@ async function run(browser, width, failures, counts) {
   const failures = [];
   const counts = {screens: 0};
   try {
-    for (const width of widths) {
-      const started = Date.now();
-      const before = failures.length;
-      const seen = counts.screens;
-      await run(browser, width, failures, counts);
-      console.log(`preview_fit_browser: ${width} ${counts.screens - seen} screens, ${failures.length - before} problems, ${Math.round((Date.now() - started) / 1000)} s`);
+    for (const scheme of schemes()) {
+      for (const width of widths) {
+        const started = Date.now();
+        const before = failures.length;
+        const seen = counts.screens;
+        await run(browser, width, scheme, failures, counts);
+        console.log(`preview_fit_browser: ${width} ${scheme} ${counts.screens - seen} screens, ${failures.length - before} problems, ${Math.round((Date.now() - started) / 1000)} s`);
+      }
     }
   } finally {
     await browser.close();

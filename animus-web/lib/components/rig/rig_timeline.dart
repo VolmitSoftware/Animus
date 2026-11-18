@@ -18,6 +18,7 @@ import '../../logic/rig_edit.dart';
 import '../../logic/rig_sampler.dart';
 import '../../logic/rig_view.dart';
 import '../../ui/action_row.dart';
+import '../../ui/density.dart';
 import '../../ui/confirm_dialog.dart';
 import '../../ui/empty_state.dart';
 import '../../ui/info_tip.dart';
@@ -163,10 +164,10 @@ class _RigTimelineState extends State<RigTimeline> {
     _refocus();
     final JsonMap? animation = component.animation;
     final bool none = component.animations.isEmpty;
-    return dom.div(classes: 'animus-rig-timeline', styles: stackStyles(gap: Gap.md), attributes: const <String, String>{'aria-label': 'Timeline'}, <Widget>[
+    // A timeline's bars are dense, as the frame's toolbars are.
+    return DensityScope.dense(child: dom.div(classes: 'animus-rig-timeline', styles: stackStyles(gap: Gap.md), attributes: const <String, String>{'aria-label': 'Timeline'}, <Widget>[
       if (!none)
         ActionRow(
-          dense: true,
           label: 'Animation',
           leading: <Widget>[
             AnimusSelect.values(
@@ -191,7 +192,7 @@ class _RigTimelineState extends State<RigTimeline> {
       else
         ..._clipView(animation),
       component.names,
-    ]);
+    ]));
   }
 
   List<Widget> _clipView(JsonMap animation) {
@@ -207,7 +208,6 @@ class _RigTimelineState extends State<RigTimeline> {
     return <Widget>[
       wrapLine(basis: '24rem', spacing: Gap.lg, <Widget>[
         ActionRow(
-          dense: true,
           label: 'Clip',
           leading: <Widget>[
             AnimusSelect.values(
@@ -237,7 +237,6 @@ class _RigTimelineState extends State<RigTimeline> {
           ],
         ),
         ActionRow(
-          dense: true,
           label: 'Playback',
           leading: <Widget>[
             AnimusSelect.values(
@@ -293,7 +292,6 @@ class _RigTimelineState extends State<RigTimeline> {
         _eventLane(events, span, time),
       ]),
       ActionRow(
-        dense: true,
         label: 'Keys',
         moreId: 'rig-keys-more',
         leading: <Widget>[

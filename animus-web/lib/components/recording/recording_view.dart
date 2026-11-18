@@ -31,6 +31,7 @@ import 'recording_details.dart';
 import '../npc/npc_layout.dart';
 import '../../ui/field.dart';
 import '../../ui/problem_text.dart';
+import '../../ui/density.dart';
 
 /// The id of the scrub slider (its `data-arcane-slider`).
 const String recordingScrubId = 'animus-recording-scrub';
@@ -295,7 +296,6 @@ class _RecordingViewState extends State<RecordingView> {
     final String status = playbackStatus(tick, duration);
     final List<String> flags = <String>[for (final String flag in recordingFlagNames(recording.poseAt(tick).flags)) if (flag != 'on ground') flag];
     return ActionRow(
-      dense: true,
       label: 'Playback',
       leading: <Widget>[
         AppIconButton(
@@ -366,7 +366,6 @@ class _RecordingViewState extends State<RecordingView> {
         ],
       ),
       ActionRow(
-        dense: true,
         label: 'Trim',
         secondary: <RowAction>[
           RowAction(
@@ -410,7 +409,7 @@ class _RecordingViewState extends State<RecordingView> {
               Button(
                 label: clockText(event.tick.toDouble()),
                 variant: ButtonVariant.link,
-                size: ButtonSize.sm,
+                size: buttonSize(DensityScope.of(context)),
                 attributes: <String, String>{'aria-label': 'Go to ${clockText(event.tick.toDouble())}: ${eventText(event)}'},
                 onPressed: () => _seek(event.tick.toDouble()),
               ),

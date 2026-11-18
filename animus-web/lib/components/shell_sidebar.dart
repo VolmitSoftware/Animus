@@ -7,6 +7,7 @@
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
+import 'package:jaspr/dom.dart' as dom;
 
 import '../logic/change_sets.dart';
 import '../model/animus_document.dart';
@@ -65,7 +66,7 @@ const List<NavJob> navJobs = <NavJob>[
   NavJob('npcs', 'NPCs', ArcaneIcon.users, kinds: <DocumentKind>[DocumentKind.npc]),
   NavJob('behaviors', 'Behaviors', ArcaneIcon.workflow, kinds: <DocumentKind>[DocumentKind.behavior, DocumentKind.serverBehaviors]),
   NavJob('shops', 'Shops', ArcaneIcon.store, kinds: <DocumentKind>[DocumentKind.shop]),
-  NavJob('movement', 'Movement', ArcaneIcon.route, kinds: <DocumentKind>[DocumentKind.route, DocumentKind.recording]),
+  NavJob('movement', 'Routes', ArcaneIcon.route, kinds: <DocumentKind>[DocumentKind.route, DocumentKind.recording]),
   NavJob('holograms', 'Holograms', ArcaneIcon.layers, kinds: <DocumentKind>[DocumentKind.hologram]),
   NavJob('guis', 'GUIs', ArcaneIcon.layoutGrid,
       advanced: true, kinds: <DocumentKind>[DocumentKind.inventory, DocumentKind.menu, DocumentKind.textAnimation, DocumentKind.presets]),
@@ -273,6 +274,9 @@ bool _counted(DocumentKind kind, EditorMode mode) =>
 
 const ArcaneStyleData _inDrawer = ArcaneStyleData(widthCustom: '100%', borderCustom: 'none', backgroundCustom: 'transparent');
 
+/// The roving box adds no box of its own to the frame's layout.
+const dom.Styles _roving = dom.Styles(raw: <String, String>{'display': 'contents'});
+
 /// What Recent and Changed call a document: the name its list row shows.
 String navName(EditorStore store, DocumentKind kind, String id) => store.libraryEntry(kind, id)?.name ?? id;
 
@@ -329,7 +333,7 @@ class _ShellNavState extends State<ShellNav> with LibraryWatch<ShellNav> {
     ];
   }
 
-  Widget _item(NavLink link) => ArcaneSidebarItem(
+  Widget _item(NavLink link, NavLink stop) => ArcaneSidebarItem(
         label: link.job == null ? _short(link.label) : link.label,
         tooltip: link.job == null && link.label.length > navLabelLength ? link.label : null,
         href: link.href,
@@ -337,22 +341,29 @@ class _ShellNavState extends State<ShellNav> with LibraryWatch<ShellNav> {
         selected: link.current,
         badge: link.badge,
         collapsed: _rail,
+        tabStop: identical(link, stop),
       );
 
   @override
   Widget build(BuildContext context) {
     final ShellNav nav = component;
+    final List<NavLink> jobs = _jobs();
+    final List<NavLink> recent = _rail ? const <NavLink>[] : nav.recent;
+    final List<NavLink> changed = _rail ? const <NavLink>[] : nav.changed;
+    // The nav is one tab stop, its current link (else the first); the arrow
+    // keys move between the links, so Tab reaches the page sooner.
+    final NavLink stop = <NavLink>[...jobs, ...recent, ...changed].where((NavLink link) => link.current).firstOrNull ?? jobs.first;
     final List<Widget> groups = <Widget>[
-      ArcaneSidebarGroup(children: <Widget>[for (final NavLink link in _jobs()) _item(link)]),
-      if (!_rail && nav.recent.isNotEmpty) ArcaneSidebarGroup(label: 'Recent', children: <Widget>[for (final NavLink link in nav.recent) _item(link)]),
-      if (!_rail && nav.changed.isNotEmpty)
+      ArcaneSidebarGroup(children: <Widget>[for (final NavLink link in jobs) _item(link, stop)]),
+      if (recent.isNotEmpty) ArcaneSidebarGroup(label: 'Recent', children: <Widget>[for (final NavLink link in recent) _item(link, stop)]),
+      if (changed.isNotEmpty)
         ArcaneSidebarGroup(label: 'Changed', children: <Widget>[
-          for (final NavLink link in nav.changed) _item(link),
+          for (final NavLink link in changed) _item(link, stop),
           if (nav.moreChanged > 0) ArcaneSidebarItem(label: '${nav.moreChanged} more in Review', disabled: true),
         ]),
     ];
     final bool drawer = nav.layout == NavLayout.drawer;
-    return ArcaneSidebar(
+    return dom.div(styles: _roving, attributes: const <String, String>{'data-arcane-roving': 'vertical', 'data-arcane-roving-items': '.sidebar-link'}, <Widget>[ArcaneSidebar(
       width: _rail ? 56 : 240,
       collapsedWidth: 56,
       collapsed: _rail,
@@ -362,6 +373,6 @@ class _ShellNavState extends State<ShellNav> with LibraryWatch<ShellNav> {
       // second box (border, tint) inside.
       styles: drawer ? _inDrawer : null,
       children: groups,
-    );
+    )]);
   }
 }

@@ -402,7 +402,7 @@ class _ItemSlotsState extends State<ItemSlots> {
           onChanged: (String text) => text.trim().isEmpty ? _put(cell, null) : put(<String, Object?>{...item, 'id': text.trim()}),
         ),
         if (filled)
-          ActionRow(dense: true, label: 'Count', leading: <Widget>[
+          ActionRow(label: 'Count', leading: <Widget>[
             dom.div(attributes: const <String, String>{'role': 'group', 'aria-label': 'Count'}, <Widget>[
               Row(mainAxisSize: MainAxisSize.min, gapSize: Gap.xs, children: <Widget>[
               AppIconButton(icon: ArcaneIcon.minus(size: IconSize.sm), label: 'One fewer', disabled: count <= 1, onPressed: () => put(withCount(item, count - 1))),

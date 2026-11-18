@@ -21,6 +21,7 @@ import '../../ui/density.dart';
 import '../../ui/icon_button.dart';
 import 'gui_stack.dart';
 import '../../ui/stack.dart';
+import '../../logic/gui/text_contrast.dart';
 
 /// What a text field holds, which decides its checks and completion.
 enum GuiTextMode {
@@ -66,6 +67,18 @@ FieldProfile guiTextProfile(GuiTextMode mode) => switch (mode) {
 /// The default inventory title colour (`0x404040`).
 const int mcInventoryTitleColor = 0x404040;
 
+/// The grey of the game's chest and trading windows.
+const int mcWindowColor = 0xC6C6C6;
+
+/// The game's dark text backdrop the hologram and text animation previews
+/// draw on.
+const int mcTextBackdrop = 0x0D0D0F;
+
+/// The editor's card in the dark and light themes, where game text such as
+/// the Test chat sits.
+const int editorDarkCard = 0x171717;
+const int editorLightCard = 0xFFFFFF;
+
 bool _formatted(String text) => text.contains('&') || text.contains('<') || text.contains('{{');
 
 /// A GUI template's formatted sample, when it has codes, tags or holes.
@@ -74,7 +87,7 @@ Widget? templateSample(String text) => _formatted(text) ? GuiStyledText(text) : 
 /// A window title's sample, drawn as the game draws it: dark grey on the
 /// window's grey.
 Widget? windowTitleSample(String text) =>
-    _formatted(text) ? dom.span(classes: 'animus-gui-window-title', <Widget>[GuiStyledText(text, defaultColor: mcInventoryTitleColor)]) : null;
+    _formatted(text) ? dom.span(classes: 'animus-gui-window-title', <Widget>[GuiStyledText(text, defaultColor: mcInventoryTitleColor, surface: mcWindowColor)]) : null;
 
 /// An item name's sample, italic until a colour code as the game draws it.
 Widget? itemNameSample(String text) => _formatted(text) ? GuiStyledText(text, item: true) : null;
@@ -138,11 +151,11 @@ class GuiLinesEditor extends StatelessWidget {
 /// text on the editor's own surfaces (the Test chat) rather than a game
 /// window's.
 class GuiStyledText extends StatelessWidget {
-  const GuiStyledText(this.text, {this.defaultColor = mcDefaultTextColor, this.item = false, this.sample = true, super.key}) : runs = null;
+  const GuiStyledText(this.text, {this.defaultColor = mcDefaultTextColor, this.item = false, this.sample = true, this.surface, super.key}) : runs = null;
 
   /// Runs already read, such as one row of a text display whose style
   /// carries on from the rows above it ([guiDisplayRows]).
-  const GuiStyledText.runs(List<McTextRun> this.runs, {super.key})
+  const GuiStyledText.runs(List<McTextRun> this.runs, {this.surface, super.key})
       : text = '',
         defaultColor = mcDefaultTextColor,
         item = false,
@@ -159,14 +172,22 @@ class GuiStyledText extends StatelessWidget {
   final bool sample;
   final List<McTextRun>? runs;
 
+  /// The colour the text sits on (a game window's grey): a run that does
+  /// not read on it at 4.5:1 keeps its colour and gains an outline.
+  final int? surface;
+
   @override
   Widget build(BuildContext context) {
     final int? themed = defaultColor;
+    // Text on the editor's own card is read against the theme's card colour.
+    final int? on = surface ?? (themed == null ? (context.isDark ? editorDarkCard : editorLightCard) : null);
     return dom.span(classes: 'animus-mc-styled', <Widget>[
       for (final McTextRun run in runs ?? guiTextRuns(text, defaultColor: themed ?? mcDefaultTextColor, item: item, sample: sample))
         dom.span(
           styles: dom.Styles(raw: <String, String>{
             if (themed != null || run.color != mcDefaultTextColor) 'color': run.cssColor,
+            if (on != null && (themed != null || run.color != mcDefaultTextColor))
+              if (readableOutline(run.color, on) case final int outline) 'text-shadow': outlineShadow(outline, 'calc(var(--mc-px, 2px) / 2)'),
             if (run.bold) 'font-weight': '700',
             if (run.italic) 'font-style': 'italic',
             if (run.underlined || run.strikethrough)

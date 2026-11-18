@@ -45,6 +45,7 @@ import '../../ui/field.dart';
 import '../../ui/number_input.dart';
 import 'gui_stack.dart';
 import '../../ui/stack.dart';
+import '../../ui/density.dart';
 
 GuiAnimationClock _clock(AnimusDocument document, Map<String, JsonMap> animations, int nowMs) => GuiAnimationClock(from: document.id, animations: animations, nowMs: nowMs);
 
@@ -220,7 +221,6 @@ class _HologramEditorState extends State<HologramEditor> {
       else
         OrderedRows(
           label: 'Lines',
-          dense: false,
           rows: <OrderedRow>[for (int index = 0; index < lines.length; index++) _line(lines, index, '$base[$index]', open == index, (String text) => rowsOf(index, text))],
           onMove: (int from, int to) {
             setLines(moveItem(lines, from, to));
@@ -381,7 +381,7 @@ class _HologramEditorState extends State<HologramEditor> {
         AppAlert(
           tone: AlertTone.warning,
           message: 'A line has no style of its own; the hologram style applies.',
-          action: Button.outline(label: 'Remove it', size: ButtonSize.sm, onPressed: () => field('style', null)),
+          action: Button.outline(label: 'Remove it', size: buttonSize(DensityScope.of(context)), onPressed: () => field('style', null)),
         ),
     ];
   }
@@ -608,7 +608,6 @@ class _HologramEditorState extends State<HologramEditor> {
         },
       ),
     ActionRow(
-      dense: true,
       label: 'Pages',
       secondary: <RowAction>[
         RowAction(
@@ -674,7 +673,6 @@ class _HologramEditorState extends State<HologramEditor> {
         },
       ),
     ActionRow(
-      dense: true,
       label: 'Variants',
       secondary: <RowAction>[
         RowAction(

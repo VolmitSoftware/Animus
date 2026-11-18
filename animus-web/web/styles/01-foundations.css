@@ -1,11 +1,13 @@
-/* Foundations: the frame's size tokens, the page before the theme arrives,
+/* Foundations: the frame's size tokens (the control heights follow the
+   library's, which <html data-arcane-touch> raises to 44 px on phones and
+   touch screens), the page before the theme arrives,
    the boot splash, and the library's focus ring on the editor's own
    elements. The look is arcane_jaspr's shadcn Midnight. */
 :root {
   --animus-text-sm: 0.8125rem;
   --animus-text-md: 0.875rem;
-  --animus-control-h: 2.25rem;
-  --animus-control-h-sm: 2rem;
+  --animus-control-h: var(--shadcn-control-h, 2.25rem);
+  --animus-control-h-sm: var(--shadcn-control-h-sm, 2rem);
   --animus-control-icon-sm: 0.875rem;
   --ui-topbar-h: 3rem;
   --ui-savebar-h: 3rem;

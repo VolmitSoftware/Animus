@@ -169,12 +169,13 @@
   stroke-width: 4;
 }
 
-/* Timeline: a lane's name, then its keys over the clip's length. */
+/* Timeline: a lane's name, then its keys over the clip's length. The
+   lanes scroll down; the keys' tap areas never scroll them sideways. */
 .animus-rig-lanes {
   display: grid;
   gap: 0.25rem;
   max-height: 20rem;
-  overflow: auto;
+  overflow: hidden auto;
 }
 
 .animus-rig-lane {

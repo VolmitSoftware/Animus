@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "shop:gate-guard",
+  "entry": "inspect",
+  "routines": {
+    "inspect": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:ray-trace",
+          "arguments": {
+            "range": 20
+          },
+          "result": "seen"
+        },
+        {
+          "type": "condition",
+          "then": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "action",
+                "capability": "animus:explode",
+                "arguments": {
+                  "x": null,
+                  "y": null,
+                  "z": null
+                },
+                "expressions": {
+                  "/x": "num(get(split(seen.location, ','), 0))",
+                  "/y": "num(get(split(seen.location, ','), 1))",
+                  "/z": "num(get(split(seen.location, ','), 2))"
+                }
+              },
+              {
+                "type": "action",
+                "capability": "animus:message",
+                "arguments": {
+                  "text": "TNT spotted near the gate at {{ now() }} by {{ player.name }}",
+                  "player": null
+                },
+                "expressions": {
+                  "/player": "player_named('Alex')"
+                }
+              }
+            ]
+          },
+          "expression": "seen.block == 'minecraft:tnt'",
+          "else": {
+            "type": "action",
+            "capability": "animus:read-block",
+            "arguments": {
+              "location": null
+            },
+            "expressions": {
+              "/location": "offset(npc.location, 0, -1, 0)"
+            },
+            "result": "seen"
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "interaction",
+      "event": "interaction",
+      "routine": "inspect",
+      "action": "sneak_interact"
+    }
+  ],
+  "variables": {
+    "seen": {
+      "type": "map",
+      "initial": {}
+    }
+  }
+}

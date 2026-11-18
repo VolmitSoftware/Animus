@@ -95,6 +95,7 @@ import 'recording/recording_view.dart';
 import 'shell_sidebar.dart' show jobOfKind, jobRoute, kindCrumb;
 import 'suggest/suggest_scope.dart';
 import 'suggest/suggest_sources.dart';
+import '../ui/density.dart';
 
 /// Kinds whose title is a `name` field the header renames in place.
 /// Kinds whose heading is a field of the document, and that field: Rename
@@ -549,12 +550,11 @@ class _DocumentPaneState extends State<DocumentPane> {
             : null,
         secondary: <RowAction>[
           if (_place == PreviewPlace.button && (preview || _splitPreview(document, view)))
-            // Only phones have this button: an icon, so the title keeps the line.
+            // Only phones have this button; it says what it shows.
             RowAction(
               document.kind == DocumentKind.behavior ? 'Test' : 'Preview',
               () => setState(() => _previewShown = !_previewShown),
               icon: ArcaneIcon.eye(),
-              iconOnly: true,
               pressed: _previewShown,
               attributes: const <String, String>{'aria-controls': 'ui-doc-preview'},
             ),
@@ -565,7 +565,7 @@ class _DocumentPaneState extends State<DocumentPane> {
       if (_draft != null && view != ViewMode.code && view != ViewMode.split)
         dom.div(classes: 'ui-doc-note', attributes: const <String, String>{'role': 'status', 'data-testid': 'code-draft-note'}, <Widget>[
           const dom.span(<Widget>[Component.text('Code not used yet. This view shows the file without it.')]),
-          Button.outline(label: 'Open Code', size: ButtonSize.sm, onPressed: () => component.onView(ViewMode.code)),
+          Button.outline(label: 'Open Code', size: buttonSize(DensityScope.of(context)), onPressed: () => component.onView(ViewMode.code)),
         ]),
       // Keyed, so a note appearing above it never rebuilds the form and
       // takes the focus from the field being filled.
@@ -681,7 +681,6 @@ class _DocumentPaneState extends State<DocumentPane> {
       _diagnosticList(document.kind, problems, advanced),
       if (fixes.isNotEmpty)
         ActionRow(
-          dense: true,
           label: 'Fixes',
           secondary: <RowAction>[
             for (final DocumentFix fix in fixes.take(8)) RowAction(_fixLabel(document.kind, fix, advanced), () => apply(fix.apply(document.json))),
@@ -709,7 +708,6 @@ class _DocumentPaneState extends State<DocumentPane> {
     final bool hidden = !advanced && simpleHides(document.kind, first.path);
     return dom.div(classes: 'ui-doc-note', attributes: const <String, String>{'role': 'status', 'data-testid': 'doc-first-problem'}, <Widget>[
       ActionRow(
-        dense: true,
         label: 'Problem',
         leading: <Widget>[dom.span(<Widget>[Component.text(problemSentence(first, document.kind, advanced: advanced))])],
         secondary: <RowAction>[

@@ -61,7 +61,6 @@ class ServerBehaviorsEditor extends StatelessWidget {
                 if (index > 0) const ArcaneSeparator(),
                 dom.div(key: ValueKey<String>('listed-$index'), attributes: <String, String>{'role': 'listitem', 'data-behavior': listed[index]}, <Widget>[
                   ActionRow(
-                    dense: true,
                     label: behaviorTitle(listed[index]),
                     leading: <Widget>[_name(listed[index], serverBehaviorNote(listed[index], behaviors))],
                     more: <AppMenuEntry>[

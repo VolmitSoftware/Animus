@@ -20,7 +20,6 @@ import '../../model/document_kind.dart';
 import '../../model/document_summary.dart';
 import '../../state/library.dart';
 import '../../ui/alert.dart';
-import '../../ui/density.dart';
 import '../../ui/field.dart';
 import '../../ui/info_tip.dart';
 import '../../ui/mode.dart';
@@ -149,7 +148,7 @@ class _ConversationViewState extends State<ConversationView> {
       dom.h2(<Widget>[
         TipLabel(label: const Component.text('Steps'), tip: conversationKeys(), docs: conversationDocs),
       ]),
-      DenseBox(children: <Widget>[ConversationTree(scope: scope)]),
+      ConversationTree(scope: scope),
     ]);
   }
 

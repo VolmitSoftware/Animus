@@ -31,7 +31,6 @@ class AdvancedInUse extends StatelessWidget {
     final String trouble = problems == 0 ? '' : ', ${problems == 1 ? '1 with a problem' : '$problems with problems'}';
     return dom.div(attributes: const <String, String>{'data-advanced-in-use': ''}, <Widget>[
       ActionRow(
-        dense: true,
         label: 'Advanced settings',
         leading: <Widget>[mutedText('${countOf(count, 'advanced setting')}$trouble')],
         secondary: <RowAction>[RowAction(expanded == true ? 'Hide' : 'Show', onShow, expanded: expanded)],

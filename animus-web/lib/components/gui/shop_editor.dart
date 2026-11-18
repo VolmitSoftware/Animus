@@ -238,7 +238,6 @@ class _ShopEditorState extends State<ShopEditor> {
     ];
     return stack(spacing: 16, <Widget>[
       ActionRow(
-        dense: true,
         label: 'Offers',
         moreId: 'animus-shop-add-more',
         leading: <Widget>[
@@ -254,7 +253,6 @@ class _ShopEditorState extends State<ShopEditor> {
         AppAlert(tone: problem.severity == DiagnosticSeverity.error ? AlertTone.error : AlertTone.warning, message: diagnosticSentenceIn(problem, advanced: ModeScope.advanced(context))),
       if (checked.isNotEmpty)
         ActionRow(
-          dense: true,
           label: 'Selected offers',
           leading: <Widget>[mutedText('${checked.length} selected')],
           secondary: <RowAction>[

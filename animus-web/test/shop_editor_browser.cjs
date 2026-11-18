@@ -314,7 +314,8 @@ async function run(browser, viewport, label, theme) {
   await frame.locator('.animus-merchant-offer[data-offer="trade"]').click();
   const opened = form.locator('li[data-id="trade"]');
   await form.locator('li[data-id="trade"].is-open').waitFor();
-  await opened.locator('.ui-section-title', {hasText: /^Rules/}).click();
+  // The row, not the title: a phone's title centre is its 44 px (i) button.
+  await opened.locator('summary', {has: page.locator('.ui-section-title', {hasText: /^Rules/})}).click();
   await opened.getByLabel('Per player limit', {exact: true}).fill('3');
   await settle(page);
   frame = await preview(page);

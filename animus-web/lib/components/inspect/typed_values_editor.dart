@@ -144,7 +144,6 @@ class TypedListEditor extends StatelessWidget {
               ],
             ),
           ActionRow(
-            dense: true,
             secondary: <RowAction>[
               RowAction('Add item', () => onChanged(<Object?>[...items, convertTyped(null, last)]), attributes: <String, String>{'aria-label': 'Add an item to $label'}),
             ],
@@ -234,7 +233,6 @@ class _KeyValueEditorState extends State<KeyValueEditor> {
           // and only the outermost offers Edit as JSON, so the rows that end
           // a deep value never stack up as identical pairs.
           ActionRow(
-            dense: true,
             secondary: <RowAction>[
               if (!_advanced)
                 RowAction(

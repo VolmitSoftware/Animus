@@ -132,17 +132,22 @@ class FillFromMenu extends StatelessWidget {
 
 /// A value beside its source picker or its "Fill from" menu. The value
 /// takes the room left; a switch, shorter than the menu, has it underneath.
+/// In a narrow column (a phone, a deep step) the value wraps onto a line of
+/// its own at full width rather than shrink under 14rem.
 Widget operandRow({required Widget value, Widget? source, Widget? fill, bool flag = false}) => flag
     ? Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, gapSize: Gap.sm, children: <Widget>[value, ?fill])
-    : Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        gapSize: Gap.sm,
+    : Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.start,
         children: <Widget>[
           ?source,
-          Expanded(child: value),
+          dom.div(styles: _operandValue, <Widget>[value]),
           ?fill,
         ],
       );
+
+const dom.Styles _operandValue = dom.Styles(raw: <String, String>{'flex': '1 1 14rem', 'min-width': '0'});
 
 /// The element id of the argument at diagnostic [path].
 String argumentElementId(String path) => 'animus-argument:$path';
@@ -207,11 +212,14 @@ class ArgumentField extends StatelessWidget {
       onNode(setArgumentSource(node, key, picked, text: start, literal: _literalFor(argument)));
     }
 
+    // A value written as is names its one input or dropdown by the label.
+    final bool labelled = source == ArgumentSource.literal && !literalNull && InspectControl.focusable(argument, asMap(node['arguments'])[key]);
     return Field(
       label: fieldLabel(argument, label: argumentLabel(argument.key)),
       help: bounds ? argumentHint(key, argument.boundsHint) : null,
       tip: argument.description,
       problems: problems,
+      forId: labelled ? controlId(path) : null,
       child: dom.div(
         id: argumentElementId(path),
         classes: 'animus-operand',

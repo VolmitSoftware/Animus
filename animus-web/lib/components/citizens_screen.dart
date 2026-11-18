@@ -711,7 +711,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
       ]),
       if (warnings.isNotEmpty) ...<Widget>[
         lineList('Warnings', warnings, testId: 'import-result-warnings'),
-        ActionRow(dense: true, label: 'Warnings', secondary: <RowAction>[RowAction('Copy warnings', () => _copyWarnings(warnings), id: 'animus-import-copy-warnings')]),
+        ActionRow(label: 'Warnings', secondary: <RowAction>[RowAction('Copy warnings', () => _copyWarnings(warnings), id: 'animus-import-copy-warnings')]),
       ],
       if (ModeScope.advanced(context)) ...<Widget>[
         sectionHeading('Bundles', level: HeadingLevel.h3, tip: _unzipNext, docs: Docs.citizensOutput),

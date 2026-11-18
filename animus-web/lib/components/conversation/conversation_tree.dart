@@ -27,7 +27,6 @@ import '../../model/document_kind.dart';
 import '../../ui/action_row.dart';
 import '../../ui/badge.dart';
 import '../../ui/confirm_dialog.dart';
-import '../../ui/density.dart';
 import '../../ui/menu.dart';
 import '../../ui/tone.dart';
 import '../select/picker_scope.dart';
@@ -37,6 +36,7 @@ import 'conversation_input.dart';
 import 'conversation_picker.dart';
 import '../../ui/stack.dart';
 import '../../ui/problem_text.dart';
+import '../../ui/density.dart';
 
 /// Runs [change] on the latest conversation and writes it back; edits
 /// sharing [coalesce] undo together. [focus] is a field to focus once the
@@ -163,7 +163,6 @@ class _TreeBuilder {
       <Widget>[
         stack(<Widget>[
           ActionRow(
-            dense: true,
             label: 'Routine ${scope.partName(name)}',
             leading: <Widget>[
               dom.h4(<Widget>[Component.text(blockTitle(conversation, name))]),
@@ -184,7 +183,7 @@ class _TreeBuilder {
   }
 
   /// Advanced: a part's badge and id over its steps.
-  Widget _partHead(String name, String badge) => ActionRow(dense: true, leading: <Widget>[
+  Widget _partHead(String name, String badge) => ActionRow(leading: <Widget>[
         StatusBadge(badge),
         dom.code(classes: 'animus-conv-id', <Widget>[Text(name, size: FontSize.sm, color: TextColor.muted)]),
       ]);
@@ -198,7 +197,7 @@ class _TreeBuilder {
       dom.ol(classes: 'animus-conv-steps${cards ? ' is-cards' : ''}', attributes: <String, String>{'aria-label': 'Steps of $where'}, <Widget>[
         for (int index = 0; index < list.steps.length; index++) _step(list.steps[index], StepAt(block, <Object>[...route, index]), list.steps.length),
       ]),
-      ActionRow(dense: true, label: 'Add to $where', leading: <Widget>[
+      ActionRow(label: 'Add to $where', leading: <Widget>[
         AppMenu(label: 'Add step', icon: ArcaneIcon.plus(), outline: true, id: 'conv-add:${end.key}', entries: _kindEntries(end)),
       ]),
     ]);
@@ -251,7 +250,6 @@ class _TreeBuilder {
       <Widget>[
         stack(<Widget>[
           ActionRow(
-            dense: true,
             label: '$heading ${at.index + 1}',
             moreId: 'conv-menu:${at.key}',
             leading: <Widget>[
@@ -452,11 +450,11 @@ class _TreeBuilder {
             ]),
             if (options.length < maximumOptions)
               dom.div(classes: 'animus-conv-add', <Widget>[
-                ActionRow(dense: true, label: 'Answers', leading: <Widget>[
+                ActionRow(label: 'Answers', leading: <Widget>[
                   Button.outline(
                     label: 'Add answer',
                     icon: ArcaneIcon.plus().sized(controlIconSize),
-                    size: ButtonSize.sm,
+                    size: ButtonSize.md,
                     attributes: <String, String>{'data-add-answer': at.key},
                     onPressed: () => edit((Conversation c) => _addOption(c, at, options.length), focus: optionId(at, options.length), focusValue: ''),
                   ),
@@ -520,7 +518,6 @@ class _TreeBuilder {
       <Widget>[
         stack(<Widget>[
           ActionRow(
-            dense: true,
             label: 'Answer ${index + 1}',
             moreId: 'conv-menu:$key',
             leading: <Widget>[

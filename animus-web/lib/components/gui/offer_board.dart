@@ -8,7 +8,6 @@ library;
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
-import 'package:web/web.dart' as web;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/shop_board.dart';
@@ -21,6 +20,7 @@ import '../mc/mc_item_icons.dart';
 import 'gui_rows.dart';
 import 'gui_stack.dart';
 import '../../ui/stack.dart';
+import '../../ui/density.dart';
 
 /// An item icon with its count, or the money token with its price.
 class GoodsIcon extends StatelessWidget {
@@ -165,17 +165,13 @@ class _OfferBoardState extends State<OfferBoard> {
         body: open ? component.editor(offer) : null,
         leading: <Widget>[
           if (checked != null)
-            dom.input(
-              type: dom.InputType.checkbox,
-              checked: checked.contains(ref.key),
-              attributes: <String, String>{'aria-label': 'Select $sentence'},
-              events: <String, void Function(web.Event)>{
-                'change': (web.Event event) {
-                  final bool on = (event.target! as web.HTMLInputElement).checked;
-                  component.onCheck(on ? <String>{...checked, ref.key} : (<String>{...checked}..remove(ref.key)));
-                },
-              },
-            ),
+            dom.span(classes: 'ui-library-pick', styles: pickBox, <Widget>[
+              ArcaneCheckbox(
+                checked: checked.contains(ref.key),
+                ariaLabel: 'Select $sentence',
+                onChanged: (bool on) => component.onCheck(on ? <String>{...checked, ref.key} : (<String>{...checked}..remove(ref.key))),
+              ),
+            ]),
         ],
         children: <Widget>[
           dom.span(classes: 'animus-shop-trade', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[

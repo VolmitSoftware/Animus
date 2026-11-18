@@ -178,7 +178,7 @@ class _ChestWindowState extends State<ChestWindow> {
       band: component.band,
       child: dom.div(classes: 'animus-chest-screen${shown == null ? ' is-pending' : ''}', attributes: <String, String>{'role': 'group', 'aria-label': component.label}, <Widget>[
         dom.div(classes: 'animus-chest-title', <Widget>[
-          GuiStyledText(layout.title, defaultColor: mcInventoryTitleColor),
+          GuiStyledText(layout.title, defaultColor: mcInventoryTitleColor, surface: mcWindowColor),
         ]),
         dom.div(
           classes: 'animus-chest${component.onPaint != null ? ' is-painting' : ''}',

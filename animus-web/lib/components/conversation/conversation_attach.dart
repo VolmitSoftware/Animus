@@ -16,7 +16,6 @@ import '../../model/document_kind.dart';
 import '../../state/editor_store.dart';
 import '../../state/library.dart';
 import '../../state/live_session.dart' show DocumentRef;
-import '../../ui/density.dart';
 import '../../ui/field.dart';
 import '../../ui/icon_button.dart';
 import '../gui/gui_fields.dart' show stringList;
@@ -120,7 +119,7 @@ class ConversationAttach extends StatelessWidget {
       child: dom.div(attributes: const <String, String>{'data-testid': 'conv-attach'}, <Widget>[
         stack(<Widget>[
           if (attached.isNotEmpty)
-            DenseBox(attributes: const <String, String>{'role': 'list', 'aria-label': 'NPCs that run it'}, children: <Widget>[
+            dom.div(attributes: const <String, String>{'role': 'list', 'aria-label': 'NPCs that run it'}, <Widget>[
               for (final (LibraryEntry entry, AnimusDocument document) in attached)
                 dom.div(attributes: <String, String>{'role': 'listitem', 'data-target': entry.key}, <Widget>[
                   Row(gapSize: Gap.sm, children: <Widget>[

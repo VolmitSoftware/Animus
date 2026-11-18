@@ -73,7 +73,7 @@ class _MerchantWindowState extends State<MerchantWindow> {
       band: component.band,
       child: dom.div(classes: 'animus-merchant-screen', attributes: <String, String>{'role': 'group', 'aria-label': component.label}, <Widget>[
         dom.div(classes: 'animus-chest-title', <Widget>[
-          GuiStyledText(component.title, defaultColor: mcInventoryTitleColor),
+          GuiStyledText(component.title, defaultColor: mcInventoryTitleColor, surface: mcWindowColor),
         ]),
         if (component.offers.isEmpty)
           const dom.p(classes: 'animus-merchant-empty', <Widget>[Component.text('No trades to show.')])

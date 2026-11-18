@@ -480,7 +480,6 @@ class _StringListFieldState extends State<StringListField> {
           ]),
         if (shown.pages > 1)
           ActionRow(
-            dense: true,
             label: '${field.words.label} pages',
             leading: <Widget>[mutedText('${shown.from + 1}-${shown.to} of ${items.length}')],
             secondary: <RowAction>[

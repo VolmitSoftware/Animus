@@ -76,8 +76,9 @@ class _ToggleChoiceState<T> extends State<ToggleChoice<T>> with SqueezeFold<Togg
         ),
       ]);
     }
-    return dom.div(id: _id, classes: 'ui-toggle-choice', attributes: <String, String>{'role': 'group', 'aria-label': label}, <Widget>[
+    return dom.div(id: _id, classes: 'ui-toggle-choice', <Widget>[
       ArcaneToggleGroup(
+        ariaLabel: label,
         items: <ToggleGroupItem>[
           for (int index = 0; index < options.length; index++) ToggleGroupItem(value: '$index', child: Component.text(options[index].label)),
         ],
@@ -103,8 +104,9 @@ class ToggleChips<T> extends StatelessWidget {
   final void Function(Set<T> values) onChanged;
 
   @override
-  Widget build(BuildContext context) => dom.div(classes: 'ui-toggle-chips', attributes: <String, String>{'role': 'group', 'aria-label': label}, <Widget>[
+  Widget build(BuildContext context) => dom.div(classes: 'ui-toggle-chips', <Widget>[
         ArcaneToggleGroup.multiple(
+          ariaLabel: label,
           items: <ToggleGroupItem>[
             // A check marks what is on: Midnight's "on" fill alone barely
             // differs from "off".

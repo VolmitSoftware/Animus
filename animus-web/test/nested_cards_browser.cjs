@@ -1,4 +1,5 @@
-// No card inside a card, on every screen at 1600, 768 and 390 px. A box is
+// No card inside a card, on every screen at 1600, 768 and 390 px in dark and
+// light (support/schemes.cjs). A box is
 // a card when it draws a visible border on at least three sides, or a
 // background that differs from the page's together with a corner radius or
 // a full border. A screen fails for each card that sits inside another
@@ -30,6 +31,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {walkScreens, simpleProblems, titleProblems} = require('./support/screens.cjs');
+const {schemes, themedContext} = require('./support/schemes.cjs');
 
 const url = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site'); })()).replace(/\/$/, '');
 const fake = (process.env.ANIMUS_FAKE_URL || (() => { throw new Error('Set ANIMUS_FAKE_URL to your own fake server'); })()).replace(/\/$/, '');
@@ -106,9 +108,8 @@ async function settle(page) {
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
 
-async function run(browser, width, failures, counts) {
-  const viewport = {width, height: width <= 390 ? 844 : 900};
-  const context = await browser.newContext({viewport, colorScheme: 'dark', hasTouch: width <= 390});
+async function run(browser, width, scheme, failures, counts) {
+  const {context} = await themedContext(browser, width, scheme);
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   let count = 0;
@@ -116,13 +117,13 @@ async function run(browser, width, failures, counts) {
     await page.mouse.move(0, 0);
     await settle(page);
     const nested = await scan(page);
-    counts.push(`${width} ${name}: ${nested.length}`);
-    for (const each of nested) failures.push(`${width} ${name} | ${each}`);
-    for (const each of await simpleProblems(page)) failures.push(`${width} ${name} | Simple: ${each}`);
-    for (const each of await titleProblems(page)) failures.push(`${width} ${name} | ${each}`);
+    counts.push(`${width} ${scheme} ${name}: ${nested.length}`);
+    for (const each of nested) failures.push(`${width} ${scheme} ${name} | ${each}`);
+    for (const each of await simpleProblems(page)) failures.push(`${width} ${scheme} ${name} | Simple: ${each}`);
+    for (const each of await titleProblems(page)) failures.push(`${width} ${scheme} ${name} | ${each}`);
     if (shots) {
       fs.mkdirSync(shots, {recursive: true});
-      await page.screenshot({path: path.join(shots, `cards-${width}-${String(++count).padStart(3, '0')}-${name.replace(/[^a-z0-9]+/gi, '-')}.png`)});
+      await page.screenshot({path: path.join(shots, `cards-${width}-${scheme}-${String(++count).padStart(3, '0')}-${name.replace(/[^a-z0-9]+/gi, '-')}.png`)});
     }
   };
   await walkScreens(page, {url, fake, width, check, tabs: true, pages: true, wanted: name => !screens || screens.test(name)});
@@ -134,12 +135,14 @@ async function run(browser, width, failures, counts) {
   const failures = [];
   const counts = [];
   try {
-    for (const width of widths) {
-      const started = Date.now();
-      const before = failures.length;
-      const seen = counts.length;
-      await run(browser, width, failures, counts);
-      console.log(`nested_cards_browser: ${width} ${counts.length - seen} screens, ${failures.length - before} nested cards, ${Math.round((Date.now() - started) / 1000)} s`);
+    for (const scheme of schemes()) {
+      for (const width of widths) {
+        const started = Date.now();
+        const before = failures.length;
+        const seen = counts.length;
+        await run(browser, width, scheme, failures, counts);
+        console.log(`nested_cards_browser: ${width} ${scheme} ${counts.length - seen} screens, ${failures.length - before} nested cards, ${Math.round((Date.now() - started) / 1000)} s`);
+      }
     }
   } finally {
     await browser.close();

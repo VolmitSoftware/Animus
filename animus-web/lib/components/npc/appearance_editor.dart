@@ -64,7 +64,7 @@ class _HologramLinesEditorState extends State<HologramLinesEditor> {
   static Widget _plate(List<List<McTextRun>> rows, int index) => dom.div(
         classes: 'animus-hologram-preview',
         attributes: <String, String>{'aria-label': 'Hologram line ${index + 1}', 'data-hologram-line': '${index + 1}'},
-        <Widget>[for (final List<McTextRun> row in rows) dom.div(classes: 'animus-hologram-preview-line', <Widget>[GuiStyledText.runs(row)])],
+        <Widget>[for (final List<McTextRun> row in rows) dom.div(classes: 'animus-hologram-preview-line', <Widget>[GuiStyledText.runs(row, surface: mcTextBackdrop)])],
       );
 
   @override
@@ -111,7 +111,7 @@ class _HologramLinesEditorState extends State<HologramLinesEditor> {
             <Widget>[
               if (lines.isEmpty) const dom.span(classes: 'animus-hologram-preview-line', <Widget>[Component.text('No lines yet.')]),
               for (final List<List<McTextRun>> line in rows)
-                for (final List<McTextRun> row in line) dom.div(classes: 'animus-hologram-preview-line', <Widget>[GuiStyledText.runs(row)]),
+                for (final List<McTextRun> row in line) dom.div(classes: 'animus-hologram-preview-line', <Widget>[GuiStyledText.runs(row, surface: mcTextBackdrop)]),
             ],
           ),
         for (int index = 0; index < lines.length; index++)

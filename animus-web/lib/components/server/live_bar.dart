@@ -25,6 +25,7 @@ import '../../ui/action_row.dart';
 import '../../ui/alert.dart';
 import '../../ui/badge.dart';
 import '../../ui/confirm_dialog.dart';
+import '../../ui/density.dart';
 import '../../ui/empty_state.dart';
 import '../../ui/field.dart';
 import '../../ui/menu.dart';
@@ -294,7 +295,9 @@ class _LiveBarState extends State<LiveBar> {
   /// A row of a Review list: the name (a link to the file when it is here),
   /// a meta line, any [details] under it, the row's actions beside it or,
   /// when [stacked], under it so a narrow sheet keeps the name readable.
-  Widget _row({required String key, required String name, String? href, required List<Widget> meta, Widget? details, ActionRow? actions, bool stacked = false}) {
+  /// The actions are dense, as a list row's are.
+  Widget _row({required String key, required String name, String? href, required List<Widget> meta, Widget? details, ActionRow? row, bool stacked = false}) {
+    final Widget? actions = row == null ? null : DensityScope.dense(child: row);
     final Widget title = Text.truncated(name, weight: FontWeight.w500, color: TextColor.primary);
     final Widget main = stack(spacing: 2, <Widget>[
       if (href == null) dom.span(attributes: <String, String>{'title': name}, <Widget>[title]) else dom.a(href: href, attributes: <String, String>{'title': name}, <Widget>[title]),
@@ -325,8 +328,7 @@ class _LiveBarState extends State<LiveBar> {
                 href: _href(kind, id),
                 meta: <Widget>[_meta(listNoun(kind))],
                 stacked: true,
-                actions: ActionRow(
-                  dense: true,
+                row: ActionRow(
                   label: _nameOf(key),
                   secondary: <RowAction>[
                     RowAction('Compare', ready ? () => _compare(key) : null, id: 'review-compare-${_slug(key)}'),
@@ -355,9 +357,9 @@ class _LiveBarState extends State<LiveBar> {
               StatusBadge(_problemLabel(draft), tone: BadgeTone.error),
               _meta(draft.problem ?? commandsBlock(_session, draft) ?? listNoun(draft.kind)),
             ],
-            actions: _href(draft.kind, draft.id) == null
+            row: _href(draft.kind, draft.id) == null
                 ? null
-                : ActionRow(dense: true, label: _nameOf(draft.key), secondary: <RowAction>[RowAction('Fix', () => navigate(_href(draft.kind, draft.id)!))]),
+                : ActionRow(label: _nameOf(draft.key), secondary: <RowAction>[RowAction('Fix', () => navigate(_href(draft.kind, draft.id)!))]),
           ),
       ],
     ),
@@ -387,8 +389,7 @@ class _LiveBarState extends State<LiveBar> {
                 if (advanced) dom.code(<Widget>[Component.text(draft.id)]),
               ],
               details: _fields(draft, binding, advanced),
-              actions: ActionRow(
-                dense: true,
+              row: ActionRow(
                 label: _nameOf(draft.key),
                 moreId: 'review-more-${_slug(draft.key)}',
                 more: <AppMenuEntry>[AppMenuEntry('Discard changes', binding == null || discardOf(draft, binding) == null ? null : () => _discard(draft), destructive: true)],
@@ -420,7 +421,6 @@ class _LiveBarState extends State<LiveBar> {
           title: 'An earlier apply has no answer',
           message: session.pendingProblem!.cause,
           action: ActionRow(
-            dense: true,
             label: 'Earlier apply',
             secondary: <RowAction>[RowAction('Stop waiting', session.busy == null && session.owned ? session.forgetPending : null), RowAction('Check again', ready ? session.checkPending : null)],
           ),
@@ -459,10 +459,9 @@ class _LiveBarState extends State<LiveBar> {
                   key: change.changeId,
                   name: historyLine(change, _nameOf),
                   meta: <Widget>[_meta(change.appliedAt.toLocal().toString().substring(0, 16)), if (change.undone) const StatusBadge('Undone')],
-                  actions: change.undone || change.undoOf != null
+                  row: change.undone || change.undoOf != null
                       ? null
                       : ActionRow(
-                          dense: true,
                           label: 'Apply ${change.changeId}',
                           secondary: <RowAction>[RowAction('Undo', ready ? () => _undo(change) : null, id: 'review-undo-${_slug(change.changeId)}')],
                         ),

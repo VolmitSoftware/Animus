@@ -40,7 +40,7 @@
 .animus-chip-label {
   display: inline-flex;
   align-items: center;
-  min-height: 2.25rem;
+  min-height: var(--animus-control-h);
   padding: 0 0.5rem;
   border: 0;
   background: none;

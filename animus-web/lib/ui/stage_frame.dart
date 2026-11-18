@@ -15,6 +15,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:web/web.dart' as web;
 
 import 'action_row.dart';
+import 'density.dart';
 import 'alert.dart';
 import 'info_tip.dart';
 import 'menu.dart';
@@ -131,11 +132,11 @@ class _StageFrameState extends State<StageFrame> {
         attributes: <String, String>{'id': _id, 'role': 'region', 'aria-label': component.title},
         styles: _frame,
         children: <Widget>[
+          // The stage header is the frame's toolbar: dense.
           dom.header(classes: 'ui-stage-head', <Widget>[
             Padding(
               padding: const EdgeInsets.only(left: 12, top: 6, right: 8, bottom: 6),
-              child: ActionRow(
-                dense: true,
+              child: DensityScope.dense(child: ActionRow(
                 more: component.more,
                 leading: <Widget>[
                   Text(component.title, element: 'h2', size: FontSize.sm, weight: FontWeight.w600, whiteSpace: WhiteSpace.nowrap, cssStyle: const ArcaneStyleData(margin: MarginPreset.none)),
@@ -155,7 +156,7 @@ class _StageFrameState extends State<StageFrame> {
                     ),
                 ],
                 primary: component.primary,
-              ),
+              )),
             ),
           ]),
           if (!_collapsed) ...<Widget>[
@@ -164,7 +165,7 @@ class _StageFrameState extends State<StageFrame> {
           ],
           if (component.status != null && !_collapsed) ...<Widget>[
             const ArcaneSeparator(),
-            dom.footer(classes: 'ui-stage-status', <Widget>[
+            dom.footer(classes: 'ui-stage-status', styles: _statusLine, <Widget>[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 child: TipLabel(label: Text(component.status!, size: FontSize.sm, color: TextColor.muted), tip: component.statusTip),
@@ -178,6 +179,10 @@ class _StageFrameState extends State<StageFrame> {
 /// One column that clips, so a canvas never widens the frame, without
 /// making the frame a scroll box.
 const ArcaneStyleData _frame = ArcaneStyleData(display: Display.grid, gridColumnsCustom: 'minmax(0, 1fr)', minWidth: '0', overflow: Overflow.clip);
+
+/// The status line is as tall as its (i) on touch screens, so the frame
+/// never clips it.
+const dom.Styles _statusLine = dom.Styles(raw: <String, String>{'display': 'flex', 'flex-direction': 'column', 'justify-content': 'center', 'min-height': 'var(--shadcn-hit-min, 0px)'});
 
 int _nextSideId = 0;
 

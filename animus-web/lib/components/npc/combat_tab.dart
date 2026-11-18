@@ -33,6 +33,7 @@ import 'npc_parts.dart';
 import '../select/animus_select.dart';
 import '../../ui/number_input.dart';
 import 'npc_layout.dart';
+import '../../ui/density.dart';
 
 class CombatTab extends StatelessWidget {
   const CombatTab({
@@ -123,7 +124,7 @@ class _CombatTabBodyState extends State<_CombatTabBody> {
           AppAlert(
             tone: AlertTone.warning,
             message: 'Dead. It stays dead until revived.',
-            action: Button.outline(label: 'Revive', size: ButtonSize.sm, onPressed: () => health.onChanged(revivedHealth(health.map))),
+            action: Button.outline(label: 'Revive', size: buttonSize(DensityScope.of(context)), onPressed: () => health.onChanged(revivedHealth(health.map))),
           ),
         if (hidden.isNotEmpty) _inUse(hidden),
         _fights(combat, full),

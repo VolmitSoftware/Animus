@@ -22,7 +22,6 @@ import '../../mc/npc/npc_objects.dart' show mcPaintings;
 import '../../ui/mode.dart';
 import '../gui/gui_fields.dart';
 import '../mc/item_picker.dart';
-import '../../ui/density.dart';
 import '../../ui/field.dart';
 import '../select/suggest_input.dart';
 import 'typed_values_editor.dart';
@@ -367,16 +366,15 @@ class InspectArray extends StatelessWidget {
         for (int index = 0; index < value.length; index++)
           Column(key: ValueKey<String>('item:$index'), crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, gapSize: Gap.xs, children: <Widget>[
             if (inline)
-              ActionRow(dense: true, label: '$noun ${index + 1}', leading: <Widget>[Expanded(child: _item(index))], secondary: _actions(noun, index))
+              ActionRow(label: '$noun ${index + 1}', leading: <Widget>[Expanded(child: _item(index))], secondary: _actions(noun, index))
             else ...<Widget>[
               _item(index),
-              ActionRow(dense: true, label: '$noun ${index + 1}', secondary: _actions(noun, index)),
+              ActionRow(label: '$noun ${index + 1}', secondary: _actions(noun, index)),
             ],
             for (final Diagnostic problem in diagnosticsAt(diagnostics, indexPath(path, index)))
               problemLine(problem.severity, problem.message),
           ]),
         ActionRow(
-          dense: DensityScope.of(context) == Density.dense,
           secondary: <RowAction>[RowAction('Add', () => onChanged(<Object?>[...value, _blank()]), attributes: <String, String>{'aria-label': 'Add $noun'})],
         ),
       ]),

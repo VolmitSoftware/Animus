@@ -244,6 +244,8 @@ class _ShellTopbarState extends State<ShellTopbar> {
         dom.a(
           href: '#/',
           classes: 'ui-brand',
+          // The 24 px mark sits in a box a control tall, 44 px on touch screens.
+          styles: _brandBox,
           attributes: const <String, String>{'aria-label': 'Animus, all workspaces'},
           <Widget>[
             const BrandMark(size: 24),
@@ -473,3 +475,5 @@ class _ContextSwitcherState extends State<ContextSwitcher> {
     ]);
   }
 }
+
+const dom.Styles _brandBox = dom.Styles(raw: <String, String>{'justify-content': 'center', 'min-width': 'var(--animus-control-h-sm)', 'min-height': 'var(--animus-control-h-sm)'});

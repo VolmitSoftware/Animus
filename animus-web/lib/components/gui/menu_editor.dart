@@ -370,7 +370,6 @@ class _MenuEditorState extends State<MenuEditor> {
           if (names.isNotEmpty)
             OrderedRows(
               label: 'Constants',
-              dense: false,
               rows: <OrderedRow>[
                 for (final String name in names)
                   OrderedRow(
@@ -406,7 +405,6 @@ class _MenuEditorState extends State<MenuEditor> {
               onDelete: (int index) => setAll(<String, Object?>{...vars}..remove(names[index])),
             ),
           ActionRow(
-            dense: true,
             label: 'Constants',
             secondary: <RowAction>[
               RowAction('Add constant', () {

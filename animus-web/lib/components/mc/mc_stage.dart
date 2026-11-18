@@ -40,6 +40,7 @@ import 'mc_gl_renderer.dart';
 import '../shortcut_sheet.dart' show platformKeys;
 import '../typing_pause.dart' show typingPause;
 import '../../logic/gui/gui_text.dart';
+import '../../logic/gui/text_contrast.dart';
 
 /// Pixels of drag one arrow key press stands for.
 const double mcStageKeyStepPx = 24;
@@ -691,8 +692,12 @@ class _McStageState extends State<McStage> {
                   styles: dom.Styles(raw: <String, String>{
                     'color': text.opacity == 1 ? run.cssColor : _rgba(run.color, text.opacity),
                     // The client's shadow is the glyph colour at a quarter
-                    // brightness, one font pixel down and right.
-                    if (text.shadow) 'text-shadow': '0.125em 0.125em 0 ${_rgba(_quarter(run.color), text.opacity)}',
+                    // brightness, one font pixel down and right. A half-pixel
+                    // edge all round keeps the text at 4.5:1 over any block.
+                    'text-shadow': <String>[
+                      if (text.shadow) '0.125em 0.125em 0 ${_rgba(_quarter(run.color), text.opacity)}',
+                      _edge(sceneOutline(run.color), text.opacity),
+                    ].join(', '),
                     if (run.bold) 'font-weight': '700',
                     if (run.italic) 'font-style': 'italic',
                     if (run.underlined || run.strikethrough)
@@ -709,6 +714,11 @@ class _McStageState extends State<McStage> {
   }
 
   static String _rgba(int rgb, double alpha) => 'rgba(${(rgb >> 16) & 0xFF}, ${(rgb >> 8) & 0xFF}, ${rgb & 0xFF}, ${alpha.toStringAsFixed(3)})';
+
+  static String _edge(int rgb, double alpha) {
+    final String colour = _rgba(rgb, alpha);
+    return '0.0625em 0 0 $colour, -0.0625em 0 0 $colour, 0 0.0625em 0 $colour, 0 -0.0625em 0 $colour';
+  }
 
   static int _quarter(int rgb) => (((rgb >> 16) & 0xFF) ~/ 4) << 16 | (((rgb >> 8) & 0xFF) ~/ 4) << 8 | (rgb & 0xFF) ~/ 4;
 

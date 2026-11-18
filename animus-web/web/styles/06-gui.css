@@ -121,7 +121,8 @@ button.animus-chest-slot:is(:hover, :focus-visible) {
   line-height: 1;
   text-align: center;
   overflow-wrap: anywhere;
-  color: #2a2a2a;
+  /* Dark enough to read on the slot grey (5:1). */
+  color: #141414;
 }
 
 .animus-chest-count {
@@ -129,7 +130,9 @@ button.animus-chest-slot:is(:hover, :focus-visible) {
   right: 0;
   bottom: 0;
   color: #fff;
-  text-shadow: var(--mc-px) var(--mc-px) #3f3f3f;
+  /* The game's drop shadow, plus a half-pixel edge of it all round so the
+     white count reads on the slot grey (3.4:1 alone). */
+  text-shadow: var(--mc-px) var(--mc-px) #3f3f3f, calc(var(--mc-px) / 2) 0 #3f3f3f, calc(var(--mc-px) / -2) 0 #3f3f3f, 0 calc(var(--mc-px) / 2) #3f3f3f, 0 calc(var(--mc-px) / -2) #3f3f3f;
   pointer-events: none;
 }
 

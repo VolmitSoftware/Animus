@@ -48,7 +48,7 @@ const List<ShortcutGroup> shortcutGroups = <ShortcutGroup>[
     Shortcut(<String>['Escape'], 'Close'),
     Shortcut(<String>['Ctrl+Space'], 'Show suggestions in a text box or the code view'),
   ]),
-  ShortcutGroup('Tabs, sections and trees', 'On a focused header, tab or row', <Shortcut>[
+  ShortcutGroup('Tabs, sections and trees', 'On a focused header, tab, row or nav link', <Shortcut>[
     Shortcut(<String>['Up', 'Down'], 'Move between rows'),
     Shortcut(<String>['Left', 'Right'], 'Close or open a section, or move between tabs'),
     Shortcut(<String>['Home', 'End'], 'First or last'),

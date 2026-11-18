@@ -124,9 +124,9 @@ async function local(browser, viewport, theme, tag) {
   const workspace = /#\/workspace\/([^/?]+)/.exec(page.url())[1];
 
   // Movement: Routes first, with the contrast line, a shared route and an NPC's own.
-  await openJob(page, 'Movement');
-  await page.getByRole('heading', {name: 'Movement', level: 1}).waitFor();
-  const tabs = page.getByRole('tablist', {name: 'Movement'});
+  await openJob(page, 'Routes');
+  await page.getByRole('heading', {name: 'Routes', level: 1}).waitFor();
+  const tabs = page.getByRole('tablist', {name: 'Routes'});
   assert.equal(await tabs.getByRole('tab', {name: 'Routes'}).getAttribute('aria-selected'), 'true');
   await page.locator('.animus-movement-line', {hasText: 'Walks point to point.'}).waitFor();
   // A route with no name of its own reads its id in words.

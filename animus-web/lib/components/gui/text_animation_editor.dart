@@ -159,7 +159,7 @@ class _TextAnimationPreviewState extends State<TextAnimationPreview> {
         if (hidden)
           mutedText('Hidden for the sample viewer.')
         else
-          GuiStyledText(textAnimationPreviewText(frame is String ? frame : '')),
+          GuiStyledText(textAnimationPreviewText(frame is String ? frame : ''), surface: mcTextBackdrop),
       ]),
     );
   }
@@ -359,7 +359,6 @@ class _TextAnimationEditorState extends State<TextAnimationEditor> {
     return <Widget>[
       if (shown.pages > 1)
         ActionRow(
-          dense: true,
           label: 'Frame pages',
           leading: <Widget>[mutedText('Frames ${start + 1} to ${shown.end} of ${frames.length}')],
           secondary: <RowAction>[
@@ -371,7 +370,6 @@ class _TextAnimationEditorState extends State<TextAnimationEditor> {
         OrderedRows(
           key: ValueKey<String>('frames-page-${shown.page}'),
           label: 'Frames',
-          dense: false,
           rows: <OrderedRow>[
             for (int index = start; index < shown.end; index++)
               OrderedRow(

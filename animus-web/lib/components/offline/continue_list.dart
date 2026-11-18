@@ -25,6 +25,7 @@ import 'page_parts.dart';
 import 'start_rows.dart';
 import '../../ui/stack.dart';
 import '../../model/display_name.dart' show closing;
+import '../../ui/density.dart';
 
 class ContinueList extends StatefulWidget {
   const ContinueList({required this.store, required this.hub, required this.busy, required this.onNavigate, super.key});
@@ -168,15 +169,14 @@ class _ContinueListState extends State<ContinueList> {
                     dom.span(classes: 'ui-continue-name', attributes: <String, String>{'title': row.name}, <Widget>[Text.truncated(row.name, weight: FontWeight.w500)]),
                     _meta(row),
                   ]),
-                  ActionRow(
-                    dense: true,
+                  DensityScope.dense(child: ActionRow(
                     label: row.name,
                     moreId: _moreId(row),
                     more: _menu(row),
                     secondary: <RowAction>[
                       RowAction('Open', _busy ? null : () => _open(row), attributes: <String, String>{'aria-label': 'Open ${row.name}', 'data-testid': 'continue-open'}),
                     ],
-                  ),
+                  )),
                 ),
               ),
             ),

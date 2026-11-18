@@ -47,6 +47,7 @@ import 'route_settings.dart';
 import 'route_terrain.dart';
 import 'route_view3d.dart';
 import 'npc_layout.dart';
+import '../../ui/density.dart';
 
 int _nextGridId = 0;
 
@@ -439,7 +440,6 @@ class _RouteEditorState extends State<RouteEditor> {
     final bool full = spec.points.length >= routeMaxPoints;
     final RouteTool tool = (_tool == RouteTool.guide && !random) || (_tool == RouteTool.view3d && !_canShow3d) ? RouteTool.point : _tool;
     return ActionRow(
-      dense: true,
       label: 'Route tools',
       moreId: '$_gridId-more',
       leading: <Widget>[
@@ -509,7 +509,7 @@ class _RouteEditorState extends State<RouteEditor> {
                   Button(
                     label: issue.label,
                     variant: ButtonVariant.link,
-                    size: ButtonSize.sm,
+                    size: buttonSize(DensityScope.of(context)),
                     attributes: <String, String>{'aria-label': 'Show ${issue.label}'},
                     onPressed: () {
                       _pick(node);

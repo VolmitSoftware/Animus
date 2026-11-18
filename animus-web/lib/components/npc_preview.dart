@@ -53,6 +53,7 @@ import 'select/picker_scope.dart';
 import 'terrain/live_position.dart';
 import 'terrain/stage_terrain.dart';
 import 'terrain/terrain_controls.dart';
+import '../ui/density.dart';
 
 class NpcPreview extends StatefulWidget {
   const NpcPreview({
@@ -495,12 +496,11 @@ class _NpcPreviewState extends State<NpcPreview> {
         // The stylesheet keeps the card inside the canvas around this point.
         styles: dom.Styles(raw: <String, String>{'--pick-x': '${at.$1.round()}px', '--pick-y': '${at.$2.round()}px'}),
         <Widget>[
-          ActionRow(
-            dense: true,
+          DensityScope.dense(child: ActionRow(
             leading: <Widget>[Expanded(child: Text.truncated(picked.name, weight: FontWeight.w500, cssStyle: const ArcaneStyleData(display: Display.block)))],
             cancel: RowAction('Close', () => setState(() => _picked = null), icon: ArcaneIcon.x(), iconOnly: true),
             primary: scope == null ? null : RowAction('Open', () => scope.onNavigate(DocumentRoute(scope.workspaceId, DocumentKind.npc, picked.id))),
-          ),
+          )),
         ],
       ),
     ];

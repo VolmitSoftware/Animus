@@ -128,7 +128,9 @@ class CapabilityFields extends StatelessWidget {
               // The new required arguments start empty: they are pending,
               // with focus on the first, until the user leaves the step.
               final JsonMap changed = changeCapability(node, next, context.catalog);
-              final String? empty = context.catalog.capability(next)?.arguments.where((FieldSpec argument) => asMap(changed['arguments'])[argument.key] == '').firstOrNull?.key;
+              // The first argument the change left empty, else the first a step of this kind fills.
+              final String? empty = context.catalog.capability(next)?.arguments.where((FieldSpec argument) => asMap(changed['arguments'])[argument.key] == '').firstOrNull?.key ??
+                  context.catalog.capability(next)?.firstToFill?.key;
               if (empty != null) holdField(_blockId, focus: argumentElementId(_at(<JsonStep>['arguments', empty])));
               context.change(steps, changed, 'change ${stepName(node)} to ${stepName(changed)}');
             },
@@ -248,6 +250,8 @@ class CapabilityFields extends StatelessWidget {
     final PersonKind? person = argument.kind == FieldKind.string && (value == null || value is String) ? _personArguments[argument.key] : null;
     if (person != null) {
       return PersonPicker(
+        // The id the argument's label names, so the label reads out the picker.
+        id: controlId(_at(<JsonStep>['arguments', argument.key])),
         kind: person,
         label: humanizeKey(argument.key),
         value: value as String?,
@@ -333,7 +337,7 @@ class CapabilityFields extends StatelessWidget {
                 label: '${field == 'templates' ? 'Template' : 'Expression'} for $pointer',
                 onChanged: (String next) => putSlot(field, pointer, next),
               ),
-            ActionRow(dense: true, secondary: <RowAction>[RowAction('Remove', () => putSlot(field, pointer, null))]),
+            ActionRow(secondary: <RowAction>[RowAction('Remove', () => putSlot(field, pointer, null))]),
           ]),
         ),
     ]);
@@ -393,7 +397,6 @@ class CallArguments extends StatelessWidget {
           ]),
         if (free.isNotEmpty)
           ActionRow(
-            dense: true,
             leading: <Widget>[
               AppMenu(
                 label: 'Add argument',

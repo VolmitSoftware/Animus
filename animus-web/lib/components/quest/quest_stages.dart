@@ -103,7 +103,6 @@ class _QuestStagesState extends State<QuestStages> {
     final JsonList stages = _stages;
     return stack(spacing: 16, <Widget>[
       ActionRow(
-        dense: true,
         label: 'Stages',
         leading: <Widget>[mutedText(stages.length == 1 ? '1 stage' : '${stages.length} stages')],
         primary: RowAction('Add stage', stages.length >= _maxStages ? null : _addStage, icon: ArcaneIcon.plus(), attributes: const <String, String>{'data-quest': 'add-stage'}),

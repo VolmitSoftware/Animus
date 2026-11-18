@@ -75,6 +75,8 @@ class BadgeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => dom.button(
         classes: 'ui-badge-button',
+        // The badge keeps its size in a button as large as the touch size.
+        styles: _touchBox,
         attributes: <String, String>{
           'type': 'button',
           if (expanded != null) 'aria-expanded': '$expanded',
@@ -84,3 +86,5 @@ class BadgeButton extends StatelessWidget {
         <Widget>[StatusBadge(label, tone: tone)],
       );
 }
+
+const dom.Styles _touchBox = dom.Styles(raw: <String, String>{'align-items': 'center', 'justify-content': 'center', 'min-width': 'var(--shadcn-hit-min, 0px)', 'min-height': 'var(--shadcn-hit-min, 0px)'});

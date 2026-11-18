@@ -123,7 +123,6 @@ class ItemDetailsEditor extends StatelessWidget {
           ],
         ),
         ActionRow(
-          dense: true,
           label: '$label enchantments',
           secondary: <RowAction>[
             RowAction(
@@ -373,13 +372,11 @@ class _ShopOfferEditorState extends State<ShopOfferEditor> {
       child: stack(<Widget>[
         OrderedRows(
           label: title,
-          dense: false,
           rows: <OrderedRow>[for (int index = 0; index < goods.length; index++) _goods(key, title, goods, index, advanced)],
           onMove: (int from, int to) => setAll(moveItem(goods, from, to)),
           onDelete: goods.length <= 1 && !optional ? null : (int index) => setAll(<Object?>[...goods]..removeAt(index)),
         ),
         ActionRow(
-          dense: true,
           label: title,
           secondary: <RowAction>[
             RowAction(
@@ -457,7 +454,6 @@ class _ShopOfferEditorState extends State<ShopOfferEditor> {
       child: stack(<Widget>[
         OrderedRows(
           label: 'Commands',
-          dense: false,
           rows: <OrderedRow>[
             for (int index = 0; index < commands.length; index++)
               OrderedRow(
@@ -487,7 +483,6 @@ class _ShopOfferEditorState extends State<ShopOfferEditor> {
           onDelete: commands.length <= 1 ? null : (int index) => _set('commands', <Object?>[...commands]..removeAt(index)),
         ),
         ActionRow(
-          dense: true,
           label: 'Commands',
           secondary: <RowAction>[
             RowAction('Add command', commands.length >= 16 ? null : () => _set('commands', <Object?>[...commands, <String, Object?>{'command': '', 'as': 'console'}]), icon: ArcaneIcon.plus()),

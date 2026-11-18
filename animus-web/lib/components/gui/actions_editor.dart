@@ -108,7 +108,6 @@ class ActionsEditor extends StatelessWidget {
       if (actions.isNotEmpty)
         OrderedRows(
           label: steps ? 'Steps' : 'Actions',
-          dense: false,
           rows: <OrderedRow>[for (int index = 0; index < actions.length; index++) _action(index, asMap(actions[index]), lists, targets)],
           onMove: (int from, int to) => onChanged(moveItem(actions, from, to)),
           onDuplicate: (int index) => onChanged(<Object?>[...actions]..insert(index + 1, deepCopy(actions[index]))),
@@ -167,7 +166,7 @@ class ActionsEditor extends StatelessWidget {
               GuiNote(
                 tone: AlertTone.error,
                 message: "'$refused' is not available in Animus.",
-                action: Button.outline(label: 'Remove $refused', size: ButtonSize.sm, onPressed: () => _set(index, withActionField(action, refused, null))),
+                action: Button.outline(label: 'Remove $refused', size: ButtonSize.md, onPressed: () => _set(index, withActionField(action, refused, null))),
               ),
           if (steps)
             Field(
@@ -334,7 +333,6 @@ class ActionsEditor extends StatelessWidget {
                     onChanged: (JsonList next) => set(<Object?>[...branches]..[branch] = next),
                   ),
                   ActionRow(
-                    dense: true,
                     label: 'Branch ${branch + 1}',
                     secondary: <RowAction>[
                       RowAction('Remove branch', branches.length <= 1 ? null : () => set(<Object?>[...branches]..removeAt(branch))),
@@ -343,7 +341,6 @@ class ActionsEditor extends StatelessWidget {
                 ],
               ),
             ActionRow(
-              dense: true,
               label: 'Branches',
               secondary: <RowAction>[
                 RowAction('Add branch', () => set(<Object?>[...branches, <Object?>[]]), icon: ArcaneIcon.plus()),
@@ -388,7 +385,6 @@ class ActionsEditor extends StatelessWidget {
                 ),
               ]),
             ActionRow(
-              dense: true,
               label: 'Cases',
               secondary: <RowAction>[
                 RowAction('Add case', () {
@@ -618,7 +614,6 @@ class _NamedActionListsState extends State<NamedActionLists> {
               onDelete: (int index) => component.onChanged(named.length == 1 ? null : (<String, Object?>{...named}..remove(names[index]))),
             ),
           ActionRow(
-            dense: true,
             label: 'Named actions',
             secondary: <RowAction>[
               RowAction('Add list', () {

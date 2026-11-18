@@ -49,6 +49,17 @@ class CapabilitySpec {
 
   bool get npcOnly => reach == 'npc';
 
+  /// The argument a new step of this capability needs first: the first
+  /// required one, else the first of the first group one of which must be
+  /// given, exclusive groups before those that may be combined (give-item's
+  /// item, or its stack).
+  FieldSpec? get firstToFill {
+    final FieldSpec? required = arguments.where((FieldSpec argument) => argument.required).firstOrNull;
+    if (required != null) return required;
+    final String? key = <List<String>>[...oneOfRequired, ...anyOfRequired].where((List<String> group) => group.isNotEmpty).firstOrNull?.first;
+    return arguments.where((FieldSpec argument) => argument.key == key).firstOrNull;
+  }
+
   /// A short note for pickers: unavailable reasons and privilege.
   String get note => <String>[if (!available) reason, if (privileged) 'privileged'].join('; ');
 }
