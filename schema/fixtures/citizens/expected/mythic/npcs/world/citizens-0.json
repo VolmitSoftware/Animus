@@ -8,7 +8,7 @@
   "type": "minecraft:player",
   "spawned": true,
   "migration": {
-    "importId": "0cf5f527d391c4153ab302e5ad477d10ed4f30c159205ee4ca1d52b192bb0c9f",
+    "importId": "cd8b33d55515844c5f4d117e6a8d63054a54a005d79d13671ff9f32fc792a281",
     "citizensId": 0,
     "references": []
   },
@@ -21,7 +21,7 @@
     "pitch": 0
   },
   "behaviors": [
-    "citizens:commands-0"
+    "citizens:commands-0/fire-priest-commands"
   ],
   "modules": {
     "citizens:review": {

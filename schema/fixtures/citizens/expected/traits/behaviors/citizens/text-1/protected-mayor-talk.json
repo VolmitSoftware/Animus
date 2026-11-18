@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "revision": 1,
-  "id": "citizens:text-3",
+  "id": "citizens:text-1/protected-mayor-talk",
   "entry": "main",
   "routines": {
     "main": {
@@ -11,7 +11,7 @@
           "type": "condition",
           "capability": "animus:quest-state",
           "arguments": {
-            "name": "text-3",
+            "name": "text-1",
             "scope": "npc",
             "equals": 0
           },
@@ -19,7 +19,7 @@
             "type": "action",
             "capability": "animus:say",
             "arguments": {
-              "text": "Welcome."
+              "text": "Welcome!"
             }
           }
         },
@@ -27,7 +27,7 @@
           "type": "condition",
           "capability": "animus:quest-state",
           "arguments": {
-            "name": "text-3",
+            "name": "text-1",
             "scope": "npc",
             "equals": 1
           },
@@ -35,7 +35,7 @@
             "type": "action",
             "capability": "animus:say",
             "arguments": {
-              "text": "Quiet, please."
+              "text": "Mind the gate."
             }
           }
         },
@@ -43,7 +43,7 @@
           "type": "action",
           "capability": "animus:advance-quest-state",
           "arguments": {
-            "name": "text-3",
+            "name": "text-1",
             "scope": "npc",
             "maximum": 2
           }
@@ -52,7 +52,7 @@
           "type": "condition",
           "capability": "animus:quest-state",
           "arguments": {
-            "name": "text-3",
+            "name": "text-1",
             "scope": "npc",
             "atLeast": 2
           },
@@ -60,7 +60,7 @@
             "type": "action",
             "capability": "animus:set-quest-state",
             "arguments": {
-              "name": "text-3",
+              "name": "text-1",
               "scope": "npc",
               "value": 0
             }
@@ -71,9 +71,10 @@
   },
   "triggers": [
     {
-      "id": "click",
-      "event": "interaction",
-      "action": "interact",
+      "id": "near",
+      "event": "proximity",
+      "phase": "enter",
+      "radius": 5.0,
       "playerCooldownTicks": 100
     }
   ]

@@ -675,6 +675,28 @@ class _CitizensScreenState extends State<CitizensScreen> {
         },
       ];
 
+  /// Every warning of the conversions made so far, as the Review step said
+  /// them, so they stay at hand once the files are opened.
+  List<String> _warnings(bool advanced) {
+    List<String> both(({List<String> notes, List<String> notConverted}) lines) => <String>[...lines.notConverted, ...lines.notes];
+    final CitizensReview? review = _review;
+    final ({List<String> notConverted, List<String> warnings})? citizens = review == null ? null : citizensLines(review, _names, advanced: advanced);
+    final ShopkeepersPreview? shops = _shops;
+    final DenizenPreview? denizen = _denizenPreview;
+    return resultWarnings(<(String, List<String>)>[
+      if (citizens != null) ('Citizens', <String>[...citizens.notConverted, ...citizens.warnings]),
+      if (shops != null) ('Shopkeepers', both(shopsLines(shops, linked: _bytes != null))),
+      if (denizen != null && _denizen != null) ('Denizen', both(denizenLines(_denizen!, denizen))),
+    ]);
+  }
+
+  void _copyWarnings(List<String> lines) {
+    web.window.navigator.clipboard.writeText(lines.join('\n')).toDart.then(
+          (JSAny? _) => ArcaneSonner.success('Copied ${countOf(lines.length, 'warning')}.'),
+          onError: (Object _) => ArcaneSonner.error('The browser did not allow copying. Select the lines instead.'),
+        );
+  }
+
   List<Widget> _resultStep(BuildContext context) {
     if (_source.onServer) return <Widget>[ServerImportReview(flow: _server)];
     final List<(String, Map<String, String>)> converted = <(String, Map<String, String>)>[
@@ -682,10 +704,15 @@ class _CitizensScreenState extends State<CitizensScreen> {
       if (_shops != null) ('Shopkeepers', _shops!.files),
       if (_denizenPreview != null) ('Denizen', _denizenPreview!.files),
     ];
+    final List<String> warnings = _warnings(ModeScope.advanced(context));
     return <Widget>[
       rowList(attributes: const <String, String>{'data-testid': 'import-result'}, <Widget>[
         for (final (String source, Map<String, String> files) in converted) listItem(Text('$source: ${createdLine(kindCounts(files.keys))}.')),
       ]),
+      if (warnings.isNotEmpty) ...<Widget>[
+        lineList('Warnings', warnings, testId: 'import-result-warnings'),
+        ActionRow(dense: true, label: 'Warnings', secondary: <RowAction>[RowAction('Copy warnings', () => _copyWarnings(warnings), id: 'animus-import-copy-warnings')]),
+      ],
       if (ModeScope.advanced(context)) ...<Widget>[
         sectionHeading('Bundles', level: HeadingLevel.h3, tip: _unzipNext, docs: Docs.citizensOutput),
         ActionRow.footer(secondary: <RowAction>[
@@ -735,13 +762,16 @@ class _CitizensScreenState extends State<CitizensScreen> {
           secondary: <RowAction>[RowAction('Roll back', busy == null ? _rollback : null, loading: busy == 'Rolling back', destructive: true, id: 'animus-import-rollback')],
           primary: RowAction('Open server', _openServer),
         ),
-      _ => FormFooter(
-          secondary: <RowAction>[
-            RowAction('Add a source', () => _goTo(0)),
-            if (_paired) RowAction('Send to server', _opening ? null : () => _openWorkspace(send: true)),
-          ],
-          primary: RowAction('Open as workspace', _opening ? null : () => _openWorkspace(send: false), loading: _opening),
-        ),
+      _ => () {
+          why = newWorkspaceLine(convertedWorkspaceName(citizens: _review != null, shops: _shops != null, denizen: _denizenPreview != null), paired: _paired);
+          return FormFooter(
+            secondary: <RowAction>[
+              RowAction('Add a source', () => _goTo(0)),
+              if (_paired) RowAction('Send to server', _opening ? null : () => _openWorkspace(send: true), attributes: const <String, String>{'aria-describedby': _whyId}),
+            ],
+            primary: RowAction('Open as workspace', _opening ? null : () => _openWorkspace(send: false), loading: _opening, attributes: const <String, String>{'aria-describedby': _whyId}),
+          );
+        }(),
     };
     return stack(spacing: 8, <Widget>[
       if (why != null) dom.div(id: _whyId, <Widget>[mutedText(why!)]),

@@ -724,7 +724,16 @@ class _EditorShellState extends State<EditorShell> with WorkspaceActions {
         else if (route is NpcListRoute)
           NpcBrowser(key: ValueKey<String>('npc-browser:${workspace.id}'), store: component.store, workspace: workspace, session: session)
         else if (route is KindListRoute)
-          ListPage(key: ValueKey<String>('list:${workspace.id}:${route.kind.wireName}'), store: component.store, workspace: workspace, kind: route.kind, onNavigate: component.onNavigate, sign: serverSigner(session))
+          ListPage(
+            key: ValueKey<String>('list:${workspace.id}:${route.kind.wireName}'),
+            store: component.store,
+            workspace: workspace,
+            kind: route.kind,
+            onNavigate: component.onNavigate,
+            sign: serverSigner(session),
+            owner: session?.connection.token?.admin,
+            players: session?.lookups?.players ?? const <String, String>{},
+          )
         else if (route is NewDocumentRoute)
           NewDocumentPage(
             key: ValueKey<String>('new:${workspace.id}:${route.folder ?? ''}:${route.name ?? ''}:${route.conversation}'),
@@ -735,6 +744,7 @@ class _EditorShellState extends State<EditorShell> with WorkspaceActions {
             name: route.name,
             conversation: route.conversation,
             owner: session?.connection.token?.admin,
+            players: session?.lookups?.players ?? const <String, String>{},
             sign: serverSigner(session),
             onNavigate: component.onNavigate,
           )

@@ -205,13 +205,13 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
                 "closeAfterPurchase", "confirm", "log", "pages", "imported", "owner", "containers", "style", "layout", "kind", "closed"), "$");
         Optional<Owner> owner = reader.owner(object.get("owner"), "$.owner");
         List<Container> containers = reader.containers(object.get("containers"), "$.containers");
-        if (!containers.isEmpty() && !object.has("owner")) reader.problem("$.owner", "a shop with containers needs an owner");
+        if (!containers.isEmpty() && !object.has("owner")) reader.problem("$.owner", "a chest shop needs an owner");
         reader.stocked = !containers.isEmpty();
         Optional<Kind> kind = Optional.empty();
         if (object.has("kind")) {
             kind = reader.string(object, "kind", "$", true).flatMap(Kind::of);
             if (kind.isEmpty()) reader.problem("$.kind", "expected selling, buying, trading or book");
-            else if (!reader.stocked) reader.problem("$.kind", "a shop kind needs containers, which hold its stock");
+            else if (!reader.stocked) reader.problem("$.kind", "a shop kind needs a chest, which holds its stock");
         }
         reader.kind = kind;
         Optional<String> closed = Optional.empty();
@@ -343,7 +343,7 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
                     String slotPath = gridPath + "." + slot.getKey();
                     if (!slot.getKey().matches("[0-9]{1,2}")) { problem(slotPath, "slot keys are slot numbers"); continue; }
                     int index = Integer.parseInt(slot.getKey());
-                    if (index >= rows * 9) { problem(slotPath, "slot " + index + " is outside a " + rows + "-row page (0.." + (rows * 9 - 1) + ")"); continue; }
+                    if (index >= rows * 9) { problem(slotPath, "Slot " + (index + 1) + " is outside a " + rows + "-row page (slots 1 to " + rows * 9 + ")"); continue; }
                     entry(slot.getValue(), slotPath, mode, entryIds).ifPresent((Entry entry) -> entries.put(index, entry));
                 }
                 grids.put(mode, entries);
@@ -403,11 +403,11 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
             Optional<Discount> discount = discount(object.get("discount"), path + ".discount");
             Optional<MatchRule> match = match(object, path);
             if (stocked) {
-                if (type != Type.TRADE && type != Type.STATIC) problem(path + ".type", "a container shop has only trade and static entries");
-                if (object.has("price") && price.signum() > 0) problem(path + ".price", "a container shop trades items for items; remove the price");
-                if (levels > 0) problem(path + ".levels", "a container shop trades items for items; remove the levels");
-                if (stock.isPresent()) problem(path + ".stock", "a container shop's stock is its containers");
-                if (!commands.isEmpty()) problem(path + ".commands", "a container shop trades items for items; remove the commands");
+                if (type != Type.TRADE && type != Type.STATIC) problem(path + ".type", "a chest shop has only trade and static entries");
+                if (object.has("price") && price.signum() > 0) problem(path + ".price", "a chest shop trades items for items; remove the price");
+                if (levels > 0) problem(path + ".levels", "a chest shop trades items for items; remove the levels");
+                if (stock.isPresent()) problem(path + ".stock", "a chest shop's stock is its chests");
+                if (!commands.isEmpty()) problem(path + ".commands", "a chest shop trades items for items; remove the commands");
             }
             if (problems.size() != before || item == null) return Optional.empty();
             return Optional.of(new Entry(id, type, item, display, price, levels, allowStack, sellPartial, needs, gives, commands, limit, stock, permission,

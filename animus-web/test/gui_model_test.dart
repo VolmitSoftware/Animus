@@ -206,10 +206,10 @@ void main() {
         "error \$.defaultMode: defaultMode 'sell' is not one of the enabled modes",
         'error \$.pages[0].buy["1"].type: a sell entry belongs in the sell grid, not buy',
         'error \$.pages[0].buy["1"].price: prices have at most 4 decimal places',
-        'warning \$.pages[0].buy["13"]: slot 13 sits under the close control and is hidden while that control shows',
+        'warning \$.pages[0].buy["13"]: Slot 14 sits under the close control and is hidden while that control shows',
         "error \$.pages[0].buy[\"13\"].id: entry id 'a' is already used at \$.pages[0].buy[\"1\"]; limits and stock are kept under it",
         'error \$.pages[0].buy["30"]: Slot 31 is outside a 2-row page (slots 1 to 18)',
-        'warning \$.pages[0].trade: the trade grid has entries but trade is not in modes, so players never see it',
+        "warning \$.pages[0].trade: Trades has offers but is not one of the shop's modes, so players never see them",
       ]));
       expect(found, contains('error \$.pages[0].buy["30"].discount.end: the discount ends before it starts'));
     });

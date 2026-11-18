@@ -227,7 +227,26 @@ public final class DocumentStore implements AutoCloseable {
                         + "; roll that one back first with /animus rollback " + found.by().get().substring(0, 8));
             throw new IOException("Conflict: " + found.path() + " was edited after this transaction; fix the file or /animus reload, then roll back again");
         }
-        return commit(inverse(id));
+        return commitUndo(UUID.randomUUID().toString(), inverse(id));
+    }
+
+    /**
+     * Commits {@code undo}, the changes {@link #inverse} gives for a transaction, under {@code id}, then removes each folder
+     * the undo left empty, up to the top-level folder such as {@code behaviors/}, which stays. Generated state keeps its folders.
+     */
+    public synchronized String commitUndo(String id, List<Change> undo) throws IOException {
+        String committed = commit(id, undo);
+        for (Change change : undo) {
+            if (change.content() != null || change.path().startsWith("state/") || change.path().startsWith("backups/")) continue;
+            Path folder = resolve(change.path()).getParent();
+            while (folder != null && !folder.equals(root) && !root.equals(folder.getParent())) {
+                try { Files.delete(folder); }
+                catch (DirectoryNotEmptyException | NoSuchFileException kept) { break; }
+                syncDirectory(folder.getParent());
+                folder = folder.getParent();
+            }
+        }
+        return committed;
     }
 
     /** A document a transaction wrote that holds something else now, and the later transaction whose result it holds, when one does. */

@@ -3,7 +3,7 @@
   "presentationWarnings": [],
   "runtimeWarnings": [
     "/traits/commandtrait/temporaryPermissions: Animus lends permissions only to commands the clicking player runs, and this NPC has none, so they are not granted",
-    "/traits/commandtrait: commands stay denied until citizens:commands-2 is on the [behaviors.actions] commandBehaviors list in config.toml"
+    "/traits/commandtrait: commands stay denied until citizens:commands-2/sky-warden-commands is on the [behaviors.actions] commandBehaviors list in config.toml"
   ],
   "fieldPathFormat": "json-pointer",
   "fields": {

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 23,
+  "converterVersion": 24,
   "fieldPathFormat": "json-pointer",
-  "importId": "ae142556a764b118fa08b8972bf41966e695145462908294bbc352792b8026d1",
+  "importId": "045f801c1161317223fbdfab88c852c83d56f4a91acfc5166fb8f6f2e9a6f9b4",
   "sourceSha256": "67a70353849d959cf73de2a56e2dcc384c115a6787a3f944ef309e8d0219739f",
   "worldMap": {},
   "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs spawn as Citizens had them, and converted patrols, schedules, combat, riding, shops and builds are on.",
@@ -46,8 +46,8 @@
     "citizens-0: /traits/shop/rightClickShop: no shop named Harbor Goods converted; the NPC opens no shop",
     "citizens-0: /traits/dropstrait/drops/2: not an item; not converted",
     "citizens-0: /traits/commandtrait/commands/2/itemCost: an item cost cannot be matched exactly; not converted",
-    "citizens-0: /traits/commandtrait: commands stay denied until citizens:commands-0 is on the [behaviors.actions] commandBehaviors list in config.toml",
-    "citizens-1: /traits/commandtrait: commands stay denied until citizens:commands-1 is on the [behaviors.actions] commandBehaviors list in config.toml"
+    "citizens-0: /traits/commandtrait: commands stay denied until citizens:commands-0/toll-keeper-commands is on the [behaviors.actions] commandBehaviors list in config.toml",
+    "citizens-1: /traits/commandtrait: commands stay denied until citizens:commands-1/quiet-clerk-commands is on the [behaviors.actions] commandBehaviors list in config.toml"
   ],
   "remappedLocations": 0,
   "resolvedReferences": 0,
@@ -58,9 +58,9 @@
     "1": "0a1b2c3d-0000-4000-8000-000000000401"
   },
   "documents": {
-    "behaviors/citizens/commands-0.json": "6c8525f0106b1f7fc87f40ba02acaa6a43ec99cff7bec26d74f184c47dc9e95b",
-    "npcs/harbor/citizens-0.json": "b5c7b5ba6f0c766cb7bc0cde0361365a97f6116adf03ae9f5f3a567b699ff0eb",
-    "behaviors/citizens/commands-1.json": "f0191ca26d18ed868f8614ccac18881b512f08fe0729d62f41b4d8f56c23a00d",
-    "npcs/harbor/citizens-1.json": "74681c239a5f0ce211471e3723b5ce2d072ece9cc682e71588ae6bfaa17f1138"
+    "behaviors/citizens/commands-0/toll-keeper-commands.json": "70ec3e8cb9a3faf316e92b3d2eb9e4dbb6033b4dac220ea421d3cbc02c9c6c01",
+    "npcs/harbor/citizens-0.json": "7a1298a87751882b13f3e2284e0fb4085003eb1571a799365c7c537060906b89",
+    "behaviors/citizens/commands-1/quiet-clerk-commands.json": "c508d01c7208802d86e098b814e880ed4d17287055a9041fc435399c801e5858",
+    "npcs/harbor/citizens-1.json": "45db831f78a03fbd0f8307f6f733458a2430d27b63b65704185d1c5131aa2a87"
   }
 }

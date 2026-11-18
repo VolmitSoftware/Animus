@@ -203,13 +203,13 @@ async function shop(page, tag) {
   assert.equal(json.pages[0].buy['12'].stock, undefined, 'stock goes with the kind change');
   assert.equal(json.pages[0].buy['12'].permission, 'town.market.rare', 'other fields stay');
 
-  // A container shop: owner and containers round-trip, buy entries are refused.
+  // A chest shop: owner and chests round-trip, buy entries are refused.
   await form.getByRole('tab', {name: /^Settings/}).click();
-  const containers = await openSection(form, 'Containers');
-  await containers.getByRole('button', {name: 'Add container'}).click();
-  await form.getByLabel('Container 1 world').fill('world_nether');
+  const containers = await openSection(form, 'Chests');
+  await containers.getByRole('button', {name: 'Add chest'}).click();
+  await form.getByLabel('Chest 1 world').fill('world_nether');
   await settle(page);
-  await form.getByLabel('Container 1 y').fill('70');
+  await form.getByLabel('Chest 1 y').fill('70');
   await settle(page);
   await openSection(form, 'Owner');
   await form.getByLabel('Owner UUID').fill('069a79f4-44e9-4726-a5be-fca90e38aaf5');
@@ -222,13 +222,13 @@ async function shop(page, tag) {
   assert.deepEqual(json.owner, {uuid: '069a79f4-44e9-4726-a5be-fca90e38aaf5', name: 'Notch'});
   await (await preview(page)).locator('[data-slot="10"]').click();
   await form.getByText(/only trade and static entries/).first().waitFor();
-  assert.deepEqual((await optionLabels(form.getByLabel('Kind', {exact: true}))).sort(), ['Buy (player pays money)', 'Decoration', 'Trade (items for items)']);
+  assert.deepEqual((await optionLabels(form.getByLabel('Kind', {exact: true}))).sort(), ['Decoration', 'Sells (player pays money)', 'Trade (items for items)']);
   await form.getByRole('tab', {name: /^Settings/}).click();
-  await rowMenu(page, await openSection(form, 'Containers'), 'Actions for container 1', 'Delete');
+  await rowMenu(page, await openSection(form, 'Chests'), 'Actions for chest 1', 'Delete');
   await page.getByRole('alertdialog').getByRole('button', {name: 'Delete', exact: true}).click();
   await page.waitForTimeout(300);
   json = await codeOf(page);
-  assert.equal(json.containers, undefined, 'the last container goes with its list');
+  assert.equal(json.containers, undefined, 'the last chest goes with its list');
 
   // Window and layout: the trading screen lists offers in mode, page and slot order.
   await form.getByRole('tab', {name: /^Settings/}).click();

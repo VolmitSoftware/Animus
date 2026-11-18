@@ -192,6 +192,8 @@ class DefinitionRecoveryTest {
             assertEquals(NpcRepositoryTest.JSON, store.read(PATH)); assertNotNull(store.read(POINTER));
             store.rollback(imported);
         }
+        // The rollback removed the folder it emptied; a hand-written file brings it back.
+        Files.createDirectories(root.resolve(PATH).getParent());
         Files.writeString(root.resolve(PATH), "{unrelated malformed replacement");
         try (AnimusRuntime runtime = runtime()) { runtime.start(); assertTrue(runtime.npcs().find("guard").isEmpty(), "an undone import is not restored from a stale checkpoint"); }
         assertEquals("{unrelated malformed replacement", Files.readString(root.resolve(PATH)));

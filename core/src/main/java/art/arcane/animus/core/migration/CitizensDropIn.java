@@ -260,7 +260,7 @@ public final class CitizensDropIn {
                 + (others.isEmpty() ? "" : " and enabled it in server-behaviors.json") + "; tx " + transaction)));
         if (!errors.isEmpty()) lines.add(problems(errors));
         if (!others.isEmpty()) lines.add("It starts once the behaviors reload");
-        lines.add("/animus import citizens rollback undoes the import and every release");
+        lines.add("Undo the import and every release with /animus import citizens rollback");
         return lines;
     }
 
@@ -550,7 +550,7 @@ public final class CitizensDropIn {
         int guards = guards(imported(state));
         if (combatLimit > 0 && guards > combatLimit)
             lines.add("Combat: " + guards + " guards imported, at most " + combatLimit + " fight or scan at once ([combat] maximumNpcs); see /animus combat status");
-        lines.add("Next: /animus import citizens review lists what converted; /animus import citizens rollback undoes the import");
+        lines.add("Next: see what converted with /animus import citizens review; undo the import with /animus import citizens rollback");
         return lines;
     }
 
@@ -742,7 +742,7 @@ public final class CitizensDropIn {
         if (state.has(ALLOWED_NAMESPACES) && !state.getAsJsonArray(ALLOWED_NAMESPACES).isEmpty())
             lines.add("Commands: the import added " + String.join(", ", names(state.getAsJsonArray(ALLOWED_NAMESPACES))) + " to [behaviors.actions] commandNamespaces; rollback removes " + (state.getAsJsonArray(ALLOWED_NAMESPACES).size() == 1 ? "it" : "them"));
         if (citizens) lines.add("Report " + state.get("report").getAsString() + ", per NPC under imports/" + state.get("importId").getAsString() + "/reports/");
-        lines.add("/animus import citizens rollback undoes the import");
+        lines.add("Undo the import with /animus import citizens rollback");
         return lines;
     }
 

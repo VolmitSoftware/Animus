@@ -85,8 +85,9 @@ class NpcInventorySlots extends StatelessWidget {
                   key: '$slot',
                   column: slot % inventoryColumns,
                   row: slot ~/ inventoryColumns,
-                  name: 'Slot $slot',
-                  fieldLabel: 'Slot $slot item',
+                  // Slots count from 1 where people read them; the file keeps them from 0.
+                  name: 'Slot ${slot + 1}',
+                  fieldLabel: 'Slot ${slot + 1} item',
                   item: slots['$slot'] is Map<String, Object?> ? asMap(slots['$slot']) : null,
                   placeholder: 'minecraft:bread',
                   preferred: _stored,

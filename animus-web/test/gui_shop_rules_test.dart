@@ -119,9 +119,9 @@ void main() {
     test('should refuse buy entries, prices and stock in a container shop with core wording', () {
       final JsonMap shop = _shop(<String, Object?>{'id': 'a', 'type': 'buy', 'item': <String, Object?>{'id': 'minecraft:bread'}, 'price': 3, 'stock': <String, Object?>{'maximum': 4}}, container: true);
       final Map<String, String> problems = _problems(shop);
-      expect(problems[r'$.pages[0].buy["10"].type'], 'a container shop has only trade and static entries');
-      expect(problems[r'$.pages[0].buy["10"].price'], 'a container shop trades items for items; remove the price');
-      expect(problems[r'$.pages[0].buy["10"].stock'], "a container shop's stock is its containers");
+      expect(problems[r'$.pages[0].buy["10"].type'], 'a chest shop has only trade and static entries');
+      expect(problems[r'$.pages[0].buy["10"].price'], 'a chest shop trades items for items; remove the price');
+      expect(problems[r'$.pages[0].buy["10"].stock'], "a chest shop's stock is its chests");
     });
 
     test('should need an owner for containers and check the owner and boxes', () {
@@ -134,7 +134,7 @@ void main() {
         ],
       };
       final Map<String, String> problems = _problems(shop);
-      expect(problems[r'$.owner'], 'a shop with containers needs an owner');
+      expect(problems[r'$.owner'], 'a chest shop needs an owner');
       expect(problems[r'$.containers[1]'], 'this container is listed twice');
       expect(problems[r'$.containers[2].x'], 'expected integer');
       expect(_problems(<String, Object?>{...shop, 'owner': <String, Object?>{'uuid': 'Notch'}})[r'$.owner.uuid'], 'expected canonical player UUID');
@@ -168,12 +168,12 @@ void main() {
         'gives': <Object?>[<String, Object?>{'item': <String, Object?>{'id': 'minecraft:bread'}}],
         'commands': <Object?>[<String, Object?>{'command': 'give {player} diamond'}],
       };
-      expect(_problems(_shop(trade, grid: 'trade', container: true))[r'$.pages[0].trade["10"].commands'], 'a container shop trades items for items; remove the commands');
+      expect(_problems(_shop(trade, grid: 'trade', container: true))[r'$.pages[0].trade["10"].commands'], 'a chest shop trades items for items; remove the commands');
     });
 
     test('should list entries a lower row count leaves outside the page', () {
       final JsonMap page = <String, Object?>{'buy': <String, Object?>{'3': <String, Object?>{}, '20': <String, Object?>{}}, 'trade': <String, Object?>{'9': <String, Object?>{}}};
-      expect(shopEntriesOutside(page, 1), <String>['buy 20', 'trade 9']);
+      expect(shopEntriesOutside(page, 1), <String>['Sells slot 21', 'Trades slot 10'], reason: 'slots read from 1, on the shop side');
       expect(shopEntriesOutside(page, 3), isEmpty);
     });
   });
@@ -200,8 +200,8 @@ void main() {
       expect(_problems(books(book, kind: 'renting'))[r'$.kind'], 'expected selling, buying, trading or book');
       expect(_problems(books(book, kind: ''))[r'$.kind'], 'expected selling, buying, trading or book');
       final JsonMap counter = <String, Object?>{..._shop(<String, Object?>{'id': 'a', 'type': 'buy', 'item': <String, Object?>{'id': 'minecraft:bread'}, 'price': 1}), 'kind': 'selling'};
-      expect(_problems(counter)[r'$.kind'], 'a shop kind needs containers, which hold its stock');
-      expect(merged(counter), <String>[r'$.kind: a shop kind needs containers, which hold its stock']);
+      expect(_problems(counter)[r'$.kind'], 'a shop kind needs a chest, which holds its stock');
+      expect(merged(counter), <String>[r'$.kind: a shop kind needs a chest, which holds its stock']);
     });
 
     test('should keep a closed reason on any shop and refuse a blank or long one', () {
@@ -243,6 +243,53 @@ void main() {
       final JsonMap swap = withShopEntryType(book, 'trade', container: true);
       expect(swap.keys, isNot(contains('book')));
       expect(asList(swap['gives']), hasLength(1));
+    });
+  });
+  group('chest shop edits', () {
+    final JsonMap trade = <String, Object?>{
+      'id': 'bread',
+      'type': 'trade',
+      'item': <String, Object?>{'id': 'minecraft:bread'},
+      'needs': <Object?>[<String, Object?>{'item': <String, Object?>{'id': 'minecraft:diamond'}, 'amount': 1}],
+      'gives': <Object?>[<String, Object?>{'item': <String, Object?>{'id': 'minecraft:bread'}, 'amount': 1}],
+    };
+    JsonMap stall(String? kind) => <String, Object?>{..._shop(trade, grid: 'trade', container: true), 'kind': ?kind};
+    List<String> errors(JsonMap shop) => <String>[
+          for (final Diagnostic d in mergeGuiDiagnostics(SharedSchemas.embedded.validate(DocumentKind.shop, shop), validateGui(DocumentKind.shop, shop)))
+            if (d.severity == DiagnosticSeverity.error) '${d.path}: ${d.message}',
+        ];
+
+    test('should turn trades into book copies when the kind becomes Book', () {
+      final JsonMap books = withShopKind(stall('trading'), 'book');
+      expect(books['kind'], 'book');
+      final JsonMap entry = asMap(asMap(asMap(asList(books['pages']).first)['trade'])['10']);
+      expect(entry['book'], untitledBook);
+      expect(entry.containsKey('gives'), isFalse, reason: 'a book trade gives a copy, not items');
+      expect(asMap(entry['item'])['id'], 'minecraft:written_book');
+      expect(entry['needs'], trade['needs'], reason: 'the price stays');
+      expect(errors(books), isEmpty);
+    });
+
+    test('should give book copies items again when the kind leaves Book', () {
+      final JsonMap selling = withShopKind(withShopKind(stall('trading'), 'book'), 'selling');
+      final JsonMap entry = asMap(asMap(asMap(asList(selling['pages']).first)['trade'])['10']);
+      expect(entry.containsKey('book'), isFalse);
+      expect(asList(entry['gives']), isNotEmpty);
+      expect(errors(selling), isEmpty);
+      expect(withShopKind(stall('trading'), null).containsKey('kind'), isFalse);
+    });
+
+    test('should narrow the modes to trades when a shop gets its first chest', () {
+      final JsonMap blank = <String, Object?>{'schemaVersion': 1, 'id': 'town:market', 'pages': <Object?>[<String, Object?>{'name': 'Page 1', 'rows': 3}]};
+      final JsonMap chested = withChests(blank, <Object?>[<String, Object?>{'world': 'world', 'x': 0, 'y': 64, 'z': 0}]);
+      expect(chested['modes'], <Object?>['trade']);
+      expect(asList(chested['containers']), hasLength(1));
+      // A shop that already sells for money keeps its modes: its offers show what to change.
+      final JsonMap money = <String, Object?>{...blank, 'pages': <Object?>[<String, Object?>{'rows': 3, 'buy': <String, Object?>{'1': <String, Object?>{'id': 'a', 'type': 'buy', 'item': <String, Object?>{'id': 'minecraft:cake'}, 'price': 1}}}]};
+      expect(withChests(money, <Object?>[<String, Object?>{'world': 'world', 'x': 0, 'y': 64, 'z': 0}]).containsKey('modes'), isFalse);
+      // The last chest gone: the containers key goes, the modes stay.
+      expect(withChests(chested, const <Object?>[]).containsKey('containers'), isFalse);
+      expect(withChests(chested, const <Object?>[])['modes'], <Object?>['trade']);
     });
   });
 }

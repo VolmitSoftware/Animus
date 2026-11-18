@@ -1,18 +1,20 @@
 /// The shop's Settings tab. Simple: the title (codes editable, shown in
-/// colour under the field), a player's shop's kind and its owner by name,
-/// whether the shop is open or closed and why, and the NPCs that open the
-/// shop. Advanced adds the window and layout, who may open it, the modes in
-/// switch order, the purchase switches, item matching, pages, and the
-/// owner's UUID and name and the containers of a player's shop.
+/// colour under the field), a chest shop's kind, its owner by name and its
+/// chests, whether the shop is open or closed and why, and the NPCs that
+/// open the shop. Advanced adds the window and layout, who may open it, the
+/// modes in switch order, the purchase switches, item matching, pages, the
+/// owner's UUID and name, and the chests of any shop.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
+import 'package:jaspr/dom.dart' as dom;
 
 import '../../config/docs_links.dart';
 import '../../logic/diagnostic_text.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_validation.dart' show shopModes;
 import '../../logic/gui/shop_entries.dart';
+import '../../logic/gui/shop_words.dart';
 import '../../logic/plural.dart';
 import '../../logic/suggest/completion_sources.dart';
 import '../../logic/suggest/field_profile.dart';
@@ -40,11 +42,6 @@ import '../../ui/toggle_choice.dart';
 import '../../logic/suggest/person_names.dart';
 import '../select/person_picker.dart';
 import '../suggest/suggest_scope.dart';
-
-const Map<String, String> shopModeLabels = <String, String>{'buy': 'Buy', 'sell': 'Sell', 'trade': 'Trade'};
-
-/// A player's shop kinds by plain name.
-const Map<String, String> shopKindLabels = <String, String>{'selling': 'Selling', 'buying': 'Buying', 'trading': 'Trading', 'book': 'Book'};
 
 /// The reason a shop closed here keeps until its owner writes their own.
 const String editorClosedReason = 'Closed from the web editor';
@@ -122,6 +119,7 @@ class _ShopSettingsState extends State<ShopSettings> {
       ),
       if (container || _shop.containsKey('kind')) _kind(),
       if (!advanced) _ownerPicker(owners),
+      if (!advanced && container) _containers(),
       ..._status(),
       ShopLinks(shop: component.shopId, documents: component.documents, onCommit: component.onCommit, onOpen: component.onOpen),
       if (advanced) ...<Widget>[
@@ -210,7 +208,8 @@ class _ShopSettingsState extends State<ShopSettings> {
     ]);
   }
 
-  /// A player's shop kind, as its owner picked it in game.
+  /// A chest shop's kind, as its owner picks it in game. Trades follow it:
+  /// in a book shop they copy a book and give no items.
   Widget _kind() => _row(
         'Kind',
         'kind',
@@ -219,11 +218,12 @@ class _ShopSettingsState extends State<ShopSettings> {
           value: asString(_shop['kind']),
           values: shopKinds,
           labels: shopKindLabels,
+          details: shopKindLines,
           allowNone: true,
           noneLabel: 'Not set',
-          onChanged: (String? v) => _set('kind', v),
+          onChanged: (String? v) => component.onWrite(const <JsonStep>[], withShopKind(_shop, v), coalesce: 'shop.kind'),
         ),
-        tip: 'Selling sells the chest stock, buying pays from it, trading swaps items, and book sells copies of the written books in it.',
+        tip: 'What the shop does with its chest. Changing it rewrites the trades to fit.',
         docs: Docs.playerShops,
       );
 
@@ -432,7 +432,7 @@ class _ShopSettingsState extends State<ShopSettings> {
     return AppSection(
       title: 'Owner',
       open: owner.isNotEmpty || container,
-      tip: "A player's shop: they own the stock chests and get the takings. Needed with containers.",
+      tip: 'The player who owns the chests and gets the earnings. A chest shop needs one.',
       children: <Widget>[
         _row('Player', 'owner.uuid', (String id) => _ownerControl(id, owners), tip: 'Picked by name from the players the server has seen, or a UUID typed in.'),
         _row('Name', 'owner.name', (String id) => AutocompleteInput(id: id, value: asString(owner['name']) ?? '', label: 'Owner name', onChanged: (String v) => set('name', v), profile: FieldProfile.none)),
@@ -441,43 +441,35 @@ class _ShopSettingsState extends State<ShopSettings> {
     );
   }
 
+  /// The chests that hold a chest shop's stock, each with its world and
+  /// block position labelled. The first chest makes a shop a chest shop.
   Widget _containers() {
     final JsonList containers = asList(_shop['containers']);
-    void setAll(JsonList next) => component.onWrite(const <JsonStep>['containers'], next.isEmpty ? null : next, coalesce: 'containers-structure');
+    void setAll(JsonList next) => component.onWrite(const <JsonStep>[], withChests(_shop, next), coalesce: 'containers-structure');
     return AppSection(
-      title: 'Containers',
+      title: 'Chests',
       count: containers.length,
       open: containers.isNotEmpty,
-      tip: 'Chests that hold the stock. A shop with containers trades items for items only.',
+      tip: 'The chests that hold the stock and take the earnings. With a chest, offers trade items for items only.',
+      docs: Docs.chestShops,
       children: <Widget>[
         stack(<Widget>[
           for (final Diagnostic problem in diagnosticsAt(_diagnostics, r'$.containers')) AppAlert(tone: AlertTone.warning, message: diagnosticSentence(problem)),
           OrderedRows(
-            label: 'Containers',
-            deleteNoun: 'container',
+            label: 'Chests',
+            deleteNoun: 'chest',
             rows: <OrderedRow>[
               for (int index = 0; index < containers.length; index++)
                 OrderedRow(
                   key: '$index',
-                  name: 'container ${index + 1}',
+                  name: 'chest ${index + 1}',
                   attributes: <String, String>{'data-path': '\$.containers[$index]'},
-                  line: fieldLine(<Widget>[
-                    AutocompleteInput(
-                      value: asString(asMap(containers[index])['world']) ?? '',
-                      label: 'Container ${index + 1} world',
-                      profile: idProfile(const ValueRef.registry(RegistryKind.world)),
-                      placeholder: 'world',
-                      onChanged: (String v) => component.onWrite(<JsonStep>['containers', index, 'world'], v.isEmpty ? null : v),
-                    ),
-                    for (final String axis in const <String>['x', 'y', 'z'])
-                      NumberInput(
-                        value: asInt(asMap(containers[index])[axis]),
-                        label: 'Container ${index + 1} $axis',
-                        placeholder: axis,
-                        digits: 6,
-                        onChanged: (num? v) => component.onWrite(<JsonStep>['containers', index, axis], v),
-                      ),
-                  ]),
+                  line: chestLine(
+                    id: 'animus-shop-chest-$index',
+                    label: 'Chest ${index + 1}',
+                    chest: asMap(containers[index]),
+                    onChanged: (String key, Object? value) => component.onWrite(<JsonStep>['containers', index, key], value),
+                  ),
                   body: null,
                 ),
             ],
@@ -485,13 +477,13 @@ class _ShopSettingsState extends State<ShopSettings> {
           ),
           for (int index = 0; index < containers.length; index++)
             for (final Diagnostic problem in diagnosticsAt(_diagnostics, '\$.containers[$index]', nested: true))
-              AppAlert(tone: AlertTone.warning, message: 'Container ${index + 1}: ${diagnosticSentence(problem)}'),
+              AppAlert(tone: AlertTone.warning, message: 'Chest ${index + 1}: ${diagnosticSentence(problem)}'),
           ActionRow(
             dense: true,
-            label: 'Containers',
+            label: 'Chests',
             secondary: <RowAction>[
               RowAction(
-                'Add container',
+                'Add chest',
                 containers.length >= 8
                     ? null
                     : () => setAll(<Object?>[
@@ -507,3 +499,29 @@ class _ShopSettingsState extends State<ShopSettings> {
     );
   }
 }
+
+/// A chest's world and block position as one line of labelled fields:
+/// World, X, Y and Z, each with its label above it. [label] names the
+/// fields for assistive technology ("Chest 1 world"); [id] prefixes their
+/// ids.
+Widget chestLine({required String id, required String label, required JsonMap chest, required void Function(String key, Object? value) onChanged}) => equalLine(
+      <Widget>[
+        stack(spacing: 4, <Widget>[
+          dom.label(htmlFor: '$id-world', <Widget>[mutedText('World')]),
+          AutocompleteInput(
+            id: '$id-world',
+            value: asString(chest['world']) ?? '',
+            label: '$label world',
+            profile: idProfile(const ValueRef.registry(RegistryKind.world)),
+            placeholder: 'world',
+            onChanged: (String v) => onChanged('world', v.isEmpty ? null : v),
+          ),
+        ]),
+        for (final String axis in const <String>['x', 'y', 'z'])
+          stack(spacing: 4, <Widget>[
+            dom.label(htmlFor: '$id-$axis', <Widget>[mutedText(axis.toUpperCase())]),
+            NumberInput(id: '$id-$axis', value: asInt(chest[axis]), label: '$label $axis', digits: 8, onChanged: (num? v) => onChanged(axis, v?.toInt())),
+          ]),
+      ],
+      flex: const <int>[3, 2, 2, 2],
+    );

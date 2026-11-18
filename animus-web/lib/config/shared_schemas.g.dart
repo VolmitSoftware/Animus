@@ -35973,7 +35973,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
         "name": {"type": "string", "description": "Last known name, for messages only."}
       },
-      "description": "The player who owns a container shop. Required with containers."
+      "description": "The player who owns a chest shop. Required with containers."
     },
     "containers": {
       "type": "array",
@@ -35994,7 +35994,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "kind": {
       "enum": ["selling", "buying", "trading", "book"],
-      "description": "How a player's shop trades, as Shopkeepers' player shops do: selling gives its stock for price items, buying pays from its stock for the items it buys, trading swaps items, book sells copies of the written books in its stock. Container shops only."
+      "description": "How a player's shop trades, as Shopkeepers' player shops do: selling gives its stock for price items, buying pays from its stock for the items it buys, trading swaps items, book sells copies of the written books in its stock. Chest shops only."
     },
     "closed": {
       "type": "string",
@@ -36035,7 +36035,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "type": "object",
       "propertyNames": {"pattern": "^[0-9]{1,2}$"},
       "additionalProperties": {"$ref": "#/$defs/entry"},
-      "description": "Slot number to entry."
+      "description": "Slot number, from 0 at the top left (slot 1 in the editor and the game), to entry."
     },
     "page": {
       "type": "object",

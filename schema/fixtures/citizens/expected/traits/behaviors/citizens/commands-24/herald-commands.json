@@ -1,16 +1,14 @@
 {
   "schemaVersion": 1,
   "revision": 1,
-  "id": "citizens:commands-6",
+  "id": "citizens:commands-24/herald-commands",
   "entry": "right",
   "routines": {
     "right": {
       "type": "action",
-      "capability": "animus:command",
+      "capability": "animus:say",
       "arguments": {
-        "command": "time set day",
-        "as": "player",
-        "asOperator": true
+        "text": "Hear ye"
       }
     }
   },

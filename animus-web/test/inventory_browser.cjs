@@ -219,7 +219,7 @@ async function run(browser, folder, viewport, theme, tag) {
   assert.equal(await slotsOf(behaviour, inv).count(), 9, `${tag}: one row of 9`);
   await slot(behaviour, inv, '3').scrollIntoViewIfNeeded();
   await slot(behaviour, inv, '3').click();
-  const item = behaviour.getByLabel('Slot 3 item', {exact: true});
+  const item = behaviour.getByLabel('Slot 4 item', {exact: true});
   await item.fill('minecraft:arrow');
   await item.blur();
   await settle(page);

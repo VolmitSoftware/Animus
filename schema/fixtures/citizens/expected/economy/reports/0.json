@@ -3,7 +3,7 @@
   "presentationWarnings": [],
   "runtimeWarnings": [
     "/traits/commandtrait/commands/2/itemCost: an item cost cannot be matched exactly; not converted",
-    "/traits/commandtrait: commands stay denied until citizens:commands-0 is on the [behaviors.actions] commandBehaviors list in config.toml"
+    "/traits/commandtrait: commands stay denied until citizens:commands-0/toll-keeper-commands is on the [behaviors.actions] commandBehaviors list in config.toml"
   ],
   "fieldPathFormat": "json-pointer",
   "fields": {

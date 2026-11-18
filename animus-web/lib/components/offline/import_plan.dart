@@ -106,12 +106,21 @@ String createdLine(Map<DocumentKind, int> counts) {
   return joinWords(<String>[for (final MapEntry<DocumentKind, int> count in counts.entries) countOf(count.value, importNoun(count.key))]);
 }
 
-/// A "not converted" line for Simple: the record it is about, without the
-/// field paths and schema wording that follow it.
-String simpleIssue(String line) {
-  final int path = line.indexOf(r': $.');
-  return path < 0 ? line : line.substring(0, path);
+/// Every warning of the conversions on the Result step, one line each:
+/// [converted] pairs a source's name with its lines, and the lines name
+/// their source when there is more than one.
+List<String> resultWarnings(List<(String, List<String>)> converted) {
+  final List<(String, List<String>)> some = <(String, List<String>)>[for (final (String, List<String>) one in converted) if (one.$2.isNotEmpty) one];
+  return <String>[
+    for (final (String source, List<String> lines) in some)
+      for (final String line in lines) some.length > 1 ? '$source: $line' : line,
+  ];
 }
+
+/// What Open as workspace and Send to server make: a new workspace, by
+/// [name].
+String newWorkspaceLine(String name, {required bool paired}) =>
+    paired ? 'Send to server and Open as workspace both make a new workspace, $name.' : 'Open as workspace makes a new workspace, $name.';
 
 /// A server import's state in words.
 String importStateLabel(String state) => switch (state) {

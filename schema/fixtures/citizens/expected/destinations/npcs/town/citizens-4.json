@@ -8,7 +8,7 @@
   "type": "minecraft:villager",
   "spawned": true,
   "migration": {
-    "importId": "81723c68c9d215e4ba4340d4c4bdfa9f96c21bf7a3c5077e3bcdd51f60a9c53c",
+    "importId": "8a547d75a8af88d539cc7f829a74f1b54d829a8ddee71598a12ea20c6520a525",
     "citizensId": 4,
     "references": []
   },

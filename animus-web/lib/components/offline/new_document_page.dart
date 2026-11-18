@@ -11,9 +11,12 @@ import 'dart:typed_data';
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_text.dart';
+import '../../logic/gui/shop_entries.dart' show shopKinds;
 import '../../logic/gui/shop_templates.dart';
+import '../../logic/gui/shop_words.dart';
 import '../../logic/npc/npc_paths.dart';
 import '../../logic/npc/skin_edits.dart' show skinListing;
 import '../../logic/offline/new_documents.dart';
@@ -38,12 +41,17 @@ import '../../ui/mode.dart';
 import '../../ui/page_header.dart';
 import '../../ui/toggle_choice.dart';
 import '../gui/gui_fields.dart';
+import '../gui/shop_settings.dart' show chestLine;
 import '../list_page.dart' show listNoun;
 import '../shell_sidebar.dart' show kindTitle;
 import '../quest/quest_fields.dart';
 import '../select/skin_faces.dart';
 import 'new_document_kinds.dart';
 import '../select/animus_select.dart';
+import '../suggest/suggest_scope.dart';
+import '../select/person_picker.dart';
+import '../../logic/suggest/person_names.dart' show PersonKind;
+import '../../logic/suggest/completion_sources.dart' show CompletionSources;
 import '../suggest/autocomplete_input.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../ui/number_input.dart';
@@ -55,7 +63,7 @@ part 'new_document_fields.dart';
 enum _SkinSource { none, file, url, existing }
 
 class NewDocumentPage extends StatefulWidget {
-  const NewDocumentPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, this.folder, this.name, this.conversation = false, this.owner, this.sign, this.onClose, super.key});
+  const NewDocumentPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, this.folder, this.name, this.conversation = false, this.owner, this.players = const <String, String>{}, this.sign, this.onClose, super.key});
 
   /// Signs a new skin through the paired server; null makes an unsigned skin
   /// that keeps its PNG for the server it is applied on.
@@ -67,8 +75,13 @@ class NewDocumentPage extends StatefulWidget {
   /// Starts a behavior with the Conversation template picked.
   final bool conversation;
 
-  /// The paired player's UUID, which a new NPC takes as its owner.
+  /// The paired player's UUID, which a new NPC takes as its owner and a
+  /// new chest shop offers first.
   final String? owner;
+
+  /// Names of the players the paired server knows, by UUID: who a chest
+  /// shop can belong to.
+  final Map<String, String> players;
 
   final EditorStore store;
   final WorkspaceSnapshot workspace;
@@ -116,6 +129,9 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
   late BehaviorTemplate _template = component.conversation ? BehaviorTemplate.conversation : BehaviorTemplate.greeter;
   String? _shop;
   ShopTemplate _shopTemplate = ShopTemplate.blank;
+  String? _shopOwner;
+  String _shopKind = 'selling';
+  JsonMap _chest = const <String, Object?>{'world': 'world', 'x': 0, 'y': 64, 'z': 0};
   String? _attachTo;
 
   // Quest.
@@ -229,12 +245,14 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
       setState(() => _problem = component.store.problem ?? 'Not created: the workspace changed. Press Create again.');
       return;
     }
+    // Its name as the lists show it: a shop by its title, never its id.
+    final String name = component.store.libraryEntry(kind, id)?.name ?? guiPlainText(made.title);
     if (component.store.hasUnsavedEdit) {
-      ArcaneSonner.warning('Created ${guiPlainText(made.title)}, but the browser did not store it.');
+      ArcaneSonner.warning('Created $name, but the browser did not store it.');
     } else if (!made.valid) {
-      ArcaneSonner.warning('Created ${guiPlainText(made.title)} with ${made.diagnostics.length == 1 ? '1 problem' : '${made.diagnostics.length} problems'}.');
+      ArcaneSonner.warning('Created $name with ${made.diagnostics.length == 1 ? '1 problem' : '${made.diagnostics.length} problems'}.');
     } else {
-      ArcaneSonner.success('Created ${listNoun(kind)} ${guiPlainText(made.title)}.');
+      ArcaneSonner.success('Created ${listNoun(kind)} $name.');
     }
     final EditorRoute? back = documentReturn.complete(component.workspace.id, kind, id);
     if (back != null) {
@@ -345,7 +363,15 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
         case DocumentKind.recording:
           return;
         case DocumentKind.shop:
-          await _write(<DocumentChange>[_change(kind, id, shopFromTemplate(_shopTemplate, id, title: _title))], kind, id);
+          ChestShopSeed? chest;
+          if (_shopTemplate == ShopTemplate.chest) {
+            chest = _chestSeed();
+            if (chest == null) {
+              setState(() => _problem = _shopOwnerChoices.isEmpty ? 'Pick the owner: pair a server to list its players, or type a UUID in Advanced.' : 'Pick the owner.');
+              return;
+            }
+          }
+          await _write(<DocumentChange>[_change(kind, id, shopFromTemplate(_shopTemplate, id, title: _title, chest: chest))], kind, id);
         case DocumentKind.quest:
           final JsonMap quest = newQuest(id, title: _title);
           await _write(<DocumentChange>[_change(kind, id, _giver == null ? quest : <String, Object?>{...quest, 'givers': <String>[_giver!]})], kind, id);
@@ -462,6 +488,37 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
     );
     changes.add(_change(DocumentKind.npc, id, newNpc(seed, uuid: newUuid())));
     await _write(changes, DocumentKind.npc, id, resources: resources);
+  }
+
+  /// Who a new chest shop can belong to, by UUID: the paired player first,
+  /// then the players the server knows. Labels are names; the paired
+  /// player without a known name is "You".
+  Map<String, String> get _shopOwnerChoices => <String, String>{
+        if (component.owner case final String me) me: component.players[me] ?? 'You',
+        for (final MapEntry<String, String> player in component.players.entries) player.key: player.value,
+      };
+
+  /// The owner a chest shop is made for: the picked player or a UUID typed
+  /// in Advanced, else the paired player; null for a typed value that is not
+  /// a UUID.
+  String? get _chestOwner {
+    final String typed = (_shopOwner ?? '').trim().toLowerCase();
+    if (typed.isEmpty) return _shopOwnerChoices.keys.firstOrNull;
+    return RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$').hasMatch(typed) ? typed : null;
+  }
+
+  ChestShopSeed? _chestSeed() {
+    final String? owner = _chestOwner;
+    if (owner == null) return null;
+    return ChestShopSeed(
+      owner: owner,
+      ownerName: component.players[owner],
+      world: asString(_chest['world']) ?? 'world',
+      x: asInt(_chest['x']) ?? 0,
+      y: asInt(_chest['y']) ?? 64,
+      z: asInt(_chest['z']) ?? 0,
+      kind: _shopKind,
+    );
   }
 
   /// setState for the field builders in new_document_fields.dart.

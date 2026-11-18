@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "revision": 1,
-  "id": "citizens:text-6",
+  "id": "citizens:text-6/herald-talk",
   "entry": "main",
   "routines": {
     "main": {

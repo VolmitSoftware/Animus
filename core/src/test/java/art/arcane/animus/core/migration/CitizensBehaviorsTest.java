@@ -64,7 +64,7 @@ class CitizensBehaviorsTest {
         assertEquals(json("{\"enabled\":true,\"mode\":\"walk\",\"speed\":1.72,\"order\":\"sequence\",\"loop\":true,\"waitTicks\":0,"
                 + "\"points\":[{\"x\":1.5,\"y\":64,\"z\":2.5},{\"x\":9.5,\"y\":64,\"z\":-3.5,\"waitTicks\":60}]}"), navigation);
         assertEquals(2, result.points());
-        assertEquals(List.of("citizens:waypoints-7"), result.behaviors());
+        assertEquals(List.of("citizens:waypoints-7/guard-route-stops"), result.behaviors());
         assertTrue(result.warnings().contains("/traits/waypoints/linear: 1 points in another world or without usable coordinates were left out"));
         assertTrue(result.converted().contains("/traits/waypoints/linear/points/1/triggers/0/delay"));
         assertTrue(result.converted().contains("/traits/waypoints/linear/points/0/location/x"));
@@ -146,9 +146,9 @@ class CitizensBehaviorsTest {
 
     @Test void randomTalkCloseTextBecomesAProximityBehavior() throws IOException {
         CitizensBehaviors.Result result = map("{\"text\":{\"text\":[\"&aHello <player>!\",\"Line one<br>line two\"],\"talk-close\":true,\"random-talker\":true,\"range\":6,\"delay\":200}}");
-        assertEquals(List.of("citizens:text-7"), result.behaviors());
+        assertEquals(List.of("citizens:text-7/guard-talk"), result.behaviors());
         CitizensBehaviors.Document document = result.documents().getFirst();
-        assertEquals("behaviors/citizens/text-7.json", document.path());
+        assertEquals("behaviors/citizens/text-7/guard-talk.json", document.path());
         JsonObject behavior = JsonDocuments.object(document.content());
         assertEquals(json("{\"id\":\"near\",\"event\":\"proximity\",\"phase\":\"enter\",\"radius\":6.0,\"playerCooldownTicks\":200}"), behavior.getAsJsonArray("triggers").get(0));
         JsonArray steps = behavior.getAsJsonObject("routines").getAsJsonObject("main").getAsJsonArray("steps");
@@ -193,7 +193,7 @@ class CitizensBehaviorsTest {
                 + "\"2\":{\"command\":\"spawn\",\"hand\":\"SHIFT_RIGHT\"},"
                 + "\"3\":{\"command\":\"eco give <p> 5\",\"hand\":\"LEFT\",\"cost\":10.0},"
                 + "\"4\":{\"command\":\"heal\",\"hand\":\"LEFT\",\"player\":true,\"op\":true}}}}");
-        assertEquals(List.of("citizens:commands-7"), result.behaviors());
+        assertEquals(List.of("citizens:commands-7/guard-commands"), result.behaviors());
         String content = result.documents().getFirst().content();
         accepted(content);
         JsonObject behavior = JsonDocuments.object(content);
@@ -226,7 +226,7 @@ class CitizensBehaviorsTest {
         assertEquals("spawn", behavior.getAsJsonObject("routines").getAsJsonObject("sneak-right").getAsJsonObject("arguments").get("command").getAsString());
         assertTrue(warnings.contains("/traits/commandtrait: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones"), warnings.toString());
         assertTrue(warnings.stream().noneMatch((String warning) -> warning.contains("operator")), "nothing to warn about: " + warnings);
-        assertTrue(warnings.contains("/traits/commandtrait: commands stay denied until citizens:commands-7 is on the [behaviors.actions] commandBehaviors list in config.toml"));
+        assertTrue(warnings.contains("/traits/commandtrait: commands stay denied until citizens:commands-7/guard-commands is on the [behaviors.actions] commandBehaviors list in config.toml"));
         assertTrue(warnings.stream().noneMatch((String warning) -> warning.contains("cannot charge")), warnings.toString());
     }
 
@@ -243,7 +243,7 @@ class CitizensBehaviorsTest {
         assertTrue(warnings.contains("/traits/commandtrait/commands/0/command: the MythicMobs skill cast became mythic:cast-skill, which needs MythicMobs on the server"), warnings.toString());
         assertFalse(warnings.contains("/traits/commandtrait/commands/1/op: the command ran as an operator player; it now runs from the console"));
         CitizensBehaviors.Result castsOnly = map("{\"commandtrait\":{\"commands\":{\"0\":{\"command\":\"mm test cast GreetSkill\",\"player\":true}}}}");
-        assertTrue(castsOnly.warnings().contains("/traits/commandtrait: commands stay denied until citizens:commands-7 is on the [behaviors.actions] commandBehaviors list in config.toml"),
+        assertTrue(castsOnly.warnings().contains("/traits/commandtrait: commands stay denied until citizens:commands-7/guard-commands is on the [behaviors.actions] commandBehaviors list in config.toml"),
                 "a cast needs the command allow-list too: " + castsOnly.warnings());
     }
 
@@ -305,11 +305,11 @@ class CitizensBehaviorsTest {
                 + "{\"location\":{\"world\":\"world\",\"x\":9,\"y\":64,\"z\":3},\"triggers\":[{\"type\":\"chat\",\"radius\":5.0,\"lines\":[\"&aHello from <npc>\",\"Hi <p>\"]},"
                 + "{\"type\":\"chat\",\"lines\":[\"Everyone\"]},{\"type\":\"command\",\"commands\":[\"/say <id> arrived\"]},"
                 + "{\"type\":\"animation\",\"animations\":[\"ARM_SWING\",\"START_ELYTRA\"],\"at\":{\"world\":\"world\",\"x\":9.5,\"y\":64.0,\"z\":4.5}}]}]}}}");
-        assertEquals(List.of("citizens:waypoints-7"), result.behaviors());
+        assertEquals(List.of("citizens:waypoints-7/guard-route-stops"), result.behaviors());
         String content = result.documents().getFirst().content();
         accepted(content);
         JsonObject document = json(content);
-        assertEquals("behaviors/citizens/waypoints-7.json", result.documents().getFirst().path());
+        assertEquals("behaviors/citizens/waypoints-7/guard-route-stops.json", result.documents().getFirst().path());
         assertEquals(json("{\"id\":\"point-1\",\"event\":\"waypoint\",\"waypoint\":1,\"routine\":\"point-1\"}"), document.getAsJsonArray("triggers").get(0), "the index of the converted point");
         assertEquals(json("""
                 {"type":"sequence","steps":[
@@ -322,7 +322,7 @@ class CitizensBehaviorsTest {
         assertTrue(result.warnings().contains("/traits/waypoints/linear/points/2/triggers/3/animations/1: the START_ELYTRA animation has no Animus animation; left out"), result.warnings().toString());
         assertEquals(json("{\"x\":9.5,\"y\":64.0,\"z\":4.5}"), result.navigation().orElseThrow().getAsJsonArray("points").get(1).getAsJsonObject().getAsJsonObject("teleport"),
                 "the animation's place becomes the point's teleport");
-        assertTrue(result.warnings().stream().anyMatch((String warning) -> warning.contains("waypoint commands stay denied until citizens:waypoints-7")));
+        assertTrue(result.warnings().stream().anyMatch((String warning) -> warning.contains("waypoint commands stay denied until citizens:waypoints-7/guard-route-stops is on")));
     }
 
     @Test void lookCloseKeepsHeadOnlyPerPlayerFiltersAndGradualTurning() {
@@ -351,5 +351,39 @@ class CitizensBehaviorsTest {
                 "/traits/waypoints/guided/guides/0/location/pitch")) assertTrue(result.converted().contains(path), path);
         assertEquals(CitizensImporter.Status.CONVERTED, result.notes().get("/traits/waypoints/guided/guides/0/triggers").status());
         assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, result.notes().get("/traits/waypoints/wander").status());
+    }
+
+    private static final String TALKING_PATROL = "{\"text\":{\"text\":[\"Pay up\"]},\"commandtrait\":{\"commands\":{\"0\":{\"command\":\"spawn\",\"hand\":\"RIGHT\",\"cooldown\":5}}},"
+            + "\"waypoints\":{\"linear\":{\"points\":[{\"location\":{\"world\":\"world\",\"x\":1,\"y\":64,\"z\":2},\"triggers\":[{\"type\":\"command\",\"commands\":[\"say hi\"]}]}]}}}";
+
+    @Test void generatedBehaviorIdsEndInTheNpcNameInWords() {
+        CitizensBehaviors.Result result = CitizensBehaviors.map("12", "&aToll <b>Keeper</b>", "world", json(TALKING_PATROL), json("{}"), DEFAULTS);
+        assertEquals(List.of("citizens:waypoints-12/toll-keeper-route-stops", "citizens:text-12/toll-keeper-talk", "citizens:commands-12/toll-keeper-commands"), result.behaviors());
+        assertEquals(List.of("behaviors/citizens/waypoints-12/toll-keeper-route-stops.json", "behaviors/citizens/text-12/toll-keeper-talk.json",
+                "behaviors/citizens/commands-12/toll-keeper-commands.json"), result.documents().stream().map(CitizensBehaviors.Document::path).toList());
+        for (CitizensBehaviors.Document document : result.documents()) accepted(document.content());
+        assertTrue(result.warnings().contains("/traits/commandtrait: commands stay denied until citizens:commands-12/toll-keeper-commands is on the [behaviors.actions] commandBehaviors list in config.toml"), result.warnings().toString());
+        assertTrue(result.warnings().contains("/traits/waypoints: waypoint commands stay denied until citizens:waypoints-12/toll-keeper-route-stops is on the [behaviors.actions] commandBehaviors list in config.toml"), result.warnings().toString());
+        assertTrue(result.documents().get(2).content().contains("\"commands-12-"), "flags keep their old names");
+    }
+
+    @Test void aNameWithNothingToKeepLeavesOnlyWhatTheBehaviorDoes() {
+        CitizensBehaviors.Result result = CitizensBehaviors.map("3", "&#FFAA00§l<rainbow>★★</rainbow>", "world", json(TALKING_PATROL), json("{}"), DEFAULTS);
+        assertEquals(List.of("citizens:waypoints-3/route-stops", "citizens:text-3/talk", "citizens:commands-3/commands"), result.behaviors());
+        assertEquals("behaviors/citizens/text-3/talk.json", result.documents().get(1).path());
+        assertTrue(result.warnings().stream().anyMatch((String warning) -> warning.contains("until citizens:commands-3/commands is on")), result.warnings().toString());
+    }
+
+    @Test void slugsKeepAsciiLettersAndDigitsOnly() {
+        assertEquals("toll-keeper", CitizensBehaviors.slug("&aToll <b>Keeper</b>"));
+        assertEquals("gate-warden", CitizensBehaviors.slug("&#ffAA00§LGate &XWarden"));
+        assertEquals("old-smith-3000", CitizensBehaviors.slug("  Old_Smith 3000!! "));
+        assertEquals("lmann-stra-e", CitizensBehaviors.slug("Ölmann Straße"), "only A to Z is lowercased; other letters become dashes");
+        assertEquals("stanbul", CitizensBehaviors.slug("İstanbul"), "no locale lowercasing");
+        assertEquals("12345g-a", CitizensBehaviors.slug("&#12345G a"), "a hex colour needs six hex digits");
+        assertEquals("", CitizensBehaviors.slug("&a&l"));
+        assertEquals("", CitizensBehaviors.slug(""));
+        assertEquals("a".repeat(39), CitizensBehaviors.slug("a".repeat(39) + " bcd"), "cut to 40 characters without a trailing dash");
+        assertEquals("a".repeat(40), CitizensBehaviors.slug("A".repeat(45)));
     }
 }

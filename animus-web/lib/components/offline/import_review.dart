@@ -75,6 +75,37 @@ Widget _importId(String id) => dom.p(<Widget>[
       dom.code(attributes: const <String, String>{'data-testid': 'import-id'}, <Widget>[Component.text(id)]),
     ]);
 
+/// A Citizens conversion's lines: the NPCs that did not convert and the
+/// warnings, each naming the NPC and the field.
+({List<String> notConverted, List<String> warnings}) citizensLines(CitizensReview review, Map<String, String> names, {required bool advanced}) => (
+      notConverted: <String>[
+        for (final String issue in review.issues) plainWarning(issue, names, advanced: advanced),
+      ],
+      warnings: <String>[for (final String warning in review.warnings) plainWarning(warning, names, advanced: advanced)],
+    );
+
+/// A Shopkeepers conversion's lines: notes on what was kept or not checked,
+/// and the shops that did not convert.
+({List<String> notes, List<String> notConverted}) shopsLines(ShopkeepersPreview preview, {required bool linked}) => (
+      notes: <String>[
+        if (preview.skippedOffers > 0) '${countOf(preview.skippedOffers, 'offer')} could not convert and stay in source.yml.',
+        if (preview.linksMissing > 0) '${countOf(preview.linksMissing, 'shop')} point at a Citizens NPC that is not in the save.',
+        if (!linked && preview.linksUnchecked > 0) '${countOf(preview.linksUnchecked, 'shop')} link to Citizens NPCs that were not checked.',
+      ],
+      notConverted: <String>[for (final JElement issue in (preview.summary.get('issues')! as JArray).elements) issue.asPrimitive.asString],
+    );
+
+/// A Denizen conversion's lines: notes on what was kept but not run, and
+/// the scripts that did not convert.
+({List<String> notes, List<String> notConverted}) denizenLines(DenizenFolder folder, DenizenPreview preview) => (
+      notes: <String>[
+        if (preview.preserved > 0) '${countOf(preview.preserved, 'script part')} kept but not run.',
+        if (preview.flagsPreserved > 0) '${countOf(preview.flagsPreserved, 'flag')} kept but not run.',
+        if (folder.skipped.isNotEmpty) '${countOf(folder.skipped.length, 'file')} in the folder not read.',
+      ],
+      notConverted: <String>[for (final JElement issue in (preview.report.get('issues')! as JArray).elements) issue.asPrimitive.asString],
+    );
+
 class CitizensImportReview extends StatelessWidget {
   const CitizensImportReview({required this.review, required this.names, super.key});
 
@@ -86,14 +117,11 @@ class CitizensImportReview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool advanced = ModeScope.advanced(context);
-    final List<String> notLoading = <String>[
-      for (final String issue in review.issues) advanced ? plainWarning(issue, names) : simpleIssue(plainWarning(issue, names)),
-    ];
-    final List<String> warnings = <String>[for (final String warning in review.warnings) plainWarning(warning, names)];
+    final (:List<String> notConverted, :List<String> warnings) = citizensLines(review, names, advanced: advanced);
     return stack(spacing: 16, <Widget>[
       createdParagraph(review.preview.files),
-      if (notLoading.isEmpty && warnings.isEmpty) const AppAlert(tone: AlertTone.ok, message: 'Every NPC converted, with no warnings.'),
-      if (notLoading.isNotEmpty) lineList('Not converted', notLoading, testId: 'import-not-converted'),
+      if (notConverted.isEmpty && warnings.isEmpty) const AppAlert(tone: AlertTone.ok, message: 'Every NPC converted, with no warnings.'),
+      if (notConverted.isNotEmpty) lineList('Not converted', notConverted, testId: 'import-not-converted'),
       if (warnings.isNotEmpty) lineList('Warnings', warnings, testId: 'import-warnings'),
       if (advanced) ...<Widget>[
         AppSection(title: 'Counts', open: false, children: <Widget>[
@@ -137,12 +165,7 @@ class ShopsImportReview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool advanced = ModeScope.advanced(context);
-    final List<String> issues = <String>[for (final JElement issue in (preview.summary.get('issues')! as JArray).elements) issue.asPrimitive.asString];
-    final List<String> notes = <String>[
-      if (preview.skippedOffers > 0) '${countOf(preview.skippedOffers, 'offer')} could not convert and stay in source.yml.',
-      if (preview.linksMissing > 0) '${countOf(preview.linksMissing, 'shop')} point at a Citizens NPC that is not in the save.',
-      if (!linked && preview.linksUnchecked > 0) '${countOf(preview.linksUnchecked, 'shop')} link to Citizens NPCs that were not checked.',
-    ];
+    final (:List<String> notes, notConverted: List<String> issues) = shopsLines(preview, linked: linked);
     return stack(spacing: 16, <Widget>[
       createdParagraph(preview.files),
       if (issues.isEmpty && notes.isEmpty) const AppAlert(tone: AlertTone.ok, message: 'Every shop converted.'),
@@ -176,12 +199,7 @@ class DenizenImportReview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool advanced = ModeScope.advanced(context);
-    final List<String> issues = <String>[for (final JElement issue in (preview.report.get('issues')! as JArray).elements) issue.asPrimitive.asString];
-    final List<String> notes = <String>[
-      if (preview.preserved > 0) '${countOf(preview.preserved, 'script part')} kept but not run.',
-      if (preview.flagsPreserved > 0) '${countOf(preview.flagsPreserved, 'flag')} kept but not run.',
-      if (folder.skipped.isNotEmpty) '${countOf(folder.skipped.length, 'file')} in the folder not read.',
-    ];
+    final (:List<String> notes, notConverted: List<String> issues) = denizenLines(folder, preview);
     return stack(spacing: 16, <Widget>[
       createdParagraph(preview.files),
       if (issues.isEmpty && notes.isEmpty) const AppAlert(tone: AlertTone.ok, message: 'Every script converted.'),

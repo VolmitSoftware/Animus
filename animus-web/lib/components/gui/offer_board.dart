@@ -13,12 +13,12 @@ import 'package:web/web.dart' as web;
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/shop_board.dart';
 import '../../logic/gui/shop_offers.dart';
+import '../../logic/gui/shop_words.dart';
 import '../../model/animus_document.dart';
 import '../../ui/badge.dart';
 import '../../ui/tone.dart';
 import '../mc/mc_item_icons.dart';
 import 'gui_rows.dart';
-import 'shop_offer_editor.dart' show offerKindTags;
 import 'gui_stack.dart';
 import '../../ui/stack.dart';
 
@@ -47,9 +47,6 @@ class GoodsIcon extends StatelessWidget {
     ]);
   }
 }
-
-/// Grid names as group headings.
-const Map<String, String> offerGridTitles = <String, String>{'trade': 'Trades', 'buy': 'Buying', 'sell': 'Selling'};
 
 class OfferBoard extends StatefulWidget {
   const OfferBoard({

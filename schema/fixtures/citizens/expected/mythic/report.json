@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 23,
+  "converterVersion": 24,
   "fieldPathFormat": "json-pointer",
-  "importId": "0cf5f527d391c4153ab302e5ad477d10ed4f30c159205ee4ca1d52b192bb0c9f",
+  "importId": "cd8b33d55515844c5f4d117e6a8d63054a54a005d79d13671ff9f32fc792a281",
   "sourceSha256": "79245b14cf4104d0eb987a3ddf6c3030ba5634e1c8ba9c83188fc82a9fb1340b",
   "worldMap": {
     "temple": "world"
@@ -45,7 +45,7 @@
     "citizens-0: /traits/commandtrait/commands/0/command: the MythicMobs skill cast became mythic:cast-skill, which needs MythicMobs on the server",
     "citizens-0: /traits/commandtrait/commands/1/command: the MythicMobs skill cast became mythic:cast-skill, which needs MythicMobs on the server",
     "citizens-0: /traits/commandtrait: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones",
-    "citizens-0: /traits/commandtrait: commands stay denied until citizens:commands-0 is on the [behaviors.actions] commandBehaviors list in config.toml"
+    "citizens-0: /traits/commandtrait: commands stay denied until citizens:commands-0/fire-priest-commands is on the [behaviors.actions] commandBehaviors list in config.toml"
   ],
   "remappedLocations": 1,
   "resolvedReferences": 0,
@@ -55,7 +55,7 @@
     "0": "0a1b2c3d-0000-4000-8000-000000000600"
   },
   "documents": {
-    "behaviors/citizens/commands-0.json": "bb0a9c82cc2da80f88c19cbdab1a83949b24d0421c99946330b5f14e6fd1bc0c",
-    "npcs/world/citizens-0.json": "0ea9be77ba926445c21397d1e17d7dec7607565591b5f202720ee01bef0867c6"
+    "behaviors/citizens/commands-0/fire-priest-commands.json": "13c4399316539b38b8bd006a6e5f9262e337c891aa3513dba156b2d325143689",
+    "npcs/world/citizens-0.json": "58ee9ebcf82644b356a513e0d78da94f4114f20be76e64dd2327c38e4cd060bc"
   }
 }

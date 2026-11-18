@@ -64,7 +64,7 @@ class SubKindTabs extends StatelessWidget {
 }
 
 class ListPage extends StatefulWidget {
-  const ListPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, this.sign, super.key});
+  const ListPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, this.sign, this.owner, this.players = const <String, String>{}, super.key});
 
   final EditorStore store;
   final WorkspaceSnapshot workspace;
@@ -73,6 +73,12 @@ class ListPage extends StatefulWidget {
 
   /// Signs a new skin through the paired server; null when none is paired.
   final SkinSigner? sign;
+
+  /// The paired player's UUID, the owner New offers first.
+  final String? owner;
+
+  /// Names of the players the paired server knows, by UUID.
+  final Map<String, String> players;
 
   @override
   State<ListPage> createState() => _ListPageState();
@@ -163,6 +169,8 @@ class _ListPageState extends State<ListPage> with LibraryWatch<ListPage> {
           kind: kind,
           onNavigate: onNavigate,
           sign: component.sign,
+          owner: component.owner,
+          players: component.players,
           onClose: () => setState(() => _newOpen = false),
         ),
     ]);

@@ -71,7 +71,7 @@ abstract final class Docs {
   static const DocLink shops = DocLink('10-shops', 'shop-fields');
   static const DocLink quests = DocLink('38-quests', 'quest-fields');
   static const DocLink shopEntries = DocLink('10-shops', 'entry-fields');
-  static const DocLink containerShops = DocLink('10-shops', 'container-shops');
+  static const DocLink chestShops = DocLink('10-shops', 'chest-shops');
   static const DocLink playerShops = DocLink('10-shops', 'player-shops');
   static const DocLink dtlTraders = DocLink('10-shops', 'importing-from-dtltraders');
 

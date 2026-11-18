@@ -10,10 +10,12 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 
 import '../../config/docs_links.dart';
+import '../../logic/diagnostic_text.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/item_components.dart';
 import '../../logic/gui/shop_board.dart';
 import '../../logic/gui/shop_entries.dart';
+import '../../logic/gui/shop_words.dart';
 import '../../logic/suggest/completion_sources.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../logic/suggest/field_profiles.dart';
@@ -21,6 +23,7 @@ import '../../model/animus_document.dart';
 import '../../ui/advanced_in_use.dart';
 import '../../ui/action_row.dart';
 import '../../ui/icon_button.dart';
+import '../../ui/info_tip.dart' show DocsScope;
 import '../../ui/alert.dart';
 import '../../ui/mode.dart';
 import '../../ui/section.dart';
@@ -34,21 +37,6 @@ import '../../ui/field.dart';
 import '../../ui/number_input.dart';
 import 'gui_stack.dart';
 import '../../ui/stack.dart';
-
-/// Offer kinds by plain name.
-const Map<String, String> offerKindLabels = <String, String>{
-  'trade': 'Trade (items for items)',
-  'buy': 'Buy (player pays money)',
-  'sell': 'Sell (shop pays money)',
-  'command': 'Command (runs commands)',
-  'static': 'Decoration',
-};
-
-/// Kinds in a sentence, for "Add ..." entries.
-const Map<String, String> offerKindNouns = <String, String>{'trade': 'trade', 'buy': 'buy offer', 'sell': 'sell offer', 'command': 'command offer', 'static': 'decoration'};
-
-/// Short names for the board's kind tag.
-const Map<String, String> offerKindTags = <String, String>{'trade': 'Trade', 'buy': 'Buy', 'sell': 'Sell', 'command': 'Command', 'static': 'Decoration'};
 
 /// Writes [value] at [steps] of the shop; edits sharing [coalesce] undo
 /// together.
@@ -253,12 +241,15 @@ class _ShopOfferEditorState extends State<ShopOfferEditor> {
     // stay on screen while the entry still has them.
     final bool copies = type == 'trade' && (isBookShop(shop) || _entry.containsKey('book'));
     final int hidden = advanced ? 0 : offerAdvancedInUse(_entry);
-    return dom.div(attributes: <String, String>{'data-path': _path}, <Widget>[stack(spacing: 16, <Widget>[
+    // The offer's tips link the page's entry fields, not the shop's own.
+    return DocsScope(link: Docs.shopEntries, child: dom.div(attributes: <String, String>{'data-path': _path}, <Widget>[stack(spacing: 16, <Widget>[
       for (final Diagnostic problem in _at(_path)) AppAlert(tone: problem.severity == DiagnosticSeverity.error ? AlertTone.error : AlertTone.warning, message: problem.message),
       Field(
         label: 'Kind',
         forId: '${guiPathId(_path)}-kind',
-        tip: 'Changing it keeps the fields both kinds share and moves the offer to that kind\'s mode.',
+        tip: container
+            ? 'A chest shop trades items for items, so it has trades and decorations only.'
+            : 'Changing it keeps the fields both kinds share and moves the offer to that kind\'s mode.',
         problems: _at(childPath(_path, 'type')),
         child: AnimusSelect.values(
           id: '${guiPathId(_path)}-kind',
@@ -285,7 +276,7 @@ class _ShopOfferEditorState extends State<ShopOfferEditor> {
         _placement(),
         if (type != 'static') _rules(type, container),
       ],
-    ])]);
+    ])]));
   }
 
   Widget _book() => _row(
@@ -298,7 +289,7 @@ class _ShopOfferEditorState extends State<ShopOfferEditor> {
           onChanged: (String v) => _set('book', v.isEmpty ? null : v),
           profile: FieldProfile.none,
         ),
-        tip: 'The title of the written book this trade copies out of the chest. The player gets the copy.',
+        tip: 'The title of a written book in the chest. Each copy uses up a book and quill from the chest.',
         docs: Docs.playerShops,
       );
 
@@ -425,7 +416,7 @@ class _ShopOfferEditorState extends State<ShopOfferEditor> {
         CountStepper(value: asInt(one['amount']), label: '$name amount', max: 2304, onChanged: (int? amount) => put(<String, Object?>{...one, 'amount': amount ?? 1})),
       ]),
       body: stack(<Widget>[
-        for (final Diagnostic problem in problems) AppAlert(tone: problem.severity == DiagnosticSeverity.error ? AlertTone.error : AlertTone.warning, message: problem.message),
+        for (final Diagnostic problem in problems) AppAlert(tone: problem.severity == DiagnosticSeverity.error ? AlertTone.error : AlertTone.warning, message: diagnosticSentence(problem)),
         if (advanced) _details(item, name, (JsonMap next) => put(<String, Object?>{...one, 'item': next})),
       ]),
     );

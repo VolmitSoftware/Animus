@@ -124,13 +124,13 @@ class CitizensDropInTest {
             assertEquals(CitizensDropIn.Phase.STAGED, flow.progress().phase());
 
             List<String> applied = flow.applyStaged();
-            assertEquals("Next: /animus import citizens review lists what converted; /animus import citizens rollback undoes the import", applied.getLast(), joined(applied));
+            assertEquals("Next: see what converted with /animus import citizens review; undo the import with /animus import citizens rollback", applied.getLast(), joined(applied));
             assertEquals(1, applied.stream().filter((String line) -> line.startsWith("Next: ")).count(), joined(applied));
             assertEquals(CitizensDropIn.Phase.DONE, flow.progress().phase(), "apply leaves nothing to turn on");
             assertTrue(flow.startupNotice().isEmpty());
 
             List<String> review = flow.reviewApplied();
-            assertEquals("/animus import citizens rollback undoes the import", review.getLast(), joined(review));
+            assertEquals("Undo the import with /animus import citizens rollback", review.getLast(), joined(review));
             for (List<String> reply : List.of(staged, applied, review))
                 for (String line : reply) assertFalse(line.toLowerCase(java.util.Locale.ROOT).startsWith("next ") || line.contains("; next "), line);
         }
@@ -226,6 +226,7 @@ class CitizensDropInTest {
             assertNull(store.read("npcs/world/citizens-1.json"));
             assertNull(store.read("shops/dtltraders/bakery.json"));
             assertFalse(Files.exists(store.resolve("schematics/hut.schem")));
+            assertFalse(Files.exists(store.resolve("npcs/world")) || Files.exists(store.resolve("shops/dtltraders")), "rollback leaves no empty folders behind");
 
             flow.applyStaged();
             assertEquals(3, npcs.all().size());
@@ -470,14 +471,14 @@ class CitizensDropInTest {
             String staged = previewed(flow, "reject", Optional.empty(), Map.of(), false);
             assertTrue(staged.contains("Converted: 1 patrol routes (2 waypoints, 0 guide points), look-close on 1 NPCs, 1 text and 1 command behaviors"), staged);
             assertTrue(staged.contains("Kept, not converted: nothing"), staged);
-            assertTrue(staged.contains("Commands: 1 imported behaviors and shops run commands as they did before (such as citizens:commands-5); apply allows citizens in [behaviors.actions] commandNamespaces"), staged);
+            assertTrue(staged.contains("Commands: 1 imported behaviors and shops run commands as they did before (such as citizens:commands-5/watchman-commands); apply allows citizens in [behaviors.actions] commandNamespaces"), staged);
 
             String applied = joined(flow.applyStaged());
             assertTrue(applied.contains("Text and command behaviors in behaviors/citizens/ run now"), applied);
-            assertNotNull(store.read("behaviors/citizens/text-5.json"));
-            assertNotNull(store.read("behaviors/citizens/commands-5.json"));
+            assertNotNull(store.read("behaviors/citizens/text-5/watchman-talk.json"));
+            assertNotNull(store.read("behaviors/citizens/commands-5/watchman-commands.json"));
             NpcDefinition watchman = npcs.find("citizens-5").orElseThrow();
-            assertEquals(List.of("citizens:text-5", "citizens:commands-5"), List.of(watchman.json().getAsJsonArray("behaviors").get(0).getAsString(), watchman.json().getAsJsonArray("behaviors").get(1).getAsString()));
+            assertEquals(List.of("citizens:text-5/watchman-talk", "citizens:commands-5/watchman-commands"), List.of(watchman.json().getAsJsonArray("behaviors").get(0).getAsString(), watchman.json().getAsJsonArray("behaviors").get(1).getAsString()));
             assertTrue(watchman.spawned());
             JsonObject modules = watchman.json().getAsJsonObject("modules");
             JsonObject navigation = modules.getAsJsonObject("animus:navigation");
@@ -490,8 +491,8 @@ class CitizensDropInTest {
 
             flow.rollbackApplied();
             assertTrue(npcs.all().isEmpty());
-            assertNull(store.read("behaviors/citizens/text-5.json"));
-            assertNull(store.read("behaviors/citizens/commands-5.json"));
+            assertNull(store.read("behaviors/citizens/text-5/watchman-talk.json"));
+            assertNull(store.read("behaviors/citizens/commands-5/watchman-commands.json"));
         }
     }
 
@@ -565,7 +566,7 @@ class CitizensDropInTest {
             admin.citizens(CitizensDropIn::rollbackApplied);
             CatalogChange rolledBack = reloads.stream().filter(CatalogChange::rollback).findFirst().orElseThrow();
             assertTrue(rolledBack.kinds().containsAll(Set.of(DocumentKind.SHOP, DocumentKind.BEHAVIOR)), rolledBack.toString());
-            assertEquals(Set.of("citizens:text-5", "citizens:commands-5"), rolledBack.removedBehaviors());
+            assertEquals(Set.of("citizens:text-5/watchman-talk", "citizens:commands-5/watchman-commands"), rolledBack.removedBehaviors());
         }
     }
 }

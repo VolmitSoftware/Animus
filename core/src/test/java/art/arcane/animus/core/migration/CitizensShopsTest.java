@@ -165,10 +165,10 @@ class CitizensShopsTest {
             assertEquals(json("{\"killable\":true,\"death\":{\"drops\":[{\"item\":{\"id\":\"minecraft:emerald\",\"count\":3},\"chance\":0.5},{\"item\":{\"id\":\"minecraft:bone\",\"count\":1}}]}}"), modules.get("animus:health"));
             JsonObject keeper = json(store.read("npcs/world/citizens-2.json")).getAsJsonObject("modules");
             assertFalse(keeper.has("animus:shop"), "a right-click shop name that names no shop opens nothing");
-            String commands = store.read("behaviors/citizens/commands-2.json");
+            String commands = store.read("behaviors/citizens/commands-2/keeper-commands.json");
             assertNotNull(commands, "the CitizensCMD commands make the NPC's command behavior");
             assertTrue(commands.contains("heal {player_name}") && commands.contains("citizenscmd-2-cooldown"), commands);
-            assertTrue(store.read("behaviors/citizens/commands-1.json").contains("animus:charge"));
+            assertTrue(store.read("behaviors/citizens/commands-1/smith-commands.json").contains("animus:charge"));
 
             assertTrue(CommandAllowList.allowed(CommandAllowList.read(store)).contains("citizens"), "apply lets the charged commands run");
             flow.rollbackApplied();

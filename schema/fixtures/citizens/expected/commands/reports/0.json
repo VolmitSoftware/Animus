@@ -8,7 +8,7 @@
     "/traits/commandtrait/commands/9/command: acts on NPC 12, not this one; not converted",
     "/traits/commandtrait/temporaryPermissions/2: not a node is not a permission node; not granted",
     "/traits/commandtrait: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones",
-    "/traits/commandtrait: commands stay denied until citizens:commands-0 is on the [behaviors.actions] commandBehaviors list in config.toml"
+    "/traits/commandtrait: commands stay denied until citizens:commands-0/harbor-herald-commands is on the [behaviors.actions] commandBehaviors list in config.toml"
   ],
   "fieldPathFormat": "json-pointer",
   "fields": {

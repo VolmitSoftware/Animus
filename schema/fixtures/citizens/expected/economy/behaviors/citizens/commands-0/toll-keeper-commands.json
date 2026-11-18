@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "revision": 1,
-  "id": "citizens:commands-0",
+  "id": "citizens:commands-0/toll-keeper-commands",
   "entry": "right",
   "routines": {
     "right": {

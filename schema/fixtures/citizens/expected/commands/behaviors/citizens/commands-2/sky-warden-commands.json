@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "revision": 1,
-  "id": "citizens:commands-2",
+  "id": "citizens:commands-2/sky-warden-commands",
   "entry": "click",
   "routines": {
     "click": {

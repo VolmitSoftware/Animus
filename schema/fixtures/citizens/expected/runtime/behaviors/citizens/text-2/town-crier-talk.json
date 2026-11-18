@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "revision": 1,
-  "id": "citizens:text-2",
+  "id": "citizens:text-2/town-crier-talk",
   "entry": "main",
   "routines": {
     "main": {

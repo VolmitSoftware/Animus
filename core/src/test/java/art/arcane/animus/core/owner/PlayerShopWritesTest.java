@@ -86,12 +86,12 @@ class PlayerShopWritesTest {
     @Test void aPlayerShopCannotRunCommandsOrAskForMoney() {
         String commands = shop(ALEX, CHEST).replace("[{\"name\":\"Offers\"}]", "[{\"name\":\"Offers\",\"trade\":{\"0\":{\"id\":\"t\",\"type\":\"trade\",\"item\":{\"id\":\"minecraft:diamond\"},"
                 + "\"needs\":[{\"item\":{\"id\":\"minecraft:emerald\"}}],\"gives\":[{\"item\":{\"id\":\"minecraft:diamond\"}}],\"commands\":[{\"command\":\"op {player}\"}]}}}]");
-        assertEquals("$.pages[0].trade.0.commands: a container shop trades items for items; remove the commands", refused(ALEX, PATH, commands));
+        assertEquals("$.pages[0].trade.0.commands: a chest shop trades items for items; remove the commands", refused(ALEX, PATH, commands));
         String money = shop(ALEX, CHEST).replace("[{\"name\":\"Offers\"}]", "[{\"name\":\"Offers\",\"trade\":{\"0\":{\"id\":\"t\",\"type\":\"trade\",\"item\":{\"id\":\"minecraft:diamond\"},"
                 + "\"price\":5,\"needs\":[{\"item\":{\"id\":\"minecraft:emerald\"}}],\"gives\":[{\"item\":{\"id\":\"minecraft:diamond\"}}]}}}]");
-        assertEquals("$.pages[0].trade.0.price: a container shop trades items for items; remove the price", refused(ALEX, PATH, money));
+        assertEquals("$.pages[0].trade.0.price: a chest shop trades items for items; remove the price", refused(ALEX, PATH, money));
         String buying = shop(ALEX, CHEST).replace("[{\"name\":\"Offers\"}]", "[{\"name\":\"Offers\",\"buy\":{\"0\":{\"id\":\"b\",\"type\":\"buy\",\"item\":{\"id\":\"minecraft:diamond\"},\"price\":0}}}]");
-        assertEquals("$.pages[0].buy.0.type: a container shop has only trade and static entries", refused(ALEX, PATH, buying));
+        assertEquals("$.pages[0].buy.0.type: a chest shop has only trade and static entries", refused(ALEX, PATH, buying));
     }
 
     @Test void otherDocumentsStayAnAdminsAsBefore() {

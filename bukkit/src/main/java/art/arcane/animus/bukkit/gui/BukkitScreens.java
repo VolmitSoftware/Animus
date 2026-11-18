@@ -125,7 +125,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         }
         teleportAsync = async; entityScheduler = scheduler; entityExecute = execute;
         RegionFlags.Binding regions = RegionFlags.bind(server);
-        if (regions != null && regions.failure().isPresent()) logger.warning(regions.describe("container shops stay closed"));
+        if (regions != null && regions.failure().isPresent()) logger.warning(regions.describe("chest shops stay closed"));
         merchants = new BukkitMerchants(server, later, () -> manager);
         prompts = new BukkitPrompts(later);
         stocks = new BukkitShopStock(server, regions == null ? (UUID owner, Location at) -> true : new RegionContainerAccess(regions.flags()));

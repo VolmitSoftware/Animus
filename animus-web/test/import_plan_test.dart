@@ -68,10 +68,6 @@ void main() {
       expect(importNoun(DocumentKind.shop), 'shop');
     });
 
-    test('a not-converted line for Simple keeps the record and drops the field paths', () {
-      expect(simpleIssue(r'NPC #15 (Not Sentinel): $.position.world: expected nonblank string; $.position.x: expected finite coordinate'), 'NPC #15 (Not Sentinel)');
-      expect(simpleIssue('NPC #9: the save has no world'), 'NPC #9: the save has no world');
-    });
   });
 
   group('server import', () {
@@ -107,6 +103,26 @@ void main() {
         serverIssues(review('staged', citizens: <String, Object?>{'issues': <Object?>['one']}, shops: <String, Object?>{'issues': <Object?>['two']})),
         <String>['one', 'two'],
       );
+    });
+  });
+  group('result', () {
+    test('should keep every warning of each conversion, naming the source when there are several', () {
+      final List<String> one = resultWarnings(<(String, List<String>)>[('Citizens', <String>['NPC #0 (Toll Keeper), dropstrait trait: Not an item; not converted'])]);
+      expect(one, <String>['NPC #0 (Toll Keeper), dropstrait trait: Not an item; not converted']);
+      final List<String> two = resultWarnings(<(String, List<String>)>[
+        ('Citizens', <String>['NPC #0 (Toll Keeper), dropstrait trait: Not an item; not converted']),
+        ('Shopkeepers', <String>['1 offer could not convert and stays in source.yml.']),
+        ('Denizen', const <String>[]),
+      ]);
+      expect(two, <String>[
+        'Citizens: NPC #0 (Toll Keeper), dropstrait trait: Not an item; not converted',
+        'Shopkeepers: 1 offer could not convert and stays in source.yml.',
+      ]);
+    });
+
+    test('should say that the result opens as a new workspace and name it', () {
+      expect(newWorkspaceLine('Citizens import', paired: true), 'Send to server and Open as workspace both make a new workspace, Citizens import.');
+      expect(newWorkspaceLine('Citizens import', paired: false), 'Open as workspace makes a new workspace, Citizens import.');
     });
   });
 }

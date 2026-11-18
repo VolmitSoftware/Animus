@@ -7,6 +7,9 @@
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
+import 'package:jaspr/dom.dart' as dom;
+
+import '../../config/docs_links.dart';
 
 import '../../logic/diagnostic_text.dart';
 import '../../logic/gui/gui_json.dart';
@@ -14,6 +17,8 @@ import '../../logic/gui/shop_board.dart';
 import '../../logic/gui/shop_checks.dart';
 import '../../logic/gui/shop_entries.dart';
 import '../../logic/gui/shop_layout.dart';
+import '../../logic/gui/shop_words.dart';
+import '../../logic/suggest/completion_sources.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../../ui/action_row.dart';
@@ -22,7 +27,9 @@ import '../../ui/confirm_dialog.dart';
 import '../../ui/mode.dart';
 import '../../ui/tabs.dart';
 import '../conversation/conversation_attach.dart' show ConversationCommit;
+import '../info_tip.dart' show withTip;
 import '../mc/item_picker.dart';
+import '../suggest/suggest_scope.dart';
 import '../../ui/menu.dart';
 import 'gui_fields.dart' show JsonEdit;
 import 'gui_split.dart';
@@ -39,9 +46,26 @@ Map<String, JsonMap> workspaceLayouts(Iterable<AnimusDocument> documents) => <St
         if (document.kind == DocumentKind.inventory && document.json is Map<String, Object?>) document.id: asMap(document.json),
     };
 
+List<String>? _listedServer;
+List<String>? _listedBundled;
+ItemList? _listed;
+
+/// The item list shop item ids are checked against: the paired server's
+/// when it sent one, else the bundled Minecraft list once it has loaded.
+ItemList? shopItemList(ServerLookups? lookups) {
+  final List<String>? server = lookups?.registries[RegistryKind.item];
+  final List<String> bundled = ItemRegistry.ids;
+  if (!identical(server, _listedServer) || !identical(bundled, _listedBundled)) {
+    _listedServer = server;
+    _listedBundled = bundled;
+    _listed = itemsKnown(server: server, bundled: bundled.isEmpty ? null : bundled.toSet());
+  }
+  return _listed;
+}
+
 /// Every diagnostic the shop page shows: the document's own, then the
 /// offer checks and the notes for each window the shop opens in.
-List<Diagnostic> shopEditorDiagnostics(AnimusDocument document, {List<AnimusDocument> workspace = const <AnimusDocument>[], bool Function(String id)? knownItem}) {
+List<Diagnostic> shopEditorDiagnostics(AnimusDocument document, {List<AnimusDocument> workspace = const <AnimusDocument>[], ItemList? knownItem}) {
   final JsonMap shop = asMap(document.json);
   final Map<String, JsonMap> layouts = workspaceLayouts(workspace);
   final Set<String> styles = <String>{
@@ -71,11 +95,16 @@ class ShopEditor extends StatefulWidget {
     this.workspaceDocuments = const <AnimusDocument>[],
     this.onCommit,
     this.onOpen,
+    this.lookups,
     super.key,
   });
 
   final AnimusDocument document;
   final JsonEdit onJson;
+
+  /// The paired server's lists, whose item list item ids are checked
+  /// against.
+  final ServerLookups? lookups;
 
   /// The workspace, for layout GUIs and the NPCs that open the shop.
   final List<AnimusDocument> workspaceDocuments;
@@ -140,13 +169,14 @@ class _ShopEditorState extends State<ShopEditor> {
   Widget build(BuildContext context) {
     final JsonMap shop = _shop;
     final bool advanced = ModeScope.advanced(context);
-    final List<Diagnostic> all = shopEditorDiagnostics(component.document, workspace: component.workspaceDocuments, knownItem: ItemRegistry.ids.isEmpty ? null : ItemRegistry.has);
+    final List<Diagnostic> all = shopEditorDiagnostics(component.document, workspace: component.workspaceDocuments, knownItem: shopItemList(component.lookups));
     final OfferRef? selected = _selected != null && boardOfferAt(shop, _selected!) != null ? _selected : null;
     final Map<String, JsonMap> layouts = workspaceLayouts(component.workspaceDocuments);
     final int settingsErrors = all.where((Diagnostic d) => d.severity == DiagnosticSeverity.error && ShopSettings.shows(d.path)).length;
     return GuiSplit(
       label: 'Shop',
       form: <Widget>[
+        if (isContainerShop(shop)) _chestLine(shop),
         AppTabs(
           label: 'Shop',
           tabs: <String>['Offers', settingsErrors == 0 ? 'Settings' : 'Settings ($settingsErrors)'],
@@ -178,6 +208,21 @@ class _ShopEditorState extends State<ShopEditor> {
         }),
       ),
     );
+  }
+
+  /// What makes this a chest shop, on both tabs: whose chests it trades
+  /// from, and why its offers trade items for items.
+  Widget _chestLine(JsonMap shop) {
+    final String name = shopOwnerName(shop, SuggestScope.sourcesOf(context).players);
+    final String owner = name == unknownShopOwner ? 'its owner' : name;
+    final int chests = asList(shop['containers']).length;
+    return dom.div(attributes: const <String, String>{'data-testid': 'shop-chest-line'}, <Widget>[
+      withTip(
+        mutedText("Chest shop: trades from $owner's ${chests == 1 ? 'chest' : '$chests chests'}."),
+        'Stock comes out of the chests and earnings go into them, so offers trade items for items.',
+        docs: Docs.chestShops,
+      ),
+    ]);
   }
 
   Widget _offers(JsonMap shop, List<Diagnostic> all, OfferRef? selected, bool advanced) {

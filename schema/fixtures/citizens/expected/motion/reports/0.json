@@ -3,7 +3,7 @@
   "presentationWarnings": [],
   "runtimeWarnings": [
     "/traits/waypoints/linear/points/2/triggers/0/animations/2: the START_ELYTRA animation has no Animus animation; left out",
-    "/traits/waypoints: waypoint commands stay denied until citizens:waypoints-0 is on the [behaviors.actions] commandBehaviors list in config.toml"
+    "/traits/waypoints: waypoint commands stay denied until citizens:waypoints-0/ferryman-route-stops is on the [behaviors.actions] commandBehaviors list in config.toml"
   ],
   "fieldPathFormat": "json-pointer",
   "fields": {

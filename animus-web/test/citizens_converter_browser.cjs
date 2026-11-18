@@ -29,7 +29,7 @@ const worlds = (process.env.CITIZENS_WORLDS || '').split(';').map(pair => pair.t
 const shots = process.env.ANIMUS_SCREENSHOTS;
 
 async function run(browser, viewport, label, theme) {
-  const context = await browser.newContext({viewport});
+  const context = await browser.newContext({viewport, permissions: ['clipboard-read', 'clipboard-write']});
   await context.addInitScript((mode) => {
     window.localStorage.setItem('animus.theme', mode);
     window.localStorage.setItem('animus.mode', 'advanced');
@@ -104,6 +104,26 @@ async function run(browser, viewport, label, theme) {
   await page.getByRole('button', {name: 'Download Denizen bundle'}).click();
   assert.match((await denizenDownload).suggestedFilename(), /^animus-denizen-import-[0-9a-f]{12}\.zip$/);
   result.denizen = denizenResult;
+  // The warnings stay on Result, each naming the NPC and the field, and copy as text.
+  if (result.warnings > 0) {
+    const kept = page.getByTestId('import-result-warnings');
+    await kept.waitFor();
+    // A long list starts closed, as on Review.
+    const details = kept.locator('details').first();
+    if (!(await details.evaluate(element => element.open))) await details.locator(':scope > summary').click();
+    await kept.getByRole('listitem').first().waitFor();
+    const lines = await kept.getByRole('listitem').allInnerTexts();
+    // Lines name their source only when more than one conversion has warnings.
+    const citizens = lines.filter(line => /^(Citizens: )?NPC #/.test(line));
+    assert.ok(citizens.length > 0, `${label}: Result keeps the Citizens warnings: ${JSON.stringify(lines.slice(0, 4))}`);
+    // A warning about a field names it after the NPC, never as a raw pointer or JSON path.
+    assert.ok(citizens.some(line => /^(Citizens: )?NPC #\d+( \([^)]*\))?, [A-Za-z][^:]*: /.test(line)), `${label}: warnings name their field`);
+    assert.deepEqual(citizens.filter(line => /^(Citizens: )?NPC #\d+( \([^)]*\))?: (\/|\$\.)/.test(line)), [], `${label}: no warning leads with a raw pointer or path`);
+    await page.getByRole('button', {name: 'Copy warnings'}).click();
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    assert.equal(copied.split('\n').length, lines.filter(line => !/more in report\.json$/.test(line)).length, `${label}: Copy warnings copies every line`);
+  }
+  assert.equal((await page.locator('#animus-import-why').innerText()).trim(), 'Open as workspace makes a new workspace, Citizens, Denizen import.', `${label}: Result names the workspace it makes`);
   // The page must not scroll sideways at this width.
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${label}: horizontal overflow`);
   if (shots) {

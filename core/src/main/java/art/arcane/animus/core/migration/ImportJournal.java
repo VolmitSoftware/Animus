@@ -73,7 +73,7 @@ final class ImportJournal {
                 state.add(UNDOING, undoing);
                 write(state);
             }
-            try { store.commit(inverse, store.inverse(transaction)); }
+            try { store.commitUndo(inverse, store.inverse(transaction)); }
             catch (IOException | RuntimeException failure) {
                 if (!committed(inverse)) {
                     undoing.remove(transaction);

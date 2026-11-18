@@ -28,6 +28,18 @@ class DocumentStoreTest {
             assertNull(store.read("skins/a.json"));
         }
     }
+    /** A rollback removes the folders it empties below the top-level folder; a folder that still holds a file stays. */
+    @Test void rollbackRemovesTheFoldersItLeavesEmpty() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            store.commit(List.of(new DocumentStore.Change("npcs/town/keep.json", "missing", "{}")));
+            String tx = store.commit(List.of(new DocumentStore.Change("behaviors/citizens/commands-0/herald-commands.json", "missing", "{}"),
+                    new DocumentStore.Change("npcs/town/gone.json", "missing", "{}")));
+            store.rollback(tx);
+            assertFalse(Files.exists(root.resolve("behaviors/citizens")), "the folders the transaction made are gone");
+            assertTrue(Files.isDirectory(root.resolve("behaviors")), "the top-level folder stays");
+            assertTrue(Files.exists(root.resolve("npcs/town/keep.json")), "a folder that still holds a file stays");
+        }
+    }
     @Test void questDocumentsAreWritableAndRollBack() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             String tx = store.commit(List.of(new DocumentStore.Change("quests/town/bread.json", "missing", "{\"id\":\"town:bread\"}")));

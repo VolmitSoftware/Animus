@@ -17,6 +17,7 @@ import '../../logic/gui/shop_board.dart';
 import '../../logic/gui/shop_checks.dart';
 import '../../logic/gui/shop_layout.dart';
 import '../../logic/gui/shop_offers.dart';
+import '../../logic/gui/shop_words.dart';
 import '../../model/animus_document.dart';
 import 'chest_window.dart';
 import '../../ui/stage_frame.dart';
@@ -27,8 +28,6 @@ import '../../ui/menu.dart';
 import 'merchant_window.dart';
 import '../select/animus_select.dart';
 import 'gui_stack.dart';
-
-const Map<String, String> _modeLabels = <String, String>{'buy': 'Buy', 'sell': 'Sell', 'trade': 'Trade'};
 
 class ShopPreviews extends StatefulWidget {
   const ShopPreviews({required this.document, this.layouts = const <String, JsonMap>{}, this.selected, this.onSelect, this.band = false, super.key});
@@ -116,7 +115,7 @@ class _ShopPreviewsState extends State<ShopPreviews> {
     final String where = style == 'native' ? 'Players get the trading screen.' : 'Players get the chest window.';
     // The shop's own modes, in the header, when the chest window draws them.
     final JsonMap? gui = window == 'native' ? null : _layoutGui;
-    final List<String> modes = window == 'native' || gui != null ? const <String>[] : enabledShopModes(shop);
+    final List<String> modes = window == 'native' || gui != null ? const <String>[] : shownShopModes(shop);
     final String mode = modes.isEmpty ? '' : _shownMode(shop, modes);
     final JsonList pages = window == 'native' || gui != null ? const <Object?>[] : asList(shop['pages']);
     final int page = pages.isEmpty ? 0 : _page.clamp(0, pages.length - 1);
@@ -142,7 +141,7 @@ class _ShopPreviewsState extends State<ShopPreviews> {
         if (modes.length > 1)
           ToggleChoice<String>(
             label: 'Mode shown',
-            options: <ChoiceOption<String>>[for (final String one in modes) ChoiceOption<String>(one, _modeLabels[one] ?? one)],
+            options: <ChoiceOption<String>>[for (final String one in modes) ChoiceOption<String>(one, shopModeLabels[one] ?? one)],
             value: mode,
             onChanged: (String next) => setState(() => _mode = next),
           ),

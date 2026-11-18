@@ -1,11 +1,13 @@
-/// The starting points the New shop step offers: an empty page, villager
-/// style item trades, a money shop and a command shop.
+/// The starting points the New shop step offers: an empty page, a chest
+/// shop a player runs, villager style item trades, a money shop and a
+/// command shop.
 library;
 
 import 'gui_json.dart';
 
 enum ShopTemplate {
   blank('Blank', 'One empty page. Add offers in the editor.'),
+  chest('Chest shop', "Trades from a player's chest, as shops made in game do."),
   villager('Villager trades', 'Emeralds for goods, shown on the trading screen.'),
   money('Money shop', 'Buy and sell for money. Needs Vault and an economy plugin.'),
   command('Command shop', 'Sells commands, such as a rank. Needs the command allow-list.');
@@ -16,12 +18,30 @@ enum ShopTemplate {
   final String description;
 }
 
+/// What a chest shop starts from: its owner (UUID, and the name the server
+/// knows when it knows one), the chest that holds its stock and its kind.
+class ChestShopSeed {
+  const ChestShopSeed({required this.owner, required this.world, required this.x, required this.y, required this.z, required this.kind, this.ownerName});
+
+  final String owner;
+  final String? ownerName;
+  final String world;
+  final int x;
+  final int y;
+  final int z;
+
+  /// `selling`, `buying`, `trading` or `book`.
+  final String kind;
+}
+
 JsonMap _item(String id, [int? count]) => <String, Object?>{'id': id, 'count': ?count};
 
 JsonMap _goods(String id, int amount) => <String, Object?>{'item': _item(id), 'amount': amount};
 
-/// A new shop with [id] from [template], titled [title] when given.
-JsonMap shopFromTemplate(ShopTemplate template, String id, {String? title}) {
+/// A new shop with [id] from [template], titled [title] when given. A
+/// chest shop is made from [chest] as `/animus shop create` makes one: the
+/// trading screen, trades only, the owner, the chest and the kind.
+JsonMap shopFromTemplate(ShopTemplate template, String id, {String? title, ChestShopSeed? chest}) {
   final String? named = title == null || title.trim().isEmpty ? null : title.trim();
   final JsonMap base = <String, Object?>{'schemaVersion': 1, 'revision': 1, 'id': id};
   switch (template) {
@@ -30,6 +50,20 @@ JsonMap shopFromTemplate(ShopTemplate template, String id, {String? title}) {
         ...base,
         'title': named ?? '&6Shop',
         'pages': <Object?>[<String, Object?>{'name': 'Page 1', 'rows': 3}],
+      };
+    case ShopTemplate.chest:
+      final ChestShopSeed seed = chest ?? (throw ArgumentError('A chest shop needs its owner, chest and kind.'));
+      final String? owner = seed.ownerName == null || seed.ownerName!.trim().isEmpty ? null : seed.ownerName!.trim();
+      return <String, Object?>{
+        ...base,
+        'title': named ?? (owner == null ? 'Shop' : "$owner's shop"),
+        'style': 'native',
+        'modes': <Object?>['trade'],
+        'defaultMode': 'trade',
+        'kind': seed.kind,
+        'owner': <String, Object?>{'uuid': seed.owner, 'name': ?owner},
+        'containers': <Object?>[<String, Object?>{'world': seed.world, 'x': seed.x, 'y': seed.y, 'z': seed.z}],
+        'pages': <Object?>[<String, Object?>{'name': 'Offers', 'rows': 3}],
       };
     case ShopTemplate.villager:
       return <String, Object?>{

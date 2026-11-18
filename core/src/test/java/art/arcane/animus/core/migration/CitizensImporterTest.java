@@ -230,4 +230,13 @@ class CitizensImporterTest {
         assertEquals(CitizensImporter.CONVERTER_VERSION, fresh.summary().get("converterVersion").getAsInt());
         try (DocumentStore store = new DocumentStore(out)) { importer.apply(store, v1Id); }
     }
+
+    @Test void generatedBehaviorPathsAreNamedAfterTheNpcAndFlatOnesOfEarlierImportsStayValid() {
+        for (String path : java.util.List.of("behaviors/citizens/text-5/watchman-talk.json", "behaviors/citizens/commands-5/commands.json",
+                "behaviors/citizens/waypoints-0/gate-patrol-route-stops.json", "behaviors/citizens/text-5.json", "behaviors/citizens/builder-20.json"))
+            assertTrue(path.matches(CitizensImporter.BEHAVIOR_PATH) && path.matches(CitizensImporter.BUNDLE_PATH), path);
+        for (String path : java.util.List.of("behaviors/citizens/builder-20/mason.json", "behaviors/citizens/text-5/../x.json", "behaviors/citizens/text-5/-talk.json",
+                "behaviors/citizens/text-5/a/b.json", "behaviors/citizens/text-x/talk.json"))
+            assertFalse(path.matches(CitizensImporter.BEHAVIOR_PATH) || path.matches(CitizensImporter.BUNDLE_PATH), path);
+    }
 }

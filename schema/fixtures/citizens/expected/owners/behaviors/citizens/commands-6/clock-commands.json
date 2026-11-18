@@ -1,14 +1,16 @@
 {
   "schemaVersion": 1,
   "revision": 1,
-  "id": "citizens:commands-24",
+  "id": "citizens:commands-6/clock-commands",
   "entry": "right",
   "routines": {
     "right": {
       "type": "action",
-      "capability": "animus:say",
+      "capability": "animus:command",
       "arguments": {
-        "text": "Hear ye"
+        "command": "time set day",
+        "as": "player",
+        "asOperator": true
       }
     }
   },

@@ -79,6 +79,19 @@ List<String> enabledShopModes(JsonMap shop) {
   return modes.isEmpty ? shopModes : modes;
 }
 
+/// The modes a window offers: the enabled ones, but in a chest shop, which
+/// trades items for items, only trades and modes that still hold offers.
+List<String> shownShopModes(JsonMap shop) {
+  final List<String> enabled = enabledShopModes(shop);
+  if (!isContainerShop(shop)) return enabled;
+  final JsonList pages = asList(shop['pages']);
+  final List<String> shown = <String>[
+    for (final String mode in enabled)
+      if (mode == 'trade' || pages.any((Object? page) => asMap(asMap(page)[mode]).isNotEmpty)) mode,
+  ];
+  return shown.isEmpty ? enabled : shown;
+}
+
 int shopPageRows(JsonMap shop, int page) {
   final JsonList pages = asList(shop['pages']);
   if (page < 0 || page >= pages.length) return 3;
@@ -216,9 +229,17 @@ ShopEdit placeOffer(JsonMap shop, int page, String grid, JsonMap entry, {int? af
 }
 
 /// A new entry of [kind] with [id], with the fields that kind needs; a book
-/// shop's trade shows a written book and names the book it copies.
-JsonMap starterOffer(String kind, String id, {bool container = false, bool bookShop = false}) => switch (kind) {
-      'trade' => withShopEntryType(<String, Object?>{'id': id, 'item': <String, Object?>{'id': bookShop ? 'minecraft:written_book' : 'minecraft:bread'}}, 'trade',
+/// shop's trade shows a written book and names the book it copies, and a
+/// buying shop's trade takes the item it buys and pays from the chest.
+JsonMap starterOffer(String kind, String id, {bool container = false, bool bookShop = false, bool buying = false}) => switch (kind) {
+      'trade' when buying => <String, Object?>{
+          'id': id,
+          'type': 'trade',
+          'item': <String, Object?>{'id': 'minecraft:wheat'},
+          'needs': <Object?>[<String, Object?>{'item': <String, Object?>{'id': 'minecraft:wheat'}, 'amount': 1}],
+          'gives': <Object?>[<String, Object?>{'item': <String, Object?>{'id': 'minecraft:emerald'}, 'amount': 1}],
+        },
+      'trade' => withShopEntryType(<String, Object?>{'id': id, 'item': <String, Object?>{'id': bookShop ? writtenBook : 'minecraft:bread'}}, 'trade',
           container: container, bookShop: bookShop),
       'buy' => withShopEntryType(<String, Object?>{'id': id, 'item': <String, Object?>{'id': 'minecraft:bread'}}, 'buy', container: container),
       'sell' => withShopEntryType(<String, Object?>{'id': id, 'item': <String, Object?>{'id': 'minecraft:wheat', 'count': 16}}, 'sell', container: container),
@@ -237,7 +258,7 @@ String gridForKind(JsonMap shop, String kind, {String? current}) {
 ShopEdit addOffer(JsonMap shop, String kind, {int page = 0}) {
   final bool container = isContainerShop(shop);
   final String id = freshEntryId(shop, kind == 'static' ? 'decoration' : kind);
-  return placeOffer(shop, page, gridForKind(shop, kind), starterOffer(kind, id, container: container, bookShop: isBookShop(shop)));
+  return placeOffer(shop, page, gridForKind(shop, kind), starterOffer(kind, id, container: container, bookShop: isBookShop(shop), buying: container && shop['kind'] == 'buying'));
 }
 
 /// A copy of the offer at [ref] with a fresh id, in the next free slot of
@@ -399,6 +420,7 @@ String itemWords(String id) {
 String _say(ShopGoods goods) {
   final String? label = goods.label;
   if (label != null) return label == 'Free' ? 'free' : '$label money';
+  if (goods.item.isEmpty) return itemWords('');
   final String words = itemWords(goods.item);
   return '${goods.count} ${goods.count == 1 ? words : itemPlural(words)}';
 }

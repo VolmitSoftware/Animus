@@ -35,16 +35,35 @@ void main() {
   group('readable migration warnings', () {
     const Map<String, String> names = <String, String>{'3': 'Baker'};
 
-    test('leads with the NPC and drops the JSON pointer', () {
-      expect(plainWarning('citizens-3: /traits/commandtrait/commands/4/op: the command ran as an operator player; it now runs from the console', names),
-          'NPC #3 (Baker): The command ran as an operator player; it now runs from the console');
+    test('leads with the NPC and names the field: the saves.yml key in Advanced, the trait in Simple', () {
+      const String op = 'citizens-3: /traits/commandtrait/commands/4/op: the command ran as an operator player; it now runs from the console';
+      expect(plainWarning(op, names), 'NPC #3 (Baker), traits.commandtrait.commands.4.op: The command ran as an operator player; it now runs from the console');
+      expect(plainWarning(op, names, advanced: false), 'NPC #3 (Baker), commandtrait trait: The command ran as an operator player; it now runs from the console');
       expect(plainWarning('citizens-7: /waypoints: 2 points in another world or without usable coordinates were left out', names),
-          'NPC #7: 2 points in another world or without usable coordinates were left out');
+          'NPC #7, waypoints: 2 points in another world or without usable coordinates were left out');
+      expect(plainWarning('citizens-0: /traits/dropstrait/drops/2: not an item; not converted', const <String, String>{'0': 'Toll Keeper'}, advanced: false),
+          'NPC #0 (Toll Keeper), dropstrait trait: Not an item; not converted');
+    });
+
+    test('names the field of an NPC that did not convert: every key in Advanced, the setting in Simple', () {
+      const String issue = r'citizens-15: $.position.world: expected nonblank string; $.position.x: expected finite coordinate';
+      const Map<String, String> sentinel = <String, String>{'15': 'Not Sentinel'};
+      expect(plainWarning(issue, sentinel), 'NPC #15 (Not Sentinel), position.world: Expected nonblank string; position.x: expected finite coordinate');
+      expect(plainWarning(issue, sentinel, advanced: false), 'NPC #15 (Not Sentinel), position: Expected nonblank string');
+      expect(plainWarning(r'citizens-9: $.uuid: duplicate NPC UUID', const <String, String>{}, advanced: false), 'NPC #9, uuid: Duplicate NPC UUID');
+      expect(plainWarning('citizens-9: the save has no world', const <String, String>{}, advanced: false), 'NPC #9: The save has no world');
+    });
+
+    test('names the field of a reference warning written without a colon', () {
+      expect(plainWarning('citizens-4: /traits/sentinel/guardedNPC NPC reference missing', const <String, String>{'4': 'Watch'}, advanced: false),
+          'NPC #4 (Watch), sentinel trait: NPC reference missing');
+      expect(plainWarning('citizens-4: /traits/sentinel/guardedNPC NPC reference missing', const <String, String>{'4': 'Watch'}),
+          'NPC #4 (Watch), traits.sentinel.guardedNPC: NPC reference missing');
     });
 
     test('counts one point as one point', () {
       expect(plainWarning('citizens-3: /waypoints: 1 points in another world or without usable coordinates were left out', names),
-          'NPC #3 (Baker): 1 point in another world or without usable coordinates was left out');
+          'NPC #3 (Baker), waypoints: 1 point in another world or without usable coordinates was left out');
     });
 
     test('keeps a warning about the whole save as written', () {

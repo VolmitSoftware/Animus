@@ -31,7 +31,7 @@ import 'trader_builder.dart';
 export 'snake_yaml.dart' show CitizensImportException;
 
 /// Must equal `CitizensImporter.CONVERTER_VERSION`; the shared golden fixtures fail when they drift.
-const int citizensConverterVersion = 23;
+const int citizensConverterVersion = 24;
 const String _healthModule = 'animus:health';
 const String _scheduleModule = 'animus:schedule';
 

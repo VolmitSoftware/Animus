@@ -1,31 +1,35 @@
 {
   "schemaVersion": 1,
   "revision": 1,
-  "id": "citizens:commands-0",
+  "id": "citizens:commands-3/dock-guard-commands",
   "entry": "right",
   "routines": {
     "right": {
       "type": "action",
-      "capability": "mythic:cast-skill",
+      "capability": "animus:say",
       "arguments": {
-        "skill": "BlessingSkill",
-        "caster": "player"
+        "text": "Halt, {player_name}! Docks close at %server_time_HH%."
       }
     },
     "left": {
       "type": "action",
-      "capability": "mythic:cast-skill",
+      "capability": "animus:say",
       "arguments": {
-        "skill": "Fire_Burst",
-        "caster": "player"
+        "text": "Stand back",
+        "audience": "nearby",
+        "radius": 8.0
       }
     },
     "sneak-right": {
       "type": "action",
       "capability": "animus:command",
       "arguments": {
-        "command": "mm test cast ConsoleSkill",
-        "as": "console"
+        "command": "warp docks",
+        "as": "player",
+        "permissions": [
+          "essentials.warp"
+        ],
+        "permissionTicks": 200
       }
     }
   },

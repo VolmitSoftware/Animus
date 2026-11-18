@@ -25,15 +25,20 @@ import java.util.*;
 
 /** Local, loss-preserving conversion. Conversion status describes data, never gameplay parity. */
 public final class CitizensImporter {
-    public static final int CONVERTER_VERSION = 23;
+    public static final int CONVERTER_VERSION = 24;
     /**
      * A staged or installed imported definition path: {@code <source prefix>-<source number>}. Citizens uses the
      * {@code citizens} prefix; module converters use theirs. The folder is the NPC group, empty for {@code npcs/} itself.
      */
     static final String NPC_PATH = "npcs/(?:" + NpcPaths.SEGMENT + "/){0," + NpcPaths.MAX_FOLDERS + "}[a-z0-9][a-z0-9_-]{0,62}-[0-9]+\\.json";
-    static final String BUNDLE_PATH = "(?:npcs/(?:" + NpcPaths.SEGMENT + "/){0," + NpcPaths.MAX_FOLDERS + "}[a-z0-9][a-z0-9_-]{0,62}-[0-9]+|skins/[a-f0-9]{64}|behaviors/citizens/(?:text|commands|builder|waypoints)-[0-9]+|shops/citizens/[a-z0-9_-]{1,64}|groups/citizens-[a-f0-9]{8})\\.json";
-    /** A generated behavior of converter version 8 and later. */
-    static final String BEHAVIOR_PATH = "behaviors/citizens/(?:text|commands|builder|waypoints)-[0-9]+\\.json";
+    /**
+     * A generated behavior without {@code .json}. Since converter version 24 text, commands and waypoints sit under
+     * {@code <kind>-<id>/} named after their NPC; the flat {@code <kind>-<id>} of versions 8 to 23 stays valid for
+     * imports applied before.
+     */
+    private static final String GENERATED = "behaviors/citizens/(?:(?:text|commands|builder|waypoints)-[0-9]+|(?:text|commands|waypoints)-[0-9]+/[a-z0-9][a-z0-9-]{0,63})";
+    static final String BUNDLE_PATH = "(?:npcs/(?:" + NpcPaths.SEGMENT + "/){0," + NpcPaths.MAX_FOLDERS + "}[a-z0-9][a-z0-9_-]{0,62}-[0-9]+|skins/[a-f0-9]{64}|" + GENERATED + "|shops/citizens/[a-z0-9_-]{1,64}|groups/citizens-[a-f0-9]{8})\\.json";
+    static final String BEHAVIOR_PATH = GENERATED + "\\.json";
     public enum Status { CONVERTED, REQUIRES_INTEGRATION, REQUIRES_REVIEW, UNSUPPORTED_PRESERVED }
     /** A mapper's decision for one report field and everything under it, with the one-line reason a report shows. */
     record Note(Status status, String reason) {}

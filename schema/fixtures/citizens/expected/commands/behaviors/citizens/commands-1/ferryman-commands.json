@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "revision": 1,
-  "id": "citizens:commands-1",
+  "id": "citizens:commands-1/ferryman-commands",
   "entry": "click",
   "routines": {
     "click": {

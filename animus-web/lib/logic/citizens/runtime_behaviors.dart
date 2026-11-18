@@ -233,6 +233,28 @@ bool _sameNodes(List<JObject> a, List<JObject> b) {
   return true;
 }
 
+/// What [citizensBehaviorSlug] removes from a name: `&#rrggbb`, a legacy `&` or `§` code, and tags.
+final RegExp _hexColour = RegExp(r'&#[0-9a-fA-F]{6}');
+final RegExp _colourCode = RegExp('[&§][0-9a-fA-Fk-oK-OrRxX]');
+final RegExp _tag = RegExp(r'<[^>]*>');
+const int _maxSlug = 40;
+
+/// `CitizensBehaviors.behaviorPath`: the path of the generated behavior `<kind>-<id>/<name>-<what>`, whose last segment
+/// the editor shows in words. A name with nothing left to keep leaves `<kind>-<id>/<what>`.
+String citizensBehaviorPath(String kind, String key, String name, String what) {
+  final String slug = citizensBehaviorSlug(name);
+  return '$kind-$key/${slug.isEmpty ? what : '$slug-$what'}';
+}
+
+/// `CitizensBehaviors.slug`: an NPC name without colour codes and tags, ASCII lowercase, every run of other characters
+/// one dash, at most 40 characters.
+String citizensBehaviorSlug(String name) {
+  final String plain = name.replaceAll(_hexColour, '').replaceAll(_colourCode, '').replaceAll(_tag, '');
+  final String lower = String.fromCharCodes(plain.codeUnits.map((int unit) => unit >= 0x41 && unit <= 0x5A ? unit + 0x20 : unit));
+  final String slug = lower.replaceAll(RegExp('[^a-z0-9]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
+  return slug.length > _maxSlug ? slug.substring(0, _maxSlug).replaceAll(RegExp(r'-+$'), '') : slug;
+}
+
 class _Runtime {
   _Runtime(this.key, this.name, this.world, this.traits, this.record, this.defaults);
 
@@ -566,7 +588,7 @@ class _Runtime {
     if (steps.length > before) converted.add('$path/type');
   }
 
-  /// The behavior `citizens:waypoints-<id>`: one routine per point with chat or command triggers, run on arrival.
+  /// The behavior `citizens:waypoints-<id>/<name>-route-stops`: one routine per point with chat or command triggers, run on arrival.
   void _arrivals() {
     if (arrivals.isEmpty) return;
     final JObject routines = JObject();
@@ -581,7 +603,7 @@ class _Runtime {
         ..addInt('waypoint', index)
         ..addString('routine', routine));
     }
-    final String id = 'waypoints-$key';
+    final String id = citizensBehaviorPath('waypoints', key, name, 'route-stops');
     if (waypointCommands) {
       warnings.add('/traits/waypoints: waypoint commands stay denied until $_namespace:$id is on the [behaviors.actions] commandBehaviors list in config.toml');
     }
@@ -854,7 +876,7 @@ class _Runtime {
     }
     // Citizens spaces each player's lines on their own, so one player never holds back another.
     trigger.addInt('playerCooldownTicks', cooldown);
-    _behavior('text-$key', 'main', JObject()..add('main', main), JArray(<JElement>[trigger]));
+    _behavior(citizensBehaviorPath('text', key, name, 'talk'), 'main', JObject()..add('main', main), JArray(<JElement>[trigger]));
   }
 
   /// The arguments of one spoken line, with its speech bubble and without chat when Citizens sent none.
@@ -906,9 +928,9 @@ class _Runtime {
     _commandRoutine('sneak-left', 'sneak_attack', clicks['sneak_attack']!, routines, triggers);
     if (routines.isEmpty) return;
     if (routines.entries.any((MapEntry<String, JElement> routine) => _runs(routine.value, _privileged))) {
-      warnings.add('$_commandBase: commands stay denied until $_namespace:commands-$key is on the [behaviors.actions] commandBehaviors list in config.toml');
+      warnings.add('$_commandBase: commands stay denied until $_namespace:${citizensBehaviorPath('commands', key, name, 'commands')} is on the [behaviors.actions] commandBehaviors list in config.toml');
     }
-    _behavior('commands-$key', routines.keys.first, routines, triggers);
+    _behavior(citizensBehaviorPath('commands', key, name, 'commands'), routines.keys.first, routines, triggers);
   }
 
   void _commandRoutine(String routine, String action, List<JObject> steps, JObject routines, JArray triggers) {

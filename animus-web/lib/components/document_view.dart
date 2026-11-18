@@ -21,6 +21,7 @@ import '../logic/diagnostic_text.dart';
 import '../logic/gui/gui_json.dart';
 import '../logic/gui/gui_presets.dart';
 import '../logic/gui/gui_text.dart';
+import '../logic/gui/shop_checks.dart' show shopUnknownItems;
 import '../logic/gui/text_animation.dart';
 import '../logic/inspect/inspect_schemas.dart';
 import '../logic/inspect/json_completion.dart';
@@ -70,7 +71,8 @@ import 'gui/gui_targets.dart';
 import 'gui/hologram_editor.dart';
 import 'gui/inventory_editor.dart';
 import 'gui/menu_editor.dart';
-import 'gui/shop_editor.dart';
+import 'gui/shop_editor.dart' show ShopEditor, shopItemList;
+import 'mc/item_picker.dart' show ItemRegistry;
 import 'inspect/behavior_editor.dart';
 import 'inspect/code_view.dart';
 import 'inspect/inspect_fields.dart';
@@ -258,6 +260,11 @@ class _DocumentPaneState extends State<DocumentPane> {
     final String? kept = component.codeDraft;
     if (kept != null) _check(kept);
     pendingProblems.addListener(_pendingChanged);
+    if (component.document.kind == DocumentKind.shop && ItemRegistry.ids.isEmpty) {
+      ItemRegistry.load().then((List<String> _) {
+        if (mounted) setState(() {});
+      });
+    }
     final (bool phone, void Function() stopPhone) = watchMedia('(max-width: 760px)', (bool _) => _measure());
     final (bool band, void Function() stopBand) = watchMedia('(max-width: 1099px)', (bool _) => _measure());
     _place = phone ? PreviewPlace.button : (band ? PreviewPlace.band : PreviewPlace.side);
@@ -419,6 +426,8 @@ class _DocumentPaneState extends State<DocumentPane> {
     final List<Diagnostic> problems = groupRepeats(withoutRepeats(<Diagnostic>[
       for (final Diagnostic d in shown) if (d.code != 'no-schema') d,
       ...serverOnly(shown, component.serverDiagnostics),
+      // Items a complete item list lacks: the server takes the file, but the offer cannot trade.
+      if (document.kind == DocumentKind.shop) ...shopUnknownItems(asMap(document.json), shopItemList(component.liveLookups)),
     ]));
     final DocumentCheck check = documentCheck(all: document.diagnostics, shown: shown, problems: problems);
     final int errors = problems.where((Diagnostic d) => d.severity == DiagnosticSeverity.error).length;
@@ -704,7 +713,7 @@ class _DocumentPaneState extends State<DocumentPane> {
           diagnostics: <Diagnostic>[..._allDiagnostics(document), ...serverBehaviorsDiagnostics(json, workspace)],
         ),
       DocumentKind.inventory => InventoryEditor(document: document, onJson: onJson, presets: workspacePresets(workspace)),
-      DocumentKind.shop => ShopEditor(document: document, onJson: onJson, workspaceDocuments: workspace, onCommit: component.onCommit, onOpen: component.onOpen),
+      DocumentKind.shop => ShopEditor(document: document, onJson: onJson, workspaceDocuments: workspace, onCommit: component.onCommit, onOpen: component.onOpen, lookups: component.liveLookups),
       DocumentKind.quest => QuestEditor(document: document, onJson: onJson, workspaceDocuments: workspace, npcLibrary: component.library?.call(DocumentKind.npc) ?? const <LibraryEntry>[]),
       DocumentKind.menu => MenuEditor(document: document, onJson: onJson, animations: workspaceAnimations(workspace)),
       DocumentKind.hologram => HologramEditor(document: document, onJson: onJson, animations: workspaceAnimations(workspace), presets: workspacePresets(workspace)),

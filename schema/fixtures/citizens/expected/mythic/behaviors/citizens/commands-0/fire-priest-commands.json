@@ -1,35 +1,31 @@
 {
   "schemaVersion": 1,
   "revision": 1,
-  "id": "citizens:commands-3",
+  "id": "citizens:commands-0/fire-priest-commands",
   "entry": "right",
   "routines": {
     "right": {
       "type": "action",
-      "capability": "animus:say",
+      "capability": "mythic:cast-skill",
       "arguments": {
-        "text": "Halt, {player_name}! Docks close at %server_time_HH%."
+        "skill": "BlessingSkill",
+        "caster": "player"
       }
     },
     "left": {
       "type": "action",
-      "capability": "animus:say",
+      "capability": "mythic:cast-skill",
       "arguments": {
-        "text": "Stand back",
-        "audience": "nearby",
-        "radius": 8.0
+        "skill": "Fire_Burst",
+        "caster": "player"
       }
     },
     "sneak-right": {
       "type": "action",
       "capability": "animus:command",
       "arguments": {
-        "command": "warp docks",
-        "as": "player",
-        "permissions": [
-          "essentials.warp"
-        ],
-        "permissionTicks": 200
+        "command": "mm test cast ConsoleSkill",
+        "as": "console"
       }
     }
   },

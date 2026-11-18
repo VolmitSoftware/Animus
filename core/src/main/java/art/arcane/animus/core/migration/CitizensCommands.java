@@ -11,7 +11,7 @@ import java.util.regex.Pattern;
 
 /**
  * Citizens commands, and the commands the CitizensCMD and CommandNPC add-ons saved for the same NPC, as the routines
- * and triggers of one {@code citizens:commands-<id>} behavior. Costs become {@code animus:can-afford} and
+ * and triggers of one {@code citizens:commands-<id>/<name>-commands} behavior. Costs become {@code animus:can-afford} and
  * {@code animus:charge}, cooldowns become expiring flags and use limits become quest stages, all in the citizens
  * namespace and keyed by NPC and command. Costs are taken before the commands run, and only once
  * {@code animus:commands-allowed} holds, so a command the allow-list refuses never costs, cools down or counts.
@@ -88,7 +88,7 @@ final class CitizensCommands {
         routine("sneak-left", "sneak_attack", clicks.get("sneak_attack"), routines, triggers);
         if (routines.isEmpty()) return new Result(Optional.empty(), routines, triggers);
         if (routines.entrySet().stream().anyMatch((Map.Entry<String, JsonElement> routine) -> runs(routine.getValue(), PRIVILEGED)))
-            warnings.add(BASE + ": commands stay denied until " + NAMESPACE + ":commands-" + key + " is on the [behaviors.actions] commandBehaviors list in config.toml");
+            warnings.add(BASE + ": commands stay denied until " + NAMESPACE + ":" + behaviorPath("commands", key, name, "commands") + " is on the [behaviors.actions] commandBehaviors list in config.toml");
         return new Result(Optional.of(routines.keySet().iterator().next()), routines, triggers);
     }
 

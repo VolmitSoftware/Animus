@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 23,
+  "converterVersion": 24,
   "fieldPathFormat": "json-pointer",
-  "importId": "617f6fe924b07ab1d3687756aa80382d3e7c2b9a8933e3e5801437e742fc2333",
+  "importId": "6c6afaf02f6ac27c844c082510ab16964c1ff3d530d6786a04389c877c82f05b",
   "sourceSha256": "0b5120fff4193e5411036999dc45b25f1343abe8b4c93c85110cc06c66c07f0f",
   "worldMap": {},
   "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs spawn as Citizens had them, and converted patrols, schedules, combat, riding, shops and builds are on.",
@@ -42,7 +42,7 @@
   "issues": [],
   "migrationWarnings": [
     "citizens-3: /traits/owner: player Sam is not known on this server; kept for review",
-    "citizens-6: /traits/commandtrait: commands stay denied until citizens:commands-6 is on the [behaviors.actions] commandBehaviors list in config.toml"
+    "citizens-6: /traits/commandtrait: commands stay denied until citizens:commands-6/clock-commands is on the [behaviors.actions] commandBehaviors list in config.toml"
   ],
   "remappedLocations": 0,
   "resolvedReferences": 0,
@@ -58,13 +58,13 @@
     "6": "0a1b2c3d-0000-4000-8000-000000000406"
   },
   "documents": {
-    "npcs/world/citizens-0.json": "f8ebd9e087a23d26bc44cf85b65046f440eaeab6ac956bb6ffa2de30cd6d18d7",
-    "npcs/world/citizens-1.json": "5631e266c79f61e5d08851e453f0c4129d7090baf82df735109e7eac37d3e805",
-    "npcs/world/citizens-2.json": "5b31de0b87c000518a7e73810ac184101791d72ce6c4788a2b2e6ed213c35279",
-    "npcs/world/citizens-3.json": "a2868810fef71f4698b0a71c9f76ea4b38746fa9213a3f6593e081a3ed750018",
-    "npcs/world/citizens-4.json": "4b0b37489dbdf7efed46fce08a08179e4bcb8e41d795ff688f63a2a0630f55a7",
-    "npcs/world/citizens-5.json": "8d01ee2211f7bbff29be36b0f09000681a5c7c4ac98e5a8b963a2a09e89cb86a",
-    "behaviors/citizens/commands-6.json": "b372c0625be0289351128008cf8d9b8274452eadce01cff98761cdb66c0b9290",
-    "npcs/world/citizens-6.json": "531da172a85a3d2d6ba5a7e6b665943546a9b18e83c23c5322cf3475da49ebb1"
+    "npcs/world/citizens-0.json": "3334a9a0933c24f3dc5562d52a45ba6f5a846676fd0d271f8f4930b5abda1ca5",
+    "npcs/world/citizens-1.json": "d1be9f6c3d8fca4d07925d39311fe077c43b5716f80083251fb5eeb48832d1d7",
+    "npcs/world/citizens-2.json": "866c21f0833b39f25792c2388dd61616e8f939c8c2fb6eaedbfc5ccd7e2c7c24",
+    "npcs/world/citizens-3.json": "6bb8d690509135f9bd416cb356900657a6169ef38ffb5752d04e4effc200588c",
+    "npcs/world/citizens-4.json": "6664c7ab6d43df1e567e7437a6985fd229fc1464e32deeb8ae713179a62fcd5c",
+    "npcs/world/citizens-5.json": "fdc72fe872fe57d78b05a8e2f40fce73e67cb8c584b53abd5088475dbfe29a08",
+    "behaviors/citizens/commands-6/clock-commands.json": "fbfe6b3d13c7b7281fc82caedc0a1e87ec99086fe213a59c557c8026bbc70c40",
+    "npcs/world/citizens-6.json": "5573055e0063f4cf9de482dc0193922d21b7f2360824eb8f511e59ea3c968b97"
   }
 }

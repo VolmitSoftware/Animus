@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 23,
+  "converterVersion": 24,
   "fieldPathFormat": "json-pointer",
-  "importId": "935cba7fb6c90e856bc5fce3fabc05226629263e63848fb29716e3bd1f0d61b9",
+  "importId": "1c64cae5c74e0935b1fec10a7ac2650b6a48368e72ba09f568f6f1f5ccc3fe8c",
   "sourceSha256": "65b3044d4ecd34be4a1e531a6540f0678d6d7ae738fe23599f177d7304f30d98",
   "worldMap": {},
   "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs spawn as Citizens had them, and converted patrols, schedules, combat, riding, shops and builds are on.",
@@ -58,8 +58,8 @@
     "2": "0a1b2c3d-0000-4000-8000-000000000a02"
   },
   "documents": {
-    "npcs/world/citizens-0.json": "cdbcda7055eeb874b4e28d32190a3792653bfa460f20bc8961db30da3ca470ed",
-    "npcs/world/citizens-1.json": "31ce1132aa6d7136a4a9d3f360b38e08d2ff1c7684d4f4d09894dee75614d066",
-    "npcs/world/citizens-2.json": "c9fd2097056681fd9dfd2b8c216c5d4d6ddbbba53537ba493452220605a48c5f"
+    "npcs/world/citizens-0.json": "bfc364887170975690f6e071662906a25ba19935b169192f3c6481d613d68b67",
+    "npcs/world/citizens-1.json": "7fb204f2d98331d3bfcaae9ed5259e4cbc16fc7c6576646821820b959d24db6c",
+    "npcs/world/citizens-2.json": "b79c47cd05a432de852d6819295cc3cfb2051faccbae9a6bb5e25014fed3bc7e"
   }
 }

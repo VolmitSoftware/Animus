@@ -8,7 +8,7 @@
   "type": "minecraft:player",
   "spawned": true,
   "migration": {
-    "importId": "ae142556a764b118fa08b8972bf41966e695145462908294bbc352792b8026d1",
+    "importId": "045f801c1161317223fbdfab88c852c83d56f4a91acfc5166fb8f6f2e9a6f9b4",
     "citizensId": 1,
     "references": []
   },
@@ -21,7 +21,7 @@
     "pitch": 0
   },
   "behaviors": [
-    "citizens:commands-1"
+    "citizens:commands-1/quiet-clerk-commands"
   ],
   "modules": {
     "animus:health": {

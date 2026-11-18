@@ -223,6 +223,43 @@ void main() {
       expect(asMap(entry['item'])['id'], 'minecraft:written_book');
     });
 
+    test('should start a buying chest shop with an offer the chest pays for', () {
+      final JsonMap shop = <String, Object?>{
+        'id': 'a:b',
+        'kind': 'buying',
+        'owner': <String, Object?>{'uuid': '069a79f4-44e9-4726-a5be-fca90e38aaf5'},
+        'containers': <Object?>[<String, Object?>{'world': 'world', 'x': 1, 'y': 64, 'z': 2}],
+        'pages': <Object?>[<String, Object?>{'rows': 3}],
+      };
+      final ShopEdit edit = addOffer(shop, 'trade');
+      final JsonMap entry = asMap(readIn(edit.shop, edit.ref!.steps));
+      final String bought = asString(asMap(entry['item'])['id'])!;
+      expect(asMap(asMap(asList(entry['needs']).single)['item'])['id'], bought, reason: 'the player hands over the item the shop buys');
+      expect(asMap(asMap(asList(entry['gives']).single)['item'])['id'], 'minecraft:emerald', reason: 'the chest pays');
+      expect(offerSentence(entry), '1 emerald for 1 wheat');
+    });
+
+    test('should show only the modes a chest shop can trade in', () {
+      final JsonMap chested = <String, Object?>{
+        'id': 'a:b',
+        'owner': <String, Object?>{'uuid': '069a79f4-44e9-4726-a5be-fca90e38aaf5'},
+        'containers': <Object?>[<String, Object?>{'world': 'world', 'x': 1, 'y': 64, 'z': 2}],
+        'pages': <Object?>[<String, Object?>{'rows': 3}],
+      };
+      expect(shownShopModes(chested), <String>['trade'], reason: 'its sells and buys tabs would stay empty');
+      final JsonMap stray = <String, Object?>{...chested, 'pages': <Object?>[<String, Object?>{'rows': 3, 'buy': <String, Object?>{'1': <String, Object?>{'id': 'a', 'type': 'buy', 'item': _item('minecraft:cake'), 'price': 1}}}]};
+      expect(shownShopModes(stray), <String>['buy', 'trade'], reason: 'an offer to fix stays in view');
+      expect(shownShopModes(_shop()), <String>['trade', 'buy']);
+    });
+
+    test('should read an emptied item as no item, without a count', () {
+      expect(offerSentence(<String, Object?>{
+        'type': 'trade',
+        'needs': <Object?>[_goods('minecraft:emerald', 2), _goods('', 1)],
+        'gives': <Object?>[_goods('minecraft:bread', 1)],
+      }), '1 bread for 2 emeralds + no item');
+    });
+
     test('should start the first page of an empty shop', () {
       final ShopEdit edit = addOffer(<String, Object?>{'id': 'a:b', 'pages': <Object?>[]}, 'buy');
       expect(edit.ref, const OfferRef(0, 'buy', 0));

@@ -12,6 +12,7 @@ import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import 'citizens/definition_validation.dart';
 import 'gui/gui_validation.dart';
+import 'gui/shop_checks.dart' show withShopItemRules;
 import 'inspect/json_syntax.dart';
 import 'npc/combat_settings.dart';
 import 'npc/group_model.dart';
@@ -254,6 +255,7 @@ AnimusDocument validateSource(DocumentLocation location, String path, String sou
     if (location.kind == DocumentKind.group) ...groupValueDiagnostics(json, schemas),
   ];
   if (location.kind == DocumentKind.group) diagnostics = withRuleDiagnostics(diagnostics, groupRuleDiagnostics(json, location.id, source));
+  if (location.kind == DocumentKind.shop) diagnostics = withShopItemRules(diagnostics, json);
   if (location.kind == DocumentKind.npc) {
     diagnostics.addAll(<Diagnostic>[...npcCombatDiagnostics(json, diagnostics), ...npcActivationDiagnostics(json)]);
     diagnostics = withRuleDiagnostics(diagnostics, npcRuleDiagnostics(json, location.id));

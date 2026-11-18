@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "revision": 1,
-  "id": "citizens:commands-3",
+  "id": "citizens:commands-3/scribe-commands",
   "entry": "right",
   "routines": {
     "right": {

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 23,
+  "converterVersion": 24,
   "fieldPathFormat": "json-pointer",
-  "importId": "7ca825331f9c449b68a6ad8b2921a278b46cfa3b8e1bb2114f1663690af2d0f7",
+  "importId": "8cc9d4a5fd744125743715bd5b99159bbb9f8710150069f7c90536bb33e95642",
   "sourceSha256": "64da1c1d2b7145613449df7c7d486d8cb88ddd523baf6fcbddf96a1c75924517",
   "worldMap": {
     "old_harbor": "harbor"
@@ -61,14 +61,14 @@
     "citizens-0: /traits/commandtrait/commands/9/command: acts on NPC 12, not this one; not converted",
     "citizens-0: /traits/commandtrait/temporaryPermissions/2: not a node is not a permission node; not granted",
     "citizens-0: /traits/commandtrait: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones",
-    "citizens-0: /traits/commandtrait: commands stay denied until citizens:commands-0 is on the [behaviors.actions] commandBehaviors list in config.toml",
+    "citizens-0: /traits/commandtrait: commands stay denied until citizens:commands-0/harbor-herald-commands is on the [behaviors.actions] commandBehaviors list in config.toml",
     "citizens-1: /traits/commandtrait/commands/3/command: npc moveto names a world; set the Animus world by hand; not converted",
     "citizens-1: /traits/commandtrait/commands/4/command: runs from the console, where Citizens has no player to teleport; not converted",
-    "citizens-1: /traits/commandtrait: commands stay denied until citizens:commands-1 is on the [behaviors.actions] commandBehaviors list in config.toml",
+    "citizens-1: /traits/commandtrait: commands stay denied until citizens:commands-1/ferryman-commands is on the [behaviors.actions] commandBehaviors list in config.toml",
     "citizens-2: /traits/commandtrait/temporaryPermissions: Animus lends permissions only to commands the clicking player runs, and this NPC has none, so they are not granted",
-    "citizens-2: /traits/commandtrait: commands stay denied until citizens:commands-2 is on the [behaviors.actions] commandBehaviors list in config.toml",
+    "citizens-2: /traits/commandtrait: commands stay denied until citizens:commands-2/sky-warden-commands is on the [behaviors.actions] commandBehaviors list in config.toml",
     "citizens-3: /traits/commandtrait: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones",
-    "citizens-3: /traits/commandtrait: commands stay denied until citizens:commands-3 is on the [behaviors.actions] commandBehaviors list in config.toml"
+    "citizens-3: /traits/commandtrait: commands stay denied until citizens:commands-3/dock-guard-commands is on the [behaviors.actions] commandBehaviors list in config.toml"
   ],
   "remappedLocations": 5,
   "resolvedReferences": 0,
@@ -81,14 +81,14 @@
     "3": "0a1b2c3d-0000-4000-8000-000000000603"
   },
   "documents": {
-    "behaviors/citizens/commands-0.json": "0006e7c3e75ce3364487bb91d3f70d565356c0a18d9703ef0800b4a6afa4fc32",
-    "npcs/harbor/citizens-0.json": "69967972ee5f77cef2204bbc88aaa0e327e4a11dcc19c17109a7a8627bc990bc",
-    "behaviors/citizens/commands-1.json": "1e511b645287fff671d5036f0d058596999538468735f1567c685177567df267",
-    "npcs/harbor/citizens-1.json": "822f9a32e8c30393af8438339a0fe095d2dc10b216c055cca89cb4f97293c521",
-    "behaviors/citizens/commands-2.json": "fda3eabd7bad88d8c617b091d982f54b7c6c91a540d2f50b9ac7cbb3f0e80f47",
-    "npcs/harbor/citizens-2.json": "58be1af7d77cc87d143ca3a8f736962c9cb46d73fda4556c807b60009bbfcfda",
-    "behaviors/citizens/commands-3.json": "bc3d32da811070466ba5b62b73c2b80ac31cf3394c84cbf9393a11d34d581d71",
+    "behaviors/citizens/commands-0/harbor-herald-commands.json": "cc6c0e14c4764ad4ae453e01907e7bb2f83260b583c77c4483310f47ff424eb6",
+    "npcs/harbor/citizens-0.json": "9409f6e7dfaee30b5da4fd081e9e9bcc035118c6b2e8be0caff2b91141bc8843",
+    "behaviors/citizens/commands-1/ferryman-commands.json": "6aebfaa902a47690b674818f12d7c6799300e0c287e7d5566ffacda3f888d939",
+    "npcs/harbor/citizens-1.json": "506108567be045ddebe58dabfe0d427f6f50ac5ba33a54c95b5c2fc297a1b3b4",
+    "behaviors/citizens/commands-2/sky-warden-commands.json": "c0e8dfa2ee311edb83d7276972ae92c463ac56460ee331b308de774bde0f2276",
+    "npcs/harbor/citizens-2.json": "181607a62287c6d87bb230160e08400cc71a1006e2d848bddd11cfe438420313",
+    "behaviors/citizens/commands-3/dock-guard-commands.json": "238c9f90787c25d80f04a59d3f35d7033c3bba630a5873451054a0af3601a725",
     "skins/05f18834916c6590edc8fc596c532623084f39c4d47e331ce3a0a41a4f161d7a.json": "05f18834916c6590edc8fc596c532623084f39c4d47e331ce3a0a41a4f161d7a",
-    "npcs/harbor/citizens-3.json": "fdd90502d79320d7b34996b1bac425503082118bcfebeebdd44b3739bc198427"
+    "npcs/harbor/citizens-3.json": "17e2090791be6e84a2829114593ce11e630f6666e73affcb8524369b84f275d1"
   }
 }

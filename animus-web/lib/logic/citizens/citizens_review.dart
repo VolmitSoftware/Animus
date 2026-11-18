@@ -95,18 +95,47 @@ Map<String, String> citizensNames(CitizensPreview preview) {
 }
 
 final RegExp _npcWarning = RegExp(r'^citizens-(\d+): (.*)$');
-final RegExp _pointer = RegExp(r'^/[^\s:]*: ');
+final RegExp _pointer = RegExp(r'^(/[^\s:]*):? ');
 
-/// A converter warning in an admin's words: "NPC #3 (Baker): ..." in place
-/// of `citizens-3: /traits/...: ...`. Warnings about the whole save stay as
-/// written. The converter's own text stays as it is for the report files.
-String plainWarning(String warning, Map<String, String> names) {
+/// The Citizens field a converter pointer names: its saves.yml key path in
+/// Advanced (`traits.dropstrait.drops.2`), the trait or setting in Simple
+/// ("dropstrait trait"); null for the whole NPC.
+String? warningField(String pointer, {required bool advanced}) {
+  final List<String> parts = <String>[for (final String part in pointer.split('/')) if (part.isNotEmpty) part];
+  if (parts.isEmpty) return null;
+  if (advanced) return parts.join('.');
+  return parts.first == 'traits' && parts.length > 1 ? '${parts[1]} trait' : parts.first;
+}
+
+/// A converter warning in an admin's words: "NPC #3 (Baker), traits.text:
+/// ..." in place of `citizens-3: /traits/text: ...`, naming the field as
+/// [warningField] does. Warnings about the whole save stay as written. The
+/// converter's own text stays as it is for the report files.
+String plainWarning(String warning, Map<String, String> names, {bool advanced = true}) {
   final RegExpMatch? match = _npcWarning.firstMatch(warning);
   if (match == null) return warning;
   final String key = match.group(1)!;
-  String text = match.group(2)!.replaceFirst(_pointer, '');
+  String text = match.group(2)!;
+  String? field;
+  final RegExpMatch? pointer = _pointer.firstMatch(text);
+  if (pointer != null) {
+    field = warningField(pointer.group(1)!, advanced: advanced);
+    text = text.substring(pointer.end);
+  } else if (text.startsWith(r'$.')) {
+    // A definition that did not convert: `$.path: problem; $.path: problem`.
+    final List<(String, String)> problems = <(String, String)>[
+      for (final String part in text.split(RegExp(r'; (?=\$\.)')))
+        if (part.indexOf(': ') case final int colon when colon > 2) (part.substring(2, colon), part.substring(colon + 2)),
+    ];
+    if (problems.isNotEmpty) {
+      field = advanced ? problems.first.$1 : <String>{for (final (String path, String _) in problems) path.split(RegExp(r'[.\[]')).first}.join(' and ');
+      text = advanced
+          ? <String>[problems.first.$2, for (final (String path, String problem) in problems.skip(1)) '$path: $problem'].join('; ')
+          : problems.first.$2;
+    }
+  }
   text = text.replaceFirstMapped(RegExp(r'^1 points (.*) were '), (Match one) => '1 point ${one[1]} was ');
   if (text.isNotEmpty) text = '${text[0].toUpperCase()}${text.substring(1)}';
   final String? name = names[key];
-  return 'NPC #$key${name == null ? '' : ' ($name)'}: $text';
+  return 'NPC #$key${name == null ? '' : ' ($name)'}${field == null ? '' : ', $field'}: $text';
 }

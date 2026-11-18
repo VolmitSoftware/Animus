@@ -2,7 +2,7 @@
   "citizensId": 1,
   "presentationWarnings": [],
   "runtimeWarnings": [
-    "/traits/commandtrait: commands stay denied until citizens:commands-1 is on the [behaviors.actions] commandBehaviors list in config.toml"
+    "/traits/commandtrait: commands stay denied until citizens:commands-1/quiet-clerk-commands is on the [behaviors.actions] commandBehaviors list in config.toml"
   ],
   "fieldPathFormat": "json-pointer",
   "fields": {

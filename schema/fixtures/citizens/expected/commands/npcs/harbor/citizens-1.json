@@ -8,7 +8,7 @@
   "type": "minecraft:player",
   "spawned": true,
   "migration": {
-    "importId": "7ca825331f9c449b68a6ad8b2921a278b46cfa3b8e1bb2114f1663690af2d0f7",
+    "importId": "8cc9d4a5fd744125743715bd5b99159bbb9f8710150069f7c90536bb33e95642",
     "citizensId": 1,
     "references": []
   },
@@ -21,7 +21,7 @@
     "pitch": 0
   },
   "behaviors": [
-    "citizens:commands-1"
+    "citizens:commands-1/ferryman-commands"
   ],
   "modules": {
     "animus:skin": {

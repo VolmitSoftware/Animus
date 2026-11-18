@@ -28,7 +28,7 @@ class ShopDocumentTest {
     @Test void problemsNameTheirField() {
         assertTrue(problems(ShopScreenTest.BAKERY.replace("\"price\": 12,", "\"price\": -1,")).contains("$.pages[0].buy.10.price: expected a price from 0 to 1000000000000 with at most 4 decimal places"));
         assertTrue(problems(ShopScreenTest.BAKERY.replace("\"id\": \"cake\"", "\"id\": \"bread\"")).contains("$.pages[1].buy.0.id: entry id bread is used twice in this shop"));
-        assertTrue(problems(ShopScreenTest.BAKERY.replace("\"26\"", "\"27\"")).contains("$.pages[0].buy.27: slot 27 is outside a 3-row page (0..26)"));
+        assertTrue(problems(ShopScreenTest.BAKERY.replace("\"26\"", "\"27\"")).contains("$.pages[0].buy.27: Slot 28 is outside a 3-row page (slots 1 to 27)"));
         assertTrue(problems(ShopScreenTest.BAKERY.replace("\"type\": \"sell\"", "\"type\": \"trade\"")).contains("$.pages[0].sell.10.type: trade entries belong in a trade grid"));
         assertTrue(problems(ShopScreenTest.BAKERY.replace("\"town:baker\"", "\"town:cakes\"")).contains("$.id: id town:cakes does not match its file, which names town:baker"));
         assertTrue(problems(ShopScreenTest.BAKERY.replace("\"schemaVersion\": 1", "\"schemaVersion\": 2")).contains("$.schemaVersion: shop schemaVersion 2 is not supported; Animus reads version 1"));
@@ -116,12 +116,12 @@ class ShopDocumentTest {
     }
 
     @Test void containerShopsTradeItemsForItemsAndNeedAnOwner() {
-        assertTrue(problems(OWNED.replace("\"owner\": {\"uuid\": \"00000000-0000-0000-0000-00000000000a\", \"name\": \"Alex\"},", "")).contains("$.owner: a shop with containers needs an owner"));
-        assertTrue(problems(OWNED.replace("\"needs\"", "\"price\": 5, \"needs\"")).contains("$.pages[0].trade.0.price: a container shop trades items for items; remove the price"));
-        assertTrue(problems(OWNED.replace("\"needs\"", "\"stock\": {\"maximum\": 4}, \"needs\"")).contains("$.pages[0].trade.0.stock: a container shop's stock is its containers"));
+        assertTrue(problems(OWNED.replace("\"owner\": {\"uuid\": \"00000000-0000-0000-0000-00000000000a\", \"name\": \"Alex\"},", "")).contains("$.owner: a chest shop needs an owner"));
+        assertTrue(problems(OWNED.replace("\"needs\"", "\"price\": 5, \"needs\"")).contains("$.pages[0].trade.0.price: a chest shop trades items for items; remove the price"));
+        assertTrue(problems(OWNED.replace("\"needs\"", "\"stock\": {\"maximum\": 4}, \"needs\"")).contains("$.pages[0].trade.0.stock: a chest shop's stock is its chests"));
         String buying = OWNED.replace("\"trade\": {\"0\": {\"id\": \"t\", \"type\": \"trade\",", "\"buy\": {\"0\": {\"id\": \"t\", \"type\": \"buy\", \"price\": 1,")
                 .replace(",\n   \"needs\": [{\"item\": {\"id\": \"minecraft:emerald\"}, \"amount\": 3}], \"gives\": [{\"item\": {\"id\": \"minecraft:diamond\"}, \"amount\": 1}]", "");
-        assertTrue(problems(buying).contains("$.pages[0].buy.0.type: a container shop has only trade and static entries"), problems(buying).toString());
+        assertTrue(problems(buying).contains("$.pages[0].buy.0.type: a chest shop has only trade and static entries"), problems(buying).toString());
         assertTrue(problems(OWNED.replace("\"y\": 64", "\"y\": 99999")).contains("$.containers[0].y: expected integer -2048..2048"));
         assertTrue(problems(OWNED.replace("\"uuid\": \"00000000-0000-0000-0000-00000000000a\"", "\"uuid\": \"alex\"")).contains("$.owner.uuid: expected canonical player UUID"));
     }
@@ -139,7 +139,7 @@ class ShopDocumentTest {
             assertEquals(Optional.of(kind), ShopDocument.Kind.of(kind.key()), kind.key());
         assertEquals(Optional.of(ShopDocument.Kind.BUYING), ShopDocument.parse("town:baker", OWNED.replace("\"containers\"", "\"kind\": \"buying\", \"containers\"")).shop().orElseThrow().kind());
         assertTrue(problems(OWNED.replace("\"containers\"", "\"kind\": \"renting\", \"containers\"")).contains("$.kind: expected selling, buying, trading or book"));
-        assertTrue(problems(ShopScreenTest.BAKERY.replace("\"schemaVersion\": 1", "\"schemaVersion\": 1, \"kind\": \"selling\"")).contains("$.kind: a shop kind needs containers, which hold its stock"));
+        assertTrue(problems(ShopScreenTest.BAKERY.replace("\"schemaVersion\": 1", "\"schemaVersion\": 1, \"kind\": \"selling\"")).contains("$.kind: a shop kind needs a chest, which holds its stock"));
     }
 
     @Test void aClosedShopKeepsItsReason() {
@@ -164,7 +164,7 @@ class ShopDocumentTest {
 
     @Test void containerShopsRunNoCommands() {
         assertTrue(problems(OWNED.replace("\"needs\"", "\"commands\": [{\"command\": \"give {player} diamond\"}], \"needs\""))
-                .contains("$.pages[0].trade.0.commands: a container shop trades items for items; remove the commands"));
+                .contains("$.pages[0].trade.0.commands: a chest shop trades items for items; remove the commands"));
     }
 
     @Test void onlyItsOwnerOwnsAShop() {

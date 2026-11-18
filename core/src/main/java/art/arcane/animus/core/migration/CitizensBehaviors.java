@@ -5,6 +5,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.util.*;
+import java.util.regex.Pattern;
 
 /**
  * Turns Citizens waypoints into an {@code animus:navigation} route, look-close into {@code animus:look-close}, and
@@ -32,6 +33,9 @@ final class CitizensBehaviors {
     static final double ROTATION_YAW = 40, ROTATION_PITCH = 10;
     /** Citizens' default random look delay in ticks. */
     static final int DEFAULT_RANDOM_LOOK_DELAY = 60;
+    /** What {@link #slug} removes from a name: {@code &#rrggbb}, a legacy {@code &} or {@code §} code, and tags. */
+    private static final Pattern HEX_COLOUR = Pattern.compile("&#[0-9a-fA-F]{6}"), COLOUR_CODE = Pattern.compile("[&§][0-9a-fA-Fk-oK-OrRxX]"), TAG = Pattern.compile("<[^>]*>");
+    private static final int MAX_SLUG = 40;
 
     record Document(String path, String content) {}
     record Result(Optional<JsonObject> navigation, Optional<JsonObject> lookClose, List<String> behaviors, List<Document> documents,
@@ -353,7 +357,7 @@ final class CitizensBehaviors {
         if (steps.size() > before) converted.add(path + "/type");
     }
 
-    /** The behavior {@code citizens:waypoints-<id>}: one routine per point with chat or command triggers, run on arrival. */
+    /** The behavior {@code citizens:waypoints-<id>/<name>-route-stops}: one routine per point with chat or command triggers, run on arrival. */
     private void arrivals() {
         if (arrivals.isEmpty()) return;
         JsonObject routines = new JsonObject();
@@ -368,7 +372,7 @@ final class CitizensBehaviors {
             trigger.addProperty("routine", routine);
             triggers.add(trigger);
         }
-        String id = "waypoints-" + key;
+        String id = behaviorPath("waypoints", key, name, "route-stops");
         if (waypointCommands) warnings.add("/traits/waypoints: waypoint commands stay denied until " + NAMESPACE + ":" + id + " is on the [behaviors.actions] commandBehaviors list in config.toml");
         behavior(id, routines.keySet().iterator().next(), routines, triggers);
     }
@@ -605,7 +609,7 @@ final class CitizensBehaviors {
         routines.add("main", main);
         JsonArray triggers = new JsonArray();
         triggers.add(trigger);
-        behavior("text-" + key, "main", routines, triggers);
+        behavior(behaviorPath("text", key, name, "talk"), "main", routines, triggers);
     }
 
     /** Citizens' talk item, a comma list of material names, as a check of the clicking player's held item. */
@@ -624,7 +628,7 @@ final class CitizensBehaviors {
 
     private void commands(CitizensCommands.Addons addons) {
         CitizensCommands.Result result = CitizensCommands.map(key, name, traits, addons, warnings, converted, notes);
-        result.entry().ifPresent((String entry) -> behavior("commands-" + key, entry, result.routines(), result.triggers()));
+        result.entry().ifPresent((String entry) -> behavior(behaviorPath("commands", key, name, "commands"), entry, result.routines(), result.triggers()));
     }
 
     // ---- Behavior documents ----
@@ -657,6 +661,27 @@ final class CitizensBehaviors {
             steps.add(condition("animus:quest-state", wrapped, action("animus:set-quest-state", reset)));
         }
         return sequence(steps);
+    }
+
+    /**
+     * The path of the generated behavior {@code <kind>-<id>/<name>-<what>}, whose last segment the web editor shows in
+     * words. A name with nothing left to keep leaves {@code <kind>-<id>/<what>}.
+     */
+    static String behaviorPath(String kind, String key, String name, String what) {
+        String slug = slug(name);
+        return kind + "-" + key + "/" + (slug.isEmpty() ? what : slug + "-" + what);
+    }
+
+    /**
+     * An NPC name without colour codes and tags, ASCII lowercase, every run of other characters one dash, at most 40
+     * characters. The web editor's {@code citizensBehaviorSlug} has the same rules.
+     */
+    static String slug(String name) {
+        String plain = TAG.matcher(COLOUR_CODE.matcher(HEX_COLOUR.matcher(name).replaceAll("")).replaceAll("")).replaceAll("");
+        StringBuilder lower = new StringBuilder(plain.length());
+        for (char character : plain.toCharArray()) lower.append(character >= 'A' && character <= 'Z' ? (char) (character + ('a' - 'A')) : character);
+        String slug = lower.toString().replaceAll("[^a-z0-9]+", "-").replaceAll("^-+|-+$", "");
+        return slug.length() > MAX_SLUG ? slug.substring(0, MAX_SLUG).replaceAll("-+$", "") : slug;
     }
 
     private void behavior(String path, String entry, JsonObject routines, JsonArray triggers) {

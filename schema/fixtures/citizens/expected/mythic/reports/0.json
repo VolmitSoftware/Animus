@@ -5,7 +5,7 @@
     "/traits/commandtrait/commands/0/command: the MythicMobs skill cast became mythic:cast-skill, which needs MythicMobs on the server",
     "/traits/commandtrait/commands/1/command: the MythicMobs skill cast became mythic:cast-skill, which needs MythicMobs on the server",
     "/traits/commandtrait: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones",
-    "/traits/commandtrait: commands stay denied until citizens:commands-0 is on the [behaviors.actions] commandBehaviors list in config.toml"
+    "/traits/commandtrait: commands stay denied until citizens:commands-0/fire-priest-commands is on the [behaviors.actions] commandBehaviors list in config.toml"
   ],
   "fieldPathFormat": "json-pointer",
   "fields": {

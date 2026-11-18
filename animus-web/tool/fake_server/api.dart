@@ -445,7 +445,13 @@ class FakeApi {
   /// and the names of the players it knows who own an NPC or a shop.
   FakeResponse _lookups(FakeRequest request, FakeToken token, List<String> segments) => FakeResponse(200, body: <String, Object?>{
         'registries': <String, Object?>{
-          'items': <String>['minecraft:bread', 'minecraft:diamond', 'minecraft:diamond_sword', 'minecraft:emerald'],
+          // The whole item list of this small server: what its shops and the browser checks trade, so an item outside it is unknown.
+          'items': <String>[
+            'minecraft:book', 'minecraft:bread', 'minecraft:cake', 'minecraft:cookie', 'minecraft:diamond', 'minecraft:diamond_sword', 'minecraft:emerald',
+            'minecraft:enchanted_book', 'minecraft:gold_ingot', 'minecraft:gold_nugget', 'minecraft:golden_apple', 'minecraft:gray_stained_glass_pane',
+            'minecraft:iron_pickaxe', 'minecraft:paper', 'minecraft:saddle', 'minecraft:shield', 'minecraft:torch', 'minecraft:wheat',
+            'minecraft:writable_book', 'minecraft:written_book',
+          ],
           'sounds': <String>['minecraft:entity.villager.ambient', 'minecraft:entity.villager.yes'],
           'particles': <String>['minecraft:happy_villager', 'minecraft:heart'],
           'worlds': <String>['world', 'world_nether'],

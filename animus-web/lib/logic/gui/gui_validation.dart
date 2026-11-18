@@ -12,6 +12,7 @@ import 'gui_expression.dart';
 import 'gui_json.dart';
 import 'gui_presets.dart';
 import 'shop_entries.dart';
+import 'shop_words.dart' show shopModeLabels;
 
 /// Codes the editors and tests look for.
 const String refusedCode = 'refused';
@@ -455,7 +456,7 @@ final class _Checker {
       for (final String mode in shopModes) {
         final JsonMap grid = asMap(page[mode]);
         if (grid.isNotEmpty && !enabled.contains(mode)) {
-          warning(childPath(pagePath, mode), "the $mode grid has entries but $mode is not in modes, so players never see it", layoutCode);
+          warning(childPath(pagePath, mode), "${shopModeLabels[mode]} has offers but is not one of the shop's modes, so players never see them", layoutCode);
         }
         for (final MapEntry<String, Object?> slotEntry in grid.entries) {
           final String path = childPath(childPath(pagePath, mode), slotEntry.key);
@@ -465,7 +466,7 @@ final class _Checker {
             error(path, 'Slot ${slot + 1} is outside a $rows-row page (slots 1 to ${rows * 9})', code: layoutCode);
           } else if (slot != null) {
             final String? control = shopControlAt(slot, rows);
-            if (control != null) warning(path, 'slot $slot sits under the $control control and is hidden while that control shows', layoutCode);
+            if (control != null) warning(path, 'Slot ${slot + 1} sits under the $control control and is hidden while that control shows', layoutCode);
           }
           final String type = asString(entry['type']) ?? 'static';
           _entryFields(entry, path, type, container: container, bookShop: bookShop);
@@ -518,7 +519,7 @@ final class _Checker {
       error(r'$.containers', 'expected an array of 1 to 8 containers', code: layoutCode);
       return;
     }
-    if (owner == null) error(r'$.owner', 'a shop with containers needs an owner', code: layoutCode);
+    if (owner == null) error(r'$.owner', 'a chest shop needs an owner', code: layoutCode);
     final Set<String> seen = <String>{};
     for (int index = 0; index < raw.length; index++) {
       final String path = indexPath(r'$.containers', index);
@@ -553,7 +554,7 @@ final class _Checker {
     if (kind == null) {
       error(r'$.kind', 'expected selling, buying, trading or book', code: layoutCode);
     } else if (!container) {
-      error(r'$.kind', 'a shop kind needs containers, which hold its stock', code: layoutCode);
+      error(r'$.kind', 'a shop kind needs a chest, which holds its stock', code: layoutCode);
     }
     return kind;
   }
@@ -585,11 +586,11 @@ final class _Checker {
   void _entryFields(JsonMap entry, String path, String type, {required bool container, required bool bookShop}) {
     final String? book = _book(entry, path, type, bookShop: bookShop);
     if (container) {
-      if (type != 'trade' && type != 'static') error(childPath(path, 'type'), 'a container shop has only trade and static entries', code: layoutCode);
-      if ((asDouble(entry['price']) ?? 0) > 0) error(childPath(path, 'price'), 'a container shop trades items for items; remove the price', code: layoutCode);
-      if (entry.containsKey('stock')) error(childPath(path, 'stock'), "a container shop's stock is its containers", code: layoutCode);
-      if ((asInt(entry['levels']) ?? 0) > 0) error(childPath(path, 'levels'), 'a container shop trades items for items; remove the levels', code: layoutCode);
-      if (asList(entry['commands']).isNotEmpty) error(childPath(path, 'commands'), 'a container shop trades items for items; remove the commands', code: layoutCode);
+      if (type != 'trade' && type != 'static') error(childPath(path, 'type'), 'a chest shop has only trade and static entries', code: layoutCode);
+      if ((asDouble(entry['price']) ?? 0) > 0) error(childPath(path, 'price'), 'a chest shop trades items for items; remove the price', code: layoutCode);
+      if (entry.containsKey('stock')) error(childPath(path, 'stock'), "a chest shop's stock is its chests", code: layoutCode);
+      if ((asInt(entry['levels']) ?? 0) > 0) error(childPath(path, 'levels'), 'a chest shop trades items for items; remove the levels', code: layoutCode);
+      if (asList(entry['commands']).isNotEmpty) error(childPath(path, 'commands'), 'a chest shop trades items for items; remove the commands', code: layoutCode);
     } else if (entry.containsKey('stock') && !shopEntryKeeps(type, 'stock')) {
       error(childPath(path, 'stock'), 'stock applies to buy, command and trade entries', code: layoutCode);
     }

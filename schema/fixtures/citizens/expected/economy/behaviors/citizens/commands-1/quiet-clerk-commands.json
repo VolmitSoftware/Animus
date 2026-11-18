@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "revision": 1,
-  "id": "citizens:commands-1",
+  "id": "citizens:commands-1/quiet-clerk-commands",
   "entry": "sneak-right",
   "routines": {
     "sneak-right": {

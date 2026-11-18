@@ -102,7 +102,12 @@ void main() {
         'commandBehaviors': 1, 'lookClose': 2, 'routeGuides': 1, 'routePoints': 6, 'routes': 3, 'skinsKept': 0, 'textBehaviors': 2, //
       });
       expect(review.preview.files.keys.where((String path) => path.startsWith('behaviors/citizens/')).toList()..sort(),
-          <String>['behaviors/citizens/commands-3.json', 'behaviors/citizens/text-2.json', 'behaviors/citizens/text-3.json', 'behaviors/citizens/waypoints-0.json']);
+          <String>[
+            'behaviors/citizens/commands-3/scribe-commands.json',
+            'behaviors/citizens/text-2/town-crier-talk.json',
+            'behaviors/citizens/text-3/scribe-talk.json',
+            'behaviors/citizens/waypoints-0/gate-patrol-route-stops.json',
+          ]);
     });
 
     test('a mob body keeps its Citizens skin for review and the preview applies the activation rules', () {

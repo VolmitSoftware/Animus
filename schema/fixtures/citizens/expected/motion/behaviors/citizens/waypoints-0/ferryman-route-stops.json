@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "revision": 1,
-  "id": "citizens:waypoints-0",
+  "id": "citizens:waypoints-0/ferryman-route-stops",
   "entry": "point-1",
   "routines": {
     "point-1": {

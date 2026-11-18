@@ -4,7 +4,7 @@
   "runtimeWarnings": [
     "/traits/commandtrait/commands/3/command: npc moveto names a world; set the Animus world by hand; not converted",
     "/traits/commandtrait/commands/4/command: runs from the console, where Citizens has no player to teleport; not converted",
-    "/traits/commandtrait: commands stay denied until citizens:commands-1 is on the [behaviors.actions] commandBehaviors list in config.toml"
+    "/traits/commandtrait: commands stay denied until citizens:commands-1/ferryman-commands is on the [behaviors.actions] commandBehaviors list in config.toml"
   ],
   "fieldPathFormat": "json-pointer",
   "fields": {

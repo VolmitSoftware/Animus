@@ -5,6 +5,7 @@
 library;
 
 import '../../model/animus_document.dart';
+import '../item_ids.dart' show itemName;
 import 'gui_json.dart';
 import 'shop_board.dart';
 
@@ -59,35 +60,116 @@ List<Diagnostic> shopStyleNotes(JsonMap shop, String style, {LayoutLookup? hasLi
   return notes;
 }
 
-/// Offer problems in [shop]. [knownItem] says whether an item id is in the
-/// bundled registry; null skips that check (registry not loaded).
-List<Diagnostic> shopOfferChecks(JsonMap shop, {bool Function(String id)? knownItem}) {
-  final List<Diagnostic> out = <Diagnostic>[];
+/// The item list the editor checks ids against: the paired server's list
+/// covers every namespace; the list bundled with the Minecraft pack covers
+/// `minecraft:` ids only.
+final class ItemList {
+  const ItemList._(this._server, this._vanilla);
+
+  /// Ids without `minecraft:`, as the server sends them.
+  final Set<String>? _server;
+
+  /// Namespaced vanilla ids.
+  final Set<String>? _vanilla;
+
+  /// Whether [id] is an item: null when no list covers it.
+  bool? has(String id) {
+    final String full = id.contains(':') ? id : 'minecraft:$id';
+    final Set<String>? server = _server;
+    if (server != null) return server.contains(full.startsWith('minecraft:') ? full.substring(10) : full);
+    return full.startsWith('minecraft:') ? _vanilla!.contains(full) : null;
+  }
+
+  /// Why [id] is refused, naming a vanilla item by its name as the item
+  /// field does; a modded id has no other name.
+  String unknown(String id) {
+    final String named = id.contains(':') && !id.startsWith('minecraft:') ? id : itemName(id.contains(':') ? id : 'minecraft:$id');
+    return _server != null ? '$named is not an item on this server' : '$named is not a Minecraft item';
+  }
+}
+
+/// The list to check item ids against: [server] (the paired server's ids,
+/// `minecraft:` left off) when it sent one, else [bundled]; null when
+/// neither is loaded.
+ItemList? itemsKnown({List<String>? server, Set<String>? bundled}) {
+  if (server != null && server.isNotEmpty) return ItemList._(<String>{for (final String id in server) id.startsWith('minecraft:') ? id.substring(10) : id}, null);
+  if (bundled != null && bundled.isNotEmpty) return ItemList._(null, bundled);
+  return null;
+}
+
+/// Every item an offer shows, takes or gives in [shop], with the path of
+/// its item object.
+Iterable<(JsonMap, String)> _shopItems(JsonMap shop) sync* {
+  for (final BoardOffer offer in boardOffers(shop)) {
+    final String path = offer.ref.path;
+    yield (asMap(offer.entry['item']), childPath(path, 'item'));
+    if (offer.type != 'trade') continue;
+    for (final String side in const <String>['needs', 'gives']) {
+      final JsonList goods = asList(offer.entry[side]);
+      for (int index = 0; index < goods.length; index++) {
+        yield (asMap(asMap(goods[index])['item']), childPath(indexPath(childPath(path, side), index), 'item'));
+      }
+    }
+  }
+}
+
+/// Items in [shop] whose id [items] says is not an item: errors at the
+/// item ("Item: Brick sword is not a Minecraft item"), since the offer
+/// cannot work on that server.
+List<Diagnostic> shopUnknownItems(JsonMap shop, ItemList? items) {
+  if (items == null) return const <Diagnostic>[];
+  return <Diagnostic>[
+    for (final (JsonMap item, String path) in _shopItems(shop))
+      if ((asString(item['id']) ?? '').trim() case final String id when id.isNotEmpty && items.has(id) == false)
+        Diagnostic(DiagnosticSeverity.error, path, items.unknown(id), code: offerCheckCode),
+  ];
+}
+
+/// The rule core's item reader applies before the id pattern: an item whose
+/// id is empty is missing. One diagnostic at the item, in place of the
+/// schema's pattern message at its id.
+List<Diagnostic> shopItemRules(Object? json) {
+  if (json is! Map<String, Object?>) return const <Diagnostic>[];
+  return <Diagnostic>[
+    for (final (JsonMap item, String path) in _shopItems(json))
+      if (item['id'] is String && (item['id']! as String).trim().isEmpty) Diagnostic(DiagnosticSeverity.error, path, 'is required', code: offerCheckCode),
+  ];
+}
+
+/// [schema] with [shopItemRules] of [json] in place of what the schema says
+/// at those items' ids.
+List<Diagnostic> withShopItemRules(List<Diagnostic> schema, Object? json) {
+  final List<Diagnostic> rules = shopItemRules(json);
+  if (rules.isEmpty) return schema;
+  final Set<String> ids = <String>{for (final Diagnostic rule in rules) childPath(rule.path, 'id')};
+  return <Diagnostic>[
+    for (final Diagnostic diagnostic in schema)
+      if (!ids.contains(diagnostic.path)) diagnostic,
+    ...rules,
+  ];
+}
+
+/// Offer problems in [shop]. [knownItem] tells real items from the item
+/// list in use; null skips that check (no list loaded). An emptied item is
+/// the document's own problem ([shopItemRules]).
+List<Diagnostic> shopOfferChecks(JsonMap shop, {ItemList? knownItem}) {
+  final List<Diagnostic> out = <Diagnostic>[...shopUnknownItems(shop, knownItem)];
   void error(String path, String message) => out.add(Diagnostic(DiagnosticSeverity.error, path, message, code: offerCheckCode));
   void warning(String path, String message) => out.add(Diagnostic(DiagnosticSeverity.warning, path, message, code: offerCheckCode));
-  void item(JsonMap value, String path) {
-    final String id = (asString(value['id']) ?? '').trim();
-    if (id.isEmpty) {
-      error(childPath(path, 'id'), 'pick an item');
-    } else if (knownItem != null && id.startsWith('minecraft:') && !knownItem(id)) {
-      warning(childPath(path, 'id'), '$id is not a Minecraft item');
-    }
-    final Object? count = value['count'];
+  for (final (JsonMap item, String path) in _shopItems(shop)) {
+    final Object? count = item['count'];
     if (count is num && count < 1) error(childPath(path, 'count'), 'a count of $count gives nothing; use 1 to 99');
   }
 
   for (final BoardOffer offer in boardOffers(shop)) {
     final String path = offer.ref.path;
     final JsonMap entry = offer.entry;
-    item(asMap(entry['item']), childPath(path, 'item'));
     if (offer.type == 'trade') {
       for (final String side in const <String>['needs', 'gives']) {
         final JsonList goods = asList(entry[side]);
         for (int index = 0; index < goods.length; index++) {
           final String at = indexPath(childPath(path, side), index);
-          final JsonMap one = asMap(goods[index]);
-          item(asMap(one['item']), childPath(at, 'item'));
-          final Object? amount = one['amount'];
+          final Object? amount = asMap(goods[index])['amount'];
           if (amount is num && amount < 1) error(childPath(at, 'amount'), 'an amount of $amount trades nothing; use 1 or more');
         }
       }

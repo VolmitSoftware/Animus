@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "revision": 1,
-  "id": "citizens:text-1",
+  "id": "citizens:text-3/scribe-talk",
   "entry": "main",
   "routines": {
     "main": {
@@ -11,7 +11,7 @@
           "type": "condition",
           "capability": "animus:quest-state",
           "arguments": {
-            "name": "text-1",
+            "name": "text-3",
             "scope": "npc",
             "equals": 0
           },
@@ -19,7 +19,7 @@
             "type": "action",
             "capability": "animus:say",
             "arguments": {
-              "text": "Welcome!"
+              "text": "Welcome."
             }
           }
         },
@@ -27,7 +27,7 @@
           "type": "condition",
           "capability": "animus:quest-state",
           "arguments": {
-            "name": "text-1",
+            "name": "text-3",
             "scope": "npc",
             "equals": 1
           },
@@ -35,7 +35,7 @@
             "type": "action",
             "capability": "animus:say",
             "arguments": {
-              "text": "Mind the gate."
+              "text": "Quiet, please."
             }
           }
         },
@@ -43,7 +43,7 @@
           "type": "action",
           "capability": "animus:advance-quest-state",
           "arguments": {
-            "name": "text-1",
+            "name": "text-3",
             "scope": "npc",
             "maximum": 2
           }
@@ -52,7 +52,7 @@
           "type": "condition",
           "capability": "animus:quest-state",
           "arguments": {
-            "name": "text-1",
+            "name": "text-3",
             "scope": "npc",
             "atLeast": 2
           },
@@ -60,7 +60,7 @@
             "type": "action",
             "capability": "animus:set-quest-state",
             "arguments": {
-              "name": "text-1",
+              "name": "text-3",
               "scope": "npc",
               "value": 0
             }
@@ -71,10 +71,9 @@
   },
   "triggers": [
     {
-      "id": "near",
-      "event": "proximity",
-      "phase": "enter",
-      "radius": 5.0,
+      "id": "click",
+      "event": "interaction",
+      "action": "interact",
       "playerCooldownTicks": 100
     }
   ]

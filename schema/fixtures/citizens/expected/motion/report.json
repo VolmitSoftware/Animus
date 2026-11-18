@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 23,
+  "converterVersion": 24,
   "fieldPathFormat": "json-pointer",
-  "importId": "6958f43b358f65801938afb86c5d1c8fecb2e570c1d4664072d9250a6df3de0d",
+  "importId": "1f33d648f3e5dc1ac1f8fce357121b3e1e142bbf50759b92b9ff4ed0a00e887c",
   "sourceSha256": "be8e1bd00e47e2baa3ec410558b8586b9ee32166eb1c6629e90b6ee9ef3c9f4c",
   "worldMap": {
     "old_harbor": "harbor"
@@ -53,7 +53,7 @@
   "issues": [],
   "migrationWarnings": [
     "citizens-0: /traits/waypoints/linear/points/2/triggers/0/animations/2: the START_ELYTRA animation has no Animus animation; left out",
-    "citizens-0: /traits/waypoints: waypoint commands stay denied until citizens:waypoints-0 is on the [behaviors.actions] commandBehaviors list in config.toml",
+    "citizens-0: /traits/waypoints: waypoint commands stay denied until citizens:waypoints-0/ferryman-route-stops is on the [behaviors.actions] commandBehaviors list in config.toml",
     "citizens-3: /traits/lookclose/filter: the filter admits no players, so look-close is off",
     "movement: 1 Citizens routes now open doors and drop at least 3 blocks (openDoors, maximumFall), 0 of them raised from a lower fall distance; lower these in the NPC's movement to undo"
   ],
@@ -68,10 +68,10 @@
     "3": "0a1b2c3d-0000-4000-8000-000000000603"
   },
   "documents": {
-    "behaviors/citizens/waypoints-0.json": "cd99c114bfa5fb0d0a3d8acfb74ecbf9b2cd1556047441d6a741616d51832aad",
-    "npcs/harbor/citizens-0.json": "dfddc232a0c7dc6c4c8f6bc883a3f1a95d7513479e7efb698fc153b5bac74524",
-    "npcs/harbor/citizens-1.json": "28fadb269352dae06a43ea44d69b13f3985d341f622f1ab702cb0f4e86994fc9",
-    "npcs/harbor/citizens-2.json": "e62b47744a60c8bffd173c5ce126808d1c0d86f89bedb8005f0622a1186d6305",
-    "npcs/harbor/citizens-3.json": "d683a690c241a80af3242427266511740e0077af9c1d0c63a026c875a960d659"
+    "behaviors/citizens/waypoints-0/ferryman-route-stops.json": "44b52bdbb0f5fe389daf6b19f387c70eae173d313f98b179dda3ae31aab28109",
+    "npcs/harbor/citizens-0.json": "467c32f9f806530fda4de1da1cd41ed24f5d1e997fe465d6aac9ce96672d75e4",
+    "npcs/harbor/citizens-1.json": "3114a4ed0d296bbaaa492178a14af75560d4c90fb1f607b0eabd73c5c891fa35",
+    "npcs/harbor/citizens-2.json": "f633c2ee293203b67a3dcca6c356d4e31cb3a0a8f3d3d7848ee38d41411d8090",
+    "npcs/harbor/citizens-3.json": "4bd3276fbe1a1594e005e49bd106bad8a2099f4c6de5c1a0a4ea07a723614575"
   }
 }

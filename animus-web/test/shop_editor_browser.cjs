@@ -121,6 +121,39 @@ async function rowMenu(page, scope, name, entry) {
   await page.getByRole('menuitem', {name: entry, exact: true}).click();
 }
 
+/** Picks the option whose label starts with [label]; options with a detail line read "Label Detail". */
+async function pickLead(page, trigger, label) {
+  await trigger.click();
+  const list = page.locator(`[id="${await trigger.getAttribute('aria-controls')}"]`);
+  const lead = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  await list.getByRole('option', {name: new RegExp(`^${lead}(?![a-z])`)}).first().click();
+}
+
+/** The text of the (i) tip inside [scope], read by focusing its button. */
+async function tipText(page, scope) {
+  const button = scope.locator('[data-animus-info]').first();
+  await button.focus();
+  const id = await button.getAttribute('aria-describedby');
+  const text = id ? await page.locator(`[id="${id.split(' ')[0]}"]`).textContent() : '';
+  await page.keyboard.press('Escape');
+  return text;
+}
+
+/** The Docs link of every (i) tip inside [scope], read by opening each. */
+async function tipLinks(page, scope) {
+  const buttons = scope.locator('[data-animus-info]:visible');
+  const links = [];
+  for (let index = 0; index < await buttons.count(); index++) {
+    await buttons.nth(index).click();
+    const link = page.locator('a[href*="docs.volmitsoftware.com"]:visible').first();
+    await link.waitFor();
+    links.push(await link.getAttribute('href'));
+    await page.keyboard.press('Escape');
+    await link.waitFor({state: 'hidden'});
+  }
+  return links;
+}
+
 /** The preview frame; on phones it opens behind the header's Preview first. */
 /**
  * Picks [option] of the preview's [label] choice: a toggle button, the
@@ -222,6 +255,28 @@ async function run(browser, viewport, label, theme) {
   assert.deepEqual(await rowIds(page), ['buy', 'command', 'trade']);
   assert.deepEqual(await tradingIds(page), ['buy', 'command', 'trade']);
   await check(page, `${label}-three-offers`);
+
+  // Groups, kinds and tags speak from the shop's side, as Kind in Settings does.
+  assert.deepEqual(await form.locator('section[data-group] h3').allInnerTexts(), ['Sells', 'Trades'], `${label}: offer groups from the shop's side`);
+  assert.match(await form.locator('li[data-offer][data-id="buy"] summary').first().innerText(), /Sells/, `${label}: the buy offer's tag`);
+  assert.ok(!(await form.innerText()).includes('Buying'), `${label}: no player-side group heading`);
+  // Every tip of an offer's form links the page's entry fields.
+  const openTrade = form.locator('li[data-offer][data-id="trade"]');
+  if (!(await openTrade.evaluate(row => row.classList.contains('is-open')))) await openTrade.locator('summary').first().click();
+  const links = await tipLinks(page, form.locator('li[data-offer][data-id="trade"].is-open'));
+  assert.ok(links.length >= 3, `${label}: the offer form has tips (${links.length})`);
+  assert.deepEqual([...new Set(links)], ['https://docs.volmitsoftware.com/animus/10-shops#entry-fields'], `${label}: offer tips link the entry fields`);
+  // An emptied item says it is required, never the id pattern.
+  const takes = form.locator('li[data-offer][data-id="trade"].is-open').getByLabel('Takes 2 item', {exact: true});
+  await takes.fill('');
+  await takes.press('Tab');
+  await settle(page);
+  await form.getByText('Item is required').first().waitFor();
+  assert.equal(await page.getByText(/does not match/).count(), 0, `${label}: no id pattern in the message`);
+  await takes.fill('minecraft:book');
+  await takes.press('Tab');
+  await settle(page);
+  await form.locator('summary', {hasText: /1 enchanted book for 2 emeralds \+ 1 book/}).waitFor();
 
   // Reorder by keyboard: the command row's menu, Move up.
   const buying = form.locator('section[data-group="0:buy"]');
@@ -493,12 +548,25 @@ async function playerShop(browser, viewport, label) {
   const form = page.getByRole('region', {name: 'Shop'});
   await form.locator('li[data-offer]').first().waitFor();
 
-  // Settings in Simple: the kind, and the owner by the name the server knows.
+  // A chest shop says so on both tabs: whose chest it trades from.
+  const chestLine = page.getByTestId('shop-chest-line');
+  assert.ok((await chestLine.innerText()).startsWith("Chest shop: trades from Steve's chest."), `${label}: the chest line`);
+  // A chest shop trades only: the preview offers no Sells or Buys mode.
+  const frame = await preview(page);
+  assert.equal(await frame.getByRole('button', {name: 'Sells', exact: true}).count(), 0, `${label}: no Sells mode in a chest shop's preview`);
+  assert.equal(await frame.getByRole('button', {name: 'Buys', exact: true}).count(), 0, `${label}: no Buys mode in a chest shop's preview`);
+
+  // Settings in Simple: the kind, the owner by the name the server knows, and the chest by labelled fields.
   await form.getByRole('tab', {name: /^Settings/}).click();
   const kind = form.getByRole('combobox', {name: 'Kind', exact: true});
   await kind.waitFor();
   assert.match(await kind.innerText(), /Selling/, `${label}: the kind reads Selling`);
   assert.match(await form.getByRole('combobox', {name: 'Owner', exact: true}).innerText(), /Steve/, `${label}: the owner by name from the server`);
+  assert.equal(await form.getByLabel('Chest 1 world', {exact: true}).inputValue(), 'world', `${label}: the chest's world in Simple`);
+  assert.equal(await form.getByLabel('Chest 1 x', {exact: true}).inputValue(), '10', `${label}: the chest's x in Simple`);
+  for (const word of ['World', 'X', 'Y', 'Z']) {
+    assert.equal(await form.locator('label', {hasText: new RegExp(`^${word}$`)}).count() > 0, true, `${label}: the chest's ${word} is labelled`);
+  }
   assert.ok(!(await form.innerText()).includes(steve), `${label}: no owner UUID in Simple`);
   assert.equal(await form.getByLabel('Owner UUID').count(), 0, `${label}: the UUID field is Advanced only`);
 
@@ -512,20 +580,25 @@ async function playerShop(browser, viewport, label) {
   await reason.fill('Restocking the shelves');
   await settle(page);
 
-  // A book shop: the old trade names a book and drops what it gave.
-  await pickOption(page, kind, 'Book');
+  // A book shop: the old trade turns into a book copy, its price kept, no gives.
+  await pickLead(page, kind, 'Book');
   await settle(page);
   await page.waitForTimeout(400);
   await check(page, `${label}-settings-simple`);
   await form.getByRole('tab', {name: /^Offers/}).click();
+  await form.locator('summary', {hasText: /1 copy of Untitled for 2 emeralds/}).waitFor();
   await form.locator('li[data-id="bread"] summary').first().click();
   const bread = form.locator('li[data-offer][data-id="bread"].is-open');
-  await bread.getByText("a book shop's trades name the book they copy", {exact: false}).first().waitFor();
-  await bread.getByLabel('Book title', {exact: true}).fill('Bread recipes');
+  const breadTitle = bread.getByLabel('Book title', {exact: true});
+  assert.equal(await breadTitle.inputValue(), 'Untitled', `${label}: the converted trade starts with a title`);
+  assert.equal(await bread.getByRole('button', {name: 'Add an item to Gives'}).count(), 0, `${label}: the converted trade gives no items`);
+  assert.ok(!(await form.locator('li[data-id="bread"] summary').first().innerText()).includes('problem'), `${label}: the converted trade has no problem`);
+  await breadTitle.fill('Bread recipes');
   await settle(page);
-  await rowMenu(page, bread, 'Actions for gives 1', 'Delete');
-  await bread.getByRole('button', {name: 'Add an item to Gives'}).waitFor({state: 'detached'});
   await form.locator('summary', {hasText: /1 copy of Bread recipes for 2 emeralds/}).waitFor();
+  // The title's tip says the chest needs a book and quill.
+  const titleTip = await tipText(page, bread.getByText('Book title', {exact: true}).locator('xpath=ancestor::*[.//*[@data-animus-info]][1]'));
+  assert.match(titleTip, /book and quill/, `${label}: the title tip names the book and quill`);
 
   // Add offer makes a book trade: what it takes and the book it copies.
   await page.locator('#animus-shop-add').click();
@@ -546,7 +619,7 @@ async function playerShop(browser, viewport, label) {
   assert.equal(stored.closed, 'Restocking the shelves');
   assert.deepEqual(stored.owner, {uuid: steve}, 'the owner is untouched');
   assert.deepEqual(stored.pages[0].trade['10'], {
-    id: 'bread', type: 'trade', item: {id: 'minecraft:bread'}, needs: [{item: {id: 'minecraft:emerald'}, amount: 2}], book: 'Bread recipes',
+    id: 'bread', type: 'trade', item: {id: 'minecraft:written_book'}, needs: [{item: {id: 'minecraft:emerald'}, amount: 2}], book: 'Bread recipes',
   });
   const added = Object.values(stored.pages[0].trade).find(entry => entry.id === 'trade');
   assert.equal(added.book, 'Tales of the Valley');
@@ -562,9 +635,89 @@ async function playerShop(browser, viewport, label) {
   await context.close();
 }
 
+/**
+ * A chest shop from the Shops list's New, in Simple: the Chest shop start
+ * asks the owner by name (the paired player first), the kind and the chest
+ * by labelled World, X, Y and Z; Create makes a shop as the game makes one,
+ * whose Add offer pays from the chest in a buying shop. Then an item the
+ * server's list lacks is a problem at the field and in the header.
+ */
+async function chestShopNew(browser, viewport, label) {
+  await control('reset', {});
+  await control('restore', {});
+  const {code} = await control('pair?paths=both', {});
+  const context = await browser.newContext({viewport});
+  await context.addInitScript(() => window.localStorage.setItem('animus.mode', 'simple'));
+  const page = await context.newPage();
+  page.setDefaultTimeout(15000);
+  const errors = [];
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  page.on('pageerror', error => errors.push(String(error)));
+  await page.goto(`${site}/#/pair/${code}`);
+  await page.getByRole('button', {name: 'Pair', exact: true}).click();
+  await page.waitForFunction(() => location.hash.startsWith('#/server/'));
+  await waitOnline(page);
+  await page.locator('[data-testid="home-count"]').first().waitFor();
+  const workspace = await page.evaluate(() => `#/workspace/server-${location.hash.split('/')[2]}`);
+  await page.goto(`${site}/${workspace}/list/shop`);
+  await page.locator('[data-testid="list-new"]').click();
+  const dialog = page.locator('#new-dialog');
+  const start = dialog.getByRole('combobox', {name: 'Start from'});
+  await pickLead(page, start, 'Chest shop');
+  const owner = dialog.getByRole('combobox', {name: 'Owner'});
+  await owner.waitFor();
+  assert.match(await owner.innerText(), /Alex/, `${label}: the paired player, by name, owns it unless another is picked`);
+  assert.ok(!(await dialog.innerText()).match(/[0-9a-f]{8}-[0-9a-f]{4}-/), `${label}: no UUID in Simple`);
+  await pickLead(page, dialog.getByRole('combobox', {name: 'Kind'}), 'Buying');
+  for (const word of ['World', 'X', 'Y', 'Z']) {
+    assert.equal(await dialog.locator('label', {hasText: new RegExp(`^${word}$`)}).count(), 1, `${label}: the chest's ${word} is labelled`);
+  }
+  await dialog.getByLabel('Chest world', {exact: true}).fill('world_nether');
+  await dialog.getByLabel('Chest x', {exact: true}).fill('12');
+  await dialog.getByLabel('Chest y', {exact: true}).fill('70');
+  await dialog.getByLabel('Chest z', {exact: true}).fill('-4');
+  await dialog.getByLabel('Chest z', {exact: true}).press('Tab');
+  await check(page, `${label}-new-chest-shop`);
+  await dialog.getByRole('button', {name: 'Create', exact: true}).click();
+  await page.waitForFunction(() => location.hash.includes('/shop/'));
+  const form = page.getByRole('region', {name: 'Shop'});
+  await page.getByTestId('shop-chest-line').waitFor();
+  assert.ok((await page.getByTestId('shop-chest-line').innerText()).startsWith("Chest shop: trades from Alex's chest."), `${label}: the new shop says it trades from its owner's chest, by name`);
+  // Add offer in a buying shop: the shop buys an item and the chest pays.
+  await page.locator('#animus-shop-add').click();
+  await form.locator('summary', {hasText: /1 emerald for 1 wheat/}).waitFor();
+  // The offer's Kind says why only trades are offered.
+  const offerKind = await tipText(page, form.locator('li[data-offer].is-open').getByText('Kind', {exact: true}).locator('xpath=ancestor::*[.//*[@data-animus-info]][1]'));
+  assert.match(offerKind, /chest shop trades items for items/, `${label}: the offer kind says why it narrowed`);
+  // Apply: the server stores the shop as the game makes one.
+  await saveAction(page, 'apply').click();
+  await page.waitForFunction(() => /Applied|Up to date/.test(document.querySelector('.ui-save-bar .ui-save-message')?.textContent || ''), null, {timeout: 20000});
+  const id = await page.evaluate(() => decodeURIComponent(location.hash.split('/shop/')[1].split('?')[0]));
+  const stored = (await control(`document?kind=shop&id=${encodeURIComponent(id)}`)).source;
+  assert.equal(stored.kind, 'buying');
+  assert.deepEqual(stored.owner, {uuid: '00000000-0000-4000-8000-000000000001', name: 'Alex'}, 'the paired player owns it, with the name the server knows');
+  assert.deepEqual(stored.containers, [{world: 'world_nether', x: 12, y: 70, z: -4}]);
+  assert.deepEqual(stored.modes, ['trade']);
+  assert.equal(stored.style, 'native');
+  // An item the server's whole list lacks is a problem at the field and in the header.
+  const takes = form.locator('li[data-offer].is-open').getByLabel('Takes 1 item', {exact: true});
+  await takes.fill('minecraft:netherite_ingot');
+  await takes.press('Tab');
+  await settle(page);
+  await form.getByText(/Netherite ingot is not an item on this server/).first().waitFor();
+  await page.getByRole('button', {name: '1 problem'}).first().waitFor();
+  await check(page, `${label}-chest-shop-offer`);
+  assert.deepEqual(errors, [], label);
+  await context.close();
+}
+
 (async () => {
   const browser = await chromium.launch({headless: true});
   try {
+    for (const width of [1600, 768, 390]) {
+      await chestShopNew(browser, {width, height: 900}, `shop-chest-${width}`);
+      console.log(`shop-chest-${width}: ok`);
+    }
     for (const width of [1600, 768, 390]) {
       await playerShop(browser, {width, height: 900}, `shop-player-${width}`);
       console.log(`shop-player-${width}: ok`);

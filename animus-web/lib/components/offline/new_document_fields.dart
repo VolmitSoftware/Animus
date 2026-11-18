@@ -45,6 +45,7 @@ extension _NewDocumentFields on _NewDocumentPageState {
               onChanged: (String? value) => _set(() => _shopTemplate = ShopTemplate.values.asNameMap()[value] ?? ShopTemplate.blank),
             ),
           ),
+          if (_shopTemplate == ShopTemplate.chest) ..._chestShopFields(advanced),
         ],
       DocumentKind.quest => <Widget>[
           _text('Title', 'new-quest-title', _title, (String value) => _title = value, kind: kind),
@@ -120,6 +121,59 @@ extension _NewDocumentFields on _NewDocumentPageState {
   }
 
   /// A one-line text field; Enter creates.
+  /// A chest shop's owner, kind and chest, as `/animus shop create` asks
+  /// for them. Owners are picked by name; Advanced can also type a UUID.
+  List<Widget> _chestShopFields(bool advanced) {
+    final Map<String, String> owners = _shopOwnerChoices;
+    final String? owner = _chestOwner;
+    final String? typed = _shopOwner?.trim();
+    return <Widget>[
+      Field(
+        label: 'Owner',
+        forId: 'new-shop-owner',
+        tip: 'The player who owns the chest and runs the shop in game.',
+        docs: Docs.playerShops,
+        error: typed != null && typed.isNotEmpty && owner == null ? 'Expected a player UUID, such as 069a79f4-44e9-4726-a5be-fca90e38aaf5.' : null,
+        // The same picker as a shop's Settings, over the paired player and the players the server has seen.
+        child: SuggestScope(
+          sources: CompletionSources.empty.copyWith(players: owners),
+          child: PersonPicker(
+            id: 'new-shop-owner',
+            kind: PersonKind.player,
+            label: 'Owner',
+            value: owner ?? typed,
+            onChanged: (String? picked) => _set(() => _shopOwner = picked),
+          ),
+        ),
+      ),
+      Field(
+        label: 'Kind',
+        forId: 'new-shop-kind',
+        tip: 'What the shop does with its chest. Change it later in Settings.',
+        docs: Docs.playerShops,
+        child: AnimusSelect.values(
+          id: 'new-shop-kind',
+          value: _shopKind,
+          values: shopKinds,
+          labels: shopKindLabels,
+          details: shopKindLines,
+          onChanged: (String? value) => _set(() => _shopKind = value ?? 'selling'),
+        ),
+      ),
+      Field(
+        label: 'Chest',
+        tip: 'The chest that holds the stock and takes the earnings. Add more in Settings.',
+        docs: Docs.chestShops,
+        child: chestLine(
+          id: 'new-shop-chest',
+          label: 'Chest',
+          chest: _chest,
+          onChanged: (String key, Object? value) => _set(() => _chest = <String, Object?>{..._chest, key: value}),
+        ),
+      ),
+    ];
+  }
+
   Widget _text(String label, String id, String value, void Function(String) set, {required DocumentKind kind, String? hint, String? placeholder}) => Field(
         label: label,
         forId: id,
