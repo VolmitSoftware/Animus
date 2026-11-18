@@ -61,6 +61,8 @@ public final class RuntimeEditorHost<P> implements EditorHost {
     @Override public Lookups lookups() { return parts.lookups().get(); }
     @Override public Optional<String> playerName(UUID player) { return parts.runtime().playerName(player); }
 
+    @Override public Map<UUID, String> knownPlayers() { return parts.runtime().knownPlayers(); }
+
     @Override public List<Map.Entry<String, String>> modules() {
         if (parts.extensions() == null) return List.of();
         return parts.extensions().modules().stream().limit(256)

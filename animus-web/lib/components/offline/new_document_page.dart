@@ -48,6 +48,7 @@ import '../suggest/autocomplete_input.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../ui/number_input.dart';
 import '../../ui/stack.dart';
+import '../../mc/npc/npc_skin_failure.dart';
 
 part 'new_document_fields.dart';
 
@@ -295,7 +296,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
       final LoadedSkin? loaded = fromUrl ? await SkinImages.fetchUrl(key, _skinUrl) : await SkinImages.pickFile(key);
       if (loaded != null) setState(() => _skin = loaded);
     } on Object catch (failure) {
-      ArcaneSonner.error('Skin did not load ($failure). Use a 64x64 PNG or an address that allows cross-origin reads.');
+      ArcaneSonner.error('Skin did not load. ${skinFailureText(failure)}');
     } finally {
       if (mounted) setState(() => _busy = false);
     }

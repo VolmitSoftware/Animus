@@ -14,7 +14,7 @@ import '../../mc/scene/mc_math.dart';
 import '../../mc/scene/mc_occlusion.dart';
 import '../../mc/scene/mc_scene.dart';
 import '../../model/document_kind.dart';
-import '../../logic/npc/placeholder_skins.dart';
+import '../../logic/npc/default_skins.dart';
 import '../../services/skin_images.dart';
 import '../../state/library.dart';
 
@@ -31,6 +31,7 @@ List<NpcPlace> npcPlaces(List<LibraryEntry> entries) => <NpcPlace>[
             z: entry.summary.z!,
             type: entry.summary.type,
             skin: entry.summary.skin,
+            uuid: entry.summary.uuid,
             spawned: entry.summary.spawned ?? true,
           ),
     ];
@@ -96,7 +97,8 @@ final class StageNeighbours {
         if (full && place.skin != null) 'skin': place.skin,
       });
       final LoadedSkin? loaded = full && place.skin != null ? SkinImages.forKey(place.skin!) : null;
-      final NpcSkinChoice choice = NpcSkinChoice(textureId: loaded?.textureId ?? npcPlaceholderSkin(place.id, slim: false).textureId, slim: false);
+      final DefaultSkin standard = vanillaDefaultSkin(place.uuid);
+      final NpcSkinChoice choice = loaded != null ? NpcSkinChoice(textureId: loaded.textureId, slim: false) : NpcSkinChoice(textureId: standard.texture, slim: standard.slim);
       final NpcScene body = npcScene(look, skin: choice);
       final McVec3 at = McVec3(place.x - home.$1, place.y - home.$2, place.z - home.$3);
       final McMat4 move = McMat4.translation(at.x, at.y, at.z);

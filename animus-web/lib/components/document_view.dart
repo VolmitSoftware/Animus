@@ -489,6 +489,7 @@ class _DocumentPaneState extends State<DocumentPane> {
         documents: component.workspaceDocuments,
         catalog: _schemas.catalog,
         lookups: component.liveLookups,
+        npcLibrary: component.library?.call(DocumentKind.npc) ?? const <LibraryEntry>[],
         child: PreviewToggle(shown: _previewShown, child: _body(document, view, preview)),
       ),
       if (_idCopy != null) _idDialog(document),
@@ -824,6 +825,7 @@ class _DocumentPaneState extends State<DocumentPane> {
       resources: component.resources,
       neighbours: component.npcLibrary,
       skinTexture: component.skinTexture,
+      lookUpSkin: component.skinEditing?.findAbsence == null ? component.skinEditing?.sign : null,
       collapsible: _place == PreviewPlace.band,
     );
   }

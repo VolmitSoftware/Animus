@@ -1,8 +1,7 @@
-/// Built-in placeholder skins: original 64x64 PNGs under
+/// Built-in skins: original 64x64 PNGs under
 /// `web/assets/skins/placeholder/` (drawn by
-/// `tool/generate_placeholder_skins.dart`), worn by the browser preview when
-/// an NPC has no skin texture here. The skin picker also offers them as
-/// built-in skins: picking one makes a skin document from its PNG.
+/// `tool/generate_placeholder_skins.dart`), which the skin picker offers:
+/// picking one makes a skin document from its PNG.
 library;
 
 import 'dart:convert';
@@ -109,22 +108,6 @@ List<PlaceholderSkin> parsePlaceholderIndex(String text) {
   }
   return skins;
 }
-
-/// The look an NPC wears by default: FNV-1a of its document id, so the same
-/// NPC always gets the same character on every platform.
-PlaceholderLook defaultPlaceholderLook(String npcId) {
-  int hash = 0x811c9dc5;
-  for (final int unit in utf8.encode(npcId)) {
-    hash = (hash ^ unit) & 0xffffffff;
-    // Times the prime 2^24 + 0x193, kept under 2^53 for JavaScript numbers.
-    hash = (hash * 0x193 + ((hash & 0xff) << 24)) & 0xffffffff;
-  }
-  return placeholderLooks[hash % placeholderLooks.length];
-}
-
-/// The placeholder NPC [npcId] wears without a skin texture, in [slim]
-/// arms: the stage and the NPC lists both draw this one.
-PlaceholderSkin npcPlaceholderSkin(String npcId, {required bool slim}) => placeholderSkinFor(defaultPlaceholderLook(npcId), slim: slim);
 
 /// The PNG of [look] in the arm model the stage draws.
 PlaceholderSkin placeholderSkinFor(PlaceholderLook look, {required bool slim}) =>

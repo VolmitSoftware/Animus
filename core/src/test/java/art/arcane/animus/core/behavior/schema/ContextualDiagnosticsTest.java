@@ -52,7 +52,7 @@ class ContextualDiagnosticsTest {
         CapabilitySchema schema = CapabilitySchema.compile("{\"type\":\"object\",\"properties\":{\"mode\":{\"enum\":[\"walk\",\"fly\"]},\"radius\":{\"type\":\"number\",\"minimum\":1,\"maximum\":64},\"name\":{\"type\":\"string\",\"maxLength\":4}}}");
         assertTrue(schema.validate("{\"mode\":\"run\"}").getFirst().message().contains("walk, fly"));
         assertTrue(schema.validate("{\"radius\":\"far\"}").getFirst().message().contains("number"));
-        assertTrue(schema.validate("{\"radius\":100}").getFirst().message().contains("maximum 64"));
+        assertTrue(schema.validate("{\"radius\":100}").getFirst().message().contains("at most 64"));
         assertTrue(schema.validate("{\"name\":\"toolong\"}").getFirst().message().contains("at most 4"));
     }
 

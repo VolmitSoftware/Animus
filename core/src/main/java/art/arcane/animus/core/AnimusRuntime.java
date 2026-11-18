@@ -63,6 +63,7 @@ public final class AnimusRuntime implements AutoCloseable {
     private volatile art.arcane.animus.core.owner.OwnerPermissions ownerPermissions = art.arcane.animus.core.owner.OwnerPermissions.NONE;
     private volatile java.util.function.Supplier<Set<String>> privilegedCapabilities = Set::of;
     private volatile java.util.function.Function<java.util.UUID, java.util.Optional<String>> playerNames = (java.util.UUID player) -> java.util.Optional.empty();
+    private volatile java.util.function.Supplier<java.util.Map<java.util.UUID, String>> knownPlayers = java.util.Map::of;
 
     public AnimusRuntime(RuntimeEnvironment environment) {
         this(environment, failure -> System.getLogger("Animus").log(System.Logger.Level.ERROR,
@@ -351,6 +352,14 @@ public final class AnimusRuntime implements AutoCloseable {
     public java.util.Optional<String> playerName(java.util.UUID player) { return playerNames.apply(player); }
 
     public void playerNames(java.util.function.Function<java.util.UUID, java.util.Optional<String>> names) { playerNames = Objects.requireNonNull(names); }
+
+    /** The players the server has seen, by UUID with their last known name, most recent first; at most {@link #KNOWN_PLAYERS}. Any thread. */
+    public java.util.Map<java.util.UUID, String> knownPlayers() { return knownPlayers.get(); }
+
+    public void knownPlayers(java.util.function.Supplier<java.util.Map<java.util.UUID, String>> players) { knownPlayers = Objects.requireNonNull(players); }
+
+    /** How many players the editor's pickers list: the most recently seen. */
+    public static final int KNOWN_PLAYERS = 500;
 
     /** The capability keys the module registry marks privileged, for the owner check of NPC writes. */
     public void privilegedCapabilities(java.util.function.Supplier<Set<String>> keys) { privilegedCapabilities = Objects.requireNonNull(keys); }

@@ -137,6 +137,14 @@ public final class AnimusModRuntime {
                             (java.util.function.Predicate<String>) (String node) -> VanillaRuntimeHost.permitted(online.permissions(), node)),
                     (UUID player, String node) -> ModOfflineAdmin.check(server, player, node), java.util.concurrent.ForkJoinPool.commonPool()));
             next.runtime.playerNames((UUID player) -> Optional.ofNullable(server.getPlayerList().getPlayer(player)).map((net.minecraft.server.level.ServerPlayer online) -> online.getGameProfile().name()));
+            // Online players only: the list changes on the server thread, so a copy taken mid-change is skipped.
+            next.runtime.knownPlayers(() -> {
+                java.util.Map<UUID, String> online = new java.util.LinkedHashMap<>();
+                try {
+                    for (net.minecraft.server.level.ServerPlayer player : java.util.List.copyOf(server.getPlayerList().getPlayers())) online.put(player.getUUID(), player.getGameProfile().name());
+                } catch (java.util.ConcurrentModificationException changing) { return java.util.Map.of(); }
+                return online;
+            });
             next.ticks = new ModTicks(LOGGER::warn);
             Executor files = next.runtime.fileExecutor((Runnable task, MutationLane.EngineTaskEvent event, Throwable failure) -> {
                 if (event == MutationLane.EngineTaskEvent.FAILED) LOGGER.warn("File task failed", failure);

@@ -27,6 +27,7 @@ import '../inspect/typed_values_editor.dart';
 import '../mc/item_picker.dart';
 import 'combat_fields.dart';
 import 'combat_locations.dart';
+import '../../logic/suggest/person_names.dart';
 import 'combat_rules.dart';
 import '../../ui/number_input.dart';
 import 'npc_layout.dart';
@@ -131,8 +132,8 @@ class CombatSettingsPart extends StatelessWidget {
           _returnPoint(),
         ]),
         _section('guard', <Widget>[
-          textField(form, const <JsonStep>['guard', 'player'], combatWords('guard.player'), placeholder: 'Player UUID'),
-          textField(form, const <JsonStep>['guard', 'npc'], combatWords('guard.npc'), placeholder: 'NPC UUID'),
+          personField(form, const <JsonStep>['guard', 'player'], combatWords('guard.player'), PersonKind.player),
+          personField(form, const <JsonStep>['guard', 'npc'], combatWords('guard.npc'), PersonKind.npc),
           for (final String key in const <String>['followDistance', 'pointRange', 'catchUpDistance', 'replanDistance']) _number('guard', key),
           ..._switches('guard'),
         ]),

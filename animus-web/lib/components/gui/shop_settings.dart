@@ -37,6 +37,8 @@ import '../../ui/number_input.dart';
 import 'gui_stack.dart';
 import '../../ui/stack.dart';
 import '../../ui/toggle_choice.dart';
+import '../../logic/suggest/person_names.dart';
+import '../select/person_picker.dart';
 import '../suggest/suggest_scope.dart';
 
 const Map<String, String> shopModeLabels = <String, String>{'buy': 'Buy', 'sell': 'Sell', 'trade': 'Trade'};
@@ -102,7 +104,7 @@ class _ShopSettingsState extends State<ShopSettings> {
   Widget build(BuildContext context) {
     final bool advanced = ModeScope.advanced(context);
     final bool container = isContainerShop(_shop);
-    final Map<String, String> owners = SuggestScope.sourcesOf(context).owners;
+    final Map<String, String> owners = SuggestScope.sourcesOf(context).players;
     return stack(spacing: 16, <Widget>[
       _row(
         'Title',
@@ -119,7 +121,7 @@ class _ShopSettingsState extends State<ShopSettings> {
         tip: 'The window title. Colour codes such as &6 work; the line under the field shows the result.',
       ),
       if (container || _shop.containsKey('kind')) _kind(),
-      if (!advanced && (container || _shop.containsKey('owner'))) _ownerName(owners),
+      if (!advanced) _ownerPicker(owners),
       ..._status(),
       ShopLinks(shop: component.shopId, documents: component.documents, onCommit: component.onCommit, onOpen: component.onOpen),
       if (advanced) ...<Widget>[
@@ -225,15 +227,32 @@ class _ShopSettingsState extends State<ShopSettings> {
         docs: Docs.playerShops,
       );
 
-  /// The owner by name; Simple never shows their UUID.
-  Widget _ownerName(Map<String, String> owners) => Field(
+  /// The owner picked by name; Simple never shows their UUID.
+  Widget _ownerPicker(Map<String, String> players) => Field(
         label: 'Owner',
         forId: 'animus-shop-owner',
-        tip: 'The player whose chest holds the stock. They run the shop in game.',
+        tip: 'The player who runs this shop in game and whose chests hold the stock. None for a server shop.',
         docs: Docs.playerShops,
         problems: diagnosticsAt(_diagnostics, r'$.owner', nested: true),
-        child: TextInput(id: 'animus-shop-owner', value: shopOwnerName(_shop, owners), readOnly: true),
+        child: _ownerControl('animus-shop-owner', players),
       );
+
+  Widget _ownerControl(String id, Map<String, String> players) {
+    final JsonMap owner = asMap(_shop['owner']);
+    final String? uuid = asString(owner['uuid']);
+    return PersonPicker(
+      id: id,
+      kind: PersonKind.player,
+      label: 'Owner',
+      value: uuid,
+      knownName: asString(owner['name']),
+      onChanged: (String? picked) {
+        // The name rides along for the shop's messages; a UUID typed in keeps none.
+        final String? name = picked == null ? null : players[picked] ?? (picked == uuid ? asString(owner['name']) : null);
+        component.onWrite(const <JsonStep>['owner'], picked == null ? null : <String, Object?>{'uuid': picked, 'name': ?name}, coalesce: 'owner.uuid');
+      },
+    );
+  }
 
   /// Open or closed, on any shop; a closed shop keeps its reason.
   List<Widget> _status() {
@@ -415,13 +434,7 @@ class _ShopSettingsState extends State<ShopSettings> {
       open: owner.isNotEmpty || container,
       tip: "A player's shop: they own the stock chests and get the takings. Needed with containers.",
       children: <Widget>[
-        _row(
-          'UUID',
-          'owner.uuid',
-          (String id) => AutocompleteInput(id: id, value: asString(owner['uuid']) ?? '', label: 'Owner UUID', placeholder: '00000000-0000-0000-0000-000000000000', onChanged: (String v) => set('uuid', v), profile: FieldProfile.none),
-          tip: 'Lowercase with dashes.',
-          hint: owners[asString(owner['uuid'])],
-        ),
+        _row('Player', 'owner.uuid', (String id) => _ownerControl(id, owners), tip: 'Picked by name from the players the server has seen, or a UUID typed in.'),
         _row('Name', 'owner.name', (String id) => AutocompleteInput(id: id, value: asString(owner['name']) ?? '', label: 'Owner name', onChanged: (String v) => set('name', v), profile: FieldProfile.none)),
         for (final Diagnostic problem in diagnosticsAt(_diagnostics, r'$.owner')) AppAlert(tone: AlertTone.warning, message: diagnosticSentence(problem)),
       ],

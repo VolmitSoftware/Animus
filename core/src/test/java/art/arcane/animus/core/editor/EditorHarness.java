@@ -87,6 +87,16 @@ final class EditorHarness implements AutoCloseable {
 
         @Override public art.arcane.animus.core.skin.SkinSigner skinSigner() { return signer; }
 
+        /** What a skin by player name is looked up with; tests that look one up set their own. */
+        volatile art.arcane.animus.core.toolkit.SkinLookup lookup = (String name) -> CompletableFuture.completedFuture(art.arcane.animus.core.toolkit.SkinLookup.Found.unreachable("Lookups are off in this test"));
+
+        @Override public art.arcane.animus.core.toolkit.SkinLookup skinLookup() { return lookup; }
+
+        /** The players the server has seen, as its player data lists them. */
+        final Map<UUID, String> known = new java.util.concurrent.ConcurrentHashMap<>();
+
+        @Override public Map<UUID, String> knownPlayers() { return known; }
+
         @Override public List<Map.Entry<String, String>> modules() { return List.of(Map.entry("example", "ACTIVE")); }
 
         @Override public Lookups lookups() {

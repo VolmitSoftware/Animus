@@ -13,7 +13,6 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 
 import '../../logic/npc/npc_faces.dart';
-import '../../logic/npc/placeholder_skins.dart';
 import '../../services/skin_images.dart';
 import '../../services/skin_textures.dart' show SkinTextureStatus;
 import '../mc/mc_item_icons.dart';
@@ -37,9 +36,9 @@ class SkinFace extends StatefulWidget {
   /// Names the drawn face as an image; null keeps it decorative.
   final String? label;
 
-  /// Drawn when there is no skin or its texture cannot load, as the stage
-  /// draws the NPC; null draws the blank head.
-  final PlaceholderSkin? fallback;
+  /// The PNG drawn when there is no skin or its texture cannot load, as the
+  /// stage draws the NPC; null draws the blank head.
+  final String? fallback;
 
   @override
   State<SkinFace> createState() => _SkinFaceState();
@@ -71,12 +70,12 @@ class _SkinFaceState extends State<SkinFace> {
           ArcaneSkeleton(width: '100%', height: '100%'),
         ]);
       }
-      final PlaceholderSkin? fallback = component.fallback;
+      final String? fallback = component.fallback;
       if (fallback != null) {
         return dom.span(
           classes: 'animus-skin-face$size',
           attributes: const <String, String>{'aria-hidden': 'true', 'data-face': 'placeholder'},
-          styles: dom.Styles(raw: <String, String>{'background-image': 'url("${fallback.url}")'}),
+          styles: dom.Styles(raw: <String, String>{'background-image': 'url("$fallback")'}),
           const <Widget>[],
         );
       }
@@ -112,7 +111,7 @@ class NpcFace extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => switch (source) {
-        SkinFaceSource(:final String? skin, :final PlaceholderSkin fallback) => SkinFace(skinId: skin, texture: texture, png: png, size: size, fallback: fallback),
+        SkinFaceSource(:final String? skin, :final String fallback) => SkinFace(skinId: skin, texture: texture, png: png, size: size, fallback: fallback),
         BodyFaceSource(:final List<String> items) => BodyFace(items: items, size: size),
       };
 }

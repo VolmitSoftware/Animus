@@ -336,6 +336,7 @@ public final class EditorApi implements EditorRequestHandler {
         features.put("terrain", terrain.feature());
         features.put("skins.texture", EditorHost.Feature.no("the server does not cache decoded skin textures; the editor loads them from the skin's texture URL"));
         features.put("skins.sign", parts.host().skinSigner().unavailable().map(EditorHost.Feature::no).orElse(EditorHost.Feature.yes()));
+        features.put("skins.find", EditorHost.Feature.yes());
         features.putAll(parts.host().features());
         JsonObject body = new JsonObject(), list = new JsonObject();
         features.forEach((String name, EditorHost.Feature feature) -> {
@@ -370,6 +371,10 @@ public final class EditorApi implements EditorRequestHandler {
             for (NpcDefinition definition : parts.npcs().get().stored()) definition.owner().ifPresent(owning::add);
             for (UUID owner : owning) parts.host().playerName(owner).ifPresent((String name) -> owners.addProperty(owner.toString(), name));
             body.add("owners", owners);
+            JsonObject players = new JsonObject();
+            new TreeMap<>(parts.host().knownPlayers()).forEach((UUID player, String name) -> { if (name != null && !name.isBlank()) players.addProperty(player.toString(), name); });
+            for (Map.Entry<String, JsonElement> owner : owners.entrySet()) players.add(owner.getKey(), owner.getValue());
+            body.add("players", players);
             return EditorResponse.json(200, body);
         });
     }
@@ -468,7 +473,7 @@ public final class EditorApi implements EditorRequestHandler {
     private CompletionStage<EditorResponse> preview(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
         JsonObject body = EditorMessages.body(request);
         EditorMessages.fields(body, "$", Set.of("previewId", "documents"));
-        Optional<String> replace = body.has("previewId") ? Optional.of(EditorMessages.string(body, "previewId", EditorMessages.OBJECT_ID, "$.previewId")) : Optional.empty();
+        Optional<String> replace = body.has("previewId") ? Optional.of(EditorMessages.string(body, "previewId", EditorMessages.OBJECT_ID, "$.previewId", "a preview id of 8 to 64 letters, digits, _ or -")) : Optional.empty();
         List<EditorMessages.Change> changes = EditorMessages.changes(body, parts.settings().changeSetDocuments());
         for (EditorMessages.Change change : changes) reach(token, change);
         EditorHost.PreviewPresenter presenter = parts.host().previews()
@@ -626,7 +631,7 @@ public final class EditorApi implements EditorRequestHandler {
         if (!changeId.matches("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")) throw new EditorError(EditorError.Code.NOT_FOUND, "No applied change " + changeId + ".");
         JsonObject body = EditorMessages.body(request);
         EditorMessages.fields(body, "$", Set.of("idempotencyKey"));
-        String key = EditorMessages.string(body, "idempotencyKey", EditorMessages.KEY, "$.idempotencyKey");
+        String key = EditorMessages.string(body, "idempotencyKey", EditorMessages.KEY, "$.idempotencyKey", "an idempotency key of 16 to 128 letters, digits, _ or -");
         parts.changes().queued(key);
         try {
             return files(token, () -> {

@@ -220,22 +220,22 @@ public final class CapabilitySchema {
         Node(boolean accepted) { this.accepted = accepted; }
         boolean validate(JsonElement value, String path, Evaluation evaluation, boolean report) {
             evaluation.step();
-            if (!accepted) return evaluation.fail(report, "schema-false", path, "Value is prohibited by the schema");
+            if (!accepted) return evaluation.fail(report, "schema-false", path, "takes no value");
             if (!types.isEmpty() && types.stream().noneMatch(type -> hasType(value, type)))
-                return evaluation.fail(report, "schema-type", path, "Value has an unexpected JSON type; expected " + String.join(" or ", new TreeSet<>(types)));
+                return evaluation.fail(report, "schema-type", path, "expected " + typeWords(types));
             boolean valid = true;
-            if (constant != null && !equal(value, constant, evaluation)) valid = evaluation.fail(report, "schema-const", path, "Value does not match the declared constant; expected " + shown(constant));
+            if (constant != null && !equal(value, constant, evaluation)) valid = evaluation.fail(report, "schema-const", path, "expected " + shown(constant));
             if (allowed != null) {
                 boolean found = false;
                 for (JsonElement option : allowed) if (equal(value, option, evaluation)) { found = true; break; }
-                if (!found) valid = evaluation.fail(report, "schema-enum", path, "Value is not one of the permitted choices: " + choices(allowed));
+                if (!found) valid = evaluation.fail(report, "schema-enum", path, "expected one of " + choices(allowed));
             }
             if (value.isJsonObject()) {
                 JsonObject object = value.getAsJsonObject();
                 valid &= size(object.size(), "Properties", path, evaluation, report);
                 for (String name : required) {
                     evaluation.step();
-                    if (!object.has(name)) valid = evaluation.fail(report, "schema-required", child(path, name), "Required property is missing");
+                    if (!object.has(name)) valid = evaluation.fail(report, "schema-required", child(path, name), "is required");
                 }
                 for (var property : object.entrySet()) {
                     evaluation.step();
@@ -278,7 +278,7 @@ public final class CapabilitySchema {
                             case "multipleOf" -> number.remainder(limit.getValue()).signum() == 0;
                             default -> throw new AssertionError();
                         };
-                        if (!good) valid = evaluation.fail(report, "schema-" + limit.getKey(), path, "Number violates its declared constraint: " + bound(limit.getKey(), limit.getValue()));
+                        if (!good) valid = evaluation.fail(report, "schema-" + limit.getKey(), path, "expected " + bound(limit.getKey(), limit.getValue()));
                     }
                 }
             }
@@ -289,11 +289,11 @@ public final class CapabilitySchema {
                     if (option.validate(value, path, evaluation, false)) successes++;
                     if (kind.equals("anyOf") && successes > 0 || kind.equals("oneOf") && successes > 1) break;
                 }
-                if (successes != 1) valid = evaluation.fail(report, "schema-" + kind, path, "Value does not satisfy the required schema alternatives; expected "
+                if (successes != 1) valid = evaluation.fail(report, "schema-" + kind, path, "expected "
                         + (kind.equals("anyOf") ? "at least one of: " : successes > 1 ? "only one of: " : "exactly one of: ") + alternatives(groups.get(kind)));
             }
             Node not = children.get("not");
-            if (not != null && not.validate(value, path, evaluation, false)) valid = evaluation.fail(report, "schema-not", path, "Value matches a prohibited schema");
+            if (not != null && not.validate(value, path, evaluation, false)) valid = evaluation.fail(report, "schema-not", path, "takes a form that is not allowed here");
             Node condition = children.get("if");
             if (condition != null) {
                 Node branch = children.get(condition.validate(value, path, evaluation, false) ? "then" : "else");
@@ -303,11 +303,23 @@ public final class CapabilitySchema {
         }
         boolean size(int size, String kind, String path, Evaluation evaluation, boolean report) {
             Integer min = counts.get("min" + kind), max = counts.get("max" + kind);
-            String unit = switch (kind) { case "Length" -> "characters"; case "Items" -> "items"; default -> "fields"; };
-            if (min != null && size < min) return evaluation.fail(report, "schema-size", path, "Value violates its declared size constraint; expected at least " + min + " " + unit);
-            if (max != null && size > max) return evaluation.fail(report, "schema-size", path, "Value violates its declared size constraint; expected at most " + max + " " + unit);
+            String unit = switch (kind) { case "Length" -> "character"; case "Items" -> "item"; default -> "field"; };
+            if (min != null && size < min) return evaluation.fail(report, "schema-size", path, "expected at least " + min + " " + (min == 1 ? unit : unit + "s"));
+            if (max != null && size > max) return evaluation.fail(report, "schema-size", path, "expected at most " + max + " " + (max == 1 ? unit : unit + "s"));
             return true;
         }
+    }
+    /** JSON types as a person says them: "text", "a whole number or nothing". */
+    private static String typeWords(Set<String> types) {
+        List<String> words = new ArrayList<>();
+        for (String type : List.of("string", "integer", "number", "boolean", "array", "object", "null")) {
+            if (!types.contains(type)) continue;
+            words.add(switch (type) {
+                case "string" -> "text"; case "integer" -> "a whole number"; case "number" -> "a number"; case "boolean" -> "true or false";
+                case "array" -> "a list"; case "object" -> "a group of fields"; default -> "nothing";
+            });
+        }
+        return String.join(" or ", words);
     }
     private static String shown(JsonElement value) {
         return value.isJsonPrimitive() && value.getAsJsonPrimitive().isString() ? value.getAsString() : value.toString();
@@ -320,10 +332,10 @@ public final class CapabilitySchema {
     private static String bound(String keyword, BigDecimal value) {
         String number = value.stripTrailingZeros().toPlainString();
         return switch (keyword) {
-            case "minimum" -> "minimum " + number;
-            case "maximum" -> "maximum " + number;
-            case "exclusiveMinimum" -> "above " + number;
-            case "exclusiveMaximum" -> "below " + number;
+            case "minimum" -> "at least " + number;
+            case "maximum" -> "at most " + number;
+            case "exclusiveMinimum" -> "more than " + number;
+            case "exclusiveMaximum" -> "less than " + number;
             default -> "a multiple of " + number;
         };
     }

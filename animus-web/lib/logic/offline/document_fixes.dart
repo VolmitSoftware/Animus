@@ -186,10 +186,10 @@ List<DocumentFix> fixesFor(AnimusDocument document, {math.Random? random}) {
       }
     } else if (diagnostic.message == 'unknown field') {
       fix = DocumentFix(diagnostic.path, 'Remove $field', (Object? value) => writeIn(value, steps, null));
-    } else if (field == 'uuid' && diagnostic.message.startsWith('does not match')) {
+    } else if (field == 'uuid' && diagnostic.code == schemaPatternCode) {
       final String uuid = newUuid(random);
       fix = DocumentFix(diagnostic.path, 'Replace with a new UUID', (Object? value) => writeIn(value, steps, uuid));
-    } else if (diagnostic.message.startsWith('does not match') && current is String && (field == 'id' || field == 'group' || field == 'tags')) {
+    } else if (diagnostic.code == schemaPatternCode && current is String && (field == 'id' || field == 'group' || field == 'tags')) {
       final String cleaned = slug(current, fallback: 'npc');
       if (cleaned != current) fix = DocumentFix(diagnostic.path, 'Use $cleaned', (Object? value) => writeIn(value, steps, cleaned));
     } else if (diagnostic.message.startsWith('expected ') && schema != null && schema.containsKey('const') && _clears(document, steps, diagnostic.path, schema['const'])) {
@@ -205,7 +205,7 @@ List<DocumentFix> fixesFor(AnimusDocument document, {math.Random? random}) {
         final num clamped = current is int ? limit.toInt() : limit;
         fix = DocumentFix(diagnostic.path, 'Use $clamped', (Object? value) => writeIn(value, steps, clamped));
       }
-    } else if (current is List<Object?> && diagnostic.message.startsWith('expected at most ') && diagnostic.message.endsWith(' items')) {
+    } else if (current is List<Object?> && diagnostic.message.startsWith('expected at most ') && (diagnostic.message.endsWith(' items') || diagnostic.message.endsWith(' item'))) {
       final int? limit = int.tryParse(diagnostic.message.substring(17, diagnostic.message.length - 6));
       if (limit != null) {
         fix = DocumentFix(diagnostic.path, 'Keep the first $limit', (Object? value) => writeIn(value, steps, current.sublist(0, limit)));

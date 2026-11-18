@@ -174,6 +174,19 @@ final class AnimusBukkit {
         return known;
     }
 
+    /** The players the server has seen, most recently played first, at most {@link AnimusRuntime#KNOWN_PLAYERS}; off the server thread. */
+    static java.util.Map<UUID, String> recentPlayers(org.bukkit.Server server) {
+        java.util.Map<UUID, String> recent = new java.util.LinkedHashMap<>();
+        java.util.List<org.bukkit.OfflinePlayer> seen = new java.util.ArrayList<>(java.util.List.of(server.getOfflinePlayers()));
+        seen.sort(java.util.Comparator.comparingLong(org.bukkit.OfflinePlayer::getLastPlayed).reversed());
+        for (org.bukkit.OfflinePlayer player : seen) {
+            if (recent.size() >= AnimusRuntime.KNOWN_PLAYERS) break;
+            String name = player.getName();
+            if (name != null) recent.putIfAbsent(player.getUniqueId(), name);
+        }
+        return recent;
+    }
+
     void enable() {
         long started = System.nanoTime();
         startupFailure = null;
@@ -212,6 +225,7 @@ final class AnimusBukkit {
                     (UUID player) -> Optional.ofNullable(host.getServer().getPlayer(player)).map((Player online) -> (java.util.function.Predicate<String>) online::hasPermission),
                     (UUID player, String node) -> BukkitOfflinePermission.check(host.getServer(), player, node), ForkJoinPool.commonPool()));
             runtime.playerNames((UUID player) -> Optional.ofNullable(host.getServer().getOfflinePlayer(player).getName()));
+            runtime.knownPlayers(() -> recentPlayers(host.getServer()));
             CitizensGuard.install(citizens);
             replies = new ReplyScheduler(host);
             LibsDisguisesIntegration.serverThread((Runnable task) -> {

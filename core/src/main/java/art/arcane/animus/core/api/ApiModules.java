@@ -96,7 +96,8 @@ final class ApiModules implements NpcRepository.ModuleRules {
                     problems.add("$.modules." + key + field + ": " + diagnostic.message());
                 }
             } catch (RuntimeException | LinkageError failure) {
-                problems.add("$.modules." + key + ": " + registered.owner() + " could not check this data (" + failure.getClass().getSimpleName() + ")");
+                problems.add("$.modules." + key + ": " + registered.owner() + " could not check this data; the server console says why");
+                log.accept("The data check of " + key + " from " + registered.owner() + " failed: " + failure);
             }
         }
         return problems;

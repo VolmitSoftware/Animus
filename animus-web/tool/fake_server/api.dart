@@ -453,6 +453,7 @@ class FakeApi {
         'commands': <String>['animus', 'give', 'spawn', 'tp'],
         'papi': <String>['player', 'server'],
         'owners': _owners(),
+        'players': _players,
       });
 
   FakeResponse _capabilities(FakeRequest request, FakeToken token, List<String> segments) {
@@ -468,6 +469,7 @@ class FakeApi {
         'terrain': yes,
         'skins.texture': no('the server does not cache decoded skin textures; the editor loads them from the skin\'s texture URL'),
         'skins.sign': yes,
+        'skins.find': yes,
         for (final String plugin in runningPlugins) plugin: yes,
       },
       'modules': <Object?>[],

@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -23,16 +24,22 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * MineSkin's v2 queue API ({@code POST /v2/queue}, then {@code GET /v2/queue/<job>} once a second until the job ends).
  * One request runs at a time and the next waits for the {@code rateLimit.next} MineSkin names; a refusal with 429 waits
- * {@code Retry-After} and tries again. Without an API key MineSkin still signs, at its anonymous limit.
+ * {@code Retry-After} and tries again. Without an API key MineSkin still signs, at its anonymous limit. A skin MineSkin
+ * already signed is read with {@code GET /v2/skins/<id>} through the same queue.
  */
 public final class MineSkin implements SkinSigner {
     public static final URI API = URI.create("https://api.mineskin.org");
     static final int MAXIMUM_WAITING = 8, MAXIMUM_POLLS = 90, MAXIMUM_RETRIES = 3;
     static final long FIRST_POLL_MILLIS = 2000, POLL_MILLIS = 1000;
+    private static final Pattern LINK = Pattern.compile("(?i)(?:https?://)?(?:www\\.)?(?:mineskin\\.org|minesk\\.in)/(?:skins/)?([A-Za-z0-9-]{1,40})/?(?:[?#]\\S*)?");
+    private static final Pattern UUID_ID = Pattern.compile("[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+    private static final Pattern SHORT_ID = Pattern.compile("[A-Za-z0-9]{6,16}");
 
     /** One HTTP exchange; tests answer it without a network. */
     @FunctionalInterface public interface Transport { CompletableFuture<Reply> send(HttpRequest request); }
@@ -61,19 +68,47 @@ public final class MineSkin implements SkinSigner {
 
     @Override public Optional<String> unavailable() { return Optional.empty(); }
 
+    /** Whether {@code text} is a mineskin.org or minesk.in link. */
+    public static boolean isLink(String text) { return text != null && LINK.matcher(text.strip()).matches(); }
+
+    /**
+     * The skin a MineSkin link or id names: its UUID in lowercase without dashes, or its short id as typed. Empty for
+     * anything else, such as another site's address.
+     */
+    public static Optional<String> skinId(String text) {
+        String typed = text == null ? "" : text.strip();
+        Matcher link = LINK.matcher(typed);
+        String id = link.matches() ? link.group(1) : typed;
+        if (UUID_ID.matcher(id).matches()) return Optional.of(id.replace("-", "").toLowerCase(Locale.ROOT));
+        return SHORT_ID.matcher(id).matches() ? Optional.of(id) : Optional.empty();
+    }
+
+    @Override public CompletableFuture<Signed> find(String linkOrId) {
+        Optional<String> id = skinId(linkOrId);
+        if (id.isEmpty()) return CompletableFuture.failedFuture(new Refused("Not a MineSkin link or id"));
+        return queued(() -> fetch(id.get(), 0));
+    }
+
     private boolean keyed() { return !key.get().isBlank(); }
 
     @Override public CompletableFuture<Signed> sign(Request request) {
         if (request.source() instanceof Image image) {
             Optional<String> problem = SkinPng.problem(image.png());
             if (problem.isPresent()) return CompletableFuture.failedFuture(new Refused(problem.get()));
+        } else if (request.source() instanceof Address address && isLink(address.url())) {
+            return find(address.url());
         } else if (request.source() instanceof Address address && !address.url().matches("https?://[^\\s]{1,248}")) {
             return CompletableFuture.failedFuture(new Refused("A skin address is an http or https link of at most 256 characters"));
         }
+        return queued(() -> submit(request, 0));
+    }
+
+    /** Runs {@code work} after the requests already waiting, one at a time. */
+    private CompletableFuture<Signed> queued(Supplier<CompletableFuture<Signed>> work) {
         CompletableFuture<Signed> result = new CompletableFuture<>();
         synchronized (this) {
             if (waiting.size() >= MAXIMUM_WAITING) return CompletableFuture.failedFuture(new Refused("MineSkin is busy with " + MAXIMUM_WAITING + " skins from this server; try again in a minute"));
-            waiting.add(() -> submit(request, 0).whenComplete((Signed signed, Throwable failure) -> {
+            waiting.add(() -> work.get().whenComplete((Signed signed, Throwable failure) -> {
                 if (failure != null) result.completeExceptionally(refusal(failure)); else result.complete(signed);
                 next();
             }));
@@ -121,15 +156,32 @@ public final class MineSkin implements SkinSigner {
         });
     }
 
+    private CompletableFuture<Signed> fetch(String id, int attempt) {
+        return transport.send(base(API.resolve("/v2/skins/" + id)).GET().build()).thenCompose((Reply reply) -> {
+            JsonObject body = json(reply);
+            limit(body);
+            if (reply.status() == 429 && attempt < MAXIMUM_RETRIES) return later(wait(reply, body), () -> fetch(id, attempt + 1));
+            if (reply.status() == 404) throw new Refused("MineSkin has no skin " + id);
+            if (reply.status() >= 400) throw new Refused(problem(reply, body));
+            JsonObject skin = object(body, "skin");
+            if (skin == null) throw new Refused("MineSkin answered without the skin");
+            return CompletableFuture.completedFuture(signed(skin));
+        });
+    }
+
     /** The signed skin of a completed job, read from {@code skin.texture}. */
     static Optional<Signed> completed(JsonObject body, JsonObject job) {
         if (!"completed".equals(string(job, "status").orElse("")) || !body.has("skin") || !body.get("skin").isJsonObject()) return Optional.empty();
-        JsonObject skin = body.getAsJsonObject("skin");
+        return Optional.of(signed(body.getAsJsonObject("skin")));
+    }
+
+    /** A MineSkin skin's signed texture, from {@code texture.data}. */
+    private static Signed signed(JsonObject skin) {
         JsonObject texture = object(skin, "texture"), data = texture == null ? null : object(texture, "data"), url = texture == null ? null : object(texture, "url");
         Optional<String> value = data == null ? Optional.empty() : string(data, "value"), signature = data == null ? Optional.empty() : string(data, "signature");
         if (value.isEmpty() || signature.isEmpty()) throw new Refused("MineSkin finished the skin without a signed texture");
         try {
-            return Optional.of(new Signed(new BodySkin(value.get(), signature.get()), url == null ? "" : string(url, "skin").orElse(""), "slim".equals(string(skin, "variant").orElse(""))));
+            return new Signed(new BodySkin(value.get(), signature.get()), url == null ? "" : string(url, "skin").orElse(""), "slim".equals(string(skin, "variant").orElse("")));
         } catch (IllegalArgumentException unreadable) { throw new Refused("MineSkin's signed texture is unreadable"); }
     }
 
@@ -226,8 +278,8 @@ public final class MineSkin implements SkinSigner {
         Throwable cause = failure instanceof CompletionException wrapped && wrapped.getCause() != null ? wrapped.getCause() : failure;
         if (cause instanceof Refused) return cause;
         if (cause instanceof IOException || cause instanceof java.net.http.HttpTimeoutException)
-            return new Refused("Could not reach MineSkin (" + cause.getClass().getSimpleName() + "); the server needs internet access");
-        return new Refused("MineSkin could not sign the skin: " + cause.getClass().getSimpleName());
+            return new Refused("Could not reach MineSkin; the server needs internet access");
+        return new Refused("MineSkin could not sign the skin; try again later");
     }
 
     private static JsonObject object(JsonObject json, String key) {

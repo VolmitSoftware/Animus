@@ -52,8 +52,8 @@ const Map<String, KeyWords> combatKeyWords = <String, KeyWords>{
   'squad.name': KeyWords('Squad name', 'NPCs with the same squad name are one squad.'),
   'squad.alertRange': KeyWords('Alert range', 'Blocks within which it calls its squad.'),
   // Guard.
-  'guard.player': KeyWords('Guard player', 'The UUID of the player it guards. Set a player or an NPC, not both.'),
-  'guard.npc': KeyWords('Guard NPC', 'The UUID of the NPC it guards. Set a player or an NPC, not both.'),
+  'guard.player': KeyWords('Guard player', 'The player it guards. Set a player or an NPC, not both.'),
+  'guard.npc': KeyWords('Guard NPC', 'The NPC it guards. Set a player or an NPC, not both.'),
   'guard.followDistance': KeyWords('Follow distance', 'Blocks it stays behind its charge.'),
   'guard.pointRange': KeyWords('Point range', 'Blocks it may stray from its follow point.'),
   'guard.assist': KeyWords('Assist', 'Attacks whatever its charge attacks.'),

@@ -1,10 +1,10 @@
 // Every NPC row shows a face, as the stage draws the NPC: the example packs'
-// player NPCs (no skin) show the stand-in skin the stage gives each of them,
+// player NPCs (no skin) show the default skin their UUID gives each of them,
 // never a blank square. Paired with the fake server loaded with
 // test/fixtures/npc_browser, a player wearing a skin document shows its
 // texture's face (textures.minecraft.net answered here from a placeholder
 // PNG), a villager its spawn egg and an armor stand its item; when the
-// texture cannot be fetched the row falls back to the stand-in. No failed
+// texture cannot be fetched the row falls back to the default skin. No failed
 // requests on the way, no console errors. 1440 px.
 //
 //   python3 tool/serve_site.py --port <web port>
@@ -97,12 +97,12 @@ async function pair(page) {
     const shown = await faces(examples.page);
     assert.ok(Object.keys(shown).length >= 8, `the example NPCs are listed: ${Object.keys(shown).length}`);
     for (const [id, face] of Object.entries(shown)) {
-      assert.equal(face.kind, 'placeholder', `${id} wears the stage's stand-in, not ${face.kind}`);
-      assert.ok(face.loaded, `${id}'s stand-in face loads`);
+      assert.equal(face.kind, 'placeholder', `${id} wears the stage's default skin, not ${face.kind}`);
+      assert.ok(face.loaded, `${id}'s default skin face loads`);
     }
     assert.deepEqual(examples.problems, [], 'no failed requests or console errors on the examples');
     await examples.made.close();
-    console.log(`ok examples: ${Object.keys(shown).length} NPC rows show their stand-in faces`);
+    console.log(`ok examples: ${Object.keys(shown).length} NPC rows show their default skin faces`);
 
     // Paired: a worn skin, a villager, armor stands and players without a skin.
     const paired = await context(browser, route => route.fulfill({status: 200, contentType: 'image/png', body: texture, headers: {'access-control-allow-origin': '*'}}));
@@ -118,13 +118,13 @@ async function pair(page) {
     assert.equal(Object.values(live).filter(face => face.kind === 'blank' || face.kind === 'none').length, 0, 'no blank faces');
     assert.deepEqual(paired.problems, [], 'no failed requests or console errors when paired');
     await paired.made.close();
-    console.log('ok paired: texture face, body icons and stand-ins');
+    console.log('ok paired: texture face, body icons and default skins');
 
-    // A texture that cannot be fetched falls back to the stand-in.
+    // A texture that cannot be fetched falls back to the default skin.
     const offline = await context(browser, route => route.abort());
     await pair(offline.page);
     const fallback = await faces(offline.page);
-    assert.equal(fallback['harbor/ferryman'].kind, 'placeholder', 'a skin that cannot load shows the stand-in');
+    assert.equal(fallback['harbor/ferryman'].kind, 'placeholder', 'a skin that cannot load shows the default skin');
     await offline.made.close();
     console.log('npc faces: ok');
   } finally {

@@ -148,7 +148,7 @@ final class McPackHttpError implements Exception {
 }
 
 final class McAssetLoader {
-  static const String version = '26.3';
+  static const String version = mcPackVersion;
   static Future<McAssetPackData>? _loading;
   static McAssetPackData? _loaded;
   static Object? _error;

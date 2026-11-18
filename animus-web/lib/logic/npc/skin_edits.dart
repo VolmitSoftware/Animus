@@ -37,7 +37,7 @@ typedef SkinCommit = Future<void> Function(SkinChange change);
 /// What skin editors need beyond one document: the workspace's kept PNGs and
 /// a commit for several documents and resources at once.
 class SkinEditing {
-  const SkinEditing({required this.resources, required this.commit, this.sign});
+  const SkinEditing({required this.resources, required this.commit, this.sign, this.findAbsence});
 
   final Map<String, Uint8List> resources;
   final SkinCommit commit;
@@ -45,6 +45,10 @@ class SkinEditing {
   /// Signs a PNG through the paired server; null when no server is paired,
   /// and a new skin is signed once it is applied on one.
   final SkinSigner? sign;
+
+  /// Why a skin cannot be looked up by player name or MineSkin link here
+  /// ([skinFindAbsence]); null when the paired server can.
+  final String? findAbsence;
 }
 
 /// The NPC or group whose skin an edit sets.
@@ -295,14 +299,15 @@ SkinChange skinFromPng({
   );
 }
 
-/// The signed skin document [signed] (made by the paired server from [png]),
-/// worn by [target], with the PNG kept beside the workspace for the preview.
-SkinChange skinFromSigned({required List<AnimusDocument> documents, required SignedSkin signed, required Uint8List png, required SkinTarget target}) => SkinChange(
+/// The signed skin document [signed] (made by the paired server from [png],
+/// or looked up by player name or MineSkin link without one), worn by
+/// [target], with the PNG kept beside the workspace for the preview.
+SkinChange skinFromSigned({required List<AnimusDocument> documents, required SignedSkin signed, required SkinTarget target, Uint8List? png}) => SkinChange(
       documents: <DocumentChange>[
         if (_find(documents, DocumentKind.skin, signed.id) == null) DocumentChange(DocumentKind.skin, signed.id, signed.source, path: newDocumentPath(DocumentKind.skin, signed.id)),
         DocumentChange.update(target.kind, target.id, (Object? latest) => _setSkin(target.kind, latest, signed.id)),
       ],
-      resources: <String, Uint8List?>{skinImagePath(signed.id): png},
+      resources: <String, Uint8List?>{skinImagePath(signed.id): ?png},
       label: 'signed skin ${signed.id.substring(0, 8)} for ${target.id}',
       skin: signed.id,
     );

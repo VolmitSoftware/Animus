@@ -107,7 +107,7 @@ void main() {
       check(<String, Object?>{
         'propertyNames': <String, Object?>{'pattern': r'^[a-z]+$'},
       }, <String, Object?>{'Bad': 1}).single.message,
-      contains('field name'),
+      startsWith('not a valid name: '),
     );
     expect(
       check(<String, Object?>{
@@ -124,5 +124,44 @@ void main() {
       }, <String, Object?>{'gone': 1}),
       isNotEmpty,
     );
+  });
+
+  test('should say what a pattern wants in words, never the pattern', () {
+    const String uuid = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+    final Map<String, Object?> schema = <String, Object?>{
+      'properties': <String, Object?>{
+        'owner': <String, Object?>{'type': 'string', 'pattern': uuid},
+        'clickRedirect': <String, Object?>{'type': 'string', 'pattern': uuid},
+        'item': <String, Object?>{'type': 'string', 'pattern': r'^([a-z0-9_.-]+:)?[a-z0-9_./-]+$'},
+      },
+    };
+    final List<SchemaError> errors = check(schema, <String, Object?>{'owner': 'Notch', 'clickRedirect': 'guard', 'item': 'Bread!'});
+    expect(errors.map((SchemaError e) => e.toString()), <String>[
+      r'$.owner: expected a player UUID',
+      r'$.clickRedirect: expected an NPC UUID',
+      r'$.item: use a namespaced id such as minecraft:bread',
+    ]);
+    expect(errors.every((SchemaError e) => e.keyword == 'pattern'), isTrue);
+    expect(errors.map((SchemaError e) => e.message).join(' '), isNot(contains('^')));
+  });
+
+  test('should count one character, item or field in the singular', () {
+    expect(check(<String, Object?>{'minLength': 1}, '').single.message, 'expected at least 1 character');
+    expect(check(<String, Object?>{'maxLength': 1}, 'ab').single.message, 'expected at most 1 character');
+    expect(check(<String, Object?>{'minLength': 2}, 'a').single.message, 'expected at least 2 characters');
+    expect(check(<String, Object?>{'minItems': 1}, <Object?>[]).single.message, 'expected at least 1 item');
+    expect(check(<String, Object?>{'maxProperties': 1}, <String, Object?>{'a': 1, 'b': 2}).single.message, 'expected at most 1 field');
+  });
+
+  test('should name JSON types in words and count list items from 1', () {
+    expect(check(<String, Object?>{'type': 'object'}, 'x').single.message, 'expected a group of fields, found text');
+    expect(check(<String, Object?>{'type': <Object?>['array', 'null']}, 3).single.message, 'expected a list or nothing, found a number');
+    expect(check(<String, Object?>{'type': 'integer'}, true).single.message, 'expected a whole number, found true or false');
+    expect(check(<String, Object?>{'uniqueItems': true}, <Object?>['a', 'a']).single.message, 'the same as item 1');
+  });
+
+  test('should say a refused field name in words', () {
+    final String message = check(<String, Object?>{'propertyNames': <String, Object?>{'pattern': r'^[a-z0-9][a-z0-9_-]{0,31}$'}}, <String, Object?>{'Bad Name': 1}).single.message;
+    expect(message, 'not a valid name: use a lowercase name of up to 32 letters, digits, _ or -');
   });
 }

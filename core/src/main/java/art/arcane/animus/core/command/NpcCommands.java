@@ -12,6 +12,7 @@ import art.arcane.animus.core.admin.Administration;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.toolkit.SkinFiles;
 import art.arcane.animus.core.toolkit.SkinLookup;
+import art.arcane.animus.core.skin.MineSkin;
 import art.arcane.animus.core.skin.SkinSigner;
 import art.arcane.animus.core.toolkit.Toolkit;
 import art.arcane.animus.core.virtual.WorldPosition;
@@ -43,7 +44,7 @@ final class NpcCommands extends CommandGroup {
     @Positional("player")
     void skin(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
               @Param(name = "player", defaultValue = "", description = "A Minecraft account name, or reset to remove the skin") String player,
-              @Param(name = "url", defaultValue = "", description = "The address of a 64x64 skin PNG, signed through MineSkin") String url,
+              @Param(name = "url", defaultValue = "", description = "The address of a 64x64 skin PNG, signed through MineSkin, or a MineSkin link") String url,
               @Param(name = "file", defaultValue = "", description = "A skin PNG in plugins/Animus/skins/, such as guard.png, signed through MineSkin") String file,
               @Param(name = "slim", defaultValue = "false", description = "Slim (Alex) arms for url= and file=") boolean slim,
               @Param(name = "follow", defaultValue = "", description = "true: wear the player's new skin when they change it; false: keep this one") String follow,
@@ -107,7 +108,7 @@ final class NpcCommands extends CommandGroup {
             return;
         }
         if (!request.url().isBlank()) {
-            signed(group, actor, id, new SkinSigner.Address(request.url().strip()), request.slim(), SkinSigner.label(request.url()), skins, options);
+            signed(group, actor, id, new SkinSigner.Address(request.url().strip()), request.slim(), SkinSigner.label(request.url()), signingLine(request.url()), skins, options);
             return;
         }
         if (!request.file().isBlank()) {
@@ -119,8 +120,8 @@ final class NpcCommands extends CommandGroup {
                         if (png.isEmpty()) { group.reply(actor, Palette.error("file= names a .png in plugins/Animus/skins/, such as guard.png")); return; }
                         if (Files.size(png.get()) > art.arcane.animus.core.skin.SkinFile.MAXIMUM_IMAGE) { group.reply(actor, Palette.error("skins/" + request.file() + " is over " + art.arcane.animus.core.skin.SkinFile.MAXIMUM_IMAGE + " bytes; a skin PNG is a few kilobytes")); return; }
                         bytes = Files.readAllBytes(png.get());
-                    } catch (IOException unreadable) { group.reply(actor, Palette.error("Cannot read skins/" + request.file() + "; check the file and its permissions")); return; }
-                    signed(group, actor, id, new SkinSigner.Image(bytes), request.slim(), SkinSigner.label(request.file()), skins, options);
+                    } catch (IOException unreadable) { group.reply(actor, Palette.error("Cannot read skins/" + request.file() + "; check that the server may read it")); return; }
+                    signed(group, actor, id, new SkinSigner.Image(bytes), request.slim(), SkinSigner.label(request.file()), signingLine(request.file()), skins, options);
                 });
             } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
             return;
@@ -128,9 +129,15 @@ final class NpcCommands extends CommandGroup {
         options.run();
     }
 
-    /** Signs the PNG through MineSkin off the server thread, then saves it labelled {@code label} and puts it on the NPC. */
-    private static void signed(CommandGroup group, CommandActor actor, String id, SkinSigner.Source source, boolean slim, String label, SkinFiles skins, Runnable options) {
-        group.reply(actor, "Signing the skin through MineSkin");
+    /** What the reply says while MineSkin works: a MineSkin link is read, anything else is signed. */
+    static String signingLine(String source) { return MineSkin.isLink(source) ? "Reading the skin from MineSkin" : "Signing the skin through MineSkin"; }
+
+    /**
+     * Signs the PNG through MineSkin off the server thread (a MineSkin link reads that skin instead), then saves it
+     * labelled {@code label} and puts it on the NPC.
+     */
+    private static void signed(CommandGroup group, CommandActor actor, String id, SkinSigner.Source source, boolean slim, String label, String waiting, SkinFiles skins, Runnable options) {
+        group.reply(actor, waiting);
         group.runtime().skinSigner().sign(new SkinSigner.Request(source, slim, label)).whenComplete((SkinSigner.Signed signed, Throwable failure) -> actor.reply(() -> {
             if (group.stopping()) return;
             if (failure != null) { actor.tell(Palette.error(SkinSigner.message(failure))); return; }

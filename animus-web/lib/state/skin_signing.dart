@@ -1,5 +1,6 @@
 /// Signing a skin PNG through the paired server, which asks MineSkin for the
-/// signature clients need before they draw a skin. `POST /v1/skins/sign`
+/// signature clients need before they draw a skin, or reads one already
+/// signed: a Minecraft account's by name, or a MineSkin link or id. `POST /v1/skins/sign`
 /// answers at once with a job; the job is polled about once a second until it
 /// is signed (with the skin document to apply, which the server does not save)
 /// or failed (with one line saying why).
@@ -33,9 +34,10 @@ class SkinSignFailure implements Exception {
   String toString() => message;
 }
 
-/// What signing a skin needs from the editor: the PNG or its address, the arm
-/// model and an optional label; [progress] hears each state the server reports.
-typedef SkinSigner = Future<SignedSkin> Function({Uint8List? png, String? url, required bool slim, String? label, void Function(String state)? progress});
+/// What signing a skin needs from the editor: the PNG, its address, a player
+/// name or a MineSkin link or id, the arm model and an optional label;
+/// [progress] hears each state the server reports.
+typedef SkinSigner = Future<SignedSkin> Function({Uint8List? png, String? url, String? player, String? mineskin, required bool slim, String? label, void Function(String state)? progress});
 
 /// How long signing waits at most: MineSkin queues jobs and can take a minute when busy.
 const int signPolls = 120;
@@ -45,6 +47,8 @@ Future<SignedSkin> signSkin(
   Future<ApiResponse> Function(ApiRequest request) send, {
   Uint8List? png,
   String? url,
+  String? player,
+  String? mineskin,
   required bool slim,
   String? label,
   void Function(String state)? progress,
@@ -52,7 +56,14 @@ Future<SignedSkin> signSkin(
 }) async {
   final String? named = label == null || label.trim().isEmpty ? null : label.trim();
   final ApiResponse queued = await send(ApiRequest('POST', '/v1/skins/sign', body: <String, Object?>{
-    if (png != null) 'image': base64Encode(png) else 'url': url,
+    if (png != null)
+      'image': base64Encode(png)
+    else if (player != null)
+      'player': player.trim()
+    else if (mineskin != null)
+      'mineskin': mineskin.trim()
+    else
+      'url': url,
     'slim': slim,
     'label': ?named,
   }));
@@ -87,8 +98,8 @@ Future<void> _second() => Future<void>.delayed(const Duration(seconds: 1));
 /// new skin keeps its PNG and is signed once it is applied on one.
 SkinSigner? serverSigner(LiveSession? session) => session == null
     ? null
-    : ({Uint8List? png, String? url, required bool slim, String? label, void Function(String state)? progress}) =>
-        signSkin(session.connection.request, png: png, url: url, slim: slim, label: label, progress: progress);
+    : ({Uint8List? png, String? url, String? player, String? mineskin, required bool slim, String? label, void Function(String state)? progress}) =>
+        signSkin(session.connection.request, png: png, url: url, player: player, mineskin: mineskin, slim: slim, label: label, progress: progress);
 
 /// One line for a signing that did not work: the server's or MineSkin's own
 /// reason, or why the server could not be asked.

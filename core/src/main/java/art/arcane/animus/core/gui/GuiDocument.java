@@ -203,7 +203,7 @@ public record GuiDocument(String id, long revision, GuiTemplate title, String re
         if (area.length() != 1) { parser.problem("$.list.area", "must be exactly one mask character"); return Optional.empty(); }
         if (mask.stream().noneMatch((String row) -> row.indexOf(area.charAt(0)) >= 0)) parser.problem("$.list.area", "area '" + area + "' does not appear in the mask");
         String variable = parser.string(object, "var", "$.list").orElse("entry");
-        if (!variable.matches("[a-z][a-z0-9_]*")) parser.problem("$.list.var", "must match [a-z][a-z0-9_]*");
+        if (!variable.matches("[a-z][a-z0-9_]*")) parser.problem("$.list.var", "use lowercase letters, digits and _, starting with a letter");
         if (ROOTS.contains(variable)) parser.problem("$.list.var", "'" + variable + "' shadows a built-in namespace");
         Set<String> roots = new HashSet<>(ROOTS);
         roots.add(variable);

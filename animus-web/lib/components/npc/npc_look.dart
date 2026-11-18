@@ -28,6 +28,8 @@ import 'body_type_parts.dart';
 import 'equipment_slots.dart';
 import 'group_parts.dart';
 import 'npc_basics.dart' show NpcSkinPart;
+import '../../logic/suggest/person_names.dart';
+import '../select/person_picker.dart';
 import 'npc_form.dart';
 import 'npc_parts.dart';
 import 'skin_field.dart';
@@ -190,9 +192,23 @@ class NpcLookTab extends StatelessWidget {
       AppSection(
         title: 'Click redirect',
         open: doc.containsKey(clickRedirectField),
-        tip: 'Clicking this NPC counts as clicking the NPC with this UUID while it is active.',
+        tip: 'Clicking this NPC counts as clicking the other NPC while that one is active.',
         docs: Docs.npcAppearance,
-        children: <Widget>[form.field(clickRedirectField, label: 'Redirect to')],
+        children: <Widget>[
+          Field(
+            label: 'Redirect to',
+            forId: 'animus-npc-click-redirect',
+            problems: diagnosticsAt(form.diagnostics, childPath(r'$', clickRedirectField)),
+            child: PersonPicker(
+              id: 'animus-npc-click-redirect',
+              kind: PersonKind.npc,
+              label: 'Redirect to',
+              value: asString(doc[clickRedirectField]),
+              exclude: <String>{?asString(doc['uuid'])},
+              onChanged: (String? uuid) => form.write(const <JsonStep>[clickRedirectField], uuid),
+            ),
+          ),
+        ],
       ),
     ];
   }

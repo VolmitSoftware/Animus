@@ -52,13 +52,16 @@ import java.util.concurrent.CompletionException;
                 String id = account.get().get("id").getAsString(), spelled = account.get().has("name") ? account.get().get("name").getAsString() : name;
                 return get(http, "https://sessionserver.mojang.com/session/minecraft/profile/" + id + "?unsigned=false")
                         .thenApply((Optional<JsonObject> profile) -> profile.map((JsonObject found) -> textures(spelled, found)).orElse(Found.missing(spelled + " has no profile on Mojang's session server")));
-            }).exceptionally((Throwable failure) -> {
-                Throwable cause = failure instanceof CompletionException wrapped && wrapped.getCause() != null ? wrapped.getCause() : failure;
-                if (cause instanceof IOException refused && refused.getMessage() != null && refused.getMessage().startsWith("HTTP 429"))
-                    return Found.unreachable("Mojang is rate limiting this server's skin lookups; try " + name + " again in a minute");
-                return Found.unreachable("Could not reach Mojang to look up " + name + " (" + art.arcane.animus.core.text.ReplyText.plain(cause.getClass().getSimpleName()) + "); the server needs internet access");
-            });
+            }).exceptionally((Throwable failure) -> unreachable(name, failure));
         };
+    }
+
+    /** Why Mojang could not be asked about {@code name}: its rate limit, or no connection. */
+    static Found unreachable(String name, Throwable failure) {
+        Throwable cause = failure instanceof CompletionException wrapped && wrapped.getCause() != null ? wrapped.getCause() : failure;
+        if (cause instanceof IOException refused && refused.getMessage() != null && refused.getMessage().startsWith("HTTP 429"))
+            return Found.unreachable("Mojang is rate limiting this server's skin lookups; try " + name + " again in a minute");
+        return Found.unreachable("Could not reach Mojang to look up " + name + "; the server needs internet access");
     }
 
     private static CompletableFuture<Optional<JsonObject>> get(HttpClient http, String url) {

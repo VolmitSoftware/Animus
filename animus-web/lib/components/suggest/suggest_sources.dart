@@ -13,6 +13,7 @@ import '../../logic/inspect/completion_catalog.dart';
 import '../../logic/suggest/completion_sources.dart';
 import '../../mc/assets/mc_pack_manifest.dart';
 import '../../model/animus_document.dart';
+import '../../state/library.dart';
 import '../mc/mc_asset_loader.dart';
 import 'suggest_scope.dart';
 
@@ -35,13 +36,16 @@ Future<CompletionSources> _loadBundled() async {
 }
 
 class SuggestSources extends StatefulWidget {
-  const SuggestSources({required this.documents, required this.child, this.catalog, this.lookups, super.key});
+  const SuggestSources({required this.documents, required this.child, this.catalog, this.lookups, this.npcLibrary = const <LibraryEntry>[], super.key});
 
   final List<AnimusDocument> documents;
   final CompletionCatalog? catalog;
 
   /// The paired server's lists, when paired and it sent them.
   final ServerLookups? lookups;
+
+  /// The server's NPCs, read or not, so pickers name them by UUID.
+  final List<LibraryEntry> npcLibrary;
   final Widget child;
 
   @override
@@ -54,6 +58,7 @@ class _SuggestSourcesState extends State<SuggestSources> {
   CompletionSources? _built;
   CompletionSources? _builtOver;
   List<AnimusDocument>? _builtFrom;
+  List<LibraryEntry>? _builtLibrary;
   CompletionSources? _builtBase;
   CompletionSources? _baseRegistries;
   CompletionCatalog? _builtCatalog;
@@ -93,10 +98,11 @@ class _SuggestSourcesState extends State<SuggestSources> {
   CompletionSources get _sources {
     final CompletionSources? cached = _built;
     final CompletionSources base = _base;
-    if (cached != null && identical(_builtFrom, component.documents) && identical(_builtOver, base)) return cached;
+    if (cached != null && identical(_builtFrom, component.documents) && identical(_builtOver, base) && identical(_builtLibrary, component.npcLibrary)) return cached;
     _builtFrom = component.documents;
     _builtOver = base;
-    return _built = _cache.sources(component.documents, base: base);
+    _builtLibrary = component.npcLibrary;
+    return _built = _cache.sources(component.documents, base: base, npcLibrary: component.npcLibrary);
   }
 
   @override

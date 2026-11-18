@@ -63,6 +63,10 @@ class GuiDocumentTest {
         assertEquals(List.of("$.schemaVersion: chest GUI schemaVersion 2 is not supported; Animus reads version 1"), problems(GLOSS.replace("\"schemaVersion\": 1", "\"schemaVersion\": 2")));
     }
 
+    @Test void aListVariableNameIsCheckedInWords() {
+        assertTrue(problems(GLOSS.replace("\"var\": \"entry\"", "\"var\": \"Entry\"")).contains("$.list.var: use lowercase letters, digits and _, starting with a letter"));
+    }
+
     @Test void maskRowsMustMatchTheResolution() {
         assertTrue(problems(GLOSS.replace("\"#<##X##>#\"", "\"#<##X##>\"")).contains("$.mask[5]: row \"#<##X##>\" must be exactly 9 characters wide"));
     }

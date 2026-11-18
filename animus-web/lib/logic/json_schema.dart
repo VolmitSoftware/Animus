@@ -7,12 +7,17 @@
 /// silently ignored.
 library;
 
+import 'pattern_words.dart';
+
 /// One validation failure at a JSONPath-like location such as `$.keys.X`.
 class SchemaError {
-  const SchemaError(this.path, this.message);
+  const SchemaError(this.path, this.message, {this.keyword});
 
   final String path;
   final String message;
+
+  /// The keyword that failed, where callers act on it (`pattern`).
+  final String? keyword;
 
   @override
   String toString() => '$path: $message';
@@ -189,7 +194,7 @@ class SchemaRegistry {
     }
     final Object? type = schema['type'];
     if (type != null && !_typeMatches(type, instance)) {
-      errors.add(SchemaError(path, 'expected ${type is List ? type.join(' or ') : type}, found ${_typeName(instance)}'));
+      errors.add(SchemaError(path, 'expected ${_typeWords(type)}, found ${_typeName(instance)}'));
       return;
     }
     if (schema.containsKey('const') && !_equal(schema['const'], instance)) {
@@ -225,24 +230,24 @@ class SchemaRegistry {
   void _string(Map<String, Object?> schema, String value, String path, List<SchemaError> errors) {
     final int length = value.runes.length;
     final Object? minLength = schema['minLength'];
-    if (minLength is num && length < minLength) errors.add(SchemaError(path, 'expected at least $minLength characters'));
+    if (minLength is num && length < minLength) errors.add(SchemaError(path, 'expected at least ${_count(minLength, 'character')}'));
     final Object? maxLength = schema['maxLength'];
-    if (maxLength is num && length > maxLength) errors.add(SchemaError(path, 'expected at most $maxLength characters'));
+    if (maxLength is num && length > maxLength) errors.add(SchemaError(path, 'expected at most ${_count(maxLength, 'character')}'));
     final Object? pattern = schema['pattern'];
-    if (pattern is String && !_pattern(pattern).hasMatch(value)) errors.add(SchemaError(path, 'does not match $pattern'));
+    if (pattern is String && !_pattern(pattern).hasMatch(value)) errors.add(SchemaError(path, patternProblem(pattern, path), keyword: 'pattern'));
   }
 
   void _array(Map<String, Object?> schema, Map<String, Object?> root, List<Object?> value, String path,
       List<SchemaError> errors, int depth) {
     final Object? minItems = schema['minItems'];
-    if (minItems is num && value.length < minItems) errors.add(SchemaError(path, 'expected at least $minItems items'));
+    if (minItems is num && value.length < minItems) errors.add(SchemaError(path, 'expected at least ${_count(minItems, 'item')}'));
     final Object? maxItems = schema['maxItems'];
-    if (maxItems is num && value.length > maxItems) errors.add(SchemaError(path, 'expected at most $maxItems items'));
+    if (maxItems is num && value.length > maxItems) errors.add(SchemaError(path, 'expected at most ${_count(maxItems, 'item')}'));
     if (schema['uniqueItems'] == true) {
       for (int a = 0; a < value.length; a++) {
         for (int b = a + 1; b < value.length; b++) {
           if (_equal(value[a], value[b])) {
-            errors.add(SchemaError('$path[$b]', 'duplicates item $a'));
+            errors.add(SchemaError('$path[$b]', 'the same as item ${a + 1}'));
           }
         }
       }
@@ -265,9 +270,9 @@ class SchemaRegistry {
   void _object(Map<String, Object?> schema, Map<String, Object?> root, Map<String, Object?> value, String path,
       List<SchemaError> errors, int depth) {
     final Object? minProperties = schema['minProperties'];
-    if (minProperties is num && value.length < minProperties) errors.add(SchemaError(path, 'expected at least $minProperties fields'));
+    if (minProperties is num && value.length < minProperties) errors.add(SchemaError(path, 'expected at least ${_count(minProperties, 'field')}'));
     final Object? maxProperties = schema['maxProperties'];
-    if (maxProperties is num && value.length > maxProperties) errors.add(SchemaError(path, 'expected at most $maxProperties fields'));
+    if (maxProperties is num && value.length > maxProperties) errors.add(SchemaError(path, 'expected at most ${_count(maxProperties, 'field')}'));
     final Object? required = schema['required'];
     if (required is List<Object?>) {
       for (final Object? key in required) {
@@ -296,7 +301,7 @@ class SchemaRegistry {
       if (schema.containsKey('propertyNames')) {
         final List<SchemaError> nameErrors = <SchemaError>[];
         _validate(schema['propertyNames'], root, field.key, fieldPath, nameErrors, depth + 1);
-        if (nameErrors.isNotEmpty) errors.add(SchemaError(fieldPath, 'field name ${nameErrors.first.message}'));
+        if (nameErrors.isNotEmpty) errors.add(SchemaError(fieldPath, 'not a valid name: ${nameErrors.first.message}', keyword: nameErrors.first.keyword));
       }
       bool matched = false;
       if (properties.containsKey(field.key)) {
@@ -403,14 +408,30 @@ class SchemaRegistry {
     }
   }
 
+  /// A JSON type as a person says it: "text", "a list".
+  static const Map<String, String> _typeWord = <String, String>{
+    'null': 'nothing',
+    'boolean': 'true or false',
+    'object': 'a group of fields',
+    'array': 'a list',
+    'number': 'a number',
+    'integer': 'a whole number',
+    'string': 'text',
+  };
+
+  static String _typeWords(Object? type) =>
+      type is List<Object?> ? type.map((Object? one) => _typeWord['$one'] ?? '$one').join(' or ') : (_typeWord['$type'] ?? '$type');
+
   static String _typeName(Object? instance) {
-    if (instance == null) return 'null';
-    if (instance is bool) return 'boolean';
-    if (instance is num) return 'number';
-    if (instance is String) return 'string';
-    if (instance is List<Object?>) return 'array';
-    return 'object';
+    if (instance == null) return 'nothing';
+    if (instance is bool) return 'true or false';
+    if (instance is num) return 'a number';
+    if (instance is String) return 'text';
+    if (instance is List<Object?>) return 'a list';
+    return 'a group of fields';
   }
+
+  static String _count(num count, String noun) => '$count ${count == 1 ? noun : '${noun}s'}';
 
   static String _show(Object? value) => value is String ? '"$value"' : '$value';
 

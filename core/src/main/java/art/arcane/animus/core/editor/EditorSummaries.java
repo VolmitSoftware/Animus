@@ -96,6 +96,8 @@ final class EditorSummaries {
 
     private static void npc(JsonObject summary, String id, JsonObject source) {
         name(summary, source, "name");
+        String uuid = string(source, "uuid");
+        if (uuid != null && uuid.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) summary.addProperty("uuid", uuid);
         String type = string(source, "type");
         if (type != null && !type.isBlank()) summary.addProperty("type", bounded(type));
         JsonObject position = object(source, "position");

@@ -21,14 +21,6 @@ bool isBookShop(JsonMap shop) => shop['kind'] == 'book';
 /// The title a new book trade starts with, until the owner names the book.
 const String untitledBook = 'Untitled';
 
-/// The owner of a player's shop by name: the name the server knows for its
-/// UUID in [known], else the last name the shop kept, else "Unknown player".
-String shopOwnerName(JsonMap shop, Map<String, String> known) {
-  final JsonMap owner = asMap(shop['owner']);
-  final String? name = known[asString(owner['uuid'])] ?? asString(owner['name']);
-  return name == null || name.trim().isEmpty ? 'Unknown player' : name.trim();
-}
-
 /// The types a slot of [grid] may hold; a container shop trades items for
 /// items, so it keeps only trade and static entries.
 List<String> shopTypesFor(String grid, {required bool container}) => <String>[

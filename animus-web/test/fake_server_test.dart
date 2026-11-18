@@ -288,7 +288,7 @@ void main() {
     expect(lookups.registries[RegistryKind.item], contains('diamond_sword'));
     expect(lookups.commands, contains('spawn'));
     expect(lookups.papi, contains('player'));
-    expect(lookups.owners, isEmpty, reason: 'nothing in the export fixture has an owner');
+    expect(lookups.players, <String, String>{fixtureSettings.viewer: 'Alex', fakeShopOwner: 'Steve'}, reason: 'the players the server has seen');
   });
 
   test('should name the players it knows who own an NPC or a shop, as EditorApi does', () async {
@@ -309,7 +309,7 @@ void main() {
     });
     final Reply reply = await call('GET', '/animus/v1/lookups', token: await pairToken());
     expectMessage('lookups-response', reply.body);
-    expect(ServerLookups.fromJson(reply.json).owners, <String, String>{fixtureSettings.viewer: 'Alex', fakeShopOwner: 'Steve'});
+    expect(reply.json['owners'], <String, Object?>{fixtureSettings.viewer: 'Alex', fakeShopOwner: 'Steve'});
   });
 
   test('terrain in a world the server has not loaded answers world-unloaded', () async {
@@ -943,6 +943,7 @@ void main() {
   group('summaries and batch reads', () {
     const Map<String, Object?> greeterSummary = <String, Object?>{
       'name': 'Greeter',
+      'uuid': 'fe531426-31bc-5660-9207-b3d3078c2305',
       'type': 'minecraft:player',
       'world': 'world',
       'x': -7.5,

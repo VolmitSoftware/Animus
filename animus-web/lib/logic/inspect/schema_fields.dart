@@ -4,6 +4,7 @@
 /// consts, enums, bounds, required keys and descriptions.
 library;
 
+import '../pattern_words.dart';
 import '../gui/gui_json.dart';
 
 /// How a field is edited.
@@ -111,7 +112,7 @@ class FieldSpec {
       if (minLength != null && value.length < minLength!) return minLength == 1 ? 'Required.' : 'At least $minLength characters.';
       if (maxLength != null && value.length > maxLength!) return 'At most $maxLength characters.';
       final String? expected = pattern;
-      if (expected != null && value.isNotEmpty && !RegExp(expected).hasMatch(value)) return patternProblem(expected);
+      if (expected != null && value.isNotEmpty && !RegExp(expected).hasMatch(value)) return _sentence(patternProblem(expected, '\$.$key'));
       if (kind == FieldKind.choice && !openChoice && options.isNotEmpty && !options.any((FieldOption option) => option.value == value)) {
         return 'Not one of ${options.map((FieldOption option) => option.label).join(', ')}.';
       }
@@ -120,22 +121,8 @@ class FieldSpec {
   }
 }
 
-/// What a value must look like for [pattern], in words; never the regex.
-String patternProblem(String pattern) => switch (pattern) {
-      r'\S' => 'Must not be blank.',
-      r'^[a-z0-9][a-z0-9_-]{0,63}$' => 'Use lowercase letters, digits, _ and -, starting with a letter or digit, at most 64 characters.',
-      r'^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$' => 'Use a namespace:path id in lowercase, such as town:welcome or town:quests/intro.',
-      r'^[a-z0-9][a-z0-9_-]{0,63}:[a-z0-9][a-z0-9_-]{0,63}$' => 'Use namespace:name in lowercase, such as mymodule:wave.',
-      r'^[a-z0-9_.-]+:[a-z0-9_./-]+$' => 'Use a Minecraft resource id in lowercase, such as minecraft:block.note_block.bell.',
-      r'^([a-z0-9_.-]+:)?[a-z0-9_./-]+$' || r'^([a-z0-9_]+:)?[a-z0-9_/]+$' => 'Use a Minecraft id in lowercase, such as stone or minecraft:stone.',
-      r'^[A-Za-z0-9_-]+(\.[A-Za-z0-9_*-]+)*$' => 'Use a permission node: words joined by dots, such as town.vip.',
-      r'^[a-z0-9_-]{1,32}$' => 'Use 1 to 32 lowercase letters, digits, _ or -.',
-      r'^[a-z0-9_-]{1,64}$' => 'Use 1 to 64 lowercase letters, digits, _ or -.',
-      r'^[a-f0-9]{64}$' => 'Use the 64-character lowercase hex SHA-256 of the file.',
-      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' => 'Use a lowercase UUID, such as 3f2a6c1e-0b7d-4c55-9e1a-2d4b6f8a9c01.',
-      r'^#[0-9a-fA-F]{8}$' => 'Use a colour as #AARRGGBB, such as #FFFF5FA8.',
-      _ => 'Wrong format.',
-    };
+/// [words] as a sentence: a capital first letter and a full stop.
+String _sentence(String words) => '${words[0].toUpperCase()}${words.substring(1)}.';
 
 /// Bounds this large are left out of hints.
 const num _readableBound = 1e6;

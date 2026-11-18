@@ -108,7 +108,7 @@ class _SkinSummaryState extends State<SkinSummary> {
         Field(label: 'Label', child: dom.span(<Widget>[Component.text(skinDocumentLabel(component.document.json) ?? 'None')])),
         Field(
           label: 'Arms',
-          tip: modelEditable ? 'Writes a new skin document, since the id is the hash of its text. Every NPC and group wearing this one moves to it.' : block,
+          tip: modelEditable ? 'Writes a new skin file, since the id is the hash of its text. Every NPC and group wearing this one moves to it.' : block,
           child: modelEditable
               ? ArcaneToggleSwitch(value: info.slim, label: 'Slim arms (Alex)', onChanged: _model, size: ComponentSize.sm)
               : dom.span(<Widget>[Component.text(info == null ? 'Unreadable texture data' : (info.slim ? 'Slim arms (Alex)' : 'Classic arms (Steve)'))]),
@@ -119,7 +119,7 @@ class _SkinSummaryState extends State<SkinSummary> {
           // Opens once the texture failed to load, closed while it loads.
           key: ValueKey<String>('skin-png:${loaded != null}:$status'),
           open: loaded == null && !loading,
-          tip: 'Load the skin image to see it in the preview. The skin document holds only its hash, so the PNG stays in this browser.',
+          tip: 'Load the skin image to see it in the preview. The skin file holds only its hash, so the PNG stays in this browser.',
           docs: Docs.npcAppearance,
           children: <Widget>[
             Field(

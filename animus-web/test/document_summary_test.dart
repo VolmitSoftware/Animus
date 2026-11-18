@@ -8,6 +8,7 @@ void main() {
   test('should summarize an NPC with its plain name, place, folder and features in protocol order', () {
     final DocumentSummary summary = summarizeDocument(DocumentKind.npc, 'town/market/baker', <String, Object?>{
       'name': '&6<bold>Master</bold>   Baker',
+      'uuid': '853c80ef-3c37-49fd-aa49-938b674adae6',
       'type': 'minecraft:villager',
       'spawned': true,
       'position': <String, Object?>{'world': 'world', 'x': 4.5, 'y': 64, 'z': -2.5},
@@ -27,6 +28,8 @@ void main() {
     expect(summary.tags, <String>['market', 'bread']);
     expect(summary.features, <String>['route', 'combat', 'behavior', 'mount']);
     expect(summary.skin, 'ab' * 32);
+    expect(summary.uuid, '853c80ef-3c37-49fd-aa49-938b674adae6');
+    expect(summarizeDocument(DocumentKind.npc, 'odd', <String, Object?>{'uuid': 'not-a-uuid'}).uuid, isNull);
     expect(summarizeDocument(DocumentKind.npc, 'loner', <String, Object?>{'name': '&f'}).fields, <String, Object?>{'folder': '', 'features': <String>[]},
         reason: 'no visible name: the list shows the id');
   });

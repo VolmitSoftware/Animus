@@ -197,7 +197,7 @@ async function run(browser, viewport, label) {
   await page.goto(`${site}/?reload=1#${workspace}/npc/${encodeURIComponent(classic.id)}`);
   await showPreview(page);
   await page.waitForFunction(() => /Skin did not load/.test(document.querySelector('.ui-stage-status')?.textContent || ''), null, {timeout: 20000});
-  await waitForStageTip(page, /Skin: did not load \(textures\.minecraft\.net answered HTTP 503\), so the preview shows the \w+ stand-in, classic arms\./);
+  await waitForStageTip(page, /Skin: did not load \(textures\.minecraft\.net answered HTTP 503\), so the preview shows the default skin, \w+ with (?:slim|classic) arms\./);
   await shot(page, `${label}-server-failed`);
   failing = null;
   await page.locator('.ui-stage-head').getByRole('button', {name: 'Retry skin'}).focus();

@@ -45,7 +45,7 @@ public final class EditorMessages {
 
     public static ChangeSet changeSet(JsonObject body, int maximumDocuments) throws EditorError {
         fields(body, "$", Set.of("idempotencyKey", "documents", "message"));
-        String key = string(body, "idempotencyKey", KEY, "$.idempotencyKey");
+        String key = string(body, "idempotencyKey", KEY, "$.idempotencyKey", "an idempotency key of 16 to 128 letters, digits, _ or -");
         Optional<String> message = optionalString(body, "message", 512);
         return new ChangeSet(key, changes(body, maximumDocuments), message);
     }
@@ -64,9 +64,9 @@ public final class EditorMessages {
             if (!element.isJsonObject()) throw invalid(at + ": expected an object");
             JsonObject entry = element.getAsJsonObject();
             fields(entry, at, Set.of("kind", "id", "baseRevision", "baseHash", "source", "delete", "from"));
-            String kindName = string(entry, "kind", "[a-z-]{1,32}", at + ".kind");
+            String kindName = string(entry, "kind", "[a-z-]{1,32}", at + ".kind", "a document kind such as npc");
             DocumentKind kind = DocumentKind.parse(kindName).orElseThrow(() -> invalid(at + ".kind: unknown kind " + kindName));
-            String id = string(entry, "id", DOCUMENT_ID, at + ".id");
+            String id = string(entry, "id", DOCUMENT_ID, at + ".id", "a document id of lowercase letters, digits and _ . : / -");
             if (!entry.has("baseRevision") || !entry.has("baseHash")) throw invalid(at + ": baseRevision and baseHash are required (null for a new document)");
             Optional<Long> revision;
             JsonElement rawRevision = entry.get("baseRevision");
@@ -81,7 +81,7 @@ public final class EditorMessages {
             Optional<String> hash;
             JsonElement rawHash = entry.get("baseHash");
             if (rawHash.isJsonNull()) hash = Optional.empty();
-            else hash = Optional.of(string(entry, "baseHash", HASH, at + ".baseHash"));
+            else hash = Optional.of(string(entry, "baseHash", HASH, at + ".baseHash", "sha256: and 64 characters of 0 to 9 and a to f"));
             if (revision.isPresent() != hash.isPresent()) throw invalid(at + ": baseRevision and baseHash are both null for a new document or both set");
             boolean delete = entry.has("delete");
             if (delete && (!entry.get("delete").isJsonPrimitive() || !entry.getAsJsonPrimitive("delete").isBoolean() || !entry.get("delete").getAsBoolean()))
@@ -98,7 +98,7 @@ public final class EditorMessages {
                 if (!entry.get("from").isJsonObject()) throw invalid(at + ".from: expected an object with the id the document moves from");
                 JsonObject origin = entry.getAsJsonObject("from");
                 fields(origin, at + ".from", Set.of("id"));
-                String old = string(origin, "id", DOCUMENT_ID, at + ".from.id");
+                String old = string(origin, "id", DOCUMENT_ID, at + ".from.id", "a document id of lowercase letters, digits and _ . : / -");
                 if (delete) throw invalid(at + ": a delete cannot move; give source with from");
                 if (revision.isEmpty()) throw invalid(at + ": a move needs the baseRevision and baseHash of the document at " + old);
                 if (old.equals(id)) throw invalid(at + ".from.id: the document already has id " + id);
@@ -115,10 +115,11 @@ public final class EditorMessages {
         for (String key : object.keySet()) if (!allowed.contains(key)) throw invalid(at + "." + key + ": unknown field");
     }
 
-    public static String string(JsonObject object, String key, String pattern, String at) throws EditorError {
+    /** The string at {@code key} matching {@code pattern}; refused as "expected {@code expected}" in words, never the pattern. */
+    public static String string(JsonObject object, String key, String pattern, String at, String expected) throws EditorError {
         JsonElement value = object.get(key);
         if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString() || !value.getAsString().matches(pattern))
-            throw invalid(at + ": expected a string matching " + pattern);
+            throw invalid(at + ": expected " + expected);
         return value.getAsString();
     }
 

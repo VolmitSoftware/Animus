@@ -7,6 +7,9 @@ library;
 
 import '../mesh/mc_mesh.dart';
 
+/// The Minecraft version whose pack the editor draws with.
+const String mcPackVersion = '26.3';
+
 /// Relative: works from the hosted root.
 String mcPackBaseUrl(String version) => 'assets/mc/$version';
 

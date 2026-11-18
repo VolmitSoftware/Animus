@@ -102,12 +102,12 @@ class _NpcBrowserState extends State<NpcBrowser> {
   }
 
   /// An NPC's face as the stage draws it: its skin (the workspace's PNG,
-  /// else the texture its skin's summary names) or its placeholder, or its
-  /// body's icon. Drawn only for rows in view.
+  /// else the texture its skin's summary names) or the default skin its
+  /// UUID gives it, or its body's icon. Drawn only for rows in view.
   NpcFace _face(LibraryEntry entry) {
     final String? skin = entry.summary.skin;
     return NpcFace(
-      source: npcFaceSource(entry.id, type: entry.summary.type, skin: skin),
+      source: npcFaceSource(entry.id, type: entry.summary.type, skin: skin, uuid: entry.summary.uuid),
       texture: skin == null ? null : _store.libraryEntry(DocumentKind.skin, skin)?.summary.texture,
       png: skin == null ? null : component.workspace.resources[skinImagePath(skin)],
     );

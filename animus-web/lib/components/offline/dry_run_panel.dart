@@ -23,7 +23,7 @@ import '../../mc/npc/npc_playground.dart';
 import '../../mc/npc/npc_scene.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
-import '../../logic/npc/placeholder_skins.dart';
+import '../../logic/npc/default_skins.dart';
 import '../../services/skin_images.dart';
 import '../../ui/action_row.dart';
 import '../../ui/info_tip.dart';
@@ -155,7 +155,7 @@ class _DryRunPanelState extends State<DryRunPanel> {
     final LoadedSkin? skin = look.skin == null ? null : SkinImages.forKeyOrWorkspace(look.skin!, component.resources[skinImagePath(look.skin!)]);
     final NpcScene scene = npcPlaygroundScene(
       look,
-      skin: NpcSkinChoice(textureId: skin?.textureId ?? npcPlaceholderSkin(actor.id, slim: false).textureId, slim: false),
+      skin: skin != null ? NpcSkinChoice(textureId: skin.textureId, slim: false) : npcDefaultSkinChoice(asMap(actor.json)['uuid']),
       speech: speech,
     );
     _stage.show(scene.scene, scene.texts, yawDeg: look.yawDeg, frame: frame);

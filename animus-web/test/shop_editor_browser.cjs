@@ -498,7 +498,7 @@ async function playerShop(browser, viewport, label) {
   const kind = form.getByRole('combobox', {name: 'Kind', exact: true});
   await kind.waitFor();
   assert.match(await kind.innerText(), /Selling/, `${label}: the kind reads Selling`);
-  assert.equal(await form.getByLabel('Owner', {exact: true}).inputValue(), 'Steve', `${label}: the owner by name from the server`);
+  assert.match(await form.getByRole('combobox', {name: 'Owner', exact: true}).innerText(), /Steve/, `${label}: the owner by name from the server`);
   assert.ok(!(await form.innerText()).includes(steve), `${label}: no owner UUID in Simple`);
   assert.equal(await form.getByLabel('Owner UUID').count(), 0, `${label}: the UUID field is Advanced only`);
 

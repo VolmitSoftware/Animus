@@ -181,6 +181,17 @@ class NpcServiceTest {
         assertEquals(Outcome.Status.OK, other.modules().register(new NpcModules.Descriptor(new Capabilities.Key("demo", "clicks"), "Again", 0), counter).status(), "release frees the key");
     }
 
+    @Test void aModuleThatFailsToCheckItsDataIsNamedWithoutAJavaClass() throws Exception {
+        npcs.modules().register(new NpcModules.Descriptor(new Capabilities.Key("demo", "broken"), "Breaks", 0), new NpcModules.Module() {
+            @Override public List<Diagnostic> validate(String data) { throw new IllegalStateException("boom"); }
+        });
+        Outcome<DefinitionSnapshot> refused = await(npcs.createTemporary(NpcSpec.builder().location(HERE).module("demo:broken", "{}").build()));
+        assertEquals(Outcome.Status.INVALID, refused.status());
+        String message = refused.diagnostics().getFirst().message();
+        assertTrue(message.contains("could not check this data"), message);
+        assertFalse(message.contains("IllegalStateException"), message);
+    }
+
     @Test void clickSpawnAndTickHooksSeeTheModuleData() throws Exception {
         List<String> seen = new CopyOnWriteArrayList<>();
         npcs.modules().register(new NpcModules.Descriptor(new Capabilities.Key("demo", "watch"), "Watches", 4), new NpcModules.Module() {

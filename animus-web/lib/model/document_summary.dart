@@ -28,6 +28,9 @@ class DocumentSummary {
   /// Plain display name; null when the document has none.
   String? get name => _string('name');
 
+  /// NPC: its UUID, which owners, guards, click redirects and behaviors name.
+  String? get uuid => _string('uuid');
+
   /// NPC body type, as written (`minecraft:player`).
   String? get type => _string('type');
   String? get world => _string('world');
@@ -167,6 +170,8 @@ DocumentSummary summarizeDocument(DocumentKind kind, String id, Object? json) {
   });
 }
 
+final RegExp _uuid = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
+
 Map<String, Object?> _npc(String id, Map<String, Object?> json) {
   final Map<String, Object?> position = _map(json['position']);
   final Map<String, Object?> modules = _map(json['modules']);
@@ -175,8 +180,10 @@ Map<String, Object?> _npc(String id, Map<String, Object?> json) {
   final Object? mount = modules['animus:mount'];
   final List<Object?> points = _array(navigation?['points']) ?? const <Object?>[];
   final Object? skin = json['skin'];
+  final Object? uuid = json['uuid'];
   return <String, Object?>{
     'name': plainName(json['name']),
+    'uuid': uuid is String && _uuid.hasMatch(uuid) ? uuid : null,
     'type': _text(json['type']),
     'world': _text(position['world']),
     'x': _number(position['x']),

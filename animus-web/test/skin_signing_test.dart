@@ -48,6 +48,24 @@ void main() {
       expect(states, contains('signing'));
     });
 
+    test('a player name or a MineSkin link is sent as typed and its document kept', () async {
+      final Map<String, Object?> notch = <String, Object?>{..._source('Notch'), 'player': 'Notch'};
+      final List<ApiRequest> sent = <ApiRequest>[];
+      Future<ApiResponse> answer(ApiRequest request) async {
+        sent.add(request);
+        return request.method == 'POST'
+            ? ApiResponse(202, <String, Object?>{'job': 'd' * 32, 'state': 'signing'})
+            : ApiResponse(200, <String, Object?>{'job': 'd' * 32, 'state': 'signed', 'skin': <String, Object?>{'id': _id(notch), 'source': notch}});
+      }
+
+      final SignedSkin byName = await signSkin(answer, player: ' notch ', slim: false, pause: () async {});
+      expect(byName.source, prettyJson(notch));
+      expect(sent.first.body, <String, Object?>{'player': 'notch', 'slim': false});
+      sent.clear();
+      await signSkin(answer, mineskin: 'https://minesk.in/e51d0e34', slim: false, pause: () async {});
+      expect(sent.first.body, <String, Object?>{'mineskin': 'https://minesk.in/e51d0e34', 'slim': false});
+    });
+
     test('a failed job says why in MineSkin\'s words', () async {
       final List<ApiResponse> answers = <ApiResponse>[
         ApiResponse(202, <String, Object?>{'job': 'a' * 32, 'state': 'signing'}),

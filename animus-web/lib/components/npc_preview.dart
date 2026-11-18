@@ -18,6 +18,7 @@ import 'package:web/web.dart' as web;
 
 import '../logic/gui/gui_json.dart';
 import '../logic/gui/gui_text.dart';
+import '../logic/npc/default_skins.dart';
 import '../logic/npc/npc_appearance.dart' show bodyLabel, bodySettingsTypes;
 import '../logic/npc/route_model.dart';
 import '../logic/offline/new_documents.dart';
@@ -35,11 +36,11 @@ import '../mc/scene/mc_math.dart';
 import '../mc/scene/mc_scene.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
-import '../logic/npc/placeholder_skins.dart';
 import '../services/skin_images.dart';
 import '../services/skin_textures.dart';
 import '../services/terrain/terrain_client.dart';
 import '../state/library.dart';
+import '../state/skin_signing.dart';
 import '../state/workspace_route.dart';
 import '../ui/action_row.dart';
 import '../ui/menu.dart';
@@ -63,6 +64,7 @@ class NpcPreview extends StatefulWidget {
     this.resources = const <String, Uint8List>{},
     this.neighbours,
     this.skinTexture,
+    this.lookUpSkin,
     this.collapsible = false,
     super.key,
   });
@@ -92,6 +94,10 @@ class NpcPreview extends StatefulWidget {
 
   /// A skin's texture address from the catalog, for the neighbours' skins.
   final String? Function(String skinId)? skinTexture;
+
+  /// Looks a skin up through the paired server, for Skin from name; null
+  /// without one.
+  final SkinSigner? lookUpSkin;
 
   /// Hide and Show for the band above the form at 761-1099 px.
   final bool collapsible;
@@ -145,11 +151,57 @@ class _NpcPreviewState extends State<NpcPreview> {
   LoadedSkin? _loaded(NpcLook look) =>
       SkinImages.forKeyOrWorkspace(_skinKey(look), look.skin == null ? null : component.resources[skinImagePath(look.skin!)]);
 
+  /// The NPC's UUID, which picks the default skin players see without one.
+  String? get _uuid => asString(asMap(component.document.json)['uuid']);
+
+  /// Skins of accounts by lowercase name, looked up once per session for
+  /// Skin from name: their texture, or null when the lookup failed.
+  static final Map<String, Future<NpcSkinInfo?>> _named = <String, Future<NpcSkinInfo?>>{};
+  static final Map<String, NpcSkinInfo?> _namedInfo = <String, NpcSkinInfo?>{};
+
+  static final RegExp _accountName = RegExp(r'^[A-Za-z0-9_]{1,16}$');
+
+  /// The account Skin from name wears: the NPC's plain name, when the
+  /// option is on, the NPC wears no skin and the name can be an account.
+  String? _nameSkinAccount(NpcLook look) {
+    if (look.skin != null || !look.isPlayer) return null;
+    final JsonMap json = asMap(component.document.json);
+    if (asMap(asMap(json['modules'])['animus:skin'])['fromName'] != true) return null;
+    final String name = guiPlainText(asString(json['name']) ?? '').trim();
+    return _accountName.hasMatch(name) ? name : null;
+  }
+
+  /// Looks [account] up through the paired server once, then loads its texture.
+  void _lookUpNamed(String account) {
+    final SkinSigner? sign = component.lookUpSkin;
+    final String key = account.toLowerCase();
+    if (sign == null || _named.containsKey(key)) return;
+    _named[key] = sign(player: account, slim: false).then((SignedSkin signed) => NpcSkinInfo.fromDocument(jsonDecode(signed.source))).then(
+      (NpcSkinInfo? info) async {
+        _namedInfo[key] = info;
+        if (info != null) await SkinImages.textures.load('name:$key', info.textureUrl);
+        return info;
+      },
+      onError: (Object _) {
+        _namedInfo[key] = null;
+        return null;
+      },
+    );
+    _named[key]!.then((NpcSkinInfo? _) => _redraw());
+  }
+
   NpcSkinChoice _skinFor(NpcLook look) {
     final bool slim = _slim;
     final LoadedSkin? loaded = _loaded(look);
     if (loaded != null) return NpcSkinChoice(textureId: loaded.textureId, slim: slim);
-    return NpcSkinChoice(textureId: npcPlaceholderSkin(component.document.id, slim: slim).textureId, slim: slim);
+    final String? account = _nameSkinAccount(look);
+    if (account != null) {
+      final String key = account.toLowerCase();
+      final LoadedSkin? named = SkinImages.forKey('name:$key');
+      if (named != null) return NpcSkinChoice(textureId: named.textureId, slim: _namedInfo[key]?.slim ?? false);
+      _lookUpNamed(account);
+    }
+    return npcDefaultSkinChoice(_uuid);
   }
 
   /// The rig's idle animation id, when the workspace has it.
@@ -569,8 +621,17 @@ class _NpcPreviewState extends State<NpcPreview> {
   String _skinText(NpcLook look, NpcSkinInfo? info, LoadedSkin? loaded, bool slim) {
     final String model = slim ? 'slim arms' : 'classic arms';
     if (loaded != null) return '${loaded.source}, $model';
-    final String placeholder = 'the ${defaultPlaceholderLook(component.document.id).label} stand-in, $model';
-    if (look.skin == null) return 'none, so the preview shows $placeholder';
+    final DefaultSkin standard = vanillaDefaultSkin(_uuid);
+    final String placeholder = 'the default skin, ${standard.label} with ${standard.slim ? 'slim' : 'classic'} arms';
+    final String? account = _nameSkinAccount(look);
+    if (account != null) {
+      final String key = account.toLowerCase();
+      if (SkinImages.forKey('name:$key') != null) return "$account's, from the NPC's name";
+      if (component.lookUpSkin == null) return "$account's from the NPC's name, shown once paired; the preview shows $placeholder";
+      if (_named.containsKey(key) && _namedInfo.containsKey(key)) return "$account's from the NPC's name did not load, so the preview shows $placeholder";
+      return "$account's from the NPC's name, looking it up";
+    }
+    if (look.skin == null) return 'none, so players see $placeholder';
     if (info == null) return 'not in this workspace, so the preview shows $placeholder';
     if (info.textureUrl == null) return 'no picture in this workspace, so the preview shows $placeholder';
     final SkinTextureState? state = SkinImages.textures.stateOf(look.skin!);

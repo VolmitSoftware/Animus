@@ -153,11 +153,15 @@ class ArgumentField extends StatelessWidget {
     required this.variables,
     required this.scope,
     this.problems = const <Diagnostic>[],
+    this.bounds = true,
     super.key,
   });
 
   final JsonMap node;
   final FieldSpec argument;
+
+  /// Whether the argument's limits show under it; a picker of names has none to type.
+  final bool bounds;
 
   /// The argument's diagnostic path.
   final String path;
@@ -189,7 +193,7 @@ class ArgumentField extends StatelessWidget {
 
     return Field(
       label: fieldLabel(argument, label: argumentLabel(argument.key)),
-      help: argument.boundsHint,
+      help: bounds ? argument.boundsHint : null,
       tip: argument.description,
       problems: problems,
       child: dom.div(

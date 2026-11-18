@@ -57,7 +57,7 @@ final class SkinTextures {
     if (_states.containsKey(hash)) return Future<void>.value();
     final Uri? address = skinTextureAddress(textureUrl);
     if (address == null) {
-      _states[hash] = const SkinTextureState(SkinTextureStatus.failed, 'the skin document has no textures.minecraft.net texture URL');
+      _states[hash] = const SkinTextureState(SkinTextureStatus.failed, 'the skin file has no textures.minecraft.net texture URL');
       return Future<void>.value();
     }
     _states[hash] = const SkinTextureState(SkinTextureStatus.loading);

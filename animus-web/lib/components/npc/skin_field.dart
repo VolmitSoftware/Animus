@@ -5,7 +5,8 @@
 /// faces load; nothing is decoded until the chooser opens. A PNG file or
 /// address makes a new skin document (`lib/logic/npc/skin_edits.dart`),
 /// signed through the paired server, or unsigned with its PNG kept for the
-/// server it is applied on.
+/// server it is applied on. A player name or a MineSkin link or id is
+/// looked up by the paired server, as `/animus npc skin` does.
 library;
 
 import 'dart:typed_data';
@@ -14,7 +15,9 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/npc/placeholder_skins.dart';
+import '../../logic/npc/skin_finds.dart';
 import '../../logic/npc/skin_edits.dart';
 import '../../logic/skin_label.dart';
 import '../../logic/offline/new_documents.dart' show skinImagePath;
@@ -26,6 +29,7 @@ import '../../services/skin_images.dart';
 import '../../state/skin_signing.dart';
 import '../../ui/action_row.dart';
 import '../../ui/alert.dart';
+import '../../ui/density.dart';
 import '../../ui/dialog.dart';
 import '../../ui/field.dart';
 import '../../ui/library_list.dart';
@@ -82,6 +86,9 @@ class SkinField extends StatefulWidget {
     this.diagnostics = const <Diagnostic>[],
     this.onLoaded,
     this.label = 'Skin',
+    this.defaultName = 'Default',
+    this.defaultFace,
+    this.findAbsence,
     super.key,
   });
 
@@ -112,6 +119,15 @@ class SkinField extends StatefulWidget {
   /// A PNG was loaded or a built-in skin worn; the preview redraws.
   final void Function()? onLoaded;
   final String label;
+
+  /// What the field says with no skin: the default skin players see.
+  final String defaultName;
+
+  /// That default skin's PNG, for the face; null draws the blank head.
+  final String? defaultFace;
+
+  /// Why skins cannot be looked up by player name or MineSkin link here.
+  final String? findAbsence;
 
   @override
   State<SkinField> createState() => _SkinFieldState();
@@ -176,13 +192,13 @@ class _SkinFieldState extends State<SkinField> {
     final String? value = component.value;
     final AnimusDocument? current = _current;
     final String name = value == null
-        ? 'Default (Steve or Alex)'
+        ? component.defaultName
         : current == null
             ? (ModeScope.advanced(context) ? '${value.substring(0, value.length.clamp(0, 12))}, not here' : 'A skin not in this workspace')
             : skinLabel(current.id, label: skinDocumentLabel(current.json), wornBy: <String>[for (final AnimusDocument wearer in skinWearers(component.documents, current.id)) guiPlainText(wearer.title)]);
     return Field(
       label: component.label,
-      tip: 'The look a player body wears. Pick a saved skin, a built-in one, or upload a PNG.',
+      tip: "The look a player body wears: a saved or built-in skin, a player's, a MineSkin skin or a PNG.",
       problems: <Diagnostic>[
         ...component.diagnostics.where((Diagnostic diagnostic) => diagnostic.path == r'$.skin'),
         if (value != null && !_hash.hasMatch(value)) const Diagnostic(DiagnosticSeverity.error, r'$.skin', 'Not a skin id.'),
@@ -192,7 +208,7 @@ class _SkinFieldState extends State<SkinField> {
         ActionRow(
           label: 'Skin',
           leading: <Widget>[
-            if (current != null) SkinDocumentFace(skin: current, resources: component.resources) else SkinFace(skinId: value),
+            if (current != null) SkinDocumentFace(skin: current, resources: component.resources) else SkinFace(skinId: value, fallback: value == null ? component.defaultFace : null),
             dom.span(classes: 'animus-skin-name', attributes: const <String, String>{'data-skin': 'name'}, <Widget>[Component.text(name)]),
           ],
           secondary: <RowAction>[
@@ -211,6 +227,7 @@ class _SkinFieldState extends State<SkinField> {
             target: component.target,
             onCommit: component.onCommit,
             sign: component.sign,
+            findAbsence: component.findAbsence,
             onLoaded: component.onLoaded,
             onPick: (String id) {
               setState(() => _choosing = false);
@@ -238,6 +255,7 @@ class SkinChooser extends StatefulWidget {
     this.onCommit,
     this.sign,
     this.onLoaded,
+    this.findAbsence,
     this.exclude = const <String>{},
     super.key,
   });
@@ -260,6 +278,10 @@ class SkinChooser extends StatefulWidget {
   final SkinSigner? sign;
   final void Function()? onLoaded;
 
+  /// Why skins cannot be looked up by player name or MineSkin link here;
+  /// without a signer the chooser says they need a paired server.
+  final String? findAbsence;
+
   /// Skins not to offer (already in a pool).
   final Set<String> exclude;
   final void Function(String id) onPick;
@@ -273,11 +295,120 @@ class _SkinChooserState extends State<SkinChooser> {
   late bool _builtIn = component.skins.isEmpty && component.target != null;
   String _url = '';
   String _hashText = '';
+  String _player = '';
+  String _mineSkin = '';
   bool _loading = false;
   bool _signingNow = false;
+
+  /// What the progress line says while the server looks a skin up.
+  String? _finding;
   String? _failure;
 
   bool get _canMake => component.onCommit != null && component.target != null;
+
+  /// Why Player name and MineSkin are off; null when the server can look skins up.
+  String? get _findAbsence => component.sign == null ? skinFindAbsence(paired: false) : component.findAbsence;
+
+  /// Asks the paired server for a skin by player name or MineSkin link and
+  /// wears it, in one undo step.
+  Future<void> _find({String? player, String? mineSkin}) async {
+    final SkinSigner? sign = component.sign;
+    final SkinCommit? commit = component.onCommit;
+    final SkinTarget? target = component.target;
+    if (sign == null || commit == null || target == null || _loading) return;
+    setState(() {
+      _loading = true;
+      _finding = player != null ? 'Looking up $player...' : 'Reading the MineSkin skin...';
+      _failure = null;
+    });
+    try {
+      final SignedSkin signed = await sign(player: player, mineskin: mineSkin, slim: false);
+      await commit(skinFromSigned(documents: component.documents, signed: signed, target: target));
+      component.onLoaded?.call();
+      ArcaneSonner.success(player != null ? "$player's skin. Apply to show it in game." : 'MineSkin skin added. Apply to show it in game.');
+      component.onClose();
+    } on Object catch (failure) {
+      if (mounted) setState(() => _failure = signFailureText(failure));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _finding = null;
+        });
+      }
+    }
+  }
+
+  /// Player name and MineSkin link or id, both looked up by the paired server.
+  List<Widget> _findRows(BuildContext context) {
+    final String? absence = _findAbsence;
+    final ComponentSize size = controlSize(DensityScope.of(context));
+    final bool off = absence != null || _loading;
+    final String player = _player.trim(), mineSkin = _mineSkin.trim();
+    return <Widget>[
+      Field(
+        label: 'Player name',
+        forId: 'animus-skin-player',
+        tip: "A Minecraft account's skin, looked up by the server. Follow player keeps it up to date.",
+        docs: Docs.npcSkins,
+        child: ActionRow(
+          label: 'Player name',
+          leading: <Widget>[
+            wrapItem(
+              '1 1 16rem',
+              TextInput(
+                id: 'animus-skin-player',
+                value: _player,
+                placeholder: 'Notch',
+                disabled: absence != null,
+                size: size,
+                fullWidth: true,
+                attributes: const <String, String>{'aria-label': 'Player name', 'autocomplete': 'off', 'spellcheck': 'false', 'data-skin': 'player'},
+                onChanged: (String text) => setState(() => _player = text),
+                onSubmitted: (String text) {
+                  if (!off && text.trim().isNotEmpty) _find(player: text.trim());
+                },
+              ),
+            ),
+          ],
+          secondary: <RowAction>[
+            RowAction('Wear', off || player.isEmpty ? null : () => _find(player: player), attributes: const <String, String>{'data-skin': 'wear-player'}),
+          ],
+        ),
+      ),
+      Field(
+        label: 'MineSkin link or id',
+        forId: 'animus-skin-mineskin',
+        tip: 'A skin from mineskin.org, by its link or id, such as https://minesk.in/e51d0e34.',
+        docs: Docs.npcSkins,
+        child: ActionRow(
+          label: 'MineSkin link or id',
+          leading: <Widget>[
+            wrapItem(
+              '1 1 16rem',
+              TextInput(
+                id: 'animus-skin-mineskin',
+                value: _mineSkin,
+                placeholder: 'https://minesk.in/...',
+                disabled: absence != null,
+                size: size,
+                fullWidth: true,
+                attributes: const <String, String>{'aria-label': 'MineSkin link or id', 'autocomplete': 'off', 'spellcheck': 'false', 'data-skin': 'mineskin'},
+                onChanged: (String text) => setState(() => _mineSkin = text),
+                onSubmitted: (String text) {
+                  if (!off && text.trim().isNotEmpty) _find(mineSkin: text.trim());
+                },
+              ),
+            ),
+          ],
+          secondary: <RowAction>[
+            RowAction('Wear', off || mineSkin.isEmpty ? null : () => _find(mineSkin: mineSkin), attributes: const <String, String>{'data-skin': 'wear-mineskin'}),
+          ],
+        ),
+      ),
+      if (absence != null) dom.div(attributes: const <String, String>{'data-skin': 'find-absent'}, <Widget>[mutedText(absence)]),
+    ];
+  }
 
   /// Loads a PNG, makes its skin document and wears it, in one undo step.
   Future<void> _create(Future<LoadedSkin?> Function(String key) load, {String? url, String? label}) async {
@@ -398,6 +529,7 @@ class _SkinChooserState extends State<SkinChooser> {
             value: builtIn,
             onChanged: (bool next) => setState(() => _builtIn = next),
           ),
+        if (_canMake) ..._findRows(context),
         if (advanced && _canMake)
           Field(
             label: 'PNG address',
@@ -430,7 +562,10 @@ class _SkinChooserState extends State<SkinChooser> {
           ),
         if (_canMake && component.sign == null && !_loading)
           dom.div(attributes: const <String, String>{'data-skin': 'unpaired'}, <Widget>[mutedText('Not paired: a new skin is signed when applied on a server.')]),
-        if (_loading) dom.div(attributes: const <String, String>{'role': 'status', 'data-skin': 'progress'}, <Widget>[mutedText(_signingNow ? 'Signing on the server...' : 'Loading the PNG...')]),
+        if (_loading)
+          dom.div(attributes: const <String, String>{'role': 'status', 'data-skin': 'progress'}, <Widget>[
+            mutedText(_finding ?? (_signingNow ? 'Signing on the server...' : 'Loading the PNG...')),
+          ]),
         if (_failure != null) AppAlert(tone: AlertTone.error, message: _failure!, live: true),
         LibraryList(
           key: ValueKey<String>(builtIn ? 'skins-builtin' : 'skins-saved'),
@@ -482,7 +617,7 @@ class SkinArmsField extends StatelessWidget {
     final int others = skinWearers(documents, skin.id).where((AnimusDocument d) => !target.matches(d)).length;
     return Field(
       label: 'Arms',
-      tip: others == 0 ? 'Writes a new skin document.' : 'Writes a new skin document for this one; $others other${others == 1 ? '' : 's'} keep the current one.',
+      tip: others == 0 ? 'Writes a new skin file.' : 'Writes a new skin file for this one; $others other${others == 1 ? '' : 's'} keep the current one.',
       child: ArcaneToggleSwitch(value: slim, label: 'Slim arms (Alex)', onChanged: _model, size: ComponentSize.sm),
     );
   }

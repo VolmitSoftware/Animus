@@ -113,6 +113,11 @@ final List<String> mcEntityTextureIds = <String>[
   for (final String variant in mcLlamaVariants.skip(1)) 'entity/llama/llama_$variant',
   for (final String variant in mcFrogVariants.skip(1)) 'entity/frog/frog_$variant',
   mcAlexTexture,
+  // The client's other default skins: a player body without a skin wears
+  // one of these, picked from its UUID (lib/logic/npc/default_skins.dart).
+  for (final String arms in const <String>['slim', 'wide'])
+    for (final String character in const <String>['alex', 'ari', 'efe', 'kai', 'makena', 'noor', 'steve', 'sunny', 'zuri'])
+      if ('entity/player/$arms/$character' != mcSteveTexture && 'entity/player/$arms/$character' != mcAlexTexture) 'entity/player/$arms/$character',
   for (final String material in mcArmorMaterials.values) ...<String>[
     'entity/equipment/humanoid/$material',
     'entity/equipment/humanoid_leggings/$material',

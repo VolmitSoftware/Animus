@@ -5,6 +5,9 @@ import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import 'json_schema.dart';
 
+/// The code of a schema diagnostic for text a `pattern` refuses; fixes act on it.
+const String schemaPatternCode = 'schema-pattern';
+
 /// The repository's shared schemas, compiled once, with the kind-to-schema
 /// table from editor-v1.endpoints.json.
 class SharedSchemas {
@@ -54,7 +57,7 @@ class SharedSchemas {
     }
     return <Diagnostic>[
       for (final SchemaError error in registry.validate(schema, json))
-        Diagnostic(DiagnosticSeverity.error, error.path, error.message, code: 'schema'),
+        Diagnostic(DiagnosticSeverity.error, error.path, error.message, code: error.keyword == 'pattern' ? schemaPatternCode : 'schema'),
     ];
   }
 

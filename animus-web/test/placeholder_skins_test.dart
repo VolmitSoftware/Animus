@@ -51,23 +51,4 @@ void main() {
       expect(() => parsePlaceholderIndex('[]'), throwsFormatException);
     });
   });
-
-  group('defaultPlaceholderLook', () {
-    test('should give the same NPC the same look every time', () {
-      expect(defaultPlaceholderLook('players/hero').id, defaultPlaceholderLook('players/hero').id);
-    });
-
-    test('should pin known ids to their looks', () {
-      // FNV-1a of the UTF-8 id, modulo the look count; a change here moves
-      // every NPC to another character.
-      expect(defaultPlaceholderLook('').id, placeholderLooks[0x811c9dc5 % 8].id);
-      expect(defaultPlaceholderLook('a').id, placeholderLooks[0xe40c292c % 8].id);
-      expect(defaultPlaceholderLook('foobar').id, placeholderLooks[0xbf9cf968 % 8].id);
-    });
-
-    test('should spread many NPCs over every look', () {
-      final Set<String> seen = <String>{for (int i = 0; i < 64; i++) defaultPlaceholderLook('npcs/n$i').id};
-      expect(seen, hasLength(placeholderLooks.length));
-    });
-  });
 }

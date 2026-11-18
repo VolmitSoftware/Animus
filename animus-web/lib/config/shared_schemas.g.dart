@@ -98,7 +98,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {"method": "GET", "path": "/v1/documents/{kind}/{id}", "scope": "read", "request": null, "responses": {"200": "document-response", "404": "error-response"}},
     {"method": "POST", "path": "/v1/documents/read", "scope": "read", "counter": false, "request": "documents-read-request", "responses": {"200": "documents-read-response", "400": "error-response"}},
     {"method": "GET", "path": "/v1/skins/{hash}/texture.png", "scope": "read", "request": null, "responses": {"200": "image/png", "404": "error-response"}},
-    {"method": "POST", "path": "/v1/skins/sign", "scope": "apply:npcs", "description": "The server signs a skin PNG or a PNG address through MineSkin. It answers at once with a job; poll the job about once a second.", "request": "skin-sign-request", "responses": {"202": "skin-sign-job", "400": "error-response", "429": "error-response"}},
+    {"method": "POST", "path": "/v1/skins/sign", "scope": "apply:npcs", "description": "The server signs a skin PNG or a PNG address through MineSkin, reads a skin MineSkin already signed by its link or id, or looks a Minecraft account's skin up by name. It answers at once with a job; poll the job about once a second.", "request": "skin-sign-request", "responses": {"202": "skin-sign-job", "400": "error-response", "429": "error-response"}},
     {"method": "GET", "path": "/v1/skins/sign/{job}", "scope": "apply:npcs", "description": "A signing job: signing, then signed with the skin document to apply (not saved by the server), or failed with why. Jobs are kept ten minutes after they end.", "request": null, "responses": {"200": "skin-sign-job", "404": "error-response"}},
     {"method": "POST", "path": "/v1/validate", "scope": "validate", "request": "validate-request", "responses": {"200": "validate-response"}},
     {"method": "POST", "path": "/v1/previews", "scope": "preview", "request": "preview-request", "responses": {"200": "preview-response", "409": "error-response", "422": "error-response"}},
@@ -256,6 +256,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "What a list shows before the document is read, from the stored file only; values a trait group gives an NPC are not merged in. A field is present only when the document has it. Text is plain, at most 64 characters. Show the id when name is absent.",
       "properties": {
         "name": {"type": "string", "minLength": 1, "maxLength": 64, "description": "The display name: NPC name, shop, chest GUI and quest title, first hologram line, pack name, recording description."},
+        "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "description": "NPC: its UUID, which owners, guards, click redirects and behaviors name."},
         "type": {"type": "string", "maxLength": 64, "description": "NPC: the entity type as written."},
         "world": {"type": "string", "maxLength": 64, "description": "NPC position, hologram anchor or recording world."},
         "x": {"type": "number"}, "y": {"type": "number"}, "z": {"type": "number"},
@@ -467,6 +468,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "The last known name of each player who owns an NPC or a shop, by UUID; players the server never saw are left out.",
           "propertyNames": {"pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
           "additionalProperties": {"type": "string"}
+        },
+        "players": {
+          "type": "object",
+          "description": "Players the server has seen, by UUID with their last known name: the 500 most recently seen and every owner. Online players only on mod servers.",
+          "propertyNames": {"pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+          "additionalProperties": {"type": "string"}
         }
       }
     },
@@ -596,11 +603,13 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "additionalProperties": false,
       "properties": {
         "image": {"type": "string", "pattern": "^[A-Za-z0-9+/=]{1,40000}$", "description": "A 64x64 (or 64x32) skin PNG, base64, at most 20000 bytes."},
-        "url": {"type": "string", "pattern": "^https?://\\S{1,248}$", "description": "The address of a skin PNG for MineSkin to fetch."},
-        "slim": {"type": "boolean", "description": "Slim (Alex) arms; classic when absent."},
-        "label": {"type": "string", "maxLength": 64, "description": "The skin document's label."}
+        "url": {"type": "string", "pattern": "^https?://\\S{1,248}$", "description": "The address of a skin PNG for MineSkin to fetch; a MineSkin link reads that skin."},
+        "player": {"type": "string", "minLength": 1, "maxLength": 256, "description": "A Minecraft account name: its skin is looked up on Mojang as /animus npc skin does, labelled with the account's spelling and kept in source.player for Follow player."},
+        "mineskin": {"type": "string", "minLength": 1, "maxLength": 256, "description": "A MineSkin link (mineskin.org/skins/<uuid>, minesk.in/<id>) or id: the skin MineSkin already signed."},
+        "slim": {"type": "boolean", "description": "Slim (Alex) arms for an image or address; classic when absent."},
+        "label": {"type": "string", "maxLength": 64, "description": "The skin document's label; a looked-up skin is labelled by its account or MineSkin id when absent."}
       },
-      "oneOf": [{"required": ["image"]}, {"required": ["url"]}]
+      "oneOf": [{"required": ["image"]}, {"required": ["url"]}, {"required": ["player"]}, {"required": ["mineskin"]}]
     },
     "skin-sign-job": {
       "type": "object",
@@ -619,7 +628,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "source": {
               "type": "object",
               "required": ["textureRaw", "signature"],
-              "properties": {"textureRaw": {"type": "string"}, "signature": {"type": "string"}, "label": {"type": "string", "maxLength": 64}}
+              "properties": {"textureRaw": {"type": "string"}, "signature": {"type": "string"}, "label": {"type": "string", "maxLength": 64}, "player": {"type": "string", "maxLength": 16}}
             }
           }
         },

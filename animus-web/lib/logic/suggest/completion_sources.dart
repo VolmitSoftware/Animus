@@ -6,6 +6,8 @@ library;
 
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
+import '../../model/document_summary.dart' show plainName;
+import '../../state/library.dart';
 import '../gui/gui_json.dart';
 import '../inspect/completion_catalog.dart';
 
@@ -39,7 +41,8 @@ class CompletionSources {
     this.quests = const <String>[],
     this.commands = const <String>[],
     this.papi = const <String>[],
-    this.owners = const <String, String>{},
+    this.players = const <String, String>{},
+    this.npcs = const <String, String>{},
     this.catalog,
     this.paired = false,
   });
@@ -64,8 +67,13 @@ class CompletionSources {
   /// The paired server's PlaceholderAPI identifiers (`player`, `vault`).
   final List<String> papi;
 
-  /// The last known name of each player who owns an NPC or a shop, by UUID, from the paired server.
-  final Map<String, String> owners;
+  /// Players the paired server has seen, owners among them: their last
+  /// known name by UUID.
+  final Map<String, String> players;
+
+  /// The workspace's NPCs and those the server lists, by UUID: the name
+  /// players see, or the id when it has none.
+  final Map<String, String> npcs;
   final CompletionCatalog? catalog;
 
   /// Whether the lists come from a paired server.
@@ -83,7 +91,8 @@ class CompletionSources {
     List<String>? quests,
     List<String>? commands,
     List<String>? papi,
-    Map<String, String>? owners,
+    Map<String, String>? players,
+    Map<String, String>? npcs,
     CompletionCatalog? catalog,
     bool? paired,
   }) =>
@@ -95,7 +104,8 @@ class CompletionSources {
         quests: quests ?? this.quests,
         commands: commands ?? this.commands,
         papi: papi ?? this.papi,
-        owners: owners ?? this.owners,
+        players: players ?? this.players,
+        npcs: npcs ?? this.npcs,
         catalog: catalog ?? this.catalog,
         paired: paired ?? this.paired,
       );
@@ -118,25 +128,32 @@ Map<RegistryKind, List<String>> parseRegistries(Object? json) {
 }
 
 /// What a paired server's `GET /v1/lookups` lists: its registries, command
-/// names, PlaceholderAPI identifiers and the names of players who own NPCs
-/// and shops.
+/// names, PlaceholderAPI identifiers and the players it has seen.
 class ServerLookups {
-  const ServerLookups({required this.registries, required this.commands, required this.papi, this.owners = const <String, String>{}});
+  const ServerLookups({required this.registries, required this.commands, required this.papi, this.players = const <String, String>{}});
 
   factory ServerLookups.fromJson(Object? json) {
     final JsonMap root = asMap(json);
     List<String> strings(Object? value) => <String>{for (final Object? item in asList(value)) if (item is String && item.isNotEmpty) item}.toList()..sort();
-    final Map<String, String> owners = <String, String>{
-      for (final MapEntry<String, Object?> owner in asMap(root['owners']).entries)
-        if (_uuid.hasMatch(owner.key) && owner.value is String) owner.key: owner.value! as String,
-    };
-    return ServerLookups(registries: parseRegistries(root['registries']), commands: strings(root['commands']), papi: strings(root['papi']), owners: owners);
+    Map<String, String> names(Object? value) => <String, String>{
+          for (final MapEntry<String, Object?> player in asMap(value).entries)
+            if (_uuid.hasMatch(player.key) && player.value is String) player.key: player.value! as String,
+        };
+    // A server from before `players` sends owners only.
+    return ServerLookups(
+      registries: parseRegistries(root['registries']),
+      commands: strings(root['commands']),
+      papi: strings(root['papi']),
+      players: <String, String>{...names(root['players']), ...names(root['owners'])},
+    );
   }
 
   final Map<RegistryKind, List<String>> registries;
   final List<String> commands;
   final List<String> papi;
-  final Map<String, String> owners;
+
+  /// Players the server has seen, by UUID.
+  final Map<String, String> players;
 
   /// [base] with these lists over the bundled ones; every registry the
   /// server sent is complete.
@@ -145,7 +162,7 @@ class ServerLookups {
         complete: <RegistryKind>{...base.complete, ...registries.keys},
         commands: commands,
         papi: papi,
-        owners: owners,
+        players: players,
         paired: true,
       );
 }
@@ -204,7 +221,7 @@ class WorkspaceSourcesCache {
   CompletionSources? _last;
   CompletionSources? _lastBase;
 
-  CompletionSources sources(List<AnimusDocument> documents, {CompletionSources base = CompletionSources.empty}) {
+  CompletionSources sources(List<AnimusDocument> documents, {CompletionSources base = CompletionSources.empty, List<LibraryEntry> npcLibrary = const <LibraryEntry>[]}) {
     final Map<AnimusDocument, ({Set<String> flags, Set<String> quests})> names = Map<AnimusDocument, ({Set<String> flags, Set<String> quests})>.identity();
     final Map<DocumentKind, Set<String>> ids = <DocumentKind, Set<String>>{};
     final Set<String> flags = <String>{};
@@ -222,9 +239,11 @@ class WorkspaceSourcesCache {
     };
     final List<String> sortedFlags = flags.toList()..sort();
     final List<String> sortedQuests = quests.toList()..sort();
+    final Map<String, String> npcs = npcNamesByUuid(documents, npcLibrary);
     final CompletionSources? last = _last;
     if (last != null &&
         identical(_lastBase, base) &&
+        _sameMaps(last.npcs, npcs) &&
         _sameLists(last.flags, sortedFlags) &&
         _sameLists(last.quests, sortedQuests) &&
         last.documents.length == sortedIds.length &&
@@ -232,8 +251,36 @@ class WorkspaceSourcesCache {
       return last;
     }
     _lastBase = base;
-    return _last = base.copyWith(documents: sortedIds, flags: sortedFlags, quests: sortedQuests);
+    return _last = base.copyWith(documents: sortedIds, flags: sortedFlags, quests: sortedQuests, npcs: npcs);
   }
+}
+
+/// The NPCs of [documents], then those of [library] not read yet, by UUID:
+/// the name players see, or the id when it has none.
+Map<String, String> npcNamesByUuid(List<AnimusDocument> documents, List<LibraryEntry> library) {
+  final Map<String, String> names = <String, String>{};
+  for (final AnimusDocument document in documents) {
+    if (document.kind != DocumentKind.npc) continue;
+    final JsonMap json = asMap(document.json);
+    final Object? uuid = json['uuid'];
+    if (uuid is! String || !_uuid.hasMatch(uuid)) continue;
+    final String name = plainName(json['name']) ?? '';
+    names[uuid] = name.isEmpty ? document.id : name;
+  }
+  for (final LibraryEntry entry in library) {
+    final String? uuid = entry.summary.uuid;
+    if (entry.kind != DocumentKind.npc || uuid == null) continue;
+    names.putIfAbsent(uuid, () => entry.name);
+  }
+  return names;
+}
+
+bool _sameMaps(Map<String, String> a, Map<String, String> b) {
+  if (a.length != b.length) return false;
+  for (final MapEntry<String, String> entry in a.entries) {
+    if (b[entry.key] != entry.value) return false;
+  }
+  return true;
 }
 
 bool _sameLists(List<String> a, List<String> b) {

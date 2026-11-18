@@ -386,6 +386,21 @@ class EditorApiTest {
     }
 
     @Test
+    void lookups_listThePlayersTheServerHasSeen() throws Exception {
+        UUID alex = UUID.fromString("00000000-0000-4000-8000-0000000000a1"), owner = UUID.fromString("00000000-0000-4000-8000-0000000000a2");
+        harness.host.known.put(alex, "Alex_B");
+        harness.host.names.put(owner, "Shopkeep");
+        Path file = harness.root.resolve("shops/town/stall.json");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, "{\"schemaVersion\": 1, \"revision\": 1, \"id\": \"town:stall\", \"kind\": \"selling\", \"owner\": {\"uuid\": \"" + owner
+                + "\"}, \"containers\": [{\"world\": \"world\", \"x\": 1, \"y\": 64, \"z\": 2}], \"pages\": [{\"name\": \"Page 1\"}]}\n");
+        JsonObject body = valid("lookups-response", harness.send("GET", "/v1/lookups", harness.token(), null));
+        JsonObject players = body.getAsJsonObject("players");
+        assertEquals("Alex_B", players.get(alex.toString()).getAsString());
+        assertEquals("Shopkeep", players.get(owner.toString()).getAsString(), "owners are players the server knows too");
+    }
+
+    @Test
     void catalog_exportFixture_listsExpectedDocuments() throws Exception {
         JsonObject body = valid("catalog-response", harness.send("GET", "/v1/catalog", harness.token(), null));
         Set<String> listed = new HashSet<>();
@@ -937,6 +952,72 @@ class EditorApiTest {
         JsonObject failed = valid("skin-sign-job", harness.send("GET", "/v1/skins/sign/" + job, token, null));
         assertEquals("failed", failed.get("state").getAsString());
         assertEquals("MineSkin is rate limiting this server; try again in a minute", failed.get("message").getAsString());
+    }
+
+    @Test
+    void skinFind_byPlayerName_answersTheSkinWithTheNameItFollows() throws Exception {
+        String texture = java.util.Base64.getEncoder().encodeToString("{\"textures\":{\"SKIN\":{\"url\":\"http://textures.minecraft.net/texture/abc\"}}}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        List<String> asked = new java.util.concurrent.CopyOnWriteArrayList<>();
+        harness.host.lookup = (String name) -> {
+            asked.add(name);
+            return CompletableFuture.completedFuture(name.equalsIgnoreCase("notch")
+                    ? art.arcane.animus.core.toolkit.SkinLookup.Found.skin("Notch", new art.arcane.animus.core.presentation.BodySkin(texture, "c2ln"))
+                    : art.arcane.animus.core.toolkit.SkinLookup.Found.missing("No Minecraft account is named " + name));
+        };
+        String token = harness.token();
+        JsonObject capabilities = valid("capabilities-response", harness.send("GET", "/v1/capabilities", token, null));
+        assertTrue(capabilities.getAsJsonObject("features").getAsJsonObject("skins.find").get("available").getAsBoolean());
+        JsonObject body = new JsonObject();
+        body.addProperty("player", "notch");
+        String job = valid("skin-sign-job", harness.send("POST", "/v1/skins/sign", token, body)).get("job").getAsString();
+        JsonObject signed = valid("skin-sign-job", harness.send("GET", "/v1/skins/sign/" + job, token, null));
+        assertEquals("signed", signed.get("state").getAsString());
+        JsonObject source = signed.getAsJsonObject("skin").getAsJsonObject("source");
+        assertEquals("Notch", source.get("label").getAsString());
+        assertEquals("Notch", source.get("player").getAsString(), "Follow player looks the account up again");
+        assertEquals(JsonDocuments.hash(JsonDocuments.write(source)), signed.getAsJsonObject("skin").get("id").getAsString());
+        assertEquals(List.of("notch"), asked);
+
+        JsonObject nobody = new JsonObject();
+        nobody.addProperty("player", "Nobody_here");
+        String missing = valid("skin-sign-job", harness.send("POST", "/v1/skins/sign", token, nobody)).get("job").getAsString();
+        JsonObject failed = valid("skin-sign-job", harness.send("GET", "/v1/skins/sign/" + missing, token, null));
+        assertEquals("failed", failed.get("state").getAsString());
+        assertEquals("No Minecraft account is named Nobody_here", failed.get("message").getAsString());
+
+        JsonObject typo = new JsonObject();
+        typo.addProperty("player", "no spaces!");
+        EditorResponse refused = harness.send("POST", "/v1/skins/sign", token, typo);
+        error("invalid-request", 400, refused);
+        assertEquals("no spaces! is not a Minecraft name (1-16 letters, digits or _)", EditorHarness.json(refused).getAsJsonObject("error").get("message").getAsString());
+    }
+
+    @Test
+    void skinFind_byMineSkinLink_answersThatSignedSkin() throws Exception {
+        String texture = java.util.Base64.getEncoder().encodeToString("{\"textures\":{\"SKIN\":{\"url\":\"http://textures.minecraft.net/texture/abc\"}}}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        List<String> asked = new java.util.concurrent.CopyOnWriteArrayList<>();
+        harness.host.signer = new art.arcane.animus.core.skin.SkinSigner() {
+            @Override public java.util.Optional<String> unavailable() { return java.util.Optional.empty(); }
+            @Override public CompletableFuture<Signed> sign(Request request) { return CompletableFuture.failedFuture(new AssertionError("nothing to sign")); }
+            @Override public CompletableFuture<Signed> find(String linkOrId) {
+                asked.add(linkOrId);
+                return CompletableFuture.completedFuture(new Signed(new art.arcane.animus.core.presentation.BodySkin(texture, "c2ln"), "https://textures.minecraft.net/texture/abc", false));
+            }
+        };
+        String token = harness.token();
+        JsonObject body = new JsonObject();
+        body.addProperty("mineskin", "https://minesk.in/e51d0e34");
+        String job = valid("skin-sign-job", harness.send("POST", "/v1/skins/sign", token, body)).get("job").getAsString();
+        JsonObject signed = valid("skin-sign-job", harness.send("GET", "/v1/skins/sign/" + job, token, null));
+        assertEquals("signed", signed.get("state").getAsString());
+        assertEquals("MineSkin e51d0e34", signed.getAsJsonObject("skin").getAsJsonObject("source").get("label").getAsString());
+        assertEquals(List.of("https://minesk.in/e51d0e34"), asked);
+
+        JsonObject other = new JsonObject();
+        other.addProperty("mineskin", "https://example.com/guard.png");
+        EditorResponse refused = harness.send("POST", "/v1/skins/sign", token, other);
+        error("invalid-request", 400, refused);
+        assertEquals("Not a MineSkin link or id", EditorHarness.json(refused).getAsJsonObject("error").get("message").getAsString());
     }
 
     @Test

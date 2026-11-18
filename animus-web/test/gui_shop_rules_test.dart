@@ -244,12 +244,5 @@ void main() {
       expect(swap.keys, isNot(contains('book')));
       expect(asList(swap['gives']), hasLength(1));
     });
-
-    test("should name a shop's owner from the server, then the shop, then as unknown", () {
-      final JsonMap shop = _shop(book, grid: 'trade', container: true);
-      expect(shopOwnerName(shop, const <String, String>{'069a79f4-44e9-4726-a5be-fca90e38aaf5': 'Steve'}), 'Steve');
-      expect(shopOwnerName(shop, const <String, String>{}), 'Notch');
-      expect(shopOwnerName(<String, Object?>{...shop, 'owner': <String, Object?>{'uuid': '069a79f4-44e9-4726-a5be-fca90e38aaf5'}}, const <String, String>{}), 'Unknown player');
-    });
   });
 }

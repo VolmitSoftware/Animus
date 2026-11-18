@@ -13,6 +13,17 @@ class CapabilitySchemaTest {
         assertFalse(CapabilitySchema.compile(schema).validate(instance).isEmpty(), () -> instance + " valid for " + schema);
     }
     private static String property(String schema) { return "{\"properties\":{\"x\":" + schema + "}}"; }
+    private static String message(String schema, String instance) { return CapabilitySchema.compile(schema).validate(instance).getFirst().message(); }
+    @Test void problemsReadAsPlainWordsWithTheRightPlural() {
+        assertEquals("expected at least 1 character", message(property("{\"type\":\"string\",\"minLength\":1}"), "{\"x\":\"\"}"));
+        assertEquals("expected at most 2 items", message(property("{\"type\":\"array\",\"maxItems\":2}"), "{\"x\":[1,2,3]}"));
+        assertEquals("expected text", message(property("{\"type\":\"string\"}"), "{\"x\":1}"));
+        assertEquals("expected a whole number or nothing", message(property("{\"type\":[\"integer\",\"null\"]}"), "{\"x\":\"1\"}"));
+        assertEquals("expected at least 1", message(property("{\"minimum\":1}"), "{\"x\":0}"));
+        assertEquals("expected one of north, south", message(property("{\"enum\":[\"north\",\"south\"]}"), "{\"x\":\"up\"}"));
+        assertEquals("is required", message("{\"required\":[\"x\"]}", "{}"));
+        assertEquals("takes no value", message(property("false"), "{\"x\":1}"));
+    }
     @Test void emptyAndBooleanSchemasDoNotCoerceOrRequireFields() {
         valid("{}", "{\"arbitrary\":[null,1,\"x\"]}");
         valid(property("false"), "{}");

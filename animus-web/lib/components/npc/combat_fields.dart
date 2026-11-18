@@ -34,6 +34,8 @@ import '../../ui/number_input.dart';
 import 'npc_layout.dart';
 import '../gui/gui_stack.dart';
 import '../../ui/problem_text.dart';
+import '../../logic/suggest/person_names.dart';
+import '../select/person_picker.dart';
 
 /// One module of the NPC (or trait group) being edited: reads and writes by
 /// path, and its diagnostics by path.
@@ -297,6 +299,21 @@ Widget textField(
       profile: profile,
       onChanged: (String next) => form.put(steps, next.isEmpty ? null : next),
     ),
+  );
+}
+
+/// A player or an NPC picked by name, written as its UUID.
+Widget personField(ModuleForm form, List<JsonStep> steps, KeyWords words, PersonKind kind) {
+  final Object? value = form.read(steps);
+  if (value != null && value is! String) return keptField(form, steps, words);
+  final String id = fieldId(form, steps);
+  return Field(
+    key: ValueKey<String>('field:${form.key}:${steps.join('.')}'),
+    label: words.label,
+    tip: fieldTip(words, steps),
+    forId: id,
+    problems: form.problems(steps, nested: true),
+    child: PersonPicker(id: id, kind: kind, label: words.label, value: value as String?, onChanged: (String? uuid) => form.put(steps, uuid)),
   );
 }
 

@@ -53,8 +53,8 @@ final class EditorPairingRoutes {
         rate(EditorReplies.address(request));
         JsonObject body = EditorMessages.body(request);
         EditorMessages.fields(body, "$", Set.of("tokenId", "secret", "client"));
-        String tokenId = EditorMessages.string(body, "tokenId", EditorMessages.TOKEN_ID, "$.tokenId");
-        String secret = EditorMessages.string(body, "secret", EditorMessages.SECRET, "$.secret");
+        String tokenId = EditorMessages.string(body, "tokenId", EditorMessages.TOKEN_ID, "$.tokenId", "the token id from the pairing link");
+        String secret = EditorMessages.string(body, "secret", EditorMessages.SECRET, "$.secret", "the secret from the pairing link");
         Optional<String> client = EditorMessages.optionalString(body, "client", 128);
         Map.Entry<String, EditorTokens.Token> issued;
         Optional<EditorTokens.Open> waiting = parts.tokens().pairing(tokenId);

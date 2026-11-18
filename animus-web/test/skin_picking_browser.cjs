@@ -12,7 +12,8 @@
 //   5. a PNG address (Advanced) and Upload PNG both make and wear a new
 //      skin, and the stage draws the PNG;
 //   6. a reload keeps the stored skin and the stage still draws it.
-// Bert (no skin) reads Default. No console errors, no sideways scrolling.
+// Bert (no skin) reads the default skin his UUID gives him. No console
+// errors, no sideways scrolling.
 //
 //   python3 tool/serve_site.py --port <WEB_PORT> --directory <site> &
 //   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
@@ -91,7 +92,7 @@ function writeFixture(folder) {
     write(`editor/skins/${skin.id}.png`, png(rgb));
   }
   write('npcs/town/anna.json', npc('anna', 'Anna', {skin: red.id}));
-  write('npcs/town/bert.json', npc('bert', 'Bert', {}));
+  write('npcs/town/bert.json', npc('bert', 'Bert', {uuid: 'd10fcfc7-13ee-4ba7-9c47-35a48a8f812c'}));
 }
 
 async function shot(page, name) {
@@ -214,7 +215,7 @@ async function run(browser, folder, viewport, theme, tag) {
 
   // Bert has no skin.
   await openNpc(page, workspace, 'town/bert');
-  assert.equal((await (await skinField(page)).locator('[data-skin="name"]').innerText()).trim(), 'Default (Steve or Alex)');
+  assert.equal((await (await skinField(page)).locator('[data-skin="name"]').innerText()).trim(), 'Default (Ari)', 'the default skin players see, from the UUID');
 
   await openNpc(page, workspace, 'town/anna');
   if (staged) {

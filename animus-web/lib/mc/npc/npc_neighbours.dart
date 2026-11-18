@@ -8,7 +8,7 @@ import 'dart:math' as math;
 
 /// One NPC's place and look as a catalog summary gives it.
 final class NpcPlace {
-  const NpcPlace({required this.id, required this.name, required this.world, required this.x, required this.y, required this.z, this.type, this.skin, this.spawned = true});
+  const NpcPlace({required this.id, required this.name, required this.world, required this.x, required this.y, required this.z, this.type, this.skin, this.uuid, this.spawned = true});
 
   final String id;
   final String name;
@@ -22,6 +22,9 @@ final class NpcPlace {
 
   /// The skin document id (64 hex), for a player body.
   final String? skin;
+
+  /// The NPC's UUID, which picks the default skin a player body shows.
+  final String? uuid;
   final bool spawned;
 }
 

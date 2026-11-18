@@ -14,8 +14,8 @@ String skinFailureText(Object failure) {
   if (status != null) {
     final String code = status.group(1)!;
     return code == '404'
-        ? 'Nothing is at that address (HTTP 404). Check the URL or use From PNG file.'
-        : 'The address answered HTTP $code. Retry later or use From PNG file.';
+        ? 'Nothing is at that address (HTTP 404). Check the address or use Upload PNG.'
+        : 'The address answered HTTP $code. Retry later or use Upload PNG.';
   }
-  return 'Could not read the skin: not a PNG, or the site blocks cross-origin reads. Use From PNG file.';
+  return 'Could not read the skin: not a PNG, or the site blocks cross-origin reads. Use Upload PNG.';
 }

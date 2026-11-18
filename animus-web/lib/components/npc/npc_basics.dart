@@ -9,6 +9,10 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
+import '../../logic/gui/gui_text.dart' show guiPlainText;
+import '../../logic/npc/default_skins.dart';
+import '../../logic/suggest/person_names.dart';
+import '../select/person_picker.dart';
 import '../../logic/npc/group_create.dart';
 import '../../logic/npc/group_model.dart';
 import '../../logic/npc/npc_appearance.dart';
@@ -32,7 +36,6 @@ import 'npc_parts.dart';
 import 'skin_field.dart';
 import 'npc_layout.dart';
 import '../suggest/autocomplete_input.dart';
-import '../suggest/suggest_scope.dart';
 import '../../ui/number_input.dart';
 import '../gui/gui_stack.dart';
 
@@ -278,6 +281,10 @@ class NpcSkinPart extends StatelessWidget {
   @override
   bool shouldRebuild(NpcSkinPart newComponent) =>
       newComponent.form.doc['skin'] != form.doc['skin'] ||
+      newComponent._fromName != _fromName ||
+      newComponent.form.doc['uuid'] != form.doc['uuid'] ||
+      newComponent.form.skinEditing?.findAbsence != form.skinEditing?.findAbsence ||
+      (newComponent.form.skinEditing?.sign == null) != (form.skinEditing?.sign == null) ||
       wearersMoved(form.workspaceDocuments, newComponent.form.workspaceDocuments, asString(form.doc['skin'])) ||
       newComponent.form.documents(DocumentKind.skin).length != form.documents(DocumentKind.skin).length ||
       !identical(newComponent.form.resources, form.resources) ||
@@ -292,10 +299,23 @@ class NpcSkinPart extends StatelessWidget {
         resources: form.resources,
         onCommit: form.skinEditing?.commit,
         sign: form.skinEditing?.sign,
+        findAbsence: form.skinEditing?.findAbsence,
+        defaultName: form.group ? 'Default' : (_fromName == null ? 'Default (${_default.label})' : 'From name: $_fromName'),
+        defaultFace: form.group || _fromName != null ? null : _default.url,
         diagnostics: form.diagnostics,
         onLoaded: form.onSkinLoaded,
         onChanged: (String? value) => form.write(const <JsonStep>['skin'], value),
       );
+
+  /// The default skin players see on this NPC without one, from its UUID.
+  DefaultSkin get _default => vanillaDefaultSkin(asString(form.doc['uuid']));
+
+  /// The account Skin from name looks up, when that option is on: the NPC's plain name.
+  String? get _fromName {
+    if (asMap(form.modules['animus:skin'])['fromName'] != true) return null;
+    final String name = guiPlainText(asString(form.doc['name']) ?? '').trim();
+    return RegExp(r'^[A-Za-z0-9_]{1,16}$').hasMatch(name) ? name : null;
+  }
 }
 
 /// `animus:skin`: Follow player (the skin came from a player name and the
@@ -355,23 +375,24 @@ class _Owner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const String ownerId = 'animus-npc-owner';
     final String? owner = asString(form.doc['owner']);
     final List<Diagnostic> found = diagnosticsAt(form.diagnostics, r'$.owner');
-    final String? name = owner == null ? null : SuggestScope.sourcesOf(context).owners[owner];
     return Field(
       label: 'Owner',
-      hint: name,
-      tip: 'The player who owns this NPC, as a lowercase UUID; none for a server NPC. Its owner can change it in game, and it can only do what their animus.owned nodes allow.',
+      forId: ownerId,
+      tip: 'The player who owns this NPC; none for a server NPC. They can change it in game, within their animus.owned permissions.',
       docs: Docs.npcOwner,
       problems: <Diagnostic>[
         ...found,
-        if (owner != null && owner.isNotEmpty && !validOwner(owner) && found.isEmpty) const Diagnostic(DiagnosticSeverity.error, r'$.owner', 'Expected a lowercase UUID.'),
+        if (owner != null && owner.isNotEmpty && !validOwner(owner) && found.isEmpty) const Diagnostic(DiagnosticSeverity.error, r'$.owner', 'expected a player UUID'),
       ],
-      child: AutocompleteInput(
-        value: owner ?? '',
-        label: 'Owner UUID',
-        onChanged: (String text) => form.write(const <JsonStep>['owner'], text.trim().isEmpty ? null : text.trim()),
-        profile: FieldProfile.none,
+      child: PersonPicker(
+        id: ownerId,
+        kind: PersonKind.player,
+        label: 'Owner',
+        value: owner,
+        onChanged: (String? uuid) => form.write(const <JsonStep>['owner'], uuid),
       ),
     );
   }

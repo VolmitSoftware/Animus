@@ -102,6 +102,7 @@ class EditorProtocolTest {
                     JsonObject summary = entry.getAsJsonObject("summary");
                     assertEquals("Town citizen 7", summary.get("name").getAsString());
                     assertEquals("world", summary.get("folder").getAsString());
+                    assertTrue(summary.get("uuid").getAsString().matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"), summary::toString);
                     assertEquals(List.of("route", "behavior"), summary.getAsJsonArray("features").asList().stream().map(JsonElement::getAsString).toList());
                 }
             }

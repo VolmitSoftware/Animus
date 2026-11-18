@@ -32,10 +32,15 @@ import '../../ui/action_row.dart';
 import '../../ui/info_tip.dart';
 import '../../ui/menu.dart';
 import '../select/suggest_input.dart';
+import '../../logic/suggest/person_names.dart';
 import '../select/animus_select.dart';
+import '../select/person_picker.dart';
 import '../../ui/field.dart';
 import '../../ui/stack.dart';
 import '../../ui/problem_text.dart';
+
+/// Arguments that name a player or an NPC by UUID.
+const Map<String, PersonKind> _personArguments = <String, PersonKind>{'player': PersonKind.player, 'npc': PersonKind.npc};
 
 class CapabilityFields extends StatelessWidget {
   const CapabilityFields({required this.context, required this.node, required this.steps, required this.kind, super.key});
@@ -117,6 +122,7 @@ class CapabilityFields extends StatelessWidget {
               for (final String field in slotFields) ...diagnosticsAt(context.diagnostics, '${_at(<JsonStep>[field])}[${argumentPointer(argument.key)}]', nested: true),
             ],
             onNode: _put,
+            bounds: !(argument.kind == FieldKind.string && _personArguments.containsKey(argument.key)),
             literal: _literal(id, argument, arguments),
           ),
       if (unknownEntries(arguments, declared) case final JsonMap other when (spec == null && (id ?? '').isNotEmpty) || other.isNotEmpty)
@@ -150,6 +156,16 @@ class CapabilityFields extends StatelessWidget {
     void write(Object? next) => context.write(<JsonStep>[...steps, 'arguments', argument.key], next);
     if (argument.kind == FieldKind.any && (value == null || value is String || value is num || value is bool)) {
       return JsonValueEditor(value: value ?? '', label: humanizeKey(argument.key), onChanged: write);
+    }
+    // A player or an NPC another than the triggering one: picked by name, written as its UUID.
+    final PersonKind? person = argument.kind == FieldKind.string && (value == null || value is String) ? _personArguments[argument.key] : null;
+    if (person != null) {
+      return PersonPicker(
+        kind: person,
+        label: humanizeKey(argument.key),
+        value: value as String?,
+        onChanged: write,
+      );
     }
     return InspectControl(
       field: argument,

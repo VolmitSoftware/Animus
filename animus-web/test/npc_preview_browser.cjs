@@ -5,9 +5,10 @@
 // the dark theme and phone width (preview behind the header's Preview
 // button) in the light one, with no horizontal overflow. It also orbits the
 // stage from the keyboard, loads a skin PNG from the inspector, and checks
-// that a PNG of the wrong size says why. A player with no skin wears its
-// built-in placeholder (served, decoded, not blank; the stage's tip names
-// it), and picking a built-in skin in the inspector wears it. A pack without
+// that a PNG of the wrong size says why. A player with no skin wears the
+// default skin its UUID gives it, as the game picks it (the pack's texture,
+// served and not blank; the stage's tip names it), and picking a built-in
+// skin in the inspector wears it. A pack without
 // a body's texture still settles: the status line counts the part not drawn
 // and its tip says the body is drawn white. Needs the asset pack (tool/extract_minecraft_world_assets.dart)
 // in the build.
@@ -22,6 +23,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {topbarAction, workspaceOpen} = require('./support/shell.cjs');
 const {showPreview, stageDrawn, stageFrames, stageLine, stageTip, waitForStageTip} = require('./support/stage.cjs');
 const {npcTab} = require('./support/npc_tabs.cjs');
+const {defaultSkinOf} = require('./support/default_skin.cjs');
 
 /** Opens the skin chooser from the skin field on Basics. */
 async function chooseSkin(page) {
@@ -84,8 +86,11 @@ async function run(browser, viewport, label, dark) {
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   const placeholders = new Map();
   page.on('response', response => {
-    const match = /\/assets\/skins\/placeholder\/([a-z-]+\.png)$/.exec(new URL(response.url()).pathname);
+    const {pathname} = new URL(response.url());
+    const match = /\/assets\/skins\/placeholder\/([a-z-]+\.png)$/.exec(pathname);
     if (match) placeholders.set(match[1], response.status());
+    // The default skins come from the model pack.
+    if (pathname.includes('/assets/mc/26.3/entity/player/')) placeholders.set(pathname, response.status());
   });
   await page.goto(process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })());
   await page.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
@@ -130,9 +135,9 @@ async function run(browser, viewport, label, dark) {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     assert.ok(overflow <= 0, `${id}: ${overflow}px of horizontal overflow`);
   }
-  // A player with no skin wears its placeholder.
+  // A player with no skin wears its default skin; a built-in skin is a placeholder PNG.
   const wearsPlaceholder = async (file, shot) => {
-    await page.waitForFunction(name => performance.getEntriesByType('resource').some(entry => entry.name.endsWith(`/assets/skins/placeholder/${name}`)), file);
+    await page.waitForFunction(name => performance.getEntriesByType('resource').some(entry => entry.name.endsWith(name)), file.includes('/') ? file : `/assets/skins/placeholder/${file}`);
     await stageDrawn(page);
     assert.equal(placeholders.get(file), 200, `${file}: served`);
     assert.ok(!/not drawn/.test(await stageLine(page)), `${file}: decoded (${await stageLine(page)})`);
@@ -143,11 +148,11 @@ async function run(browser, viewport, label, dark) {
   };
   await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/players%2Fmerchant`);
   await showPreview(page);
-  await waitForStageTip(page, /Skin: none, so the preview shows the \w+ stand-in, classic arms\./);
-  const look = /the (\w+) stand-in/.exec(await stageTip(page))[1].toLowerCase();
-  await wearsPlaceholder(`${look}.png`, `placeholder-${look}-classic`);
+  const standard = defaultSkinOf('b37e0037-8621-5239-8532-a3824fa48626');
+  await waitForStageTip(page, new RegExp(`Skin: none, so players see the default skin, ${standard.label} with ${standard.slim ? 'slim' : 'classic'} arms\\.`));
+  await wearsPlaceholder(`/assets/mc/26.3/${standard.texture}.png`, `default-${standard.label.toLowerCase()}`);
   // Picking a built-in skin wears it.
-  const other = look === 'miner' ? 'Scholar' : 'Miner';
+  const other = 'Miner';
   let dialog = await chooseSkin(page);
   await dialog.getByText('Built-in', {exact: true}).click();
   await dialog.locator('.ui-library-row', {hasText: other}).click();

@@ -90,7 +90,8 @@ class TypedValueEditor extends StatelessWidget {
       TypedKind.boolean => ArcaneToggleSwitch(value: current! as bool, label: label, onChanged: onChanged, size: ComponentSize.sm),
       TypedKind.list => TypedListEditor(items: current! as List<Object?>, label: label, depth: depth + 1, profile: profileFor(label), onChanged: onChanged),
       TypedKind.object => KeyValueEditor(value: current! as JsonMap, label: label, depth: depth + 1, profileFor: profileFor, onChanged: onChanged),
-      TypedKind.empty => noteLine('null'),
+      // "Empty" in the kind picker says it all; no value follows.
+      TypedKind.empty => const dom.span(<Widget>[]),
     };
   }
 }

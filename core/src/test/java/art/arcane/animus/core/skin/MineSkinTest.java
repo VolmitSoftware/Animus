@@ -137,7 +137,7 @@ class MineSkinTest {
 
     @Test void sign_unreachable_saysTheServerNeedsInternet() {
         String message = refusal(client().sign(new SkinSigner.Request(new SkinSigner.Address("https://example.com/a.png"), false, "")));
-        assertEquals("Could not reach MineSkin (IOException); the server needs internet access", message);
+        assertEquals("Could not reach MineSkin; the server needs internet access", message);
     }
 
     @Test void sign_oneAtATime_secondWaitsForTheFirst() throws Exception {
@@ -167,7 +167,54 @@ class MineSkinTest {
 
     @Test void message_ofAWrappedRefusal_isItsOwnLine() {
         assertEquals("nope", SkinSigner.message(new CompletionException(new SkinSigner.Refused("nope"))));
-        assertEquals("MineSkin could not sign the skin: IllegalStateException", SkinSigner.message(new IllegalStateException("x")));
+        assertEquals("MineSkin could not sign the skin; try again later", SkinSigner.message(new IllegalStateException("x")));
+    }
+
+    @Test void skinId_readsMineSkinLinksAndIds() {
+        assertEquals(java.util.Optional.of("6ca0b9ed49174a3398469ebbbbf7c6b6"), MineSkin.skinId("https://mineskin.org/skins/6ca0b9ed49174a3398469ebbbbf7c6b6"));
+        assertEquals(java.util.Optional.of("6ca0b9ed49174a3398469ebbbbf7c6b6"), MineSkin.skinId(" https://www.mineskin.org/skins/6ca0b9ed-4917-4a33-9846-9ebbbbf7c6b6/?tab=1 "));
+        assertEquals(java.util.Optional.of("e51d0e34"), MineSkin.skinId("https://minesk.in/e51d0e34"));
+        assertEquals(java.util.Optional.of("e51d0e34"), MineSkin.skinId("mineskin.org/e51d0e34"));
+        assertEquals(java.util.Optional.of("e51d0e34"), MineSkin.skinId("e51d0e34"));
+        assertEquals(java.util.Optional.of("6ca0b9ed49174a3398469ebbbbf7c6b6"), MineSkin.skinId("6CA0B9ED-4917-4A33-9846-9EBBBBF7C6B6"));
+        assertTrue(MineSkin.skinId("https://example.com/skins/e51d0e34").isEmpty(), "another site");
+        assertTrue(MineSkin.skinId("https://mineskin.org/").isEmpty());
+        assertTrue(MineSkin.skinId("Notch!").isEmpty());
+        assertTrue(MineSkin.skinId("").isEmpty());
+        assertTrue(MineSkin.isLink("https://minesk.in/e51d0e34"));
+        assertFalse(MineSkin.isLink("https://example.com/guard.png"));
+    }
+
+    @Test void find_readsAnExistingSkinByItsId() throws Exception {
+        replies.add(new MineSkin.Reply(200, "{\"success\":true,\"skin\":{\"uuid\":\"6ca0b9ed49174a3398469ebbbbf7c6b6\",\"shortId\":\"e51d0e34\",\"variant\":\"slim\","
+                + "\"texture\":{\"data\":{\"value\":\"" + VALUE + "\",\"signature\":\"" + SIGNATURE + "\"},\"url\":{\"skin\":\"https://textures.minecraft.net/texture/abc\"}}}}", -1));
+        SkinSigner.Signed found = client().find("e51d0e34").get(5, TimeUnit.SECONDS);
+        assertEquals(VALUE, found.skin().textureValue());
+        assertEquals(SIGNATURE, found.skin().signature());
+        assertTrue(found.slim());
+        assertEquals("https://api.mineskin.org/v2/skins/e51d0e34", sent.getFirst().uri().toString());
+        assertEquals("GET", sent.getFirst().method());
+    }
+
+    @Test void sign_aMineSkinLink_readsThatSkinInsteadOfSigningAPage() throws Exception {
+        replies.add(new MineSkin.Reply(200, "{\"success\":true,\"skin\":{\"uuid\":\"6ca0b9ed49174a3398469ebbbbf7c6b6\",\"variant\":\"classic\","
+                + "\"texture\":{\"data\":{\"value\":\"" + VALUE + "\",\"signature\":\"" + SIGNATURE + "\"},\"url\":{\"skin\":\"https://textures.minecraft.net/texture/abc\"}}}}", -1));
+        SkinSigner.Signed found = client().sign(new SkinSigner.Request(new SkinSigner.Address("https://mineskin.org/skins/6ca0b9ed49174a3398469ebbbbf7c6b6"), true, "")).get(5, TimeUnit.SECONDS);
+        assertEquals(VALUE, found.skin().textureValue());
+        assertFalse(found.slim(), "the skin keeps its own arm model");
+        assertEquals("GET", sent.getFirst().method());
+        assertEquals("MineSkin e51d0e34", SkinSigner.label("https://minesk.in/e51d0e34"));
+        assertEquals("MineSkin 6ca0b9ed", SkinSigner.label("https://mineskin.org/skins/6ca0b9ed49174a3398469ebbbbf7c6b6"));
+    }
+
+    @Test void find_unknownSkin_saysSoInOneLine() {
+        replies.add(new MineSkin.Reply(404, "{\"success\":false,\"errors\":[{\"code\":\"skin_not_found\",\"message\":\"Skin not found\"}]}", -1));
+        assertEquals("MineSkin has no skin e51d0e34", refusal(client().find("e51d0e34")));
+        assertEquals("Not a MineSkin link or id", refusal(client().find("../admin")));
+    }
+
+    @Test void find_isRefusedWhereSigningIsOff() {
+        assertEquals("Signing is off", refusal(SkinSigner.off("Signing is off").find("e51d0e34")));
     }
 
     @Test void label_fromFileOrAddress_isTheLastPartWithoutPng() {

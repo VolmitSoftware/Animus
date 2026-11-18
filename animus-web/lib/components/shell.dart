@@ -63,6 +63,7 @@ import 'shell_topbar.dart';
 import 'shortcut_sheet.dart';
 import 'shortcuts.dart';
 import 'workspace_overview.dart';
+import '../logic/npc/skin_finds.dart';
 
 /// The id of every workspace page's `<main>`, the target of the skip link.
 const String mainId = 'animus-main';
@@ -706,6 +707,7 @@ class _EditorShellState extends State<EditorShell> with WorkspaceActions {
               resources: workspace.resources,
               commit: (SkinChange change) => component.store.commit(documents: change.documents, resources: change.resources, label: change.label),
               sign: serverSigner(session),
+              findAbsence: skinFindAbsence(paired: session != null, capabilities: session?.connection.capabilities),
             ),
           )
         else if (selected != null)

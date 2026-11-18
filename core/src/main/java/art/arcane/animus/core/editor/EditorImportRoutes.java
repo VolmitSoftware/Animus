@@ -78,8 +78,8 @@ final class EditorImportRoutes {
         ungrouped(token);
         JsonObject body = request.body().isPresent() ? EditorMessages.body(request) : new JsonObject();
         EditorMessages.fields(body, "$", Set.of("mode", "label", "worlds"));
-        String mode = body.has("mode") ? EditorMessages.string(body, "mode", "reject|replace|duplicate", "$.mode") : "reject";
-        Optional<String> label = body.has("label") ? Optional.of(EditorMessages.string(body, "label", "[a-z0-9_-]{1,32}", "$.label")) : Optional.empty();
+        String mode = body.has("mode") ? EditorMessages.string(body, "mode", "reject|replace|duplicate", "$.mode", "reject, replace or duplicate") : "reject";
+        Optional<String> label = body.has("label") ? Optional.of(EditorMessages.string(body, "label", "[a-z0-9_-]{1,32}", "$.label", "a label of up to 32 lowercase letters, digits, _ or -")) : Optional.empty();
         if (mode.equals("duplicate") != label.isPresent()) throw EditorMessages.invalid("$.label: a duplicate import needs a copy label, and only a duplicate takes one.");
         Map<String, String> worlds = new LinkedHashMap<>();
         if (body.has("worlds")) {
@@ -88,7 +88,7 @@ final class EditorImportRoutes {
             if (map.size() > 64) throw EditorMessages.invalid("$.worlds: at most 64 world mappings.");
             for (String from : map.keySet()) {
                 if (!from.matches("[A-Za-z0-9_.-]{1,64}")) throw EditorMessages.invalid("$.worlds: world names use letters, digits, _, . and -.");
-                worlds.put(from, EditorMessages.string(map, from, "[A-Za-z0-9_.-]{1,64}", "$.worlds." + from));
+                worlds.put(from, EditorMessages.string(map, from, "[A-Za-z0-9_.-]{1,64}", "$.worlds." + from, "a world name of up to 64 letters, digits, ., _ or -"));
             }
         }
         return api.files(token, () -> {

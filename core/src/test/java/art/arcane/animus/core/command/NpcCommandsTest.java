@@ -144,6 +144,11 @@ class NpcCommandsTest {
     }
 
     private static JsonObject attributes(NpcRepository repository) throws IOException { return repository.draft("guard").document().getAsJsonObject("attributes"); }
+    @Test void aMineSkinLinkIsReadNotSigned() {
+        assertEquals("Reading the skin from MineSkin", NpcCommands.signingLine("https://minesk.in/e51d0e34"));
+        assertEquals("Signing the skin through MineSkin", NpcCommands.signingLine("https://example.com/guard.png"));
+    }
+
     @Test void aSkinByNameIsSavedAndWornAndOnlyPlayerBodiesTakeOne() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             store.commit(List.of(new DocumentStore.Change("npcs/town/guard.json", "missing", GUARD.replace(",\"groups\":[\"giants\"]", "")),

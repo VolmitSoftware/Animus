@@ -24,6 +24,11 @@ public interface SkinSigner {
 
     CompletableFuture<Signed> sign(Request request);
 
+    /** A skin MineSkin already signed, by its link or id; refused with {@link #unavailable()} where MineSkin is off. */
+    default CompletableFuture<Signed> find(String linkOrId) {
+        return CompletableFuture.failedFuture(new Refused(unavailable().orElse("This server does not read MineSkin skins")));
+    }
+
     /** A PNG to upload, or an address to fetch it from. */
     sealed interface Source permits Image, Address {}
 
@@ -48,11 +53,16 @@ public interface SkinSigner {
     /** The line to show for a failed signing: a refusal's own message, else what went wrong. */
     static String message(Throwable failure) {
         Throwable cause = failure instanceof java.util.concurrent.CompletionException && failure.getCause() != null ? failure.getCause() : failure;
-        return cause instanceof Refused ? cause.getMessage() : "MineSkin could not sign the skin: " + cause.getClass().getSimpleName();
+        return cause instanceof Refused ? cause.getMessage() : "MineSkin could not sign the skin; try again later";
     }
 
-    /** A skin's label from a PNG file name or address: its last part without {@code .png}, in the characters MineSkin takes. */
+    /**
+     * A skin's label from a PNG file name or address: its last part without {@code .png}, in the characters MineSkin
+     * takes; "MineSkin" and the skin's id for a MineSkin link.
+     */
     static String label(String source) {
+        Optional<String> mineSkin = MineSkin.isLink(source) ? MineSkin.skinId(source) : Optional.empty();
+        if (mineSkin.isPresent()) return "MineSkin " + mineSkin.get().substring(0, Math.min(8, mineSkin.get().length()));
         String path = source.strip();
         int query = path.indexOf('?');
         if (query >= 0) path = path.substring(0, query);

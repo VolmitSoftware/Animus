@@ -46,6 +46,9 @@ public interface EditorHost {
     /** Signs skin PNGs and addresses for {@code POST /v1/skins/sign}; off on a host without one. */
     default art.arcane.animus.core.skin.SkinSigner skinSigner() { return art.arcane.animus.core.skin.SkinSigner.off("This server does not sign skins"); }
 
+    /** Finds a Minecraft account's skin by name for {@code POST /v1/skins/sign}, as {@code /animus npc skin} does. */
+    default art.arcane.animus.core.toolkit.SkinLookup skinLookup() { return art.arcane.animus.core.toolkit.SkinLookup.shared(); }
+
     /** Module ids and states for {@code GET /v1/capabilities}. */
     List<Map.Entry<String, String>> modules();
 
@@ -65,6 +68,9 @@ public interface EditorHost {
 
     /** A player's last known name, online or not, for the owners {@code GET /v1/lookups} names; any thread. */
     default Optional<String> playerName(UUID player) { return Optional.empty(); }
+
+    /** Players the server has seen, by UUID with their last known name, for the editor's player pickers; any thread. */
+    default Map<UUID, String> knownPlayers() { return Map.of(); }
 
     /** The live capability registry the generated behavior schema describes. */
     List<Capabilities.Availability> capabilities();
