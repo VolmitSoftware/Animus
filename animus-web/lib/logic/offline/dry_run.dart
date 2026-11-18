@@ -24,7 +24,7 @@ import '../gui/gui_json.dart';
 import '../inspect/behavior_eval.dart';
 import '../inspect/behavior_operands.dart';
 import '../inspect/behavior_summary.dart';
-import '../inspect/behavior_words.dart' show soundName;
+import '../inspect/behavior_words.dart' show damageClause, soundName;
 import '../inspect/named_ids.dart' show particleName;
 import '../item_ids.dart';
 import '../inspect/server_behaviors.dart';
@@ -281,6 +281,7 @@ Map<String, Object?> sampleContext(JsonMap trigger) => switch (asString(trigger[
       'leash_tie' || 'leash_pass' => <String, Object?>{..._sampleEntity, 'entity_type': 'minecraft:sheep', 'entity_name': '', 'holder': _sampleEntity['entity'], 'holder_type': 'minecraft:player'},
       'npc_proximity' => <String, Object?>{'npc': 'guard', 'npc_uuid': '00000000-0000-4000-8000-000000000004', 'phase': asString(trigger['phase']) ?? 'enter'},
       'npc_speech' => <String, Object?>{'npc': 'guard', 'npc_uuid': '00000000-0000-4000-8000-000000000004', 'text': (asString(trigger['pattern']) ?? 'Hello').replaceAll('*', '')},
+      'damage' => <String, Object?>{'damage': 2.0, 'attacker': _sampleEntity['entity'], 'attacker_type': trigger['players'] == true ? 'player' : 'mob'},
       _ => const <String, Object?>{},
     };
 
@@ -295,7 +296,7 @@ List<DryRunStart> dryRunStarts(JsonMap behavior) {
     final String event = asString(trigger['event']) ?? '?';
     if (id == null || event == 'dialogue_choice') continue;
     starts.add(DryRunStart(id, '$id: ${_eventLine(trigger)}', asString(trigger['routine']) ?? entry,
-        carriesPlayer: !_playerless.contains(event), context: sampleContext(trigger)));
+        carriesPlayer: !_playerless.contains(event) || event == 'damage' && trigger['players'] == true, context: sampleContext(trigger)));
   }
   starts.add(DryRunStart(null, 'Entry routine ($entry)', entry, carriesPlayer: behavior['server'] != true));
   return starts;
@@ -319,7 +320,7 @@ String _eventLine(JsonMap trigger) {
     'timer' => 'every ${_ticks(trigger['intervalTicks'])}',
     'spawn' => 'the NPC spawns',
     'despawn' => 'the NPC despawns',
-    'damage' => 'the NPC is hurt',
+    'damage' => damageClause(trigger),
     'death' => 'the NPC dies',
     'waypoint' => 'the NPC reaches a waypoint',
     'player_join' => trigger['first'] == true ? 'a player joins for the first time' : (trigger['first'] == false ? 'a returning player joins' : 'a player joins'),

@@ -131,11 +131,9 @@ _Mapped _denizenEvent(String key, Map<String, _Note> notes, bool npcEntity, bool
       context['sneaking'] = 'sneaking';
     case 'player damages npc':
     case 'npc damaged by player':
-      event = 'interaction';
+      event = 'damage';
       npc = true;
-      trigger.addString('action', 'attack');
-      context['entity'] = 'npc';
-      context['sneaking'] = 'sneaking';
+      _hit(trigger, context);
     default:
       if (phrase.startsWith('player changes world')) {
         event = 'player_world_change';
@@ -250,11 +248,9 @@ _Mapped _denizenEvent(String key, Map<String, _Note> notes, bool npcEntity, bool
       } else if (w.length == 3 && w[0] == 'player' && w[1] == 'damages' || w.length == 4 && w[1] == 'damaged' && w[2] == 'by' && w[3] == 'player') {
         final String entity = w[1] == 'damages' ? w[2] : w[0];
         if (npcEntity) {
-          event = 'interaction';
+          event = 'damage';
           npc = true;
-          trigger.addString('action', 'attack');
-          context['entity'] = 'npc';
-          context['sneaking'] = 'sneaking';
+          _hit(trigger, context);
         } else {
           event = 'player_damage_entity';
           cancellable = true;
@@ -277,11 +273,18 @@ _Mapped _denizenEvent(String key, Map<String, _Note> notes, bool npcEntity, bool
         }
         context['entity'] = 'entity';
       } else if (_projectileForm(w)) {
-        final _Form form = _projectile(w, trigger, context);
+        final bool atNpc = w.length == 2 && w[1] == 'hits' && switches.values.any((List<String> option) => option[0] == 'entity' && option[1] == 'npc');
+        final _Form form = _projectile(w, trigger, context, atNpc);
         final String? reason = form.reason;
         if (reason != null) return _Mapped.fail(reason);
         event = form.event!;
-        cancellable = true;
+        // Denizen links the NPC that was hit, not the shooter, so the event has no player of its own.
+        if (event == 'hit_by_projectile') {
+          npc = true;
+          player = false;
+        } else {
+          cancellable = true;
+        }
       } else if (phrase.contains('npc')) {
         return const _Mapped.fail('this event covers every NPC; Animus binds a behavior to each NPC instead');
       } else {
@@ -339,7 +342,7 @@ _Mapped _denizenEvent(String key, Map<String, _Note> notes, bool npcEntity, bool
           fields.addString('bow', value);
           break;
         }
-        if (event != 'player_block_click' && event != 'interaction') return const _Mapped.fail('switch with: has no Animus equivalent on this event');
+        if (event != 'player_block_click' && event != 'interaction' && event != 'damage') return const _Mapped.fail('switch with: has no Animus equivalent on this event');
         if (!_full('[a-z0-9_]{1,64}', value)) return _Mapped.fail('switch with:$value names an item Animus cannot check');
         guards.add(_Atom('same(player.item_in_hand, ${_quote(value == 'air' ? 'minecraft:air' : 'minecraft:$value')})'));
       case 'click':
@@ -360,22 +363,39 @@ _Mapped _denizenEvent(String key, Map<String, _Note> notes, bool npcEntity, bool
           if (value != 'inventory') fields.addString('inventory', value);
           break;
         }
-        if (!player) return _Mapped.fail('switch in: needs a player; $event has none');
+        final bool struck = event == 'hit_by_projectile';
+        if (!player && !struck) return _Mapped.fail('switch in: needs a player; $event has none');
         if (!_full('[a-z0-9_-]{1,64}', value)) return _Mapped.fail('switch in:$value names an area Animus cannot check');
         if (notes.containsKey(value)) return _Mapped.fail('switch in:$value names a noted area; Animus checks areas only as enter and exit events');
-        guards.add(_Atom('same_world(${projectile ? 'context.world' : 'player.world'}, ${_quote(value)})'));
+        guards.add(_Atom('same_world(${projectile ? 'context.world' : struck ? 'npc.world' : 'player.world'}, ${_quote(value)})'));
       case 'entity':
       case 'block':
       case 'shooter':
-        if (event != 'projectile_hit' && !(name == 'shooter' && projectile)) return _Mapped.fail('switch $name: has no Animus equivalent on this event');
-        if (value == 'npc') return const _Mapped.fail(_npcProjectileTarget);
+        if (event == 'hit_by_projectile') {
+          if (name == 'entity' && value == 'npc') break;
+          if (name != 'shooter') return _Mapped.fail('switch $name: has no Animus equivalent on this event');
+        } else if (event != 'projectile_hit' && !(name == 'shooter' && projectile)) {
+          return _Mapped.fail('switch $name: has no Animus equivalent on this event');
+        }
+        if (value == 'npc') return _Mapped.fail(name == 'shooter' ? _npcProjectileShooter : _npcHitForm);
         if (!_full(_eventName, value)) return _Mapped.fail('switch $name:$value names a type Animus cannot check');
-        fields.addString(name, value);
+        // The hit trigger's entity filters test the shooter.
+        fields.addString(event == 'hit_by_projectile' ? 'entity' : name, value);
       default:
         return _Mapped.fail('event switch $name: has no Animus equivalent');
     }
   }
-  return _Mapped(fields, guards, context, npc, cancellable || npc, null);
+  return _Mapped(fields, guards, context, npc, cancellable || npc && event == 'interaction', null);
+}
+
+/// A player's hit on an NPC. Denizen runs the event only when the hit is not already cancelled, so only when it hurts
+/// the NPC, by hand or with a projectile: a damage trigger for player hits, which runs after the hit lands and so
+/// cannot cancel it.
+void _hit(JObject trigger, SplayTreeMap<String, String> context) {
+  trigger.addBool('players', true);
+  context['entity'] = 'npc';
+  context['damage'] = 'damage';
+  context['final_damage'] = 'damage';
 }
 
 // ---- Projectiles ----
@@ -389,7 +409,10 @@ class _Form {
 }
 
 const String _npcProjectileShooter = 'Animus NPCs shoot combat helper projectiles, which fire no server triggers';
-const String _npcProjectileTarget = 'Animus NPCs are virtual bodies that real projectiles pass through';
+const String _npcHitForm = 'a hit on an NPC converts only as projectile hits entity:npc, projectile hits npc or projectile collides with npc';
+
+/// The `context` name for the shooter of a projectile that hit an NPC: the hit trigger's `entity`, `entity_type` and `entity_name`.
+const String _denizenShooter = '@shooter';
 
 /// `<projectile> launched`, `<projectile> hits [<target>]`, `<projectile> collides with <entity>` and `<entity> shoots <bow or block>`.
 bool _projectileForm(List<String> w) =>
@@ -397,9 +420,10 @@ bool _projectileForm(List<String> w) =>
     w.length == 3 && (w[1] == 'hits' || w[1] == 'shoots') ||
     w.length == 4 && w[1] == 'collides' && w[2] == 'with';
 
-/// A projectile event as `projectile_launch`, `projectile_hit` or `entity_shoot_bow`. Denizen's older
+/// A projectile event as `projectile_launch`, `projectile_hit`, `entity_shoot_bow`, or for a hit on an NPC
+/// ([atNpc]: the `entity:npc` switch) `hit_by_projectile`. Denizen's older
 /// `<entity> shoots <block>` and `<projectile> hits <block>` are hits on a block; `*:*` filters for any hit entity or block.
-_Form _projectile(List<String> w, JObject trigger, Map<String, String> context) {
+_Form _projectile(List<String> w, JObject trigger, Map<String, String> context, bool atNpc) {
   if (w[0] == 'npc') return const _Form(null, _npcProjectileShooter);
   String? reason;
   if (w[1] == 'shoots' && (w[2] == 'item' || w[2].endsWith('bow'))) {
@@ -418,6 +442,12 @@ _Form _projectile(List<String> w, JObject trigger, Map<String, String> context) 
           : _projectileFilter(trigger, 'projectile', w[0], 'projectile');
   if (reason != null) return _Form(null, reason);
   context['projectile'] = 'projectile';
+  // A hit on an NPC is that NPC's own hit trigger, in the behavior bound to every NPC.
+  if (atNpc || w[1] != 'shoots' && w.length > 2 && w[w.length - 1] == 'npc') {
+    context['hit_entity'] = 'npc';
+    context['shooter'] = _denizenShooter;
+    return const _Form('hit_by_projectile', null);
+  }
   context['shooter'] = 'shooter';
   if (w[1] == 'launched') {
     context['entity'] = 'projectile';
@@ -426,7 +456,6 @@ _Form _projectile(List<String> w, JObject trigger, Map<String, String> context) 
   if (w.length > 2) {
     final String target = w[w.length - 1];
     final bool entity = w[1] == 'collides' || target == 'entity' || target == 'player';
-    if (target == 'npc') return const _Form(null, _npcProjectileTarget);
     if (!_full(_eventName, target)) return _Form(null, '${entity ? 'entity ' : 'block '}$target has no Animus equivalent');
     trigger.addString(entity ? 'entity' : 'block', target == 'entity' || target == 'block' ? '*:*' : target);
     if (w[1] == 'collides') context['entity'] = 'entity';

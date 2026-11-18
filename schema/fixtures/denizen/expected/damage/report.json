@@ -1,0 +1,168 @@
+{
+  "schemaVersion": 1,
+  "converterVersion": 10,
+  "importId": "891439db1798cb98bf0d4a4eba1ceae4302035d66e3b3354cd92784c6a5ae1a8",
+  "notice": "Data conversion only. Apply lists the generated behaviors on their NPCs and turns the server behaviors on, except held behaviors, whose guard did not convert.",
+  "sources": {
+    "scripts/sparring.dsc": "3c626e3bd6f12aff8a18db25d557f2ad05f0ac883522882ff3556279fbaef979",
+    "citizens": "d9751103e8ffde493cc73d5582e2b2081dfb0c5f2013ace6a1b7b9fd187cc37c"
+  },
+  "behaviors": 3,
+  "containers": {
+    "assignment": {
+      "total": 2,
+      "converted": 1,
+      "partial": 1,
+      "preserved": 0
+    },
+    "interact": {
+      "total": 2,
+      "converted": 1,
+      "partial": 1,
+      "preserved": 0
+    }
+  },
+  "commands": {
+    "chat": {
+      "converted": 0,
+      "preserved": 1
+    },
+    "flag": {
+      "converted": 3,
+      "preserved": 0
+    },
+    "give": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "if": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "narrate": {
+      "converted": 6,
+      "preserved": 1
+    },
+    "trigger": {
+      "converted": 2,
+      "preserved": 0
+    },
+    "zap": {
+      "converted": 1,
+      "preserved": 0
+    }
+  },
+  "events": {
+    "click trigger": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "damage trigger": {
+      "converted": 3,
+      "preserved": 0
+    },
+    "interact script": {
+      "converted": 2,
+      "preserved": 0
+    },
+    "on assignment": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "on click": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "on damage": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "on damaged": {
+      "converted": 0,
+      "preserved": 1
+    }
+  },
+  "tags": {
+    "context.damage": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "context.damager": {
+      "mapped": 0,
+      "unmapped": 1
+    },
+    "npc.name": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "player.flag": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "player.name": {
+      "mapped": 3,
+      "unmapped": 0
+    }
+  },
+  "flags": {
+    "imported": {
+      "global": 0,
+      "npc": 0,
+      "player": 0,
+      "relationship": 0
+    },
+    "preserved": 0
+  },
+  "bindings": {
+    "citizens-20": [
+      "denizen:assignment/sparring_assignment",
+      "denizen:interact/sparring_rounds"
+    ],
+    "citizens-21": [
+      "denizen:interact/dummy_hits"
+    ]
+  },
+  "npcUuids": {
+    "citizens-20": "00000000-0000-4000-8000-000000000020",
+    "citizens-21": "00000000-0000-4000-8000-000000000021"
+  },
+  "behaviorStatus": {
+    "denizen:assignment/sparring_assignment": "partial",
+    "denizen:interact/dummy_hits": "complete",
+    "denizen:interact/sparring_rounds": "partial"
+  },
+  "heldBehaviors": {},
+  "commandBehaviors": [],
+  "serverBehaviors": [],
+  "guis": [],
+  "sounds": {},
+  "issues": [],
+  "preserved": [
+    {
+      "source": "sparring.dsc:12",
+      "container": "sparring_assignment",
+      "kind": "event",
+      "item": "on damaged",
+      "reason": "Denizen runs it with no player for any entity's hit; an Animus damage trigger gives the run the player who hit and names no attacker for blasts no player or mob caused"
+    },
+    {
+      "source": "sparring.dsc:13",
+      "container": "sparring_assignment",
+      "kind": "command",
+      "item": "chat",
+      "reason": "inside an action that is kept"
+    },
+    {
+      "source": "sparring.dsc:27",
+      "container": "sparring_rounds",
+      "kind": "command",
+      "item": "narrate",
+      "reason": "context.damager is not passed by the Animus trigger for this event"
+    }
+  ],
+  "documents": {
+    "behaviors/denizen/assignment/sparring_assignment.json": "c1581c2c084a32bc91188e7fb0e21b493034b6ff52671c69b47984d6c9324fbd",
+    "behaviors/denizen/interact/dummy_hits.json": "a8a1cb67f2e5ef8a3bdd94f4c49827526efe6f6e8d945a0ec082b9b5fe31b023",
+    "behaviors/denizen/interact/sparring_rounds.json": "6e20946bdd763f98d906475c95b64b9a6ec42aa4ca86754251fdaaa0d9c4e462"
+  }
+}

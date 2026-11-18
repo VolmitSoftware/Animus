@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 9,
-  "importId": "b7567686ae099ae88bf136ccb0f3f79c2e13005c7a4fa10868c7a27db0df2aa2",
+  "converterVersion": 10,
+  "importId": "3bb67a840e80a341d4693e77387c675c90174a50f0e85ccdf03a021e120cb3d6",
   "notice": "Data conversion only. Apply lists the generated behaviors on their NPCs and turns the server behaviors on, except held behaviors, whose guard did not convert.",
   "sources": {
     "scripts/hello.yml": "9cbb647a2894c1e8bc0b731849ea11747520373965ffce4c263e963e5d96330b"

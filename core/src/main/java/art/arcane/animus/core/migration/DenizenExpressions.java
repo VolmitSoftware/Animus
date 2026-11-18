@@ -824,14 +824,26 @@ final class DenizenExpressions {
         String key = parts.get(1).name().toLowerCase(Locale.ROOT);
         String mapped = scope.context.get(key);
         if (mapped == null) return Result.fail("context." + key + " is not passed by the Animus trigger for this event");
-        // The clicked entity of an NPC event is always the NPC, and Denizen writes the hand as mainhand or offhand.
-        if (key.equals("entity") && mapped.equals("npc")) {
+        // The clicked or hit entity of an NPC event is always the NPC, and Denizen writes the hand as mainhand or offhand.
+        if (mapped.equals("npc")) {
             if (attributeName(parts, 2).filter("is_npc"::equals).isPresent()) return fact("true", 'b', 3);
             Result<Step> npc = npc(parts.subList(1, parts.size()), scope, pending);
             return npc.failed() ? npc : Result.ok(new Step(npc.value().expr(), npc.value().next() + 1));
         }
         if (key.equals("hand") && mapped.equals("hand")) return fact("replace(context.hand, '_', '')", 's', 2);
         Optional<String> attribute = attributeName(parts, 2);
+        // The shooter of a projectile that hit an NPC: its UUID, type key and name, empty for a dispenser's shot.
+        if (mapped.equals(DenizenEvents.SHOOTER)) {
+            if (attribute.isEmpty()) return fact("context.entity", 's', 2);
+            return switch (attribute.get()) {
+                case "uuid" -> fact("context.entity", 's', 3);
+                case "is_npc" -> fact("false", 'b', 3);
+                case "is_player" -> fact("same(context.entity_type, 'minecraft:player')", 'b', 3);
+                case "entity_type" -> fact("replace(context.entity_type, 'minecraft:', '')", 's', 3);
+                case "name" -> fact("(same(context.entity_name, '') ? replace(context.entity_type, 'minecraft:', '') : context.entity_name)", 's', 3);
+                default -> Result.fail("tag attribute " + attribute.get() + " of context." + key + " has no Animus expression");
+            };
+        }
         // A world event passes keys and coordinates rather than Denizen objects; the common attributes read those.
         switch (mapped) {
             case "inventory_type" -> {

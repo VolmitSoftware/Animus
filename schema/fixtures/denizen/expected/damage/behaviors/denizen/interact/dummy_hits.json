@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:interact/dummy_hits",
+  "entry": "s0-damage",
+  "routines": {
+    "s0-damage": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": "The dummy creaks."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "dummy_hits",
+            "scope": "player",
+            "value": null
+          },
+          "expressions": {
+            "/value": "(num(flag('player', 'dummy_hits', 0)) + 1)"
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "damage",
+      "event": "damage",
+      "players": true,
+      "routine": "s0-damage"
+    }
+  ]
+}

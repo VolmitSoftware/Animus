@@ -135,6 +135,10 @@ archery:
         on npc shoots bow:
         - narrate "never converts"
         on arrow hits npc:
+        - narrate "<context.hit_entity.name> was hit by <context.shooter.name>." targets:<context.shooter>
+        on projectile hits entity:npc shooter:skeleton:
+        - chat "Hold your fire!"
+        on projectile hits shooter:npc:
         - narrate "never converts"
 
 npc_keys:

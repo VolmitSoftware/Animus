@@ -1122,14 +1122,26 @@ class _Expressions {
     final String key = parts[1].name.toLowerCase();
     final String? mapped = scope.context[key];
     if (mapped == null) return _Result<_Step>.fail('context.$key is not passed by the Animus trigger for this event');
-    // The clicked entity of an NPC event is always the NPC, and Denizen writes the hand as mainhand or offhand.
-    if (key == 'entity' && mapped == 'npc') {
+    // The clicked or hit entity of an NPC event is always the NPC, and Denizen writes the hand as mainhand or offhand.
+    if (mapped == 'npc') {
       if (_attributeName(parts, 2) == 'is_npc') return _fact('true', 'b', 3);
       final _Result<_Step> npc = this.npc(parts.sublist(1), scope, pending);
       return npc.failed ? npc : _Result<_Step>.ok(_Step(npc.value!.expr, npc.value!.next + 1));
     }
     if (key == 'hand' && mapped == 'hand') return _fact("replace(context.hand, '_', '')", 's', 2);
     final String? attribute = _attributeName(parts, 2);
+    // The shooter of a projectile that hit an NPC: its UUID, type key and name, empty for a dispenser's shot.
+    if (mapped == _denizenShooter) {
+      if (attribute == null) return _fact('context.entity', 's', 2);
+      return switch (attribute) {
+        'uuid' => _fact('context.entity', 's', 3),
+        'is_npc' => _fact('false', 'b', 3),
+        'is_player' => _fact("same(context.entity_type, 'minecraft:player')", 'b', 3),
+        'entity_type' => _fact("replace(context.entity_type, 'minecraft:', '')", 's', 3),
+        'name' => _fact("(same(context.entity_name, '') ? replace(context.entity_type, 'minecraft:', '') : context.entity_name)", 's', 3),
+        _ => _Result<_Step>.fail('tag attribute $attribute of context.$key has no Animus expression'),
+      };
+    }
     // A world event passes keys and coordinates rather than Denizen objects; the common attributes read those.
     switch (mapped) {
       case 'inventory_type':

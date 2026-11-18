@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 9,
-  "importId": "f9873e8c418b52f01a82926b2d1ffe7f64e9c4c81ab42fffa4bb3d80af7d55ae",
+  "converterVersion": 10,
+  "importId": "d8fdabf91e659f549bd1fbf82c3e478be7ab814bd7cf1a18ddb852360a86b833",
   "notice": "Data conversion only. Apply lists the generated behaviors on their NPCs and turns the server behaviors on, except held behaviors, whose guard did not convert.",
   "sources": {
-    "scripts/events.dsc": "53524fbb9ceff17a581c6c2205fadc4456b9c5871152a955e56d5969aed806d8",
+    "scripts/events.dsc": "25b38b5528857219ad18596b53a380a0b25f6587a2b7020e2fe75d97a7834492",
     "citizens": "e24c0193d3be211d5b0e122b24e44dbb6b2419d16e05b7e0725d25cd819188a0",
     "server_flags.dat": "b7065edb7528ec537a6da528f089d788e787620e5e532f2d1722c4c331654609",
     "notables.yml": "75b1e7fda8bc2585dfb27d1b3b91187938546d87dc859e4ab0b704211542fb61",
     "player_flags/00000000-0000-4000-8000-0000000000b1.dat": "67c7d17fc3a03a61642eac6b06315cc1acf9e703b1834d7e582eaf9bcdd77d54"
   },
-  "behaviors": 10,
+  "behaviors": 11,
   "containers": {
     "assignment": {
       "total": 1,
@@ -36,9 +36,13 @@
       "converted": 3,
       "preserved": 0
     },
+    "chat": {
+      "converted": 1,
+      "preserved": 0
+    },
     "determine": {
-      "converted": 11,
-      "preserved": 2
+      "converted": 10,
+      "preserved": 3
     },
     "flag": {
       "converted": 7,
@@ -53,7 +57,7 @@
       "preserved": 0
     },
     "narrate": {
-      "converted": 25,
+      "converted": 26,
       "preserved": 5
     },
     "note": {
@@ -87,8 +91,8 @@
       "preserved": 0
     },
     "world on arrow hits npc": {
-      "converted": 0,
-      "preserved": 1
+      "converted": 1,
+      "preserved": 0
     },
     "world on ender_pearl launched in:world_nether": {
       "converted": 1,
@@ -226,6 +230,14 @@
       "converted": 1,
       "preserved": 0
     },
+    "world on projectile hits entity:npc shooter:skeleton": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on projectile hits shooter:npc": {
+      "converted": 0,
+      "preserved": 1
+    },
     "world on server start": {
       "converted": 1,
       "preserved": 0
@@ -300,6 +312,10 @@
       "mapped": 2,
       "unmapped": 0
     },
+    "context.hit_entity": {
+      "mapped": 1,
+      "unmapped": 0
+    },
     "context.inventory": {
       "mapped": 2,
       "unmapped": 0
@@ -317,7 +333,7 @@
       "unmapped": 0
     },
     "context.shooter": {
-      "mapped": 1,
+      "mapped": 3,
       "unmapped": 0
     },
     "context.slot": {
@@ -377,7 +393,7 @@
   "bindings": {
     "citizens-7": [
       "denizen:assignment/npc_story",
-      "denizen:world-npc/combat",
+      "denizen:world-npc/archery",
       "denizen:world-npc/npc_keys"
     ]
   },
@@ -387,7 +403,8 @@
   "behaviorStatus": {
     "denizen:assignment/npc_story": "complete",
     "denizen:task/broadcasts": "complete",
-    "denizen:world-npc/combat": "partial",
+    "denizen:world-npc/archery": "partial",
+    "denizen:world-npc/combat": "held",
     "denizen:world-npc/npc_keys": "complete",
     "denizen:world/archery": "partial",
     "denizen:world/areas": "held",
@@ -397,6 +414,14 @@
     "denizen:world/items": "complete"
   },
   "heldBehaviors": {
+    "denizen:world-npc/combat": {
+      "lines": [
+        "events.dsc:98"
+      ],
+      "npcs": [
+        "citizens-7"
+      ]
+    },
     "denizen:world/areas": {
       "server": true,
       "lines": [
@@ -442,14 +467,14 @@
       "reason": "inside a world event that is kept"
     },
     {
-      "source": "events.dsc:137",
+      "source": "events.dsc:141",
       "container": "archery",
       "kind": "event",
-      "item": "world on arrow hits npc",
-      "reason": "Animus NPCs are virtual bodies that real projectiles pass through"
+      "item": "world on projectile hits shooter:npc",
+      "reason": "Animus NPCs shoot combat helper projectiles, which fire no server triggers"
     },
     {
-      "source": "events.dsc:138",
+      "source": "events.dsc:142",
       "container": "archery",
       "kind": "command",
       "item": "narrate",
@@ -510,12 +535,20 @@
       "kind": "command",
       "item": "determine",
       "reason": "only a top-level determine cancelled after plain guards and rate limits cancels the event in Animus; this one is not reached that way; the routine still ends here"
+    },
+    {
+      "source": "events.dsc:98",
+      "container": "combat",
+      "kind": "command",
+      "item": "determine",
+      "reason": "determine changes the event's outcome, and Animus cannot cancel or change this event"
     }
   ],
   "documents": {
     "behaviors/denizen/assignment/npc_story.json": "2aa7dd13513e3ce00a9081acae3c343e50cc7d63799f1b9a4d64d54907148880",
     "behaviors/denizen/task/broadcasts.json": "77c650872e21a4c92354f2cca80208e3489af577ff1fe6fb4859c658eb09faf3",
-    "behaviors/denizen/world-npc/combat.json": "00635bb196904d0cb3543be0cf61e291d930140ddd3a577feba3262abe5a3fd8",
+    "behaviors/denizen/world-npc/archery.json": "8d92cb6caafe00624bcef393e40adcdf2d81755606ddde3594a2e7a899ab1695",
+    "behaviors/denizen/world-npc/combat.json": "4644a57c61e223ff7cb2a86b71c96111b0452fb5ad9932e575c2f7ae88b00da7",
     "behaviors/denizen/world-npc/npc_keys.json": "e0e37a6dc493894a056c5de4fe361225616a92eef6cc831a1fa0f22572dc4845",
     "behaviors/denizen/world/archery.json": "5349eb264f09f31211bf7589dc4d0ba79353924b12ccfe58a5486ed2dd87a931",
     "behaviors/denizen/world/areas.json": "e4a8326ae9e56cf9d12757b18eb368c275e65f16fcf6004fcc1200a9fd573f56",

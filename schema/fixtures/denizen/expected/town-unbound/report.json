@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 9,
-  "importId": "eeb501fbb9f80507c5e012b024be80c94404194c1cb3e7182dd1846e699f5eec",
+  "converterVersion": 10,
+  "importId": "4240d2ec55e1372fe641165f78ecb847982fc515cdda8b6587a14578bd8f697d",
   "notice": "Data conversion only. Apply lists the generated behaviors on their NPCs and turns the server behaviors on, except held behaviors, whose guard did not convert.",
   "sources": {
     "scripts/broken.dsc": "ed429b9bba7215abe689fb88c25d060937970fdf6b4c75311ad50e5ae0200fd9",
@@ -551,14 +551,14 @@
       "container": "guard_quest",
       "kind": "event",
       "item": "damage trigger",
-      "reason": "Animus damage triggers carry no player, so player steps cannot follow them"
+      "reason": "the damage trigger is off on every NPC with this script"
     },
     {
       "source": "town.dsc:78",
       "container": "guard_quest",
       "kind": "command",
       "item": "narrate",
-      "reason": "inside a damage trigger that is kept"
+      "reason": "inside a trigger that is off"
     },
     {
       "source": "town.dsc:212",

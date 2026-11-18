@@ -373,7 +373,17 @@ class _Commands {
             return steps;
           }
           if (passive) {
-            converter.outcome(scope, item, 'command', 'determine', false, 'determine passively sets a value and goes on; a routine returns only by ending');
+            converter.outcome(
+                scope,
+                item,
+                'command',
+                'determine',
+                false,
+                const <String>['task', 'procedure'].contains(scope.container.type)
+                    ? 'determine passively sets a value and goes on; a routine returns only by ending'
+                    : scope.cancellable
+                        ? 'only a top-level determine cancelled after plain guards and rate limits cancels the event in Animus; this one is not reached that way'
+                        : "determine changes the event's outcome, and Animus cannot cancel or change this event");
             _hold(scope, item);
             continue;
           }

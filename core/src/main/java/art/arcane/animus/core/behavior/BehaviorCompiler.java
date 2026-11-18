@@ -48,8 +48,9 @@ public final class BehaviorCompiler {
         for(int index=0;index<program.triggers().size();index++){
             TriggerBinding.Spec spec=program.triggers().get(index).spec();
             TriggerKind kind=spec.kind();
-            // A sensed event carries a player only when one is involved, unless its filters demand one.
-            if(spec instanceof TriggerBinding.EntityEvent sensed?sensed.alwaysPlayer():kind.carriesPlayer())continue;
+            // A sensed event or a hit carries a player only when one is involved, unless its filters demand one.
+            boolean always=spec instanceof TriggerBinding.EntityEvent sensed?sensed.alwaysPlayer():spec instanceof TriggerBinding.Damage hit?hit.players().orElse(false):kind.carriesPlayer();
+            if(always)continue;
             warnings.add(new Diagnostic(Diagnostic.Severity.WARNING,"behavior-trigger-needs-player","$.triggers["+index+"]",
                     "A "+kind.name().toLowerCase(Locale.ROOT)+" trigger has no player, and this behavior declares the player variable "+variable+", so every firing will be refused"));
         }

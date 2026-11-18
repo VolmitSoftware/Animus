@@ -479,8 +479,10 @@ public final class BehaviorSchemaGenerator {
         trigger.add("required", strings(required.toArray(String[]::new)));
         return trigger;
     }
-    /** A field of one event's triggers; only the radius differs between events. */
+    /** A field of one event's triggers; only the radius, and players on a damage trigger, differ between events. */
     private static Field triggerField(TriggerKind kind, String name) {
+        if (kind == TriggerKind.DAMAGE && name.equals("players"))
+            return new Field(described(type("boolean"), "true fires only when a player dealt the damage, by hand or with a projectile, and that player is the run's player; false only when no player did. Omit for both."), "boolean", false);
         if (!name.equals("radius") || !kind.scanned()) return triggerField(name);
         JsonObject radius = type("number");
         radius.addProperty("exclusiveMinimum", 0);

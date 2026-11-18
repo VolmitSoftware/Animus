@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:world-npc/archery",
+  "entry": "on-arrow-hits-npc",
+  "variables": {
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "on-arrow-hits-npc": {
+      "type": "foreach",
+      "list": {
+        "expression": "players(context.entity)"
+      },
+      "as": "t_1",
+      "maximum": 100,
+      "body": {
+        "type": "action",
+        "capability": "animus:message",
+        "arguments": {
+          "text": null,
+          "player": null
+        },
+        "templates": {
+          "/text": "{{ npc.name }} was hit by {{ (same(context.entity_name, '') ? replace(context.entity_type, 'minecraft:', '') : context.entity_name) }}."
+        },
+        "expressions": {
+          "/player": "t_1"
+        }
+      }
+    },
+    "on-projectile-hits": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Hold your fire!",
+        "audience": "nearby"
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "on-arrow-hits-npc",
+      "event": "hit_by_projectile",
+      "projectile": "arrow",
+      "routine": "on-arrow-hits-npc"
+    },
+    {
+      "id": "on-projectile-hits",
+      "event": "hit_by_projectile",
+      "entity": "skeleton",
+      "routine": "on-projectile-hits"
+    }
+  ]
+}

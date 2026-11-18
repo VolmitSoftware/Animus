@@ -54,8 +54,14 @@ public record TriggerBinding(String id, Spec spec, Optional<String> routine, Opt
         public Proximity(Phase phase, double radius) { this(phase, radius, OptionalInt.empty()); }
         @Override public TriggerKind kind() { return TriggerKind.PROXIMITY; }
     }
-    /** Events with no further filter: spawn, despawn, damage, death, build, player quit, death and respawn, server start. */
+    /** Events with no further filter: spawn, despawn, death, build, player quit, death and respawn, server start. */
     public record Lifecycle(TriggerKind kind) implements Spec {}
+    /** {@code players} takes only hits a player dealt (true), which then carry that player, or only hits no player dealt (false); empty takes every hit. */
+    public record Damage(Optional<Boolean> players) implements Spec {
+        public Damage { Objects.requireNonNull(players); }
+        @Override public TriggerKind kind() { return TriggerKind.DAMAGE; }
+        boolean accepts(TriggerEvent.Damage hit) { return players.isEmpty() || players.get() == hit.player().isPresent(); }
+    }
     public record Waypoint(OptionalInt waypoint) implements Spec {
         @Override public TriggerKind kind() { return TriggerKind.WAYPOINT; }
     }
@@ -177,6 +183,7 @@ public record TriggerBinding(String id, Spec spec, Optional<String> routine, Opt
             case Interaction interaction -> event instanceof TriggerEvent.Interaction input && interaction.accepts(input);
             case Proximity ignored -> event instanceof TriggerEvent.Proximity input && input.binding().equals(key);
             case Lifecycle lifecycle -> event.kind() == lifecycle.kind();
+            case Damage damage -> event instanceof TriggerEvent.Damage hit && damage.accepts(hit);
             case Waypoint waypoint -> event instanceof TriggerEvent.Waypoint input
                     && (waypoint.waypoint().isEmpty() || waypoint.waypoint().getAsInt() == input.waypoint());
             case Timer ignored -> false;

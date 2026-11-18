@@ -94,6 +94,24 @@ class TriggerCompilerTest {
         assertTrue(triggers.get(0).matches(new TriggerEvent.AnimationFinished(npc,"town:golem/bow",0),"example:greeter#any"));
         assertFalse(BehaviorCompiler.compile(document("[{\"id\":\"bad\",\"event\":\"animation_finished\",\"animation\":\"Not An Id\"}]")).diagnostics().isEmpty());
     }
+    @Test void aDamageTriggerTakesOnlyHitsByAPlayerOrOnlyHitsByNoPlayer(){
+        BehaviorCompiler.Result result=BehaviorCompiler.compile(document("""
+                [{"id":"any","event":"damage"},{"id":"players","event":"damage","players":true},{"id":"others","event":"damage","players":false}]"""));
+        assertEquals(List.of(),result.diagnostics());
+        List<TriggerBinding> triggers=result.program().orElseThrow().triggers();
+        java.util.UUID npc=java.util.UUID.randomUUID(),alex=java.util.UUID.randomUUID();
+        TriggerEvent byAlex=new TriggerEvent.Damage(npc,2,java.util.Optional.of(new TriggerEvent.Attacker("player",alex)));
+        TriggerEvent byZombie=new TriggerEvent.Damage(npc,2,java.util.Optional.of(new TriggerEvent.Attacker("mob",java.util.UUID.randomUUID())));
+        TriggerEvent byFire=new TriggerEvent.Damage(npc,1,java.util.Optional.empty());
+        for(TriggerEvent hit:List.of(byAlex,byZombie,byFire))assertTrue(triggers.get(0).matches(hit,"example:greeter#any"));
+        assertTrue(triggers.get(1).matches(byAlex,"example:greeter#players"));
+        assertFalse(triggers.get(1).matches(byZombie,"example:greeter#players"));
+        assertFalse(triggers.get(1).matches(byFire,"example:greeter#players"));
+        assertFalse(triggers.get(2).matches(byAlex,"example:greeter#others"));
+        assertTrue(triggers.get(2).matches(byZombie,"example:greeter#others"));
+        assertEquals("$.triggers[0].players",BehaviorCompiler.compile(document("[{\"id\":\"a\",\"event\":\"damage\",\"players\":\"yes\"}]")).diagnostics().getFirst().field());
+        assertEquals("$.triggers[0].players",BehaviorCompiler.compile(document("[{\"id\":\"a\",\"event\":\"death\",\"players\":true}]")).diagnostics().getFirst().field());
+    }
     @Test void documentsWithoutTriggersCompileWithNoBindings(){
         BehaviorProgram program=BehaviorCompiler.compile("{\"schemaVersion\":1,\"id\":\"example:plain\",\"entry\":\"main\","+ROUTINES+"}").program().orElseThrow();
         assertEquals(List.of(),program.triggers());

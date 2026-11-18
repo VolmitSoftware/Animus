@@ -43,7 +43,7 @@ import java.util.UUID;
  * held: apply leaves it unbound and off until an administrator releases it.
  */
 final class DenizenConverter {
-    static final int CONVERTER_VERSION = 9;
+    static final int CONVERTER_VERSION = 10;
     /** The author a converted book gets when its Denizen author is blank. */
     static final String BLANK_BOOK_AUTHOR = "Server";
     static final String NAMESPACE = "denizen";
@@ -756,7 +756,7 @@ final class DenizenConverter {
                 }
                 String[] mapped = switch (event) {
                     case "on click" -> new String[] {"interaction", "interact", "click"};
-                    case "on damage" -> new String[] {"interaction", "attack", "damage"};
+                    case "on damage" -> new String[] {"damage", "", "damage"};
                     case "on enter proximity" -> new String[] {"proximity", "enter", "proximity"};
                     case "on exit proximity" -> new String[] {"proximity", "leave", "proximity"};
                     case "on spawn" -> new String[] {"spawn", "", ""};
@@ -764,6 +764,11 @@ final class DenizenConverter {
                     case "on death" -> new String[] {"death", "", ""};
                     default -> null;
                 };
+                if (event.equals("on damaged")) {
+                    record(container, entry.line(), "event", event, entry.key(), false, ON_DAMAGED);
+                    commands.preserveItems(scope, sequence.items(), 0, "inside an action that is kept");
+                    continue;
+                }
                 if (mapped == null) {
                     record(container, entry.line(), "event", event, entry.key(), false, "no Animus trigger for this action");
                     commands.preserveItems(scope, sequence.items(), 0, "inside an action that is kept: no Animus trigger for this action");
@@ -788,6 +793,8 @@ final class DenizenConverter {
                 trigger.addProperty("event", mapped[0]);
                 if (mapped[0].equals("interaction")) trigger.addProperty("action", mapped[1]);
                 if (mapped[0].equals("proximity")) { trigger.addProperty("phase", mapped[1]); trigger.addProperty("radius", radius); }
+                // Denizen runs it only when a player, or a player's projectile, hurts the NPC.
+                if (mapped[0].equals("damage")) trigger.addProperty("players", true);
                 trigger.addProperty("routine", routine);
                 if (!mapped[2].isEmpty()) cooldown(trigger, container, mapped[2]);
                 triggers.add(trigger);
@@ -867,6 +874,12 @@ final class DenizenConverter {
 
     // ---- Interact scripts ----
 
+    /** Why {@code on damaged} stays: run as Denizen runs it, player steps would reach whoever hit, and some blasts would not run it. */
+    static final String ON_DAMAGED = "Denizen runs it with no player for any entity's hit; an Animus damage trigger gives the run the player who hit and names no attacker for blasts no player or mob caused";
+
+    /** The step triggers a dispatcher routine calls by the player's current step, each with its own behavior trigger. */
+    private static final List<String> PHASES = List.of("click", "enter", "exit", "damage");
+
     private Interact interact(Container container) {
         List<String> order = new ArrayList<>();
         Optional<Node> steps = container.body().get("steps");
@@ -894,7 +907,7 @@ final class DenizenConverter {
         Optional<Sequence> assigned = onAssignmentFor(container);
         int radius = radius(container, assigned);
         TreeMap<String, List<Integer>> dispatch = new TreeMap<>();
-        for (String phase : List.of("click", "enter", "exit")) dispatch.put(phase, new ArrayList<>());
+        for (String phase : PHASES) dispatch.put(phase, new ArrayList<>());
         List<JsonObject> choiceTriggers = new ArrayList<>();
         String prefix = interact.slug().length() > 50 ? interact.slug().substring(0, 50) : interact.slug();
         for (Entry step : mapping.entries()) {
@@ -968,7 +981,7 @@ final class DenizenConverter {
                             if (reason == null && (text.isEmpty() || text.length() > 128)) reason = "chat answer text is empty or longer than 128 characters";
                             String routine = "s" + stage + "-chat-" + index;
                             if (reason == null && !reserve(routines, routine)) reason = "more than 32 routines in one behavior";
-                            if (reason == null && triggers.size() + choiceTriggers.size() + 3 >= BehaviorLimits.TRIGGERS) reason = "more than 32 triggers in one behavior";
+                            if (reason == null && triggers.size() + choiceTriggers.size() + PHASES.size() >= BehaviorLimits.TRIGGERS) reason = "more than 32 triggers in one behavior";
                             if (reason != null) {
                                 routines.remove(routine);
                                 record(container, chat.line(), "event", "chat trigger", chat.key(), false, reason);
@@ -992,8 +1005,23 @@ final class DenizenConverter {
                         }
                     }
                     case "damage trigger" -> {
-                        record(container, trigger.line(), "event", name, trigger.key(), false, "Animus damage triggers carry no player, so player steps cannot follow them");
-                        scriptOf(trigger.value()).ifPresent((Sequence script) -> commands.preserveItems(scope, script.items(), 0, "inside a damage trigger that is kept"));
+                        Optional<Sequence> script = scriptOf(trigger.value());
+                        if (script.isEmpty()) { record(container, trigger.line(), "event", name, trigger.key(), false, "trigger without a script list"); continue; }
+                        if (!enabled(container, "damage", assigned)) {
+                            record(container, trigger.line(), "event", name, trigger.key(), false, "the damage trigger is off on every NPC with this script");
+                            commands.preserveItems(scope, script.get().items(), 0, "inside a trigger that is off");
+                            continue;
+                        }
+                        String routine = "s" + stage + "-damage";
+                        if (!reserve(routines, routine)) {
+                            record(container, trigger.line(), "event", name, trigger.key(), false, "more than 32 routines in one behavior");
+                            commands.preserveItems(scope, script.get().items(), 0, "inside a trigger past the routine limit");
+                            continue;
+                        }
+                        Scope hurt = Scope.of(doc, true, container, Optional.of(interact), position, Map.of("damage", "damage"));
+                        routines.put(routine, sequence(commands.block(script.get().items(), 0, hurt)));
+                        dispatch.get("damage").add(stage);
+                        record(container, trigger.line(), "event", name, trigger.key(), true, "");
                     }
                     default -> {
                         record(container, trigger.line(), "event", name, trigger.key(), false, "no Animus trigger for " + name);
@@ -1018,7 +1046,7 @@ final class DenizenConverter {
             }
         }
         boolean single = interact.steps().size() == 1;
-        for (String phase : List.of("click", "enter", "exit")) {
+        for (String phase : PHASES) {
             List<Integer> stages = new ArrayList<>(dispatch.get(phase));
             if (stages.isEmpty()) continue;
             String routine = single ? "s0-" + phase : phase;
@@ -1046,6 +1074,11 @@ final class DenizenConverter {
                 cooldown(trigger, container, "click");
                 if (doc.globalCooldown >= 0 && (!trigger.has("cooldownTicks") || trigger.get("cooldownTicks").getAsLong() < doc.globalCooldown)) trigger.addProperty("cooldownTicks", doc.globalCooldown);
                 if (doc.playerCooldown >= 0) trigger.addProperty("playerCooldownTicks", doc.playerCooldown);
+            } else if (phase.equals("damage")) {
+                trigger.addProperty("event", "damage");
+                trigger.addProperty("players", true);
+                trigger.addProperty("routine", routine);
+                cooldown(trigger, container, "damage");
             } else {
                 trigger.addProperty("event", "proximity");
                 trigger.addProperty("phase", phase.equals("enter") ? "enter" : "leave");
@@ -1063,7 +1096,7 @@ final class DenizenConverter {
         }
         // Dispatchers go first so the behavior's entry is the click dispatcher when there is one.
         LinkedHashMap<String, JsonObject> sorted = new LinkedHashMap<>();
-        for (String first : List.of("click", "enter", "exit")) if (routines.containsKey(first)) sorted.put(first, routines.get(first));
+        for (String first : PHASES) if (routines.containsKey(first)) sorted.put(first, routines.get(first));
         for (Map.Entry<String, JsonObject> routine : routines.entrySet()) if (!sorted.containsKey(routine.getKey())) sorted.put(routine.getKey(), routine.getValue());
         routines.clear();
         routines.putAll(sorted);
@@ -1106,7 +1139,7 @@ final class DenizenConverter {
 
     /**
      * A world script: one server behavior whose routines are its events, each run by the matching server trigger, and
-     * one NPC behavior, bound to every NPC, for its NPC click events. A cancellable event whose top level cancels it
+     * one NPC behavior, bound to every NPC, for its NPC click and hit events. A cancellable event whose top level cancels it
      * after plain guards and rate limits gets a condition made of those guards: {@code consume} on an NPC click,
      * {@code cancel} on a server event.
      */

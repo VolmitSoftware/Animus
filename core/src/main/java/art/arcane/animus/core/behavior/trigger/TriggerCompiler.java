@@ -108,7 +108,8 @@ public final class TriggerCompiler {
                 yield new TriggerBinding.Proximity(phase, radius(object, path, MAX_RADIUS),
                         object.has("playerCooldownTicks") ? OptionalInt.of(integer(object, "playerCooldownTicks", path, 0, MAX_COOLDOWN_TICKS)) : OptionalInt.empty());
             }
-            case SPAWN, DESPAWN, DAMAGE, DEATH, BUILD_FINISHED, BUILD_PAUSED, PLAYER_QUIT, SERVER_START, PLAYER_DEATH, PLAYER_RESPAWN -> new TriggerBinding.Lifecycle(kind);
+            case SPAWN, DESPAWN, DEATH, BUILD_FINISHED, BUILD_PAUSED, PLAYER_QUIT, SERVER_START, PLAYER_DEATH, PLAYER_RESPAWN -> new TriggerBinding.Lifecycle(kind);
+            case DAMAGE -> new TriggerBinding.Damage(object.has("players") ? Optional.of(bool(object, "players", path)) : Optional.empty());
             case WAYPOINT -> new TriggerBinding.Waypoint(object.has("waypoint") ? OptionalInt.of(integer(object, "waypoint", path, -1, MAX_WAYPOINT)) : OptionalInt.empty());
             case TIMER -> new TriggerBinding.Timer(integer(object, "intervalTicks", path, server ? MIN_SERVER_INTERVAL_TICKS : 1, MAX_INTERVAL_TICKS));
             case PLAYER_JOIN -> new TriggerBinding.PlayerJoin(object.has("first") ? Optional.of(bool(object, "first", path)) : Optional.empty());

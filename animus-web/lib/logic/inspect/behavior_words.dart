@@ -135,6 +135,14 @@ const Map<String, String> _clickClauses = <String, String>{
 
 String _phase(JsonMap trigger, String enter, String leave) => trigger['phase'] == 'leave' ? leave : enter;
 
+/// Who hurts the NPC for a damage trigger, after "when": its players
+/// field takes only hits a player dealt, or only hits no player dealt.
+String damageClause(JsonMap trigger) => switch (trigger['players']) {
+      true => 'a player hurts the NPC',
+      false => 'something other than a player hurts the NPC',
+      _ => 'the NPC is hurt',
+    };
+
 /// What starts a run, after "Starts": "when a player clicks", or for a
 /// timer "every 10 seconds".
 String triggerClause(JsonMap trigger) {
@@ -146,7 +154,7 @@ String triggerClause(JsonMap trigger) {
     'timer' => interval is int && interval > 0 ? everyWords(interval).toLowerCase() : 'on a timer',
     'spawn' => 'the NPC spawns',
     'despawn' => 'the NPC despawns',
-    'damage' => 'the NPC is hurt',
+    'damage' => damageClause(trigger),
     'death' => 'the NPC is killed',
     'waypoint' => 'the NPC reaches a route point',
     'dialogue_choice' => 'a player picks an answer',

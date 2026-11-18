@@ -8291,7 +8291,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "trigger-damage": {
       "type": "object",
-      "description": "Authoritative NPC health falls. Runs read context.damage, context.attacker and context.attacker_type (player, mob, npc or empty); a player attacker is the run's player.",
+      "description": "Authoritative NPC health falls. Runs read context.damage, context.attacker and context.attacker_type (player, mob, npc or empty); a player attacker, or the player who shot the projectile, is the run's player.",
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -8310,6 +8310,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "minimum": 0,
           "maximum": 72000,
           "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "players": {
+          "type": "boolean",
+          "description": "true fires only when a player dealt the damage, by hand or with a projectile, and that player is the run's player; false only when no player did. Omit for both."
         }
       },
       "required": [
@@ -12549,8 +12553,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     },
     "damage": {
-      "description": "Authoritative NPC health falls. Runs read context.damage, context.attacker and context.attacker_type (player, mob, npc or empty); a player attacker is the run's player.",
-      "carriesPlayer": false,
+      "description": "Authoritative NPC health falls. Runs read context.damage, context.attacker and context.attacker_type (player, mob, npc or empty); a player attacker, or the player who shot the projectile, is the run's player.",
+      "carriesPlayer": true,
       "reach": "npc",
       "context": [
         "damage",
@@ -12584,6 +12588,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "minimum": 0,
           "maximum": 72000,
           "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "players": {
+          "type": "boolean",
+          "required": false,
+          "description": "true fires only when a player dealt the damage, by hand or with a projectile, and that player is the run's player; false only when no player did. Omit for both."
         }
       }
     },

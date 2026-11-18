@@ -48,6 +48,26 @@ void main() {
     expect(starts[0].context['entity_type'], 'minecraft:player');
   });
 
+  test('a test run of a damage trigger for player hits carries the player who hurt the NPC', () {
+    final JsonMap behavior = <String, Object?>{
+      'entry': 'main',
+      'triggers': <Object?>[
+        <String, Object?>{'id': 'hit', 'event': 'damage', 'players': true},
+        <String, Object?>{'id': 'hurt', 'event': 'damage'},
+      ],
+    };
+    final List<DryRunStart> starts = dryRunStarts(behavior);
+    expect(starts[0].label, 'hit: a player hurts the NPC');
+    expect(starts[0].carriesPlayer, isTrue);
+    expect(starts[0].context['attacker_type'], 'player');
+    expect(starts[0].context['damage'], isA<double>());
+    expect(starts[1].label, 'hurt: the NPC is hurt');
+    expect(starts[1].carriesPlayer, isFalse);
+    expect(triggerSentence(<String, Object?>{'event': 'damage', 'players': true}), 'Starts when a player hurts the NPC');
+    expect(triggerSentence(<String, Object?>{'event': 'damage', 'players': false}), 'Starts when something other than a player hurts the NPC');
+    expect(triggerSentence(<String, Object?>{'event': 'damage'}), 'Starts when the NPC is hurt');
+  });
+
   test('the npc filter suggests NPCs and the entity filter entity types', () {
     expect(triggerFieldProfile('npc', type: 'string'), isNot(same(FieldProfile.none)));
     expect(triggerFieldProfile('entity', type: 'string'), isNot(same(FieldProfile.none)));

@@ -25,7 +25,10 @@ part 'denizen_commands.dart';
 part 'denizen_events.dart';
 part 'denizen_expressions.dart';
 
-const int denizenConverterVersion = 9;
+const int denizenConverterVersion = 10;
+
+/// Why `on damaged` stays: run as Denizen runs it, player steps would reach whoever hit, and some blasts would not run it.
+const String _onDamaged = "Denizen runs it with no player for any entity's hit; an Animus damage trigger gives the run the player who hit and names no attacker for blasts no player or mob caused";
 
 /// The author a converted book gets when its Denizen author is blank.
 const String _blankBookAuthor = 'Server';
@@ -1119,7 +1122,7 @@ class _Converter {
         }
         final List<String>? mapped = switch (event) {
           'on click' => <String>['interaction', 'interact', 'click'],
-          'on damage' => <String>['interaction', 'attack', 'damage'],
+          'on damage' => <String>['damage', '', 'damage'],
           'on enter proximity' => <String>['proximity', 'enter', 'proximity'],
           'on exit proximity' => <String>['proximity', 'leave', 'proximity'],
           'on spawn' => <String>['spawn', '', ''],
@@ -1127,6 +1130,11 @@ class _Converter {
           'on death' => <String>['death', '', ''],
           _ => null,
         };
+        if (event == 'on damaged') {
+          record(container, entry.line, 'event', event, entry.key, false, _onDamaged);
+          commands.preserveItems(scope, sequence.items, 0, 'inside an action that is kept');
+          continue;
+        }
         if (mapped == null) {
           record(container, entry.line, 'event', event, entry.key, false, 'no Animus trigger for this action');
           commands.preserveItems(scope, sequence.items, 0, 'inside an action that is kept: no Animus trigger for this action');
@@ -1155,6 +1163,8 @@ class _Converter {
             ..addString('phase', mapped[1])
             ..addInt('radius', range);
         }
+        // Denizen runs it only when a player, or a player's projectile, hurts the NPC.
+        if (mapped[0] == 'damage') trigger.addBool('players', true);
         trigger.addString('routine', routine);
         if (mapped[2].isNotEmpty) cooldown(trigger, container, mapped[2]);
         triggers.add(trigger);
@@ -1245,6 +1255,9 @@ class _Converter {
 
   // ---- Interact scripts ----
 
+  /// The step triggers a dispatcher routine calls by the player's current step, each with its own behavior trigger.
+  static const List<String> _phases = <String>['click', 'enter', 'exit', 'damage'];
+
   _Interact interact(DenizenContainer container) {
     final List<String> order = <String>[];
     final DenizenNode? steps = container.body.get('steps');
@@ -1283,7 +1296,7 @@ class _Converter {
     final DenizenSequence? assigned = onAssignmentFor(container);
     final int range = radius(container, assigned);
     final SplayTreeMap<String, List<int>> dispatch = SplayTreeMap<String, List<int>>();
-    for (final String phase in <String>['click', 'enter', 'exit']) {
+    for (final String phase in _phases) {
       dispatch[phase] = <int>[];
     }
     final List<JObject> choiceTriggers = <JObject>[];
@@ -1376,7 +1389,7 @@ class _Converter {
               if (reason == null && (text.isEmpty || text.length > 128)) reason = 'chat answer text is empty or longer than 128 characters';
               final String routine = 's$stage-chat-$index';
               if (reason == null && !_reserve(routines, routine)) reason = 'more than 32 routines in one behavior';
-              if (reason == null && triggers.length + choiceTriggers.length + 3 >= behaviorMaximumTriggers) reason = 'more than 32 triggers in one behavior';
+              if (reason == null && triggers.length + choiceTriggers.length + _phases.length >= behaviorMaximumTriggers) reason = 'more than 32 triggers in one behavior';
               if (reason != null) {
                 routines.remove(routine);
                 record(container, chat.line, 'event', 'chat trigger', chat.key, false, reason);
@@ -1397,9 +1410,26 @@ class _Converter {
               record(container, chat.line, 'event', 'chat trigger', chat.key, true, '');
             }
           case 'damage trigger':
-            record(container, trigger.line, 'event', triggerName, trigger.key, false, 'Animus damage triggers carry no player, so player steps cannot follow them');
             final DenizenSequence? script = _scriptOf(trigger.value);
-            if (script != null) commands.preserveItems(scope, script.items, 0, 'inside a damage trigger that is kept');
+            if (script == null) {
+              record(container, trigger.line, 'event', triggerName, trigger.key, false, 'trigger without a script list');
+              continue;
+            }
+            if (!enabled(container, 'damage', assigned)) {
+              record(container, trigger.line, 'event', triggerName, trigger.key, false, 'the damage trigger is off on every NPC with this script');
+              commands.preserveItems(scope, script.items, 0, 'inside a trigger that is off');
+              continue;
+            }
+            final String routine = 's$stage-damage';
+            if (!_reserve(routines, routine)) {
+              record(container, trigger.line, 'event', triggerName, trigger.key, false, 'more than 32 routines in one behavior');
+              commands.preserveItems(scope, script.items, 0, 'inside a trigger past the routine limit');
+              continue;
+            }
+            final _Scope hurt = _Scope.of(doc, true, container, interact, position, const <String, String>{'damage': 'damage'});
+            routines[routine] = _sequence(commands.block(script.items, 0, hurt));
+            dispatch['damage']!.add(stage);
+            record(container, trigger.line, 'event', triggerName, trigger.key, true, '');
           default:
             record(container, trigger.line, 'event', triggerName, trigger.key, false, 'no Animus trigger for $triggerName');
             final DenizenSequence? script = _scriptOf(trigger.value);
@@ -1426,7 +1456,7 @@ class _Converter {
       }
     }
     final bool single = interact.steps.length == 1;
-    for (final String phase in <String>['click', 'enter', 'exit']) {
+    for (final String phase in _phases) {
       final List<int> stages = List<int>.of(dispatch[phase]!);
       if (stages.isEmpty) continue;
       final String routine = single ? 's0-$phase' : phase;
@@ -1458,6 +1488,12 @@ class _Converter {
         final JElement? existing = trigger.get('cooldownTicks');
         if (doc.globalCooldown >= 0 && (existing == null || existing.asPrimitive.asDouble < doc.globalCooldown)) trigger.addInt('cooldownTicks', doc.globalCooldown);
         if (doc.playerCooldown >= 0) trigger.addInt('playerCooldownTicks', doc.playerCooldown);
+      } else if (phase == 'damage') {
+        trigger
+          ..addString('event', 'damage')
+          ..addBool('players', true)
+          ..addString('routine', routine);
+        cooldown(trigger, container, 'damage');
       } else {
         trigger
           ..addString('event', 'proximity')
@@ -1478,7 +1514,7 @@ class _Converter {
     }
     // Dispatchers go first so the behavior's entry is the click dispatcher when there is one.
     final LinkedHashMap<String, JObject> sorted = LinkedHashMap<String, JObject>();
-    for (final String first in <String>['click', 'enter', 'exit']) {
+    for (final String first in _phases) {
       if (routines.containsKey(first)) sorted[first] = routines[first]!;
     }
     for (final MapEntry<String, JObject> routine in routines.entries) {
@@ -1511,7 +1547,7 @@ class _Converter {
   // ---- Server behaviors ----
 
   /// A world script: one server behavior whose routines are its events, each run by the matching server trigger, and
-  /// one NPC behavior, bound to every NPC, for its NPC click events. A cancellable event whose top level cancels it
+  /// one NPC behavior, bound to every NPC, for its NPC click and hit events. A cancellable event whose top level cancels it
   /// after plain guards and rate limits gets a condition made of those guards: `consume` on an NPC click, `cancel` on a
   /// server event.
   void world(DenizenContainer container, SplayTreeMap<String, String> documents) {

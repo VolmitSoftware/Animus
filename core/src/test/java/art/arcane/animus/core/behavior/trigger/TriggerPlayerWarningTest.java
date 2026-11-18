@@ -43,7 +43,8 @@ class TriggerPlayerWarningTest {
 
     @ParameterizedTest @ValueSource(strings = {
             "{\"id\":\"click\",\"event\":\"interaction\"}", "{\"id\":\"near\",\"event\":\"proximity\",\"phase\":\"enter\",\"radius\":4}",
-            "{\"id\":\"said\",\"event\":\"dialogue_choice\",\"dialogue\":\"greeting\"}", "{\"id\":\"mod\",\"event\":\"module\",\"key\":\"example:fired\"}"})
+            "{\"id\":\"said\",\"event\":\"dialogue_choice\",\"dialogue\":\"greeting\"}", "{\"id\":\"mod\",\"event\":\"module\",\"key\":\"example:fired\"}",
+            "{\"id\":\"hit\",\"event\":\"damage\",\"players\":true}"})
     void eventsThatCanCarryAPlayerStayQuiet(String trigger) {
         assertTrue(BehaviorCompiler.compile(source("player", trigger)).diagnostics().isEmpty());
     }

@@ -10,7 +10,7 @@ public enum TriggerKind {
     PROXIMITY("proximity", true, Reach.NPC, "A viewer crosses a radius around the NPC.", "phase", "radius", "playerCooldownTicks"),
     SPAWN("spawn", false, Reach.NPC, "The runtime first presents the NPC."),
     DESPAWN("despawn", false, Reach.NPC, "A spawned NPC is despawned."),
-    DAMAGE("damage", false, Reach.NPC, "Authoritative NPC health falls. Runs read context.damage, context.attacker and context.attacker_type (player, mob, npc or empty); a player attacker is the run's player."),
+    DAMAGE("damage", true, Reach.NPC, "Authoritative NPC health falls. Runs read context.damage, context.attacker and context.attacker_type (player, mob, npc or empty); a player attacker, or the player who shot the projectile, is the run's player.", "players"),
     DEATH("death", false, Reach.NPC, "Authoritative NPC health reaches zero. Runs read context.killer and context.killer_type (player, mob, npc or empty); a player killer is the run's player."),
     WAYPOINT("waypoint", false, Reach.NPC, "The NPC arrives at a route point.", "waypoint"),
     TIMER("timer", false, Reach.BOTH, "An interval passes while the NPC is active, or while the server runs in a server behavior.", "intervalTicks"),

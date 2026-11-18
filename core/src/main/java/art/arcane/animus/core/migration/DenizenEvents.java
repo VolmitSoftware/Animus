@@ -104,11 +104,9 @@ final class DenizenEvents {
                 context.put("sneaking", "sneaking");
             }
             case "player damages npc", "npc damaged by player" -> {
-                event = "interaction";
+                event = "damage";
                 npc = true;
-                trigger.addProperty("action", "attack");
-                context.put("entity", "npc");
-                context.put("sneaking", "sneaking");
+                hit(trigger, context);
             }
             default -> {
                 if (phrase.startsWith("player changes world")) {
@@ -200,11 +198,9 @@ final class DenizenEvents {
                 } else if (w.length == 3 && w[0].equals("player") && w[1].equals("damages") || w.length == 4 && w[1].equals("damaged") && w[2].equals("by") && w[3].equals("player")) {
                     String entity = w[1].equals("damages") ? w[2] : w[0];
                     if (npcEntity) {
-                        event = "interaction";
+                        event = "damage";
                         npc = true;
-                        trigger.addProperty("action", "attack");
-                        context.put("entity", "npc");
-                        context.put("sneaking", "sneaking");
+                        hit(trigger, context);
                     } else {
                         event = "player_damage_entity";
                         cancellable = true;
@@ -227,10 +223,13 @@ final class DenizenEvents {
                     }
                     context.put("entity", "entity");
                 } else if (projectileForm(w)) {
-                    Form form = projectile(w, trigger, context);
+                    boolean atNpc = w.length == 2 && w[1].equals("hits") && switches.values().stream().anyMatch((String[] option) -> option[0].equals("entity") && option[1].equals("npc"));
+                    Form form = projectile(w, trigger, context, atNpc);
                     if (form.reason() != null) return Mapped.fail(form.reason());
                     event = form.event();
-                    cancellable = true;
+                    // Denizen links the NPC that was hit, not the shooter, so the event has no player of its own.
+                    if (event.equals("hit_by_projectile")) { npc = true; player = false; }
+                    else cancellable = true;
                 } else if (phrase.contains("npc")) return Mapped.fail("this event covers every NPC; Animus binds a behavior to each NPC instead");
                 else return Mapped.fail("no Animus server trigger for the event " + phrase);
             }
@@ -272,7 +271,7 @@ final class DenizenEvents {
                         fields.addProperty("bow", value);
                         continue;
                     }
-                    if (!event.equals("player_block_click") && !event.equals("interaction")) return Mapped.fail("switch with: has no Animus equivalent on this event");
+                    if (!event.equals("player_block_click") && !event.equals("interaction") && !event.equals("damage")) return Mapped.fail("switch with: has no Animus equivalent on this event");
                     if (!value.matches("[a-z0-9_]{1,64}")) return Mapped.fail("switch with:" + value + " names an item Animus cannot check");
                     guards.add(new Atom("same(player.item_in_hand, " + DenizenExpressions.quote(value.equals("air") ? "minecraft:air" : "minecraft:" + value) + ")"));
                 }
@@ -298,21 +297,38 @@ final class DenizenEvents {
                         if (!value.equals("inventory")) fields.addProperty("inventory", value);
                         continue;
                     }
-                    if (!player) return Mapped.fail("switch in: needs a player; " + event + " has none");
+                    boolean struck = event.equals("hit_by_projectile");
+                    if (!player && !struck) return Mapped.fail("switch in: needs a player; " + event + " has none");
                     if (!value.matches("[a-z0-9_-]{1,64}")) return Mapped.fail("switch in:" + value + " names an area Animus cannot check");
                     if (notes.containsKey(value)) return Mapped.fail("switch in:" + value + " names a noted area; Animus checks areas only as enter and exit events");
-                    guards.add(new Atom("same_world(" + (projectile ? "context.world" : "player.world") + ", " + DenizenExpressions.quote(value) + ")"));
+                    guards.add(new Atom("same_world(" + (projectile ? "context.world" : struck ? "npc.world" : "player.world") + ", " + DenizenExpressions.quote(value) + ")"));
                 }
                 case "entity", "block", "shooter" -> {
-                    if (!event.equals("projectile_hit") && !(name.equals("shooter") && projectile)) return Mapped.fail("switch " + name + ": has no Animus equivalent on this event");
-                    if (value.equals("npc")) return Mapped.fail(NPC_TARGET);
+                    if (event.equals("hit_by_projectile")) {
+                        if (name.equals("entity") && value.equals("npc")) continue;
+                        if (!name.equals("shooter")) return Mapped.fail("switch " + name + ": has no Animus equivalent on this event");
+                    } else if (!event.equals("projectile_hit") && !(name.equals("shooter") && projectile)) return Mapped.fail("switch " + name + ": has no Animus equivalent on this event");
+                    if (value.equals("npc")) return Mapped.fail(name.equals("shooter") ? NPC_SHOOTER : NPC_HIT_FORM);
                     if (!value.matches(NAME)) return Mapped.fail("switch " + name + ":" + value + " names a type Animus cannot check");
-                    fields.addProperty(name, value);
+                    // The hit trigger's entity filters test the shooter.
+                    fields.addProperty(event.equals("hit_by_projectile") ? "entity" : name, value);
                 }
                 default -> { return Mapped.fail("event switch " + name + ": has no Animus equivalent"); }
             }
         }
-        return new Mapped(fields, guards, context, npc, cancellable || npc, null);
+        return new Mapped(fields, guards, context, npc, cancellable || npc && event.equals("interaction"), null);
+    }
+
+    /**
+     * A player's hit on an NPC. Denizen runs the event only when the hit is not already cancelled, so only when it hurts
+     * the NPC, by hand or with a projectile: a damage trigger for player hits, which runs after the hit lands and so
+     * cannot cancel it.
+     */
+    private static void hit(JsonObject trigger, TreeMap<String, String> context) {
+        trigger.addProperty("players", true);
+        context.put("entity", "npc");
+        context.put("damage", "damage");
+        context.put("final_damage", "damage");
     }
 
     // ---- Projectiles ----
@@ -320,7 +336,9 @@ final class DenizenEvents {
     /** A projectile event's trigger name, or the reason it has none. */
     record Form(String event, String reason) {}
     private static final String NPC_SHOOTER = "Animus NPCs shoot combat helper projectiles, which fire no server triggers";
-    private static final String NPC_TARGET = "Animus NPCs are virtual bodies that real projectiles pass through";
+    private static final String NPC_HIT_FORM = "a hit on an NPC converts only as projectile hits entity:npc, projectile hits npc or projectile collides with npc";
+    /** The {@code context} name for the shooter of a projectile that hit an NPC: the hit trigger's {@code entity}, {@code entity_type} and {@code entity_name}. */
+    static final String SHOOTER = "@shooter";
 
     /** {@code <projectile> launched}, {@code <projectile> hits [<target>]}, {@code <projectile> collides with <entity>} and {@code <entity> shoots <bow or block>}. */
     static boolean projectileForm(String[] w) {
@@ -329,10 +347,11 @@ final class DenizenEvents {
     }
 
     /**
-     * A projectile event as {@code projectile_launch}, {@code projectile_hit} or {@code entity_shoot_bow}. Denizen's older
+     * A projectile event as {@code projectile_launch}, {@code projectile_hit}, {@code entity_shoot_bow}, or for a hit on an NPC
+     * ({@code atNpc}: the {@code entity:npc} switch) {@code hit_by_projectile}. Denizen's older
      * {@code <entity> shoots <block>} and {@code <projectile> hits <block>} are hits on a block; {@code *:*} filters for any hit entity or block.
      */
-    static Form projectile(String[] w, JsonObject trigger, Map<String, String> context) {
+    static Form projectile(String[] w, JsonObject trigger, Map<String, String> context, boolean atNpc) {
         if (w[0].equals("npc")) return new Form(null, NPC_SHOOTER);
         String reason;
         if (w[1].equals("shoots") && (w[2].equals("item") || w[2].endsWith("bow"))) {
@@ -344,6 +363,12 @@ final class DenizenEvents {
         reason = w[1].equals("shoots") ? filter(trigger, "shooter", w[0], "entity") : w[0].equals("entity") ? null : filter(trigger, "projectile", w[0], "projectile");
         if (reason != null) return new Form(null, reason);
         context.put("projectile", "projectile");
+        // A hit on an NPC is that NPC's own hit trigger, in the behavior bound to every NPC.
+        if (atNpc || !w[1].equals("shoots") && w.length > 2 && w[w.length - 1].equals("npc")) {
+            context.put("hit_entity", "npc");
+            context.put("shooter", SHOOTER);
+            return new Form("hit_by_projectile", null);
+        }
         context.put("shooter", "shooter");
         if (w[1].equals("launched")) {
             context.put("entity", "projectile");
@@ -352,7 +377,6 @@ final class DenizenEvents {
         if (w.length > 2) {
             String target = w[w.length - 1];
             boolean entity = w[1].equals("collides") || target.equals("entity") || target.equals("player");
-            if (target.equals("npc")) return new Form(null, NPC_TARGET);
             if (!target.matches(NAME)) return new Form(null, (entity ? "entity " : "block ") + target + " has no Animus equivalent");
             trigger.addProperty(entity ? "entity" : "block", target.equals("entity") || target.equals("block") ? "*:*" : target);
             if (w[1].equals("collides")) context.put("entity", "entity");

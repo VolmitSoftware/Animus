@@ -49,15 +49,14 @@
   "triggers": [
     {
       "id": "on-player-damages-npc",
-      "event": "interaction",
-      "action": "attack",
-      "consume": "has_flag('npc', 'protected')",
+      "event": "damage",
+      "players": true,
       "routine": "on-player-damages-npc"
     },
     {
       "id": "on-player-damages-entity",
-      "event": "interaction",
-      "action": "attack",
+      "event": "damage",
+      "players": true,
       "routine": "on-player-damages-entity"
     }
   ]

@@ -586,6 +586,99 @@ class DenizenConverterTest {
         assertEquals(object("{\"assigned-keeper\":{\"type\":\"boolean\",\"value\":true}}"), state.getAsJsonObject("values"));
     }
 
+    @Test void damageTriggersRunForThePlayerWhoHurtTheNpc() throws IOException {
+        TreeMap<String, String> scripts = new TreeMap<>();
+        scripts.put("a.dsc", """
+                sparring:
+                  type: assignment
+                  actions:
+                    on assignment:
+                    - trigger name:damage state:true
+                    on damage:
+                    - narrate "Ouch, <player.name>."
+                  interact scripts:
+                  - sparring_steps
+                sparring_steps:
+                  type: interact
+                  steps:
+                    first*:
+                      damage trigger:
+                        script:
+                        - narrate "That was <context.damage> damage."
+                        - flag player hits:++
+                        - zap second
+                    second:
+                      damage trigger:
+                        script:
+                        - give bread
+                """);
+        DenizenConverter.Output output = DenizenConverter.convert(new DenizenConverter.Input(scripts, Optional.empty(), Optional.empty(), new TreeMap<>()));
+        JsonObject assignment = document(output, "denizen:assignment/sparring");
+        assertEquals(com.google.gson.JsonParser.parseString("[{\"id\":\"on-damage\",\"event\":\"damage\",\"players\":true,\"routine\":\"on-damage\"}]"), assignment.getAsJsonArray("triggers"));
+        JsonObject interact = document(output, "denizen:interact/sparring_steps");
+        assertEquals(com.google.gson.JsonParser.parseString("[{\"id\":\"damage\",\"event\":\"damage\",\"players\":true,\"routine\":\"damage\"}]"), interact.getAsJsonArray("triggers"));
+        JsonObject routines = interact.getAsJsonObject("routines");
+        assertEquals("damage", interact.get("entry").getAsString());
+        assertEquals("s1-damage", routines.getAsJsonObject("damage").getAsJsonObject("else").getAsJsonObject("then").get("routine").getAsString());
+        JsonObject first = routines.getAsJsonObject("s0-damage");
+        assertEquals("That was {{ context.damage }} damage.", step(first, 0).getAsJsonObject("templates").get("/text").getAsString());
+        assertEquals("player", step(first, 1).getAsJsonObject("arguments").get("scope").getAsString());
+        assertEquals("animus:give-item", routines.getAsJsonObject("s1-damage").get("capability").getAsString());
+        assertEquals(0, output.report().getAsJsonArray("preserved").size(), output.report().get("preserved").toString());
+        assertEquals("complete", output.report().getAsJsonObject("behaviorStatus").get("denizen:interact/sparring_steps").getAsString());
+    }
+
+    @Test void damageTriggersThatAreOffStayKeptWithTheReason() throws IOException {
+        DenizenConverter.Output output = convert("""
+                guard:
+                  type: assignment
+                  interact scripts:
+                  - guard_steps
+                guard_steps:
+                  type: interact
+                  steps:
+                    first:
+                      damage trigger:
+                        script:
+                        - narrate "Hey!"
+                """);
+        assertEquals("the damage trigger is off on every NPC with this script", reasonAt(output, "a.dsc:9"));
+        assertEquals("inside a trigger that is off", reasonAt(output, "a.dsc:11"));
+    }
+
+    @Test void onDamagedStaysKeptBecauseDenizenRunsItWithNoPlayer() throws IOException {
+        DenizenConverter.Output output = convert("""
+                guard:
+                  type: assignment
+                  actions:
+                    on damaged:
+                    - chat "Ouch."
+                """);
+        assertEquals("Denizen runs it with no player for any entity's hit; an Animus damage trigger gives the run the player who hit and names no attacker for blasts no player or mob caused",
+                reasonAt(output, "a.dsc:4"));
+        assertEquals("inside an action that is kept", reasonAt(output, "a.dsc:5"));
+    }
+
+    @Test void playerHitsOnAnNpcRunOnlyWhenTheHitLandsAndCannotBeCancelled() throws IOException {
+        DenizenConverter.Output output = convert("""
+                w:
+                    type: world
+                    events:
+                        on player damages npc with:wooden_sword:
+                        - if !<player.is_sneaking>:
+                            - stop
+                        - narrate "Hit for <context.damage>."
+                        - determine cancelled
+                """);
+        JsonObject behavior = document(output, "denizen:world-npc/w");
+        JsonObject trigger = behavior.getAsJsonArray("triggers").get(0).getAsJsonObject();
+        assertEquals(object("{\"id\":\"on-player-damages-npc\",\"event\":\"damage\",\"players\":true,\"routine\":\"on-player-damages-npc\"}"), trigger);
+        String routine = behavior.getAsJsonObject("routines").get("on-player-damages-npc").toString();
+        assertTrue(routine.contains("player.sneaking") && routine.contains("player.item_in_hand") && routine.contains("context.damage"), routine);
+        assertEquals("determine changes the event's outcome, and Animus cannot cancel or change this event; the routine still ends here", reasonAt(output, "a.dsc:8"));
+        assertEquals("held", output.report().getAsJsonObject("behaviorStatus").get("denizen:world-npc/w").getAsString());
+    }
+
     @Test void flagDataImportsTypedValuesWithExpiry() throws IOException {
         TreeMap<String, String> players = new TreeMap<>();
         players.put("00000000-0000-4000-8000-0000000000a1", "visits:2\nnickname:Bob\nbag:li@apple|pear|\n\\exboost:map@[__value=true;__expiration=time@2030/01/01_00:00:00:0000_+00:00]\n__secret:1\n");
@@ -607,7 +700,7 @@ class DenizenConverterTest {
         assertEquals("a.dsc:4", kept.get("source").getAsString());
         assertEquals("tag player.money has no Animus expression", kept.get("reason").getAsString());
         assertEquals("partial", output.report().getAsJsonObject("behaviorStatus").get("denizen:task/t").getAsString());
-        assertEquals(9, output.report().get("converterVersion").getAsInt());
+        assertEquals(10, output.report().get("converterVersion").getAsInt());
     }
 
     @Test void limitsCountLoopBodiesAndMissingElses() {
@@ -777,11 +870,35 @@ class DenizenConverterTest {
         assertEquals("{\"event\":\"entity_shoot_bow\",\"shooter\":\"pillager\",\"bow\":\"crossbow\"} cancellable", fields("on pillager shoots item with:crossbow"));
         assertEquals("{\"event\":\"entity_shoot_bow\",\"bow\":\"bow\"} cancellable",fields("on entity shoots bow"));
         assertTrue(fields("on npc shoots bow").startsWith("Animus NPCs shoot combat helper projectiles"));
-        assertTrue(fields("on arrow hits npc").startsWith("Animus NPCs are virtual bodies"));
-        assertTrue(fields("on projectile hits entity:npc").startsWith("Animus NPCs are virtual bodies"));
+        assertEquals("{\"event\":\"hit_by_projectile\",\"projectile\":\"arrow\"}", fields("on arrow hits npc"));
+        assertEquals("{\"event\":\"hit_by_projectile\",\"projectile\":\"trident\"}", fields("on trident collides with npc"));
+        assertEquals("{\"event\":\"hit_by_projectile\"}", fields("on projectile hits entity:npc"));
+        assertEquals("{\"event\":\"hit_by_projectile\",\"entity\":\"skeleton\"}", fields("on projectile hits entity:npc shooter:skeleton"));
+        assertTrue(DenizenEvents.event("on arrow hits npc", Map.of(), false, false).npc(), "an NPC's hits belong to the behavior bound to every NPC");
+        assertTrue(fields("on projectile hits shooter:npc").startsWith("Animus NPCs shoot combat helper projectiles"));
+        assertEquals("switch flagged: needs a player; hit_by_projectile has none", fields("on arrow hits npc flagged:archer"));
+        assertEquals(List.of(new DenizenExpressions.Atom("same_world(npc.world, 'world_nether')")), DenizenEvents.event("on arrow hits npc in:world_nether", Map.of(), false, false).guards());
         assertEquals("switch with: has no Animus equivalent on this event", fields("on projectile hits with:bow"));
         assertEquals("switch entity: has no Animus equivalent on this event", fields("on arrow launched entity:zombie"));
         assertEquals(List.of(new DenizenExpressions.Atom("same_world(context.world, 'world_nether')")), DenizenEvents.event("on projectile hits in:world_nether", Map.of(), false, false).guards());
+    }
+
+    @Test void projectileHitsOnAnNpcReadTheShooterAndCannotBeCancelled() throws IOException {
+        DenizenConverter.Output output = convert("""
+                w:
+                    type: world
+                    events:
+                        on arrow hits npc:
+                        - narrate "<context.hit_entity.name> was hit by <context.shooter.name>, a <context.shooter.entity_type>." targets:<context.shooter>
+                        - if <context.shooter.is_player>:
+                            - determine cancelled
+                """);
+        JsonObject behavior = document(output, "denizen:world-npc/w");
+        assertEquals(object("{\"id\":\"on-arrow-hits-npc\",\"event\":\"hit_by_projectile\",\"projectile\":\"arrow\",\"routine\":\"on-arrow-hits-npc\"}"),
+                behavior.getAsJsonArray("triggers").get(0).getAsJsonObject());
+        String routine = behavior.getAsJsonObject("routines").get("on-arrow-hits-npc").toString();
+        assertTrue(routine.contains("npc.name") && routine.contains("context.entity_name") && routine.contains("context.entity_type") && routine.contains("context.entity"), routine);
+        assertEquals("determine changes the event's outcome, and Animus cannot cancel or change this event; the routine still ends here", reasonAt(output, "a.dsc:7"));
     }
 
     @Test void projectileEventsReadTheirContextAndCancel() throws IOException {
@@ -827,7 +944,7 @@ class DenizenConverterTest {
                 """, "denizen:world-npc/w");
         JsonArray triggers = behavior.getAsJsonArray("triggers");
         assertEquals("sneak_interact", triggers.get(0).getAsJsonObject().get("action").getAsString());
-        assertEquals("attack", triggers.get(1).getAsJsonObject().get("action").getAsString(), "is_npc with a fallback still marks the entity as the NPC");
+        assertEquals("damage", triggers.get(1).getAsJsonObject().get("event").getAsString(), "is_npc with a fallback still marks the entity as the NPC");
         JsonObject shown = behavior("""
                 w:
                     type: world

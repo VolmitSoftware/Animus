@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:assignment/sparring_assignment",
+  "entry": "on-click",
+  "routines": {
+    "on-click": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": null
+      },
+      "templates": {
+        "/text": "Hit me when you are ready, {{ player.name }}."
+      }
+    },
+    "on-damage": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": null
+      },
+      "templates": {
+        "/text": "{{ npc.name }} staggers back."
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "on-click",
+      "event": "interaction",
+      "action": "interact",
+      "routine": "on-click"
+    },
+    {
+      "id": "on-damage",
+      "event": "damage",
+      "players": true,
+      "routine": "on-damage",
+      "cooldownTicks": 20
+    }
+  ]
+}

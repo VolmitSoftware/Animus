@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:interact/sparring_rounds",
+  "entry": "click",
+  "routines": {
+    "click": {
+      "type": "condition",
+      "capability": "animus:quest-state",
+      "arguments": {
+        "name": "interact-sparring_rounds",
+        "scope": "relationship",
+        "equals": 0
+      },
+      "then": {
+        "type": "call",
+        "routine": "s0-click"
+      }
+    },
+    "damage": {
+      "type": "condition",
+      "capability": "animus:quest-state",
+      "arguments": {
+        "name": "interact-sparring_rounds",
+        "scope": "relationship",
+        "equals": 0
+      },
+      "then": {
+        "type": "call",
+        "routine": "s0-damage"
+      },
+      "else": {
+        "type": "condition",
+        "capability": "animus:quest-state",
+        "arguments": {
+          "name": "interact-sparring_rounds",
+          "scope": "relationship",
+          "equals": 1
+        },
+        "then": {
+          "type": "call",
+          "routine": "s1-damage"
+        }
+      }
+    },
+    "s0-damage": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "Good hit, {{ player.name }}. That was {{ context.damage }} damage."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "sparring_hits",
+            "scope": "player",
+            "value": null
+          },
+          "expressions": {
+            "/value": "(num(flag('player', 'sparring_hits', 0)) + 1)"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:give-item",
+          "arguments": {
+            "item": "minecraft:bread",
+            "amount": 1
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "num(flag('player', 'sparring_hits', 0)) >= 3",
+          "then": {
+            "type": "action",
+            "capability": "animus:set-quest-state",
+            "arguments": {
+              "name": "interact-sparring_rounds",
+              "scope": "relationship",
+              "value": 1
+            }
+          }
+        }
+      ]
+    },
+    "s0-click": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": "Three clean hits and we are done."
+      }
+    },
+    "s1-damage": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "Enough for today, {{ player.name }}."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "sparring_done",
+            "scope": "player",
+            "value": true
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "routine": "click"
+    },
+    {
+      "id": "damage",
+      "event": "damage",
+      "players": true,
+      "routine": "damage",
+      "cooldownTicks": 20
+    }
+  ]
+}
