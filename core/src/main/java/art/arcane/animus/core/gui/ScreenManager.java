@@ -59,6 +59,7 @@ public final class ScreenManager<P, S> {
         private ScreenFrame frame;
         private Object window;
         private long tick;
+        private int suspends;
         private boolean closed;
 
         private Viewer(P player, Optional<UUID> npc) { this.player = player; this.id = host.id(player); this.npc = npc; }
@@ -75,6 +76,11 @@ public final class ScreenManager<P, S> {
 
         /** Shows another screen in this window without remembering the current one. */
         public void replace(Screen next) { if (!closed) { screen = next; render(true); } }
+        /**
+         * Before the window first shows: {@code below} is the screen {@code back} returns to, as if this window had shown
+         * it and then pushed the one it opens with, but without showing it first. Ignored once a screen shows.
+         */
+        public void under(Screen below) { if (screen == null && frame == null) history.push(Objects.requireNonNull(below)); }
         /** Shows another screen and remembers the current one for {@code back}. */
         public void push(Screen next) {
             if (closed) return;
@@ -86,9 +92,14 @@ public final class ScreenManager<P, S> {
         public void home() { if (closed) return; if (history.isEmpty()) return; screen = history.getLast(); history.clear(); render(true); }
         public void close() { if (!closed) { Object open = window; forget(this); host.close(player, open); } }
         public void refresh() { if (!closed) render(false); }
-        /** Hides the window while the player types somewhere else; the screen and its history stay for {@link #resume}. */
+        /**
+         * Hides the window while the player types somewhere else; the screen and its history stay for {@link #resume}.
+         * Each call counts, so code that resumes after an answer can tell whether the answer hid the window again.
+         */
         public void suspend() {
-            if (closed || window == null) return;
+            if (closed) return;
+            suspends++;
+            if (window == null) return;
             Object open = window;
             window = null;
             frame = null;
@@ -97,6 +108,8 @@ public final class ScreenManager<P, S> {
         /** Shows the screen again after {@link #suspend}; nothing happens while the window is still showing. */
         public void resume() { if (!closed && window == null) render(true); }
         public boolean suspended() { return !closed && window == null; }
+        /** How many times {@link #suspend} was called on this window. */
+        public int suspends() { return suspends; }
 
         /** Runs the work after the given number of owner ticks while the window stays open. */
         public boolean schedule(int ticks, Runnable work) {

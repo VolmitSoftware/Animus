@@ -41,7 +41,7 @@ class MovementScreensTest extends ToolkitHarness {
         toolkit.mode(alex.id, ToolkitMode.ADVANCED);
         movement();
         Map<Integer, String> advanced = new HashMap<>(SIMPLE);
-        advanced.putAll(Map.of(37, "Walk once", 38, "Start", 39, "Stop now", 40, "Movement settings", 41, "Mounts and riding"));
+        advanced.putAll(Map.of(37, "Walk once", 38, "Start", 39, "Stop now", 40, "Movement settings", 41, "Mounts"));
         assertEquals(advanced, buttons(), "Advanced adds a row; Simple items stay where they were");
         for (int slot : List.of(13, 22, 31)) assertFalse(List.of("Stand still", "Stop now").contains(name(slot)));
     }
@@ -132,7 +132,7 @@ class MovementScreensTest extends ToolkitHarness {
         click("Movement settings", Click.LEFT);
         assertEquals("Movement settings", title());
         click("Back", Click.LEFT);
-        click("Mounts and riding", Click.LEFT);
+        click("Mounts", Click.LEFT);
         assertEquals("Mounts", title());
     }
 
@@ -148,7 +148,7 @@ class MovementScreensTest extends ToolkitHarness {
         toolkit.mode(alex.id, ToolkitMode.ADVANCED);
         toolkit.open(alex.id, MountScreen::new);
         assertEquals(Map.ofEntries(Map.entry(4, "guard"), Map.entry(10, "Ride another NPC"), Map.entry(11, "Carry another NPC"), Map.entry(12, "Pick a rider"),
-                Map.entry(13, "Ride a mob"), Map.entry(14, "Riding"), Map.entry(15, "Ride status"), Map.entry(16, "Seat"), Map.entry(17, "Dismount"),
+                Map.entry(13, "Ride a mob"), Map.entry(14, "Players can ride it"), Map.entry(15, "Ride status"), Map.entry(16, "Seat"), Map.entry(17, "Dismount"),
                 Map.entry(45, "Back"), Map.entry(53, "Help")), buttons());
         assertTrue(lore("Ride status").contains("Shows in chat"), lore("Ride status"));
         click("Ride another NPC", Click.LEFT);

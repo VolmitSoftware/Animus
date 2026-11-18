@@ -57,7 +57,7 @@ final class ShopChestsScreen<P, S> extends ToolScreen<P, S> {
                 (GuiModel.Click click) -> toolkit.shopFlow().pick(viewer, this::add));
     }
 
-    /** Adds the container the player right-clicked, after the checks New shop's chest passes. */
+    /** Adds the container the player right-clicked, after the checks New shop's chest passes; a listed chest that is gone makes way for it. */
     private void add(ShopSpot spot) {
         P player = viewer.player();
         Optional<PlayerShops> shops = toolkit.shopFlow().shops(player);
@@ -68,6 +68,7 @@ final class ShopChestsScreen<P, S> extends ToolScreen<P, S> {
         ShopDocument.Container chest = spot.container(toolkit.worldName(spot.worlds()));
         Optional<String> refused = host.stockRefusal(player, chest);
         if (refused.isPresent()) { refuse("You cannot use that chest: " + refused.get()); return; }
-        toolkit.write(viewer, (ToolkitFiles ignored) -> files().addChest(id, chest), this::saved);
+        List<ShopDocument.Container> gone = this.shop.map((ShopDocument found) -> found.containers().stream().filter(host::containerGone).toList()).orElse(List.of());
+        toolkit.write(viewer, (ToolkitFiles ignored) -> files().addChest(id, chest, gone), this::saved);
     }
 }

@@ -119,6 +119,7 @@ final class BukkitPrompts implements Listener {
         name(view, prompt.initial());
         top.setItem(INPUT, paper(prompt.initial()));
         view.setRepairCost(0);
+        player.sendMessage(RichText.colorize(TextPrompts.opened(prompt)));
         return true;
     }
 
@@ -245,12 +246,14 @@ final class BukkitPrompts implements Listener {
         return result != null && result.getItemMeta() != null && result.getItemMeta().hasDisplayName() ? ChatColor.stripColor(result.getItemMeta().getDisplayName()) : "";
     }
 
-    /** The result paper: the typed name, then "Click to confirm" and the prompt's hint as upright lore. */
+    /** The result paper: the typed name, glinting so it reads as the button, then "Click to confirm", "Esc to cancel" and the prompt's hint as upright lore. */
     private static ItemStack result(String name, ScreenHost.Prompt prompt) {
         ItemStack paper = paper(name);
         ItemMeta meta = paper.getItemMeta();
         if (meta == null) return paper;
         BukkitItems.dress(meta, Optional.empty(), TextPrompts.lore(prompt).stream().map(RichText::colorize).toList());
+        try { meta.setEnchantmentGlintOverride(true); }
+        catch (RuntimeException | LinkageError older) { /* The paper still answers; it only does not glint. */ }
         paper.setItemMeta(meta);
         return paper;
     }

@@ -70,6 +70,22 @@ class CreateFlowTest extends ToolkitHarness {
 
     String tx() { return made().substring(made().indexOf("tx ") + 3, made().indexOf("tx ") + 39); }
 
+    @Test void theTypedNameLeadsStraightToBodyWithoutHomeFirst() {
+        toolkit.home(alex.id);
+        click("New NPC", Click.LEFT);
+        alex.windows.clear();
+        MockScreenHost.answer(alex, Optional.of("Greeter Bob"));
+        assertEquals(List.of("Body"), alex.windows, "Home does not show again before Body");
+    }
+
+    @Test void aCancelledNameBringsHomeBack() {
+        toolkit.home(alex.id);
+        click("New NPC", Click.LEFT);
+        alex.windows.clear();
+        MockScreenHost.answer(alex, Optional.empty());
+        assertEquals(List.of("Animus"), alex.windows);
+    }
+
     @Test void theIdComesFromTheName() {
         assertEquals("greeter-bob", CreateFlow.id("Greeter Bob", Set.of()));
         assertEquals("greeter-bob-2", CreateFlow.id("Greeter Bob", Set.of("greeter-bob")));
@@ -182,13 +198,13 @@ class CreateFlowTest extends ToolkitHarness {
         assertNull(store.read("skins/" + hash + ".json"), "Undo takes the skin file back too");
     }
 
-    @Test void mySkinWithoutASignatureIsRefusedAndMakesNothing() {
+    @Test void mySkinIsGreyAndMakesNothingWhereTheServerCannotCopyIt() {
         named("Smith");
         click("Player", Click.LEFT);
         drain();
+        assertEquals("minecraft:gray_dye", alex.frame.items().get(SkinScreen.MINE).item().id());
         click("My skin", Click.LEFT);
         drain();
-        assertEquals("Your skin has no signature; offline-mode servers cannot copy it", last());
         assertTrue(npcs.find("smith").isEmpty());
         assertEquals("Skin", title());
     }

@@ -19,12 +19,17 @@ import java.util.function.Consumer;
 public final class TextPrompts {
     /** Typing this word, in any case, cancels the prompt. */
     public static final String CANCEL = "cancel";
-    private static final String CONFIRM = Palette.TEXT + "Click to confirm";
+    private static final String CONFIRM = Palette.TEXT + "Click to confirm", ESCAPE = Palette.GREY + "Esc to cancel";
+    /** How an anvil prompt is answered, said on screen as it opens. */
+    public static final String HOW = "Click the paper to confirm, Esc to cancel";
 
     /** The lore of an anvil's result paper: how to answer, then the prompt's hint when it has one. RichText source. */
     public static List<String> lore(ScreenHost.Prompt prompt) {
-        return prompt.hint().isBlank() ? List.of(CONFIRM) : List.of(CONFIRM, Palette.GREY + prompt.hint());
+        return prompt.hint().isBlank() ? List.of(CONFIRM, ESCAPE) : List.of(CONFIRM, ESCAPE, Palette.GREY + prompt.hint());
     }
+
+    /** The line an anvil prompt sends as it opens, so how to answer it shows without hovering the paper. RichText source. */
+    public static String opened(ScreenHost.Prompt prompt) { return Palette.GREY + prompt.label() + ": " + Character.toLowerCase(HOW.charAt(0)) + HOW.substring(1); }
 
     /** What the chat fallback says: what to type, the current text when there is one, and how to cancel, then the hint. RichText source. */
     public static List<String> chat(ScreenHost.Prompt prompt) {

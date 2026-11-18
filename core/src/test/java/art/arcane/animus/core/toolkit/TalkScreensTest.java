@@ -129,10 +129,10 @@ class TalkScreensTest extends ToolkitHarness {
 
     @Test void theEditorShowsTheSameItemsInSimpleWithSaveAndHelpBelow() {
         editTalk();
-        assertEquals(Map.ofEntries(Map.entry(ConversationScreen.START, "Starts on"), Map.entry(ConversationScreen.BLOCK, "Start"), Map.entry(ConversationScreen.ADD_LINE, "Add line"),
+        assertEquals(Map.ofEntries(Map.entry(ConversationScreen.START, "Starts when"), Map.entry(ConversationScreen.BLOCK, "Start"), Map.entry(ConversationScreen.ADD_LINE, "Add line"),
                 Map.entry(9, "Line 1"), Map.entry(10, "Question"), Map.entry(36, "Choice: Just looking"), Map.entry(37, "Choice: Goodbye"),
                 Map.entry(ConversationScreen.ADD_CHOICE, "Add choice"), Map.entry(ToolScreen.BACK, "Back"), Map.entry(ToolScreen.SAVE, "Saved"), Map.entry(ToolScreen.HELP, "Help")), buttons());
-        assertTrue(lore("Starts on").contains("Now: Right-click"), lore("Starts on"));
+        assertTrue(lore("Starts when").contains("Now: Right-click"), lore("Starts when"));
         assertTrue(lore("Line 1").contains("Click: edit the text") && lore("Line 1").contains("Right-click: details"), lore("Line 1"));
         assertFalse(lore("Line 1").contains("Sneak"), "nothing hides on sneak");
         assertFalse(shows("Attach"), "Talk attaches; the editor no longer does");
@@ -270,10 +270,10 @@ class TalkScreensTest extends ToolkitHarness {
 
     @Test void saveWritesOneValidRevision() throws IOException {
         editTalk();
-        click("Starts on", Click.LEFT);
-        assertTrue(lore("Starts on").contains("Now: Sneak + right-click"), lore("Starts on"));
-        for (int i = 0; i < 7; i++) click("Starts on", Click.LEFT);
-        assertTrue(lore("Starts on").contains("Now: Walk near"), lore("Starts on"));
+        click("Starts when", Click.LEFT);
+        assertTrue(lore("Starts when").contains("Now: Sneak + right-click"), lore("Starts when"));
+        for (int i = 0; i < 7; i++) click("Starts when", Click.LEFT);
+        assertTrue(lore("Starts when").contains("Now: Walk near"), lore("Starts when"));
         click("Distance", Click.LEFT);
         assertTrue(lore("Distance").contains("Now: 7 blocks"), lore("Distance"));
         click("Add choice", Click.LEFT);
@@ -295,13 +295,13 @@ class TalkScreensTest extends ToolkitHarness {
 
     @Test void aChangeMadeWhileTheSaveIsOnItsWayIsKeptAndStillUnsaved() throws IOException {
         editTalk();
-        click("Starts on", Click.LEFT);
+        click("Starts when", Click.LEFT);
         super.click(ToolScreen.SAVE, Click.LEFT);
         super.click(ConversationScreen.START, Click.LEFT);
-        assertTrue(lore("Starts on").contains("Now: Left-click"), lore("Starts on"));
+        assertTrue(lore("Starts when").contains("Now: Left-click"), lore("Starts when"));
         drain();
         assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("Saved town:talk")), alex.messages.toString());
-        assertTrue(lore("Starts on").contains("Now: Left-click"), "the later change is not thrown away: " + lore("Starts on"));
+        assertTrue(lore("Starts when").contains("Now: Left-click"), "the later change is not thrown away: " + lore("Starts when"));
         assertEquals("Save", name(ToolScreen.SAVE), "and it still waits to be saved");
         ConversationDocument saved = ((ConversationDocument.Fits) ConversationDocument.read(JsonDocuments.object(store.read("behaviors/town/talk.json")))).conversation();
         assertEquals(ConversationDocument.StartKind.SNEAK_CLICK, saved.start.kind, "the file has what was there at the click");
@@ -327,7 +327,7 @@ class TalkScreensTest extends ToolkitHarness {
     @Test void advancedKeepsEveryEditorItemWhereSimpleHasIt() {
         toolkit.mode(alex.id, ToolkitMode.ADVANCED);
         editTalk();
-        assertEquals(Map.ofEntries(Map.entry(ConversationScreen.START, "Starts on"), Map.entry(ConversationScreen.BLOCK, "Start"), Map.entry(ConversationScreen.ADD_LINE, "Add line"),
+        assertEquals(Map.ofEntries(Map.entry(ConversationScreen.START, "Starts when"), Map.entry(ConversationScreen.BLOCK, "Start"), Map.entry(ConversationScreen.ADD_LINE, "Add line"),
                 Map.entry(9, "Line 1"), Map.entry(10, "Question"), Map.entry(36, "Choice: Just looking"), Map.entry(37, "Choice: Goodbye"),
                 Map.entry(ConversationScreen.ADD_CHOICE, "Add choice"), Map.entry(ToolScreen.BACK, "Back"), Map.entry(ToolScreen.SAVE, "Saved"), Map.entry(ToolScreen.HELP, "Help")), buttons());
     }

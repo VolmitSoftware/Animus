@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.GuiModel.Click;
+import art.arcane.animus.core.gui.MockScreenHost;
 import art.arcane.animus.core.gui.ScreenHost;
 import art.arcane.animus.core.inventory.MockInventory;
 import art.arcane.animus.core.inventory.MockInventory.Stack;
@@ -100,14 +101,14 @@ class PlayerShopScreensTest extends ToolkitHarness {
         alex.permissions.remove("animus.shops.limit.1");
         alex.permissions.add("animus.npc.limit.1");
         toolkit.newShop(alex.id, new ShopSpot(Set.of("world"), 9, 64, 9, new Vec3(9.5, 64, 10.5), 180));
-        said("You own 1 NPC, your limit; remove one to make another");
+        said("A shop needs an NPC and you own 1, your limit; remove one to open a shop");
     }
 
     @Test void aPluginsTemporaryNpcForThePlayerCountsTowardTheNpcLimit() throws IOException {
         alex.permissions.add("animus.npc.limit.1");
         npcs.addTemporary("plugin:Pets", com.google.gson.JsonParser.parseString(npc("pet", UUID.randomUUID(), ",\"owner\":\"" + alex.id + "\"")).getAsJsonObject());
         toolkit.newShop(alex.id, CHEST);
-        said("You own 1 NPC, your limit; remove one to make another");
+        said("A shop needs an NPC and you own 1, your limit; remove one to open a shop");
     }
 
     @Test void anotherPlayersChestIsRefusedAndTheirShopIsNotOurs() throws IOException {
@@ -193,7 +194,7 @@ class PlayerShopScreensTest extends ToolkitHarness {
     @Test void theOwnerClosesOpensRenamesAndOpensTheStock() throws IOException {
         make("Selling", "Villager");
         click("Open", Click.LEFT);
-        assertEquals("Closed by its owner", stored(SHOP).get("closed").getAsString());
+        assertEquals("Its owner closed it", stored(SHOP).get("closed").getAsString());
         click("Closed", Click.LEFT);
         assertFalse(stored(SHOP).has("closed"));
         click("Stock", Click.LEFT);
@@ -244,6 +245,158 @@ class PlayerShopScreensTest extends ToolkitHarness {
         click(PlayerShopScreen.REMOVE, Click.LEFT);
         assertNull(store.read(SHOP));
         assertTrue(npcs.find("alex-s-shop").isEmpty());
+    }
+
+    @Test void theEmptyOfferEditorShowsAPinkStarterSlotNamedForTheKind() {
+        make("Selling", "Villager");
+        editor();
+        assertEquals(OfferEditorScreen.STARTER, alex.frame.items().get(0).item().id());
+        assertEquals("Click an item in your inventory to sell it", name(0));
+        click("Back", Click.LEFT);
+        click("Kind: Selling", Click.LEFT);
+        click("Edit offers", Click.LEFT);
+        assertEquals("Click an item in your inventory to buy it", name(0), "a buying shop buys what is clicked");
+        pick("minecraft:wheat", 4);
+        assertEquals("4x Wheat", name(0));
+        assertEquals(OfferEditorScreen.STARTER, alex.frame.items().get(1).item().id(), "the next column starts the next offer");
+    }
+
+    @Test void theShopMenuIconsDifferAndSaveIsNoEmerald() {
+        make("Selling", "Villager");
+        java.util.Set<String> icons = new java.util.HashSet<>();
+        for (int slot : new int[]{PlayerShopScreen.HEADER, PlayerShopScreen.STOCK, PlayerShopScreen.KIND, PlayerShopScreen.CHESTS})
+            assertTrue(icons.add(alex.frame.items().get(slot).item().id()), "header, Stock, Kind and Chests each show their own item: " + icons);
+        editor();
+        pick("minecraft:diamond", 1);
+        assertEquals("minecraft:emerald", alex.frame.items().get(9).item().id(), "the price is an emerald");
+        assertFalse(alex.frame.items().get(MockScreenHost.slot(alex, "Save")).item().id().equals("minecraft:emerald"), "and Save is not");
+    }
+
+    @Test void theShopMenuOpensInOneWindowWithItsTitle() {
+        make("Selling", "Villager");
+        alex.windows.clear();
+        manager.close(alex);
+        toolkit.manageShop(alex.id, ID);
+        assertEquals(List.of("Alex's shop"), alex.windows, "no Loading window first");
+    }
+
+    @Test void makeShopOpensTheMenuInOneWindowBeforeTheCatalogReloads() throws IOException {
+        // As on a server: file work and the catalog reload wait for the file lane.
+        toolkit.close();
+        store.close();
+        start(List.of(), true);
+        alex.permissions.clear();
+        alex.permissions.add(PermissionNodes.SHOPS_CREATE);
+        art.arcane.animus.core.shop.PlayerShops[] lane = new art.arcane.animus.core.shop.PlayerShops[1];
+        lane[0] = new art.arcane.animus.core.shop.PlayerShops(() -> store, queue::add, () -> art.arcane.animus.core.config.ShopSettings.DEFAULT,
+                () -> queue.add(() -> { try { lane[0].index(art.arcane.animus.core.shop.ShopCatalog.load(root, (String id) -> true)); } catch (IOException unread) { throw new java.io.UncheckedIOException(unread); } }),
+                (UUID player, String text) -> told.add(player + ": " + text), (String line) -> { throw new AssertionError(line); });
+        shops = lane[0];
+        toolkit.newShop(alex.id, CHEST);
+        drain();
+        click("Selling", Click.LEFT);
+        alex.windows.clear();
+        click("Make shop", Click.LEFT);
+        drain();
+        assertEquals(List.of("Alex's shop"), alex.windows, "the menu opens with its title, not Shop first");
+    }
+
+    @Test void aShopOpensByItsBareNameOrTitle() {
+        make("Selling", "Villager");
+        manager.close(alex);
+        toolkit.manageShop(alex.id, "alex-s-shop");
+        assertEquals("Alex's shop", title());
+        manager.close(alex);
+        toolkit.manageShop(alex.id, "alex's SHOP");
+        assertEquals("Alex's shop", title());
+        assertEquals(List.of("alex-s-shop"), shops.names(alex.id), "completion offers the name the command takes");
+        toolkit.manageShop(alex.id, "nobody's");
+        said("You have no shop called nobody's");
+    }
+
+    @Test void theOwnerHearsOfASaleUnlessTurnedOffAndTheMenuCountsTheSales() {
+        make("Selling", "Villager");
+        ShopDocument shop = shops.shop(ID).orElseThrow();
+        shops.sold(shop, new art.arcane.animus.core.shop.PlayerShops.Sale("Sam", "1x Diamond", "5x Emerald"));
+        assertEquals(List.of(alex.id + ": &aAlex's shop&a sold 1x Diamond to Sam for 5x Emerald"), told);
+        manager.close(alex);
+        toolkit.manageShop(alex.id, ID);
+        assertTrue(lore(PlayerShopScreen.HEADER).contains("1 sale since last opened"), lore(PlayerShopScreen.HEADER));
+        click("Sale messages: on", Click.LEFT);
+        assertEquals("Sale messages: off", name(PlayerShopScreen.SALES));
+        shops.sold(shop, new art.arcane.animus.core.shop.PlayerShops.Sale("Sam", "1x Diamond", "5x Emerald"));
+        shops.sold(shop, new art.arcane.animus.core.shop.PlayerShops.Sale("Sam", "1x Diamond", "5x Emerald"));
+        assertEquals(1, told.size(), "a quiet shop still counts its sales");
+        manager.close(alex);
+        toolkit.manageShop(alex.id, ID);
+        assertTrue(lore(PlayerShopScreen.HEADER).contains("2 sales since last opened"), lore(PlayerShopScreen.HEADER));
+        manager.close(alex);
+        toolkit.manageShop(alex.id, ID);
+        assertTrue(lore(PlayerShopScreen.HEADER).contains("No sales since last opened"), lore(PlayerShopScreen.HEADER));
+    }
+
+    @Test void theSaleCountsAndSwitchesOutliveARestart() throws IOException {
+        make("Selling", "Villager");
+        ShopDocument shop = shops.shop(ID).orElseThrow();
+        shops.quiet(ID, true);
+        shops.sold(shop, new art.arcane.animus.core.shop.PlayerShops.Sale("Sam", "1x Diamond", "5x Emerald"));
+        art.arcane.animus.core.shop.PlayerShops again = new art.arcane.animus.core.shop.PlayerShops(() -> store, Runnable::run, () -> art.arcane.animus.core.config.ShopSettings.DEFAULT,
+                () -> {}, (UUID player, String text) -> told.add(player + ": " + text), (String line) -> { throw new AssertionError(line); });
+        again.index(art.arcane.animus.core.shop.ShopCatalog.load(root, (String id) -> true));
+        assertTrue(again.quiet(ID));
+        assertEquals(1, again.seen(ID));
+        assertEquals(0, again.seen(ID));
+    }
+
+    @Test void aShopWhoseLastChestIsGoneOpensOnlyOnceAChestIsAdded() throws IOException {
+        make("Selling", "Villager");
+        shops.broken(shops.shop(ID).orElseThrow(), new art.arcane.animus.core.shop.PlayerShops.Block("world", 5, 64, 5));
+        host.gone.add("world 5 64 5");
+        manager.close(alex);
+        toolkit.manageShop(alex.id, ID);
+        click("Closed", Click.LEFT);
+        said("The shop's chest at 5 64 5 is gone; add a chest in Chests, then open the shop");
+        assertTrue(stored(SHOP).has("closed"));
+        click("Chests", Click.LEFT);
+        click("Add chest", Click.LEFT);
+        assertTrue(toolkit.chestClicked(alex.id, new ShopSpot(Set.of("world"), 6, 64, 5, new Vec3(6.5, 64, 6.5), 0)));
+        assertEquals("[{\"world\":\"world\",\"x\":6,\"y\":64,\"z\":5}]", stored(SHOP).getAsJsonArray("containers").toString(), "the broken chest makes way");
+        click("Back", Click.LEFT);
+        click("Closed", Click.LEFT);
+        assertFalse(stored(SHOP).has("closed"), "with a chest the shop opens");
+    }
+
+    @Test void deletingTheShopsNpcIsRefusedForItsOwnerAndRemovesBothForStaff() throws IOException {
+        make("Selling", "Villager");
+        alex.permissions.add(PermissionNodes.TOOLS);
+        alex.permissions.add(PermissionNodes.NPC_DELETE);
+        manager.close(alex);
+        toolkit.selectOnly(alex.id, "alex-s-shop");
+        toolkit.open(alex.id);
+        click("Delete", Click.LEFT);
+        said("This NPC runs your shop; remove the shop in /animus shop manage");
+        assertTrue(npcs.find("alex-s-shop").isPresent());
+        alex.permissions.add(PermissionNodes.ADMIN);
+        manager.close(alex);
+        toolkit.open(alex.id);
+        click("Delete", Click.LEFT);
+        assertTrue(lore("Click again to confirm").contains("Deletes Alex's shop and its shop Alex's shop"), lore("Click again to confirm"));
+        click("Click again to confirm", Click.LEFT);
+        assertTrue(npcs.find("alex-s-shop").isEmpty());
+        assertNull(store.read(SHOP), "the shop goes with its NPC");
+        assertEquals(2, changes().size(), "one change made the shop and one removed both");
+    }
+
+    @Test void homeOffersYourShopsToShopMakers() {
+        alex.permissions.add(PermissionNodes.TOOLS);
+        toolkit.home(alex.id);
+        assertEquals("Your shops", name(HomeScreen.SHOP_ROW[3]));
+        click("Your shops", Click.LEFT);
+        assertEquals("Your shops", title());
+        alex.permissions.remove(PermissionNodes.SHOPS_CREATE);
+        toolkit.home(alex.id);
+        assertFalse(shows("Your shops"));
+        assertEquals("Wand", name(HomeScreen.ROW[2]), "without the node Home keeps its four buttons");
     }
 
     @Test void theShopItemIsForPlayersWhoMakeShops() {

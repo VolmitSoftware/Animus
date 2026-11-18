@@ -3,18 +3,21 @@ package art.arcane.animus.core.toolkit;
 import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
+import art.arcane.animus.core.shop.ShopDocument;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
  * The Animus menu's first screen ({@code /animus gui}, {@code /animus tools} with nothing selected, or the wand on air): make an NPC, find
- * one, take the wand, pair the web editor. Advanced adds the library row. A running route capture or recording shows
- * its finish button on top.
+ * one, take the wand, pair the web editor. A player who may make shops also gets Your shops, and the row spreads to
+ * five. Advanced adds the library row. A running route capture or recording shows its finish button on top.
  */
 final class HomeScreen<P, S> extends ToolScreen<P, S> {
-    static final int RUNNING = 4, NEW = 10, NPCS = 12, WAND = 14, EDITOR = 16,
+    static final int RUNNING = 4,
             FOLDERS = 18, BEHAVIORS = 19, SHOPS = 20, ROUTES = 21, RECORDINGS = 22, HOLOGRAMS = 23, GUIS = 24, SKINS = 25, GROUPS = 26;
+    /** New NPC, NPCs, Wand and Web editor; with Your shops, the five go between them. */
+    static final int[] ROW = {10, 12, 14, 16}, SHOP_ROW = {9, 11, 13, 15, 17};
 
     HomeScreen(Toolkit<P, S> toolkit, ScreenManager<P, S>.Viewer viewer, Toolkit.Commands commands) { super(toolkit, viewer, commands); }
 
@@ -23,10 +26,14 @@ final class HomeScreen<P, S> extends ToolScreen<P, S> {
 
     @Override void draw() {
         running(this, RUNNING);
-        gated(NEW, PermissionNodes.NPC_CREATE, "minecraft:egg", "New NPC", lore(List.of("&7Make one where you stand"), any("name it")), (GuiModel.Click click) -> CreateFlow.start(this));
-        button(NPCS, "minecraft:compass", title("NPCs"), lore(List.of("&7Find and pick"), any("open")), (GuiModel.Click click) -> push(new NpcsScreen<>(toolkit, viewer, commands)));
-        button(WAND, Toolkit.WAND_ITEM, title("Wand"), lore(List.of("&7Right-click an NPC to edit it"), any("take one")), (GuiModel.Click click) -> toolkit.giveWand(viewer.player()));
-        gated(EDITOR, PermissionNodes.EDITOR_PAIR, "minecraft:ender_eye", "Web editor", lore(List.of("&7Pair your browser", "&7Shows in chat"), any("get a link")), (GuiModel.Click click) -> {
+        boolean shops = holds(PermissionNodes.SHOPS_CREATE) && toolkit.host().containerShops();
+        int[] row = shops ? SHOP_ROW : ROW;
+        gated(row[0], PermissionNodes.NPC_CREATE, "minecraft:egg", "New NPC", lore(List.of("&7Make one where you stand"), any("name it")), (GuiModel.Click click) -> CreateFlow.start(this));
+        button(row[1], "minecraft:compass", title("NPCs"), lore(List.of("&7Find and pick"), any("open")), (GuiModel.Click click) -> push(new NpcsScreen<>(toolkit, viewer, commands)));
+        button(row[2], Toolkit.WAND_ITEM, title("Wand"), lore(List.of("&7Right-click an NPC to edit it"), any("take one")), (GuiModel.Click click) -> toolkit.giveWand(viewer.player()));
+        if (shops) button(row[3], ShopMakeScreen.ICONS.get(ShopDocument.Kind.TRADING), title("Your shops"),
+                lore(List.of("&7Shops you run from your chests"), any("open")), (GuiModel.Click click) -> push(new PlayerShopListScreen<>(toolkit, viewer, commands)));
+        gated(row[row.length - 1], PermissionNodes.EDITOR_PAIR, "minecraft:ender_eye", "Web editor", lore(List.of("&7Pair your browser", "&7Shows in chat"), any("get a link")), (GuiModel.Click click) -> {
             if (!allows(PermissionNodes.EDITOR_PAIR)) return;
             viewer.close();
             commands.pair().accept(toolkit.actor(viewer.player()));

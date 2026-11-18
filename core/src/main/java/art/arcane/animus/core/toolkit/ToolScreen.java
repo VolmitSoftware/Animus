@@ -157,8 +157,7 @@ abstract class ToolScreen<P, S> implements Screen {
     void leave() {
         if (!viewer.shows(this)) return;
         boolean any = !toolkit.npcs().stored().isEmpty();
-        if (!toolkit.show(viewer.player(), HomeScreen::new) || !any) return;
-        toolkit.screens().viewer(viewer.id()).ifPresent((ScreenManager<P, S>.Viewer home) -> home.push(new NpcsScreen<>(toolkit, home, commands)));
+        toolkit.show(viewer.player(), HomeScreen::new, any ? Optional.of(NpcsScreen::new) : Optional.empty());
     }
 
     /** Opens {@code next} over this screen when the player holds its node. */
@@ -312,6 +311,9 @@ abstract class ToolScreen<P, S> implements Screen {
     /** Close, for the first screen of a window. */
     void closeButton() { button(bottom(BACK), "minecraft:barrier", title("Close"), any("close the window"), (GuiModel.Click click) -> viewer.close()); }
 
+    /** What {@link #draft}'s Save shows as; a screen whose prices are emeralds shows something else. */
+    String saveIcon() { return "minecraft:emerald"; }
+
     /** The Mode lever: Simple or Advanced, switched for this player at once and saved. */
     void modeLever() {
         ToolkitMode mode = toolkit.mode(viewer.id());
@@ -321,10 +323,10 @@ abstract class ToolScreen<P, S> implements Screen {
                 (GuiModel.Click click) -> toolkit.mode(viewer.id(), other));
     }
 
-    /** The Help item: a click prints {@code text} and a {@code [Wiki]} link to {@code page#anchor} in chat; the window stays. */
+    /** The Help item: a click prints {@code text} and a {@code [Docs]} link to {@code page#anchor} in chat, as every reply links the docs; the window stays. */
     void help(String text, String page, String anchor) {
         button(bottom(HELP), "minecraft:paper", title("Help"), any("explain this screen in chat"), (GuiModel.Click click) ->
-                toolkit.say(viewer.player(), ChatLine.reply(text).open("Wiki", ChatLine.docsUrl(page, anchor), "Open the Animus wiki")));
+                toolkit.say(viewer.player(), ChatLine.reply(text).open("Docs", ChatLine.docsUrl(page, anchor), "Open the Animus wiki")));
     }
 
     /**
@@ -336,7 +338,7 @@ abstract class ToolScreen<P, S> implements Screen {
         if (changes == 0) icon(bottom(SAVE), "minecraft:gray_dye", "&7Saved", List.of("&7Nothing to save"), Optional.empty());
         else {
             String what = "Saves " + counted + (affected > 1 ? " on " + ToolkitFiles.count(affected) : "");
-            button(bottom(SAVE), "minecraft:emerald", title("Save"), lore(List.of("&f" + counted + (affected > 1 ? " for " + ToolkitFiles.count(affected) : "")), any("save")),
+            button(bottom(SAVE), saveIcon(), title("Save"), lore(List.of("&f" + counted + (affected > 1 ? " for " + ToolkitFiles.count(affected) : "")), any("save")),
                     (GuiModel.Click click) -> ask(bottom(SAVE), what, affected, false, save));
             button(bottom(DISCARD), "minecraft:bucket", title("Discard"), lore(List.of("&7Drops " + counted), any("discard")), (GuiModel.Click click) -> discard.run());
         }

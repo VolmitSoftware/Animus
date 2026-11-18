@@ -84,6 +84,7 @@ public final class AnimusDirector {
     private final Function<NeedsFeature.Feature, Optional<String>> features;
     private final Predicate<UUID> simple;
     private final Supplier<RecentChanges> changes;
+    private final Predicate<UUID> shopOwner;
 
     /** Completion values for a parameter name, such as NPC ids for {@code npc}; {@code given} holds the values already typed, by name. */
     @FunctionalInterface public interface Completer { Collection<String> values(String parameter, CommandActor actor, Map<String, String> given); }
@@ -95,14 +96,16 @@ public final class AnimusDirector {
      * @param features why this platform lacks a {@link NeedsFeature} feature, empty where it has it
      * @param simple  whether a player is in Simple mode
      * @param changes where each player's reported changes are kept for {@code /animus undo}, read for each command
+     * @param shopOwner whether a player owns a chest shop, so the short page lists {@code shop manage}
      */
     AnimusDirector(Object root, Completer values, Predicate<String> plugins, Function<NeedsFeature.Feature, Optional<String>> features, Predicate<UUID> simple,
-                   Supplier<RecentChanges> changes) {
+                   Supplier<RecentChanges> changes, Predicate<UUID> shopOwner) {
         this.values = Objects.requireNonNull(values);
         this.plugins = Objects.requireNonNull(plugins);
         this.features = Objects.requireNonNull(features);
         this.simple = Objects.requireNonNull(simple);
         this.changes = Objects.requireNonNull(changes);
+        this.shopOwner = Objects.requireNonNull(shopOwner);
         engine = DirectorEngineFactory.create(Objects.requireNonNull(root), DirectorEngineOptions.builder()
                 .dispatcher((DirectorExecutionMode mode, Runnable task) -> task.run())
                 .textResolver(TEXT)
@@ -115,7 +118,7 @@ public final class AnimusDirector {
 
     /** As {@link #AnimusDirector(Object, Completer, Predicate)} on a platform that lacks the features {@code features} names a reason for. */
     public AnimusDirector(Object root, Completer values, Predicate<String> plugins, Function<NeedsFeature.Feature, Optional<String>> features) {
-        this(root, values, plugins, features, (UUID player) -> false, kept(new RecentChanges()));
+        this(root, values, plugins, features, (UUID player) -> false, kept(new RecentChanges()), (UUID player) -> false);
     }
 
     /** A platform with every {@link NeedsFeature} feature. */
@@ -234,6 +237,7 @@ public final class AnimusDirector {
         List<DirectorRuntimeNode> common = new ArrayList<>();
         for (String path : AnimusHelp.COMMON) {
             if (path.equals(ToolkitCommands.GUI) && !menu(actor)) continue;
+            if (path.equals(AnimusHelp.SHOP_MANAGE) && !shopOwner.test(actor.player().get())) continue;
             path(List.of(path.split(" "))).filter((DirectorRuntimeNode node) -> visible(actor, node)).ifPresent(common::add);
         }
         actor.help(AnimusHelp.common(root, common));

@@ -50,6 +50,7 @@ final class ModPrompts {
         menu.getSlot(AnvilMenu.INPUT_SLOT).set(paper(prompt.initial()));
         menu.showResult();
         menu.broadcastChanges();
+        player.sendSystemMessage(ModText.component(TextPrompts.opened(prompt)));
         return true;
     }
 
@@ -90,10 +91,11 @@ final class ModPrompts {
         return paper;
     }
 
-    /** The result paper: the typed name, then "Click to confirm" and the prompt's hint as upright lore. */
+    /** The result paper: the typed name, glinting so it reads as the button, then "Click to confirm", "Esc to cancel" and the prompt's hint as upright lore. */
     static ItemStack result(String name, ScreenHost.Prompt prompt) {
         ItemStack paper = paper(name);
         ModScreens.dress(paper, Optional.empty(), TextPrompts.lore(prompt));
+        paper.set(DataComponents.ENCHANTMENT_GLINT_OVERRIDE, true);
         return paper;
     }
 

@@ -168,11 +168,12 @@ class ToolkitShopScreensTest extends ToolkitHarness {
 
     @Test void addHeldItemRefusesTheWandThenAsksThePriceAndNamesTheItem() throws IOException {
         details();
-        assertTrue(lore("Add held item").contains("Hold the item, then open /animus gui"), "back to this NPC's screen: " + lore("Add held item"));
+        assertTrue(lore("Add held item").contains("Or click an item in your inventory"), "no trip out of the menu: " + lore("Add held item"));
+        assertFalse(lore("Add held item").contains("/animus gui"), lore("Add held item"));
         assertTrue(lore("Add held item").contains("Click: type the price"), lore("Add held item"));
         click("Add held item", Click.LEFT);
         assertNull(alex.prompt, "the wand is what Alex holds");
-        assertTrue(last().endsWith("Hold the item it should sell"), last());
+        assertTrue(last().endsWith("Hold the item it should sell, or click it in your inventory"), last());
         alex.wand = false;
         alex.worn.put(art.arcane.animus.core.npc.EquipmentSlot.MAIN_HAND, new art.arcane.animus.core.npc.NpcItem("minecraft:diamond_sword", 1, Optional.empty(), Optional.empty()));
         click("Add held item", Click.LEFT);
@@ -182,7 +183,7 @@ class ToolkitShopScreensTest extends ToolkitHarness {
         assertTrue(last().contains("The price is one number"), last());
         click("Add held item", Click.LEFT);
         type("5");
-        assertTrue(last().startsWith("[Animus]: Added Diamond sword for 5 Coins"), last());
+        assertTrue(last().startsWith("[Animus]: Added an offer: players buy Diamond sword for 5 Coins"), last());
         assertFalse(last().contains("slot") || last().contains("page") || last().contains("diamond_sword"), "no internal words: " + last());
         assertTrue(store.read("shops/town/bakery.json").contains("minecraft:diamond_sword"));
         assertEquals(ShopBindScreen.RELOAD_COMMAND, host.console.getLast());
@@ -201,11 +202,21 @@ class ToolkitShopScreensTest extends ToolkitHarness {
         assertEquals("Price", alex.prompt.label());
         assertEquals("No economy plugin, so players cannot pay", alex.prompt.hint());
         type("2");
-        assertTrue(last().startsWith("[Animus]: Added Bread for 2"), "priceFormat writes it: " + last());
+        assertTrue(last().startsWith("[Animus]: Added an offer: players buy Bread for 2; no one can pay money yet: Vault is not installed"), "priceFormat writes it: " + last());
         alex.worn.put(art.arcane.animus.core.npc.EquipmentSlot.MAIN_HAND, new art.arcane.animus.core.npc.NpcItem("minecraft:bread", 4, Optional.empty(), Optional.empty()));
         click("Add held item", Click.LEFT);
         type("2");
-        assertTrue(last().startsWith("[Animus]: Added 4 Bread for 2"), "a stack reads as the Offers list names it: " + last());
+        assertTrue(last().startsWith("[Animus]: Added an offer: players buy 4 Bread for 2"), "a stack reads as the Offers list names it: " + last());
+    }
+
+    @Test void anItemClickedInTheInventoryBecomesAnOfferWithoutLeavingTheMenu() throws IOException {
+        details();
+        manager.picked(alex, alex.window, new art.arcane.animus.core.npc.NpcItem("minecraft:cod", 16, Optional.empty(), Optional.empty()));
+        assertEquals("Price in Coins", alex.prompt.label(), "the wand in hand does not matter");
+        type("5");
+        assertTrue(last().startsWith("[Animus]: Added an offer: players buy 16 Cod for 5 Coins"), last());
+        assertTrue(store.read("shops/town/bakery.json").contains("minecraft:cod"));
+        assertEquals("Bakery", title(), "the menu is still open on the shop");
     }
 
     @Test void thePricePromptNamesTheMoneyOrItsSymbol() {
@@ -219,7 +230,7 @@ class ToolkitShopScreensTest extends ToolkitHarness {
         ShopDocument shop = ShopDocument.parse("town:x", "{\"schemaVersion\":1,\"revision\":1,\"id\":\"town:x\",\"pages\":[{\"name\":\"a\",\"buy\":{"
                 + "\"0\":{\"id\":\"bread\",\"type\":\"buy\",\"item\":{\"id\":\"minecraft:bread\"},\"price\":2}}}]}").shop().orElseThrow();
         ShopFiles.Offer offer = new ShopFiles.Offer(0, ShopDocument.Mode.BUY, 0, shop.pages().getFirst().grid(ShopDocument.Mode.BUY).get(0));
-        assertEquals("Players buy it for 2 Coins", ShopOffersScreen.deal(offer, commands.prices().get()));
+        assertEquals("Sells it for 2 Coins", ShopOffersScreen.deal(offer, commands.prices().get()));
     }
 
     @Test void aConversationOnTheSameNpcIsNamedOnTheShopList() throws IOException {

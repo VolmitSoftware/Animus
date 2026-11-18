@@ -36,6 +36,8 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
         public ScreenHost.Pose pose;
         public final List<String> effects = new ArrayList<>();
         public int opened, closed, experience;
+        /** The title of every window opened, in order; a screen that replaces its window in place adds nothing. */
+        public final List<String> windows = new ArrayList<>();
         /** Whether the main hand holds a wand, and how many wands the host has handed out. */
         public boolean wand;
         public int wands;
@@ -72,6 +74,14 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
         return Optional.empty();
     }
     @Override public WandGift giveShopItem(Player player) { shopItems++; return WandGift.GIVEN; }
+    /** Whether this host keeps shop stock in chests, as Bukkit does; tests of a mod server turn it off. */
+    public boolean containerShops = true;
+    @Override public boolean containerShops() { return containerShops; }
+    /** The shop chests that are gone, as {@code world x y z}. */
+    public final Set<String> gone = new HashSet<>();
+    @Override public boolean containerGone(art.arcane.animus.core.shop.ShopDocument.Container container) {
+        return gone.contains(container.world() + " " + container.x() + " " + container.y() + " " + container.z());
+    }
     @Override public String name(Player player) { return player.name; }
     @Override public Object viewer(Player player, String property) { return player.facts.get(property); }
     @Override public boolean permitted(Player player, String node) { return player.permissions.contains("*") || PermissionNodes.granted(player.permissions::contains, node); }
@@ -89,6 +99,7 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
         if (unsupported.contains(frame.resolution())) return Optional.empty();
         if (window != null && window == player.window && frame.sameWindow(player.frame)) { player.frame = frame; return Optional.of(window); }
         player.opened++;
+        player.windows.add(RichText.plain(frame.title()));
         player.frame = frame;
         player.window = new Object();
         return Optional.of(player.window);
@@ -166,9 +177,12 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
         waiting.answer().accept(text);
     }
 
-    /** The slot of the first item whose plain name contains the text. */
+    /**
+     * The lowest slot whose item's plain name contains the text. Frames keep no slot order, so a name that also appears
+     * in a notice would otherwise pick either item from run to run.
+     */
     public static int slot(Player player, String name) {
-        for (Map.Entry<Integer, ScreenFrame.Item> item : player.frame.items().entrySet())
+        for (Map.Entry<Integer, ScreenFrame.Item> item : new java.util.TreeMap<>(player.frame.items()).entrySet())
             if (item.getValue().name().map(RichText::plain).orElse("").contains(name)) return item.getKey();
         throw new AssertionError("no item named " + name + " in " + player.frame.items());
     }

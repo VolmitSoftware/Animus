@@ -2,7 +2,6 @@ package art.arcane.animus.bukkit.toolkit;
 
 import art.arcane.animus.core.gui.ScreenHost;
 import art.arcane.animus.core.toolkit.Toolkit;
-import java.util.Collection;
 import java.util.Objects;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
@@ -49,7 +48,8 @@ public final class BukkitWand {
 
     /**
      * A wand the player already carries goes to the main hand: on the hotbar by selecting its slot, elsewhere by
-     * swapping it with the held item. Otherwise {@code wand} goes into the inventory, or at the player's feet when full.
+     * swapping it with the held item. Otherwise {@code wand} lands in the main hand too (see {@link #landing}), or at the
+     * player's feet when the inventory is full.
      */
     public static ScreenHost.WandGift give(Player player, ItemStack wand) { return give(player, wand, Toolkit.WAND); }
 
@@ -74,8 +74,33 @@ public final class BukkitWand {
             }
             return ScreenHost.WandGift.MOVED;
         }
-        Collection<ItemStack> left = inventory.addItem(mark(item, tool)).values();
-        for (ItemStack rest : left) player.getWorld().dropItemNaturally(player.getLocation(), rest);
-        return left.isEmpty() ? ScreenHost.WandGift.GIVEN : ScreenHost.WandGift.DROPPED;
+        boolean[] empty = new boolean[contents.length];
+        for (int slot = 0; slot < contents.length; slot++) empty[slot] = contents[slot] == null || contents[slot].getType().isAir();
+        ItemStack marked = mark(item, tool);
+        Landing landing = landing(inventory.getHeldItemSlot(), empty);
+        switch (landing.how()) {
+            case HAND -> inventory.setItem(landing.slot(), marked);
+            case SELECT -> { inventory.setItem(landing.slot(), marked); inventory.setHeldItemSlot(landing.slot()); }
+            case SWAP -> { inventory.setItem(landing.slot(), inventory.getItemInMainHand()); inventory.setItemInMainHand(marked); }
+            case DROP -> { player.getWorld().dropItemNaturally(player.getLocation(), marked); return ScreenHost.WandGift.DROPPED; }
+        }
+        return ScreenHost.WandGift.GIVEN;
+    }
+
+    /** Where a new tool goes: the held slot, a hotbar slot that is then selected, a free slot the held item moves to, or the ground. */
+    enum How { HAND, SELECT, SWAP, DROP }
+
+    record Landing(How how, int slot) {}
+
+    /**
+     * Where a new tool goes so it lands in the main hand: the held slot when it is empty, else the first empty hotbar slot,
+     * selected; with a full hotbar the held item moves to the first empty storage slot and the tool takes its place; with
+     * no empty slot at all it drops. {@code empty} covers the 36 storage slots, the hotbar first.
+     */
+    static Landing landing(int held, boolean[] empty) {
+        if (held >= 0 && held < empty.length && empty[held]) return new Landing(How.HAND, held);
+        for (int slot = 0; slot < Math.min(HOTBAR, empty.length); slot++) if (empty[slot]) return new Landing(How.SELECT, slot);
+        for (int slot = HOTBAR; slot < empty.length; slot++) if (empty[slot]) return new Landing(How.SWAP, slot);
+        return new Landing(How.DROP, -1);
     }
 }

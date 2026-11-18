@@ -132,13 +132,13 @@ final class CombatFields {
                 number("leash", "Leash", Kind.NUMBER, RideSettings.MINIMUM_LEASH, RideSettings.MAXIMUM_LEASH, 4, "How far from its start a ride may go. " + RideSettings.DEFAULT_LEASH + " by default.", ""),
                 number("lifetimeSeconds", "Lifetime", Kind.INTEGER, RideSettings.MINIMUM_LIFETIME_SECONDS, RideSettings.MAXIMUM_LIFETIME_SECONDS, 30,
                         "A ride ends after this long. " + RideSettings.DEFAULT_LIFETIME_SECONDS + " s by default.", "s"));
-        return new Settings(RideSettings.MODULE, "Riding", fields, (JsonObject document, List<String> path) -> Optional.of(switch (path.getFirst()) {
+        return new Settings(RideSettings.MODULE, "Players can ride it", fields, (JsonObject document, List<String> path) -> Optional.of(switch (path.getFirst()) {
             case "permission" -> new JsonPrimitive(RideSettings.DEFAULT_PERMISSION);
             case "speed" -> new JsonPrimitive(RideSettings.DEFAULT_SPEED);
             case "leash" -> new JsonPrimitive(RideSettings.DEFAULT_LEASH);
             case "lifetimeSeconds" -> new JsonPrimitive(RideSettings.DEFAULT_LIFETIME_SECONDS);
             default -> new JsonPrimitive(false);
-        }), "Lets players ride the selected NPC. Clicks change a draft that Save writes to every selected NPC.", "05-movement-mounts-riding", "riding-an-npc");
+        }), "Lets players ride the selected NPC. Clicks change a draft that Save writes to every selected NPC.", "05-movement-mounts-riding", "players-can-ride-it");
     }
 
     /** The seat module; its bounds are the ones {@link art.arcane.animus.core.control.SeatModule} checks. */

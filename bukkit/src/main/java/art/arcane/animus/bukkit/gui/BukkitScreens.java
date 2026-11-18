@@ -354,6 +354,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     @Override public Optional<art.arcane.animus.core.shop.ShopSpot> lookedAtContainer(Player player) { return BukkitShopStock.looked(player); }
     @Override public Optional<String> stockRefusal(Player player, art.arcane.animus.core.shop.ShopDocument.Container container) { return stocks.refusal(player.getUniqueId(), container); }
     @Override public Optional<String> openContainer(Player player, art.arcane.animus.core.shop.ShopDocument.Container container) { return stocks.show(player, container); }
+    @Override public boolean containerGone(art.arcane.animus.core.shop.ShopDocument.Container container) { return stocks.gone(container); }
     @Override public WandGift giveShopItem(Player player) {
         Optional<ItemStack> maker = stack(Toolkit.SHOP_MAKER, Optional.of(Toolkit.SHOP_MAKER_NAME), Toolkit.SHOP_MAKER_LORE, new ArrayList<>());
         return maker.map((ItemStack stack) -> BukkitWand.give(player, stack, Toolkit.SHOP_ITEM)).orElse(WandGift.NONE);

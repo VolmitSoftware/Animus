@@ -168,13 +168,19 @@ final class ShopFiles {
      * {@code /animus shop stock} adds it, named the way players read it, with the price as {@code shown}, the server's
      * economy text for it. Advanced adds where the offer went.
      */
-    String stock(String id, NpcItem item, BigDecimal price, String shown, boolean advanced) throws IOException {
+    /**
+     * Adds {@code item} as a buy offer at {@code price}, which reads as {@code shown}. The reply says that players buy the
+     * whole stack for that price, and with {@code unpaid}, why no economy takes money yet. Advanced adds the offer id and
+     * its slot, counted from 1.
+     */
+    String stock(String id, NpcItem item, BigDecimal price, String shown, Optional<String> unpaid, boolean advanced) throws IOException {
         Shop shop = shop(id).orElseThrow(() -> new IOException("No shop file for " + id));
         String current = store.read(shop.path());
         ShopOffers.Added added = ShopOffers.add(JsonDocuments.object(current), ShopDocument.Mode.BUY, item, Optional.empty(), Optional.of(price), 1);
         String tx = store.commit(List.of(new DocumentStore.Change(shop.path(), JsonDocuments.hash(current), JsonDocuments.write(added.document()))));
-        String where = advanced ? " (offer " + added.entry() + ", slot " + added.slot() + ")" : "";
-        return "Added " + goods(item) + " for " + shown + where + "; tx " + tx;
+        String where = advanced ? " (offer " + added.entry() + ", slot " + (added.slot() + 1) + ")" : "";
+        String money = price.signum() > 0 ? unpaid.map((String why) -> "; no one can pay money yet: " + why).orElse("") : "";
+        return "Added an offer: players buy " + goods(item) + " for " + shown + where + money + "; tx " + tx;
     }
 
     /** {@code Diamond sword}, or {@code 16 Bread} for a stack: the item as the Offers list names it. */

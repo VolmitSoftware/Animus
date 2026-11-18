@@ -102,7 +102,7 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
 
     private ShopScreen.Context<S> context(ShopSettings active) {
         ShopTransactions<S> transactions = new ShopTransactions<>(host.items(), economy(active, host.economy()), store.ledger(), Instant::now);
-        return new ShopScreen.Context<>(active, transactions, Optional.of(store), Instant::now, players::lost);
+        return new ShopScreen.Context<>(active, transactions, Optional.of(store), Instant::now, players::lost, players::sold);
     }
 
     /** Re-renders every open shop and chest GUI window on its viewer's owner, after a hotload changed what they show. */
@@ -354,7 +354,7 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
                 ShopOffers.Added added = ShopOffers.add(document, chosen, held.get(), cost, amount, page);
                 String tx = runtime.documents().commit(List.of(new DocumentStore.Change(path, current == null ? "missing" : JsonDocuments.hash(current), JsonDocuments.write(added.document()))));
                 String what = held.get().count() + " " + held.get().id().substring(held.get().id().indexOf(':') + 1) + " as " + chosen.key() + " offer " + added.entry();
-                answer(actor, Palette.success((current == null ? "Created " + path + " and added " : "Added ") + what + " in slot " + added.slot() + " of page " + page + "; tx " + tx));
+                answer(actor, Palette.success((current == null ? "Created " + path + " and added " : "Added ") + what + " in slot " + (added.slot() + 1) + " of page " + page + "; tx " + tx));
                 reload((ShopCatalog next) -> {});
             });
         });

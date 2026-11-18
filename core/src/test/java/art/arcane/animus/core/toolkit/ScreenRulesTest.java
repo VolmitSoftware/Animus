@@ -175,7 +175,7 @@ class ScreenRulesTest extends ToolkitHarness {
         visits.add(new Visit("By folder", true, () -> { toolkit.open(alex.id, NpcsScreen::new); go("By folder"); }));
         visits.add(new Visit("Movement", false, () -> toolkit.open(alex.id, MovementScreen::new)));
         visits.add(new Visit("Mounts", false, () -> toolkit.open(alex.id, MountScreen::new)));
-        visits.add(new Visit("Riding", false, () -> { toolkit.open(alex.id, MountScreen::new); go("Riding"); }));
+        visits.add(new Visit("Players can ride it", false, () -> { toolkit.open(alex.id, MountScreen::new); go("Players can ride it"); }));
         visits.add(new Visit("Routes", false, () -> toolkit.open(alex.id, RouteScreen::new)));
         visits.add(new Visit("Route", false, () -> { toolkit.open(alex.id, RouteScreen::new); go(">Market"); }));
         visits.add(new Visit("Points", false, () -> {

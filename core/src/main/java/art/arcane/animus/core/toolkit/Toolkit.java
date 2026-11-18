@@ -255,7 +255,7 @@ public final class Toolkit<P, S> implements AutoCloseable {
     void refuse(P player, String reason) {
         say(player, ChatLine.error(reason));
         UUID id = host().id(player);
-        parts.screens().viewer(id).filter((ScreenManager<P, S>.Viewer viewer) -> viewer.open() && !viewer.suspended()).ifPresent((ScreenManager<P, S>.Viewer viewer) -> {
+        parts.screens().viewer(id).filter(ScreenManager.Viewer::open).ifPresent((ScreenManager<P, S>.Viewer viewer) -> {
             notices.put(id, reason);
             viewer.refresh();
         });
@@ -455,24 +455,32 @@ public final class Toolkit<P, S> implements AutoCloseable {
     void open(UUID player, ScreenFactory<P, S> factory) { open(player, factory, false); }
 
     private void open(UUID player, ScreenFactory<P, S> factory, boolean npc) {
-        prefs.load(player, () -> living().players().deliver(player, (P online) -> {
-            if (!show(online, factory)) return;
-            if (npc) parts.screens().viewer(player).ifPresent((ScreenManager<P, S>.Viewer viewer) -> viewer.push(new NpcScreen<>(this, viewer, hooks)));
-        }));
+        prefs.load(player, () -> living().players().deliver(player, (P online) -> show(online, factory, npc ? Optional.of(NpcScreen::new) : Optional.empty())));
     }
 
     /**
      * Opens the screen as the player's window, replacing the one they have open. Refused, saying why, before the command
      * tree has hooked in or when the player lacks the screen's node; nothing is read or written then.
      */
-    boolean show(P player, ScreenFactory<P, S> factory) {
+    boolean show(P player, ScreenFactory<P, S> factory) { return show(player, factory, Optional.empty()); }
+
+    /**
+     * As {@link #show(Object, ScreenFactory)}, with {@code over} opened on top of that screen in the same window, so the
+     * player sees one window and Back leads to the screen below. A player without {@code over}'s node gets the screen below.
+     */
+    boolean show(P player, ScreenFactory<P, S> factory, Optional<ScreenFactory<P, S>> over) {
         Commands commands = hooks;
         if (commands == null) { refuse(player, "The Animus menu is still starting; try again in a moment"); return false; }
         ranks(player);
         notices.remove(host().id(player));
         return parts.screens().open(player, Optional.empty(), (ScreenManager<P, S>.Viewer viewer) -> {
             ToolScreen<P, S> screen = factory.create(this, viewer, commands);
-            return allows(player, screen.node()) ? Optional.of(screen) : Optional.empty();
+            if (!allows(player, screen.node())) return Optional.empty();
+            if (over.isEmpty()) return Optional.of(screen);
+            ToolScreen<P, S> top = over.get().create(this, viewer, commands);
+            if (!host().permitted(player, top.node())) return Optional.of(screen);
+            viewer.under(screen);
+            return Optional.of(top);
         });
     }
 
@@ -488,9 +496,11 @@ public final class Toolkit<P, S> implements AutoCloseable {
         UUID id = viewer.id();
         ScreenHost.Prompt prompt = new ScreenHost.Prompt(label, initial, hint, (Optional<String> typed) -> living().players().deliver(id, (P online) -> {
             if (!viewer.open()) return;
-            viewer.resume();
+            int asked = viewer.suspends();
+            // The answer runs before the window comes back, so a screen it opens is the only window the player sees.
             if (typed.isPresent()) answer.accept(typed.get());
             else say(online, ChatLine.reply("Cancelled; nothing changed"));
+            if (viewer.suspends() == asked) viewer.resume();
             viewer.refresh();
         }));
         viewer.suspend();
@@ -516,9 +526,10 @@ public final class Toolkit<P, S> implements AutoCloseable {
         viewer.suspend();
         pickers.put(id, new Picker(label, (String npc) -> {
             if (!viewer.open()) { refuse(player, label + " cancelled; the menu closed. Open it and pick again"); return; }
-            if (reopen) viewer.resume();
+            int asked = viewer.suspends();
             chosen.accept(npc);
-            if (!reopen && !pickers.containsKey(id)) viewer.close();
+            if (reopen && viewer.suspends() == asked) viewer.resume();
+            else if (!reopen && !pickers.containsKey(id)) viewer.close();
         }));
         bar(player, label + ": click an NPC with the wand");
     }

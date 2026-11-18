@@ -17,11 +17,14 @@ import art.arcane.animus.core.owner.ActingPlayer;
 import art.arcane.animus.core.owner.NpcOwnership;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.SelectionPick;
+import art.arcane.animus.core.shop.PlayerShops;
+import art.arcane.animus.core.shop.ShopDocument;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.DocsLink;
 import art.arcane.animus.core.text.Palette;
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.toolkit.Toolkit;
 import art.arcane.animus.core.toolkit.ToolkitMode;
 import art.arcane.animus.core.virtual.Vec3;
@@ -117,7 +120,8 @@ public final class AnimusCommandTree extends CommandGroup {
     public AnimusDirector director() {
         return new AnimusDirector(this, this::values, services == null ? (String plugin) -> true : services.plugins(),
                 services == null ? AnimusDirector.EVERY_FEATURE : this::lacking,
-                (UUID player) -> services == null || services.mode(player) == ToolkitMode.SIMPLE, this::changes);
+                (UUID player) -> services == null || services.mode(player) == ToolkitMode.SIMPLE, this::changes,
+                (UUID player) -> services != null && !services.shops().players().owned(player).isEmpty());
     }
 
     /** Why this platform lacks a {@link NeedsFeature} feature, as its services say; empty where it has it. */
@@ -360,9 +364,41 @@ public final class AnimusCommandTree extends CommandGroup {
 
     @Director(description = "Delete an NPC's file; undo brings it back")
     @AnimusPermission(PermissionNodes.NPC_DELETE)
-    void delete(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
+    @Positional("confirm")
+    void delete(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
+                @Param(name = "confirm", defaultValue = "", description = "confirm, to delete an NPC and the shop it alone runs") String confirm) {
         CommandActor actor = actor();
-        npc(actor, npc).ifPresent((String id) -> files(actor, () -> { String line = administration().delete(id); living().refresh(); return List.of(Palette.success(line)); }));
+        npc(actor, npc).ifPresent((String id) -> {
+            List<ShopDocument> shops = services == null ? List.of() : services.shops().players().runBy(runtime().npcs().stored(), Set.of(id));
+            if (!shops.isEmpty() && refusedShopDelete(actor, id, shops, confirm.equalsIgnoreCase("confirm"))) return;
+            List<String> files = shops.stream().map(ShopDocument::id).toList();
+            String shown = shops.size() == 1 ? "its shop " + RichText.plain(RichText.colorize(shops.getFirst().title())) : "its " + shops.size() + " shops";
+            files(actor, () -> {
+                String line = administration().delete(id, files, shown);
+                living().refresh();
+                if (!files.isEmpty()) services.shops().players().reload();
+                return List.of(Palette.success(line));
+            });
+        });
+    }
+
+    /**
+     * Deleting an NPC that alone runs a chest shop would leave the shop with no NPC. Its owner is sent to the shop menu,
+     * which removes both; staff who run any shop are asked once to confirm deleting both. True when the delete stops here.
+     */
+    private static boolean refusedShopDelete(CommandActor actor, String id, List<ShopDocument> shops, boolean confirmed) {
+        String manage = "/" + BuildIdentity.ID + " shop manage";
+        if (!PlayerShops.manager(actor.player(), actor::permitted)) {
+            actor.rich(ChatLine.error("This NPC runs your shop; remove the shop in " + manage).run("Your shops", manage, "Open your shops"));
+            return true;
+        }
+        if (confirmed) return false;
+        String title = RichText.plain(RichText.colorize(shops.getFirst().title()));
+        String what = shops.size() == 1 ? "the shop " + title : shops.size() + " shops";
+        String command = "/" + BuildIdentity.ID + " delete " + id + " confirm";
+        actor.rich(ChatLine.error(id + " runs " + what + "; deleting it removes " + (shops.size() == 1 ? "the shop" : "them") + " too")
+                .run("Delete both", command, "Deletes the NPC and " + what + "; undo brings them back"));
+        return true;
     }
 
     @Director(description = "Put an NPC in the world after checking it can run here")

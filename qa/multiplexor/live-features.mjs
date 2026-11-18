@@ -2411,7 +2411,7 @@ async function shops() {
       await server.cmd(`animus shop open ${SHOP.id} player=${OWNER.name}`);
       open = await windowOpened(owner, from);
       from = await clickSlot(owner, open.container, SHOP.slot);
-      const refused = await owner.chat('You do not have the items for that.', from, 8000);
+      const refused = await owner.chat('You need ', from, 8000);
       await delay(500);
       assert.deepEqual(await counts(), { emerald: 0, diamond: 1 });
       await closeWindow(owner, open.container);

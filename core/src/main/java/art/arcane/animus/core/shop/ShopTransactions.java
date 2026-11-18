@@ -92,7 +92,7 @@ public final class ShopTransactions<S> {
             int held = inventory.count(prepared.goods(), rule);
             if (held == 0) return Outcome.of(Status.NOTHING_TO_SELL);
             if (held < units) {
-                if (!entry.sellPartial()) return Outcome.of(Status.NOT_ENOUGH_ITEMS);
+                if (!entry.sellPartial()) return lacking(prepared.goods(), units, held);
                 units = held;
             }
         }
@@ -203,7 +203,11 @@ public final class ShopTransactions<S> {
         List<S> overflow = new java.util.ArrayList<>();
         try {
             for (Need<S> need : prepared.needs()) {
-                if (!inventory.remove(need.stack(), need.amount(), rule)) { undo(inventory, Optional.empty()); return Outcome.of(Status.NOT_ENOUGH_ITEMS); }
+                if (!inventory.remove(need.stack(), need.amount(), rule)) {
+                    int held = inventory.count(need.stack(), rule);
+                    undo(inventory, Optional.empty());
+                    return lacking(need.stack(), need.amount(), held);
+                }
             }
             for (Need<S> give : prepared.gives()) {
                 if (prepared.entry().dropWhenFull()) overflow.addAll(inventory.addOrOverflow(give.stack(), give.amount()));
@@ -232,12 +236,17 @@ public final class ShopTransactions<S> {
             List<Need<S>> handed = prepared.gives();
             if (prepared.entry().book().isPresent()) {
                 Optional<S> copy = copy(containers, prepared.entry().book().get());
-                if (copy.isEmpty() || prepared.quill().isEmpty() || !stock.remove(prepared.quill().get(), 1, MatchRule.STRICT)) { both(inventory, stock); return Outcome.of(Status.OUT_OF_STOCK); }
+                if (copy.isEmpty()) { both(inventory, stock); return empty("its chest has no copy of that book left"); }
+                if (prepared.quill().isEmpty() || !stock.remove(prepared.quill().get(), 1, MatchRule.STRICT)) { both(inventory, stock); return empty("its chest needs a book and quill for the copy"); }
                 handed = List.of(new Need<>(copy.get(), 1));
             } else for (Need<S> give : handed)
-                if (!stock.remove(give.stack(), give.amount(), MatchRule.STRICT)) { both(inventory, stock); return Outcome.of(Status.OUT_OF_STOCK); }
+                if (!stock.remove(give.stack(), give.amount(), MatchRule.STRICT)) { both(inventory, stock); return empty("its owner has to restock the chest"); }
             for (Need<S> need : prepared.needs())
-                if (!inventory.remove(need.stack(), need.amount(), rule)) { both(inventory, stock); return Outcome.of(Status.NOT_ENOUGH_ITEMS); }
+                if (!inventory.remove(need.stack(), need.amount(), rule)) {
+                    int held = inventory.count(need.stack(), rule);
+                    both(inventory, stock);
+                    return lacking(need.stack(), need.amount(), held);
+                }
             for (Need<S> need : prepared.needs())
                 if (!stock.add(need.stack(), need.amount())) { both(inventory, stock); return Outcome.of(Status.CONTAINER_FULL); }
             for (Need<S> give : handed) {
@@ -264,6 +273,14 @@ public final class ShopTransactions<S> {
         }
         return Optional.empty();
     }
+
+    /** The buyer lacks {@code amount} of {@code stack}: the reply names how many it takes and how many they have. */
+    private Outcome lacking(S stack, int amount, int held) {
+        return new Outcome(Status.NOT_ENOUGH_ITEMS, 0, BigDecimal.ZERO, Optional.of(items.describe(stack, amount) + "; you have " + Math.min(held, amount)));
+    }
+
+    /** An owned shop's chest cannot give what the trade hands over, and why, for the buyer's reply. */
+    private static Outcome empty(String why) { return new Outcome(Status.OUT_OF_STOCK, 0, BigDecimal.ZERO, Optional.of(why)); }
 
     private static <S> void both(InventoryTransaction<S> inventory, InventoryTransaction<S> stock) {
         try { stock.rollback(); }

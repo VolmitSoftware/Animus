@@ -5,12 +5,15 @@ import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcItem;
+import art.arcane.animus.core.npc.NpcPose;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.text.Words;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -20,10 +23,11 @@ import java.util.Optional;
 /**
  * Body: what the NPC looks like. Fourteen common bodies, Search, and All bodies, every body Animus shows. In the guided
  * create a pick moves on; from the NPC screen it changes the selection's body, asking first when that drops settings only
- * the old body has. Advanced types any body id and, in the create, saves the NPC despawned.
+ * the old body has, and Pose picks from the poses the body can take. Advanced types any body id and, in the create,
+ * saves the NPC despawned.
  */
 final class BodyScreen<P, S> extends ToolScreen<P, S> {
-    static final int HEADER = 4, ALL = ACTIONS, TYPED = ACTIONS + 1, SPAWNED = ACTIONS + 8;
+    static final int HEADER = 4, ALL = ACTIONS, TYPED = ACTIONS + 1, POSE = ACTIONS + 4, SPAWNED = ACTIONS + 8;
     /** The common bodies in the order they show, the player first. */
     static final List<String> COMMON = List.of(ToolkitFiles.PLAYER, "minecraft:villager", "minecraft:zombie", "minecraft:skeleton", "minecraft:iron_golem",
             "minecraft:armor_stand", "minecraft:allay", "minecraft:cat", "minecraft:wolf", "minecraft:horse", "minecraft:pig", "minecraft:cow", "minecraft:sheep",
@@ -82,6 +86,7 @@ final class BodyScreen<P, S> extends ToolScreen<P, S> {
         header(ids, now);
         for (int index = 0; index < COMMON.size(); index++) body(SLOTS[index], COMMON.get(index), now);
         button(ALL, "minecraft:bookshelf", title("All bodies"), lore(List.of("&7Every body this server shows"), any("open")), (GuiModel.Click click) -> push(new BodyScreen<>(toolkit, viewer, commands, creating, true)));
+        if (creating.isEmpty()) pose(ids);
         button(bottom(SEARCH), "minecraft:spyglass", title("Search"), any("type a name"), (GuiModel.Click click) -> prompt("Search", "", (String typed) -> {
             BodyScreen<P, S> found = new BodyScreen<>(toolkit, viewer, commands, creating, true);
             found.search(typed);
@@ -92,6 +97,45 @@ final class BodyScreen<P, S> extends ToolScreen<P, S> {
                 (GuiModel.Click click) -> prompt("Body id", now.orElse(""), this::typed));
         creating.ifPresent((CreateFlow flow) -> button(SPAWNED, flow.spawn ? "minecraft:lime_dye" : "minecraft:gray_dye", title("Spawned: " + (flow.spawn ? "on" : "off")),
                 lore(List.of("&7Off saves it despawned"), any(flow.spawn ? "save it despawned" : "spawn it")), (GuiModel.Click click) -> flow.spawn = !flow.spawn));
+    }
+
+    /** Pose: the selection's pose now, Mixed when they differ, and a click that lists the poses every selected body can take. */
+    private void pose(List<String> ids) {
+        List<String> poses = ids.stream().map((String id) -> pose(NpcScreen.stored(toolkit, id))).distinct().toList();
+        String now = poses.size() == 1 ? Words.readable(poses.getFirst()) : "Mixed";
+        List<NpcPose> offered = Arrays.stream(NpcPose.values())
+                .filter((NpcPose pose) -> ids.stream().allMatch((String id) -> pose.availableFor(PropertyScreen.type(NpcScreen.stored(toolkit, id))))).toList();
+        button(POSE, "minecraft:armor_stand", title("Pose"), lore(List.of("&fNow: " + now), any("pick one")), (GuiModel.Click click) ->
+                push(new PickScreen<P, S, NpcPose>(toolkit, viewer, commands, node(), "Pose", offered,
+                        (NpcPose pose) -> new PickScreen.Look(POSE_ICONS.getOrDefault(pose, "minecraft:armor_stand"), Words.readable(pose.key()), poses.equals(List.of(pose.key())) ? "Now" : ""),
+                        (NpcPose pose) -> chosen().ifPresent((List<String> chosen) -> toolkit.write(viewer, (ToolkitFiles ignored) -> pose(toolkit.npcs(), chosen, pose))))));
+    }
+
+    /** The pose a definition declares, standing when it names none. */
+    static String pose(JsonObject definition) {
+        return definition.get("pose") instanceof JsonPrimitive pose && pose.isString() ? pose.getAsString() : NpcPose.STANDING.key();
+    }
+
+    /** What each pose shows as in the pick list. */
+    private static final Map<NpcPose, String> POSE_ICONS = Map.of(NpcPose.STANDING, "minecraft:armor_stand", NpcPose.SNEAKING, "minecraft:leather_boots",
+            NpcPose.SLEEPING, "minecraft:red_bed", NpcPose.SWIMMING, "minecraft:water_bucket", NpcPose.SITTING, "minecraft:oak_stairs",
+            NpcPose.CRAWLING, "minecraft:rail", NpcPose.BELLYFLOP, "minecraft:slime_ball", NpcPose.SPINNING, "minecraft:clock");
+
+    /** Gives every listed NPC the pose, standing being no {@code pose} at all, in one transaction. Runs on the file lane. */
+    static String pose(NpcRepository npcs, List<String> ids, NpcPose pose) throws IOException {
+        List<NpcRepository.Draft> drafts = new ArrayList<>();
+        for (String id : ids) {
+            NpcRepository.Draft draft = npcs.draft(id);
+            JsonObject document = draft.document();
+            if (!pose.availableFor(PropertyScreen.type(document))) throw new IOException(ToolkitFiles.named(npcs, List.of(id)) + " cannot take the pose " + Words.readable(pose.key()) + " with its body");
+            if (pose(document).equals(pose.key())) continue;
+            if (pose == NpcPose.STANDING) document.remove("pose");
+            else document.addProperty("pose", pose.key());
+            drafts.add(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
+        }
+        String shown = Words.readable(pose.key());
+        if (drafts.isEmpty()) return "Pose already " + shown + " on " + ToolkitFiles.named(npcs, ids);
+        return "Pose " + shown + " on " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
     }
 
     private void header(List<String> ids, Optional<String> now) {

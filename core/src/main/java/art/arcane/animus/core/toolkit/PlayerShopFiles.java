@@ -31,7 +31,7 @@ import java.util.UUID;
 final class PlayerShopFiles {
     /** The offers a page holds; the last row stays free for the chest window's controls. */
     static final int PER_PAGE = 45, ROWS = 6;
-    static final String NAMESPACE = "players", OFFERS = "Offers";
+    static final String NAMESPACE = PlayerShops.NAMESPACE, OFFERS = "Offers";
 
     /** A shop as stored, and the NPCs whose click opens it. */
     record Shop(ShopDocument shop, JsonObject document, List<String> npcs) {}
@@ -39,8 +39,8 @@ final class PlayerShopFiles {
     /** What a new shop is: its owner, kind, body and chest, and where its NPC stands. */
     record Plan(UUID owner, String ownerName, ShopDocument.Kind kind, String type, ShopDocument.Container chest, Landing.Spot spot) {}
 
-    /** The new shop and its NPC. */
-    record Made(String shop, String npc, String title, String tx) {}
+    /** The new shop and its NPC, and the shop as stored, so its menu opens with it. */
+    record Made(String shop, String npc, String title, String tx, Shop stored) {}
 
     private final NpcRepository npcs;
     private final DocumentStore store;
@@ -109,7 +109,7 @@ final class PlayerShopFiles {
         String tx = art.arcane.animus.core.npc.DefinitionBatch.commit(store, List.of(bound), Map.of(bound.path(), "missing"),
                 List.of(new DocumentStore.Change(PlayerShops.path(shop), "missing", document)));
         npcs.reload();
-        return new Made(shop, npc, title, tx);
+        return new Made(shop, npc, title, tx, read(shop));
     }
 
     private static JsonObject document(String id, String title, Plan plan) {
@@ -204,15 +204,20 @@ final class PlayerShopFiles {
         return "Renamed the shop to " + title + "; tx " + RouteFiles.commit(npcs, store, drafts, List.of(change(id, document)));
     }
 
-    /** Adds a chest; a shop keeps at most {@value ShopDocument#MAXIMUM_CONTAINERS}. */
-    String addChest(String id, ShopDocument.Container container) throws IOException {
+    /**
+     * Adds a chest; a shop keeps at most {@value ShopDocument#MAXIMUM_CONTAINERS}. The listed chests in {@code gone}, whose
+     * blocks were broken, leave in the same change, so a shop whose last chest was broken can open again.
+     */
+    String addChest(String id, ShopDocument.Container container, List<ShopDocument.Container> gone) throws IOException {
         return write(id, (JsonObject document) -> {
             JsonArray containers = document.get("containers") instanceof JsonArray listed ? listed : new JsonArray();
-            if (containers.size() >= ShopDocument.MAXIMUM_CONTAINERS) throw new IOException("A shop keeps at most " + ShopDocument.MAXIMUM_CONTAINERS + " chests");
             if (containers.contains(chest(container))) throw new IOException("The shop already uses that chest");
+            int dropped = 0;
+            for (ShopDocument.Container broken : gone) if (containers.remove(chest(broken))) dropped++;
+            if (containers.size() >= ShopDocument.MAXIMUM_CONTAINERS) throw new IOException("A shop keeps at most " + ShopDocument.MAXIMUM_CONTAINERS + " chests");
             containers.add(chest(container));
             document.add("containers", containers);
-            return "Added the chest at " + PlayerShops.Block.of(container).shown();
+            return "Added the chest at " + PlayerShops.Block.of(container).shown() + (dropped == 0 ? "" : dropped == 1 ? "; the broken one is gone from the list" : "; the broken ones are gone from the list");
         });
     }
 

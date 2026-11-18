@@ -41,6 +41,7 @@ class BodyScreenTest extends ToolkitHarness {
         open("baker");
         Map<Integer, String> shown = new TreeMap<>(CreateFlowTest.BODY);
         shown.put(4, "baker");
+        shown.put(BodyScreen.POSE, "Pose");
         assertEquals(shown, buttons());
         assertTrue(lore("baker").contains("Now: Player"), lore("baker"));
         assertTrue(lore("Player").contains("Now: this body"), lore("Player"));
@@ -48,6 +49,32 @@ class BodyScreenTest extends ToolkitHarness {
         assertTrue(alex.frame.items().get(MockScreenHost.slot(alex, "Player")).item().components().orElseThrow().contains("enchantment_glint_override=true"));
         assertTrue(lore("Cow").contains("Click: change to it"));
         assertFalse(lore("Cow").contains("minecraft:cow"), "Simple shows no raw id");
+    }
+
+    @Test void poseIsPickedFromAListOfWhatTheBodyCanTake() throws IOException {
+        open("baker");
+        assertTrue(lore("Pose").contains("Now: Standing"), lore("Pose"));
+        click("Pose", Click.LEFT);
+        assertEquals("Pose", title());
+        assertTrue(shows("Sleeping"), "a player body takes every pose");
+        click("Sitting", Click.LEFT);
+        assertEquals("Body", title(), "the pick goes back to Body");
+        assertEquals("sitting", npcs.find("baker").orElseThrow().json().get("pose").getAsString());
+        assertTrue(lore("Pose").contains("Now: Sitting"), lore("Pose"));
+        click("Pose", Click.LEFT);
+        click("Standing", Click.LEFT);
+        assertFalse(npcs.find("baker").orElseThrow().json().has("pose"), "standing is the default, so no pose is written");
+    }
+
+    @Test void aVillagerIsOfferedOnlyThePosesItCanShow() throws IOException {
+        com.google.gson.JsonObject document = npcs.draft("baker").document();
+        document.addProperty("type", "minecraft:villager");
+        art.arcane.animus.core.npc.NpcRepository.Draft draft = npcs.draft("baker");
+        npcs.apply(new art.arcane.animus.core.npc.NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
+        open("baker");
+        click("Pose", Click.LEFT);
+        assertTrue(shows("Standing") && shows("Sitting"));
+        assertFalse(shows("Sleeping"), "only player bodies sleep");
     }
 
     @Test void noBodySitsWhereTheWindowOpensSoADoubleClickConfirmsNothing() {

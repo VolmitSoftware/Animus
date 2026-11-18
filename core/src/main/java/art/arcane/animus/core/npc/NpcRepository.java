@@ -407,11 +407,15 @@ public final class NpcRepository {
         return skipped.isEmpty() ? transaction : transaction + "; skipped " + skip;
     }
 
-    public synchronized String delete(String id) throws IOException {
+    public synchronized String delete(String id) throws IOException { return delete(id, List.of()); }
+
+    /** As {@link #delete(String)}, with {@code with} written in the same transaction, such as a shop file only this NPC opened. */
+    public synchronized String delete(String id, List<DocumentStore.Change> with) throws IOException {
         Draft draft = draft(id);
         Optional<String> replaced = refusedBase(draft.path(), draft.expectedHash());
         List<DocumentStore.Change> changes = new ArrayList<>();
         changes.add(new DocumentStore.Change(draft.path(), replaced.orElse(draft.expectedHash()), null));
+        changes.addAll(with);
         checkpoints.remove(draft.path()).ifPresent(changes::add);
         String transaction = store.commit(changes);
         publish(id, null, null, draft.path(), null);

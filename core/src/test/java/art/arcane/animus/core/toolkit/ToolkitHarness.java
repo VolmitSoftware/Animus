@@ -61,6 +61,8 @@ abstract class ToolkitHarness {
     art.arcane.animus.core.config.OwnerSettings owners = art.arcane.animus.core.config.OwnerSettings.DEFAULT;
     String primary;
     boolean recording;
+    /** Alex's own signed skin, as an online-mode server reads it; none, as on an offline-mode server, unless a test sets one. */
+    Optional<art.arcane.animus.core.presentation.BodySkin> playerSkin = Optional.empty();
     Toolkit<Player, Stack> toolkit;
     FakeNpcRuntime<Player> living;
     /** Why NPCs cannot ride mobs here; empty where they can. */
@@ -101,7 +103,7 @@ abstract class ToolkitHarness {
             @Override public Optional<String> mobRidingMissing() { return mobRiding; }
         };
         toolkit = Toolkit.install(new Toolkit.Parts<>(() -> npcs, () -> store, manager, living, queued ? queue::add : Runnable::run,
-                (Player player) -> Optional.empty(), Optional.of((String id, art.arcane.animus.core.virtual.WorldPosition destination) -> {
+                (Player player) -> playerSkin, Optional.of((String id, art.arcane.animus.core.virtual.WorldPosition destination) -> {
                     calls.add("relocate " + id + " " + destination.world() + " " + destination.point().x() + " " + destination.point().y() + " " + destination.point().z());
                     return true;
                 }), () -> now, () -> signer, () -> owners));

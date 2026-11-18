@@ -23,7 +23,8 @@ final class ModuleScreen<P, S> extends ValueScreen<P, S> {
     private static final String KILLABLE = "killable";
     /** Module names where the key alone reads wrong; the rest are humanised. */
     private static final Map<String, String> NAMES = Map.of("animus:navigation", "Movement", "animus:look-close", "Look at players", "animus:gui", "GUI",
-            "animus:modelengine", "ModelEngine", "mythic:mob", "MythicMobs", "animus:mirror", "Mirror viewer");
+            "animus:modelengine", "ModelEngine", "mythic:mob", "MythicMobs", "animus:mirror", "Mirror viewer", "animus:mount", "Rides on",
+            "animus:riding", "Players can ride it");
     private static final Map<String, String> ICONS = Map.ofEntries(
             Map.entry("animus:navigation", "leather_boots"), Map.entry("animus:combat", "iron_sword"), Map.entry("animus:health", "golden_apple"),
             Map.entry("animus:shop", "emerald"), Map.entry("animus:gui", "item_frame"), Map.entry("animus:hire", "gold_ingot"), Map.entry("animus:mount", "minecart"),

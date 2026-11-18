@@ -186,7 +186,10 @@ final class ToolkitFiles {
     }
 
     /** Deletes every listed NPC in one transaction; rollback restores them all. */
-    String delete(List<String> ids) throws IOException {
+    String delete(List<String> ids) throws IOException { return delete(ids, List.of()); }
+
+    /** As {@link #delete(List)}, with the shop files {@code shops} in the same transaction: the chest shops only these NPCs opened. */
+    String delete(List<String> ids, List<String> shops) throws IOException {
         List<DocumentStore.Change> changes = new ArrayList<>();
         for (String id : ids) {
             NpcRepository.Draft draft = npcs.draft(id);
@@ -194,7 +197,14 @@ final class ToolkitFiles {
             pointer(store, draft.path()).ifPresent(changes::add);
         }
         if (changes.isEmpty()) return "Nothing to delete";
-        String gone = named(npcs, ids);
+        int removed = 0;
+        for (String shop : shops) {
+            String path = art.arcane.animus.core.shop.PlayerShops.path(shop), current = store.read(path);
+            if (current == null) continue;
+            changes.add(new DocumentStore.Change(path, JsonDocuments.hash(current), null));
+            removed++;
+        }
+        String gone = named(npcs, ids) + (removed == 0 ? "" : removed == 1 ? " and its shop" : " and " + removed + " shops");
         String tx = store.commit(changes);
         npcs.reload();
         return "Deleted " + gone + "; tx " + tx;

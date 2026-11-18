@@ -4,11 +4,14 @@ import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.shop.ShopDocument;
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.text.Words;
 import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -113,13 +116,32 @@ final class NpcScreen<P, S> extends ToolScreen<P, S> {
             });
         }));
         if (!holds(PermissionNodes.NPC_DELETE)) denied(DELETE, "Delete", PermissionNodes.NPC_DELETE);
-        else confirm(DELETE, "minecraft:lava_bucket", "Delete", "Deletes " + named(ids) + "; Undo in chat brings it back", count, true, () -> {
-            if (allows(PermissionNodes.NPC_DELETE)) toolkit.write(viewer, (ToolkitFiles files) -> files.delete(ids), this::leave);
-        });
+        else delete(ids, count);
         if (!advanced) return;
         open(FOLDER, "minecraft:chest", "Folder", "Where its file is kept", () -> new FolderScreen<>(toolkit, viewer, commands));
         open(GROUPS, "minecraft:book", "Trait groups", "Settings shared by many NPCs", () -> new GroupScreen<>(toolkit, viewer, commands));
     }
+
+    /**
+     * Delete, which also removes a chest shop that only these NPCs open, since the shop would be left with no NPC. A player
+     * who runs only their own shops is sent to the shop menu instead; staff see the shop named in what the confirm says.
+     */
+    private void delete(List<String> ids, int count) {
+        List<ShopDocument> shops = commands.shops().get().runBy(toolkit.npcs().stored(), Set.copyOf(ids));
+        if (!shops.isEmpty() && !toolkit.shopFlow().manager(viewer.player())) {
+            button(DELETE, "minecraft:lava_bucket", title("Delete"), lore(List.of("&7" + RUNS_SHOP), any("delete")), (GuiModel.Click click) -> refuse(RUNS_SHOP));
+            return;
+        }
+        String shop = shops.isEmpty() ? "" : shops.size() == 1 ? " and its shop " + RichText.plain(RichText.colorize(shops.getFirst().title())) : " and " + shops.size() + " shops";
+        List<String> files = shops.stream().map(ShopDocument::id).toList();
+        confirm(DELETE, "minecraft:lava_bucket", "Delete", "Deletes " + named(ids) + shop + "; Undo in chat brings " + (shops.isEmpty() ? "it" : "them") + " back", count, true, () -> {
+            if (!allows(PermissionNodes.NPC_DELETE)) return;
+            toolkit.write(viewer, (ToolkitFiles found) -> found.delete(ids, files), () -> { if (!files.isEmpty()) commands.shops().get().reload(); leave(); });
+        });
+    }
+
+    /** What a player hears who tries to delete the NPC of their own shop. */
+    static final String RUNS_SHOP = "This NPC runs your shop; remove the shop in /animus shop manage";
 
     private void admin(List<String> ids, NpcDefinition first) {
         open(ATTRIBUTES, "minecraft:golden_apple", "Attributes", "Health, speed and other vanilla values", () -> new AttributeScreen<>(toolkit, viewer, commands, "Attributes of " + NpcsScreen.name(first), scope(toolkit, ids)));

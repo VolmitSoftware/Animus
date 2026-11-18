@@ -77,6 +77,7 @@ class SkinScreenTest extends ToolkitHarness {
     }
 
     @Test void fromAnNpcTheHeaderNamesItAndThePlayerBodyNoteShowsOnlyWhenItApplies() {
+        playerSkin = Optional.of(new BodySkin("e30=", "c2ln"));
         select("guard");
         toolkit.open(alex.id, (Toolkit<Player, Stack> kit, ScreenManager<Player, Stack>.Viewer viewer, Toolkit.Commands given) -> new SkinScreen<>(kit, viewer, given, lookup));
         assertEquals("guard", name(SkinScreen.HEADER), "the NPC it changes, as the create flow shows its new NPC");
@@ -170,10 +171,13 @@ class SkinScreenTest extends ToolkitHarness {
         assertTrue(last().startsWith("Skin removed on guard"), last());
     }
 
-    @Test void mySkinWithoutASignatureSaysWhy() {
+    @Test void mySkinIsGreyWhereTheServerCannotCopyIt() {
         select("guard");
+        assertEquals("minecraft:gray_dye", alex.frame.items().get(SkinScreen.MINE).item().id());
+        assertTrue(lore("My skin").contains("Offline-mode servers cannot copy it"), lore("My skin"));
+        int said = alex.messages.size();
         click("My skin", Click.LEFT);
-        assertEquals("Your skin has no signature; offline-mode servers cannot copy it", last());
+        assertEquals(said, alex.messages.size(), "a grey button does nothing");
     }
 
     @Test void aPlayerNameIsLookedUpSavedWithItsLabelAndWornByTheSelection() throws IOException {

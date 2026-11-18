@@ -55,11 +55,12 @@ public record ShopSettings(boolean enabled, String economy, String style, String
         texts.put("noPermission", "&cYou do not have permission for that.");
         texts.put("limitReached", "&cYou have reached the limit for {item}.");
         texts.put("outOfStock", "&c{item} is out of stock.");
+        texts.put("outOfStockChest", "&c{shop} is out of {item}: {reason}.");
         texts.put("economyUnavailable", "&cMoney trades are unavailable: {reason}");
         texts.put("insufficientFunds", "&cYou need {price} for that.");
         texts.put("notEnoughLevels", "&cYou need {levels} levels for that.");
         texts.put("inventoryFull", "&cYour inventory has no room for {item}.");
-        texts.put("notEnoughItems", "&cYou do not have the items for that.");
+        texts.put("notEnoughItems", "&cYou need {reason}.");
         texts.put("nothingToSell", "&cYou have no {item} to sell.");
         texts.put("paymentFailed", "&cThe payment failed; your items were returned.");
         texts.put("failed", "&cThat trade failed and was undone: {reason}");
@@ -67,7 +68,7 @@ public record ShopSettings(boolean enabled, String economy, String style, String
         texts.put("containerUnavailable", "&cThe shop's chest cannot be used: {reason}");
         texts.put("shopMissing", "&cThe shop {shop} is not available.");
         texts.put("shopPermission", "&cYou cannot use this shop.");
-        texts.put("closed", "&c{shop} is closed.");
+        texts.put("closed", "&c{shop} is closed: {reason}.");
         texts.put("bookCopy", "Copy of {title}");
         texts.put("noPages", "&cThis shop has nothing you can use.");
         texts.put("empty", "&7Nothing here yet");

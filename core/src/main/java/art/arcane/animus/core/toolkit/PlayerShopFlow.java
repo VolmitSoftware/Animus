@@ -74,7 +74,7 @@ final class PlayerShopFlow<P, S> {
         Optional<String> refused = host.stockRefusal(player, spot.container(world));
         if (refused.isPresent()) { toolkit.refuse(player, "You cannot use that chest: " + refused.get()); return; }
         Optional<String> full = PlayerShops.full(shops.get().owned(id).size(), limit(player, shops.get()))
-                .or(() -> NpcOwnership.full(toolkit.npcs().all(), id, toolkit.limit(player)));
+                .or(() -> PlayerShops.npcFull(NpcOwnership.owned(toolkit.npcs().all(), id), toolkit.limit(player)));
         if (full.isPresent()) { toolkit.refuse(player, full.get()); return; }
         toolkit.show(player, (Toolkit<P, S> menu, ScreenManager<P, S>.Viewer viewer, Toolkit.Commands commands) -> new ShopMakeScreen<>(menu, viewer, commands, spot, world));
     }
@@ -96,27 +96,32 @@ final class PlayerShopFlow<P, S> {
             PlayerShopFiles files = new PlayerShopFiles(toolkit.npcs(), toolkit.documents());
             PlayerShopFiles.Census census = files.census(id, chest);
             if (census.holder().isPresent()) throw new IOException("That chest already belongs to a shop");
-            Optional<String> full = PlayerShops.full(census.owned(), shopLimit).or(() -> NpcOwnership.full(toolkit.npcs().all(), id, npcLimit));
+            Optional<String> full = PlayerShops.full(census.owned(), shopLimit).or(() -> PlayerShops.npcFull(NpcOwnership.owned(toolkit.npcs().all(), id), npcLimit));
             if (full.isPresent()) throw new IOException(full.get());
             return files.make(plan, world);
         }, (P online, PlayerShopFiles.Made made) -> {
             toolkit.living().refresh();
             shops.get().reload();
             toolkit.say(online, Toolkit.reply("Made " + made.title() + "; stock your chest, then set its offers; tx " + made.tx()));
-            if (viewer.open()) viewer.replace(new PlayerShopScreen<>(toolkit, viewer, toolkit.hooks().orElseThrow(), made.shop()));
+            if (viewer.open()) viewer.replace(new PlayerShopScreen<>(toolkit, viewer, toolkit.hooks().orElseThrow(), made.shop(), Optional.of(made.stored())));
         });
     }
 
-    /** The shop's menu, for its owner or a player who may run any shop. */
-    void manage(P player, String id) {
+    /**
+     * The shop's menu, for its owner or a player who may run any shop. {@code named} is the shop's id, its id without
+     * {@code players:}, or its title in any case; the player's own shops are matched first.
+     */
+    void manage(P player, String named) {
         Optional<PlayerShops> shops = shops(player);
         if (shops.isEmpty()) return;
-        Optional<ShopDocument> shop = shops.get().shop(id);
+        UUID self = toolkit.host().id(player);
         boolean manager = manager(player);
-        if (!manager && shop.map((ShopDocument found) -> !found.owns(toolkit.host().id(player))).orElse(true)) {
-            toolkit.refuse(player, shop.isPresent() ? "That shop is not yours" : "You have no shop called " + id);
+        Optional<ShopDocument> shop = shops.get().find(named, self);
+        if (!manager && shop.map((ShopDocument found) -> !found.owns(self)).orElse(true)) {
+            toolkit.refuse(player, shop.isPresent() ? "That shop is not yours" : "You have no shop called " + named);
             return;
         }
+        String id = shop.map(ShopDocument::id).orElse(named);
         toolkit.show(player, (Toolkit<P, S> menu, ScreenManager<P, S>.Viewer viewer, Toolkit.Commands commands) -> new PlayerShopScreen<>(menu, viewer, commands, id));
     }
 

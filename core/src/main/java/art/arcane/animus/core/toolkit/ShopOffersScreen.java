@@ -35,7 +35,7 @@ final class ShopOffersScreen<P, S> extends ToolScreen<P, S> {
         else list(offers, (ShopFiles.Offer offer) -> itemName(offer.entry().item()) + " " + offer.entry().id(), "No offers yet. Use Add held item", (Integer slot, ShopFiles.Offer offer) -> {
             String name = itemName(offer.entry().item());
             List<String> lines = new ArrayList<>(List.of("&7" + deal(offer, commands.prices().get())));
-            if (advanced()) lines.add("&8" + offer.entry().id() + ", page " + (offer.page() + 1) + " slot " + offer.slot());
+            if (advanced()) lines.add("&8" + offer.entry().id() + ", page " + (offer.page() + 1) + " slot " + (offer.slot() + 1));
             button(slot, offer.entry().item(), title(name), lore(lines, any("remove it")), (GuiModel.Click click) ->
                     ask(slot, "Removes " + name + " from " + shop.name() + "; Undo in chat brings it back", 0, true,
                             () -> ShopFiles.save(toolkit, viewer, (ToolkitFiles ignored) -> files().removeOffer(shop.id(), offer), ShopBindScreen.RELOAD_COMMAND, () -> { reload(); changed.run(); })));
@@ -51,9 +51,9 @@ final class ShopOffersScreen<P, S> extends ToolScreen<P, S> {
         if (entry.type() == ShopDocument.Type.COMMAND) return "Runs a command";
         String price = prices.format(entry.price());
         return switch (offer.mode()) {
-            case BUY -> "Players buy it for " + price;
-            case SELL -> "Players sell it for " + price;
-            case TRADE -> "Players trade for it";
+            case BUY -> "Sells it for " + price;
+            case SELL -> "Buys it for " + price;
+            case TRADE -> "Trades it for items";
         };
     }
 }

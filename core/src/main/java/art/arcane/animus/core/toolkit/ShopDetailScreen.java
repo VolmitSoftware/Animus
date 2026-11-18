@@ -28,8 +28,9 @@ import java.util.function.Predicate;
  * One shop: its offers, opening it, and the {@code animus:shop} settings of the selected NPCs that use it. A setting
  * shows their shared value, or Mixed when they differ; a change sets that one key on all of them in one transaction,
  * and from Mixed says which value they all get and asks first. Profession and level come from the villager bodies only.
- * Add held item sells the item in hand as {@code /animus shop stock} does, refusing the wand, which is what a player
- * holds who opened the menu with it.
+ * A click on an item in the player's own inventory sells a copy of that stack here, as the player shop editor takes
+ * one, and Add held item does the same with the item in hand, refusing the wand, which is what a player holds who
+ * opened the menu with it. Either asks the price, then adds a buy offer as {@code /animus shop stock} does.
  */
 final class ShopDetailScreen<P, S> extends ToolScreen<P, S> {
     static final int HEADER = 4, ADD = 10, OFFERS = 11, OPEN = 12, PLAYER_SHOP = 14, STYLE = 19, OPEN_ON = 20, PROFESSION = 21, LEVEL = 22, RESET = 28, REMOVE = 33, DELETE = 35;
@@ -43,6 +44,7 @@ final class ShopDetailScreen<P, S> extends ToolScreen<P, S> {
     static final String FIRST = "&7Put it on an NPC first";
     /** Where a price is asked on a server without an economy. */
     static final String NO_ECONOMY = "No economy plugin, so players cannot pay";
+    static final String CLICK_ITEM = "&7Or click an item in your inventory";
     private ShopFiles.Shop shop;
     private final Runnable changed;
 
@@ -118,7 +120,7 @@ final class ShopDetailScreen<P, S> extends ToolScreen<P, S> {
         else confirm(DELETE, "minecraft:lava_bucket", "Delete", "Deletes the shop; Undo in chat brings it back", 0, true,
                 () -> ShopFiles.save(toolkit, viewer, (ToolkitFiles ignored) -> files().deleteShop(shop.id()), ShopBindScreen.RELOAD_COMMAND, () -> { changed.run(); viewer.back(); }));
         back();
-        help("Hold an item and click Add held item to sell it here. Window style and Opens on change the selected NPCs that use this shop.", "10-shops", "stocking-a-shop-in-game");
+        help("Click an item in your inventory, or hold it and click Add held item, to sell it here. Window style and Opens on change the selected NPCs that use this shop.", "10-shops", "stocking-a-shop-in-game");
     }
 
     /**
@@ -127,22 +129,31 @@ final class ShopDetailScreen<P, S> extends ToolScreen<P, S> {
      */
     private void stock() {
         Prices prices = commands.prices().get();
-        List<String> lines = new ArrayList<>(List.of("&7Hold the item, then open /animus gui"));
+        List<String> lines = new ArrayList<>(List.of(CLICK_ITEM));
         if (prices.unavailable().isPresent()) lines.add("&c" + NO_ECONOMY);
         button(ADD, "minecraft:hopper", title("Add held item"), lore(lines, any("type the price")), (GuiModel.Click click) -> {
-            if (toolkit.host().holdsWand(viewer.player())) { refuse("Hold the item it should sell"); return; }
+            if (toolkit.host().holdsWand(viewer.player())) { refuse("Hold the item it should sell, or click it in your inventory"); return; }
             Optional<NpcItem> held = toolkit.host().worn(viewer.player(), EquipmentSlot.MAIN_HAND);
-            if (held.isEmpty()) { refuse("Hold the item it should sell in your main hand"); return; }
-            boolean advanced = advanced();
-            Prices now = commands.prices().get();
-            prompt(priceLabel(now), "", now.unavailable().isPresent() ? NO_ECONOMY : "One number; 2 reads as " + now.format(BigDecimal.TWO), (String typed) -> {
-                BigDecimal price;
-                try { price = new BigDecimal(typed.strip()); }
-                catch (NumberFormatException wrong) { refuse("The price is one number, such as 12"); return; }
-                if (price.signum() < 0) { refuse("The price is 0 or more"); return; }
-                String shown = now.format(price);
-                ShopFiles.save(toolkit, viewer, (ToolkitFiles ignored) -> files().stock(shop.id(), held.get(), price, shown, advanced), ShopBindScreen.RELOAD_COMMAND, this::reload);
-            });
+            if (held.isEmpty()) { refuse("Hold the item it should sell, or click it in your inventory"); return; }
+            price(held.get());
+        });
+    }
+
+    /** A stack the player clicked in their own inventory: a copy of it is what the new offer sells; nothing moves. */
+    @Override void take(NpcItem item) { price(item); }
+
+    /** Asks the price in the server's money, then adds {@code item} as a buy offer. Without an economy it still asks, and says that players cannot pay. */
+    private void price(NpcItem item) {
+        boolean advanced = advanced();
+        Prices now = commands.prices().get();
+        prompt(priceLabel(now), "", now.unavailable().isPresent() ? NO_ECONOMY : "One number; 2 reads as " + now.format(BigDecimal.TWO), (String typed) -> {
+            BigDecimal price;
+            try { price = new BigDecimal(typed.strip()); }
+            catch (NumberFormatException wrong) { refuse("The price is one number, such as 12"); return; }
+            if (price.signum() < 0) { refuse("The price is 0 or more"); return; }
+            String shown = now.format(price);
+            Optional<String> money = now.unavailable();
+            ShopFiles.save(toolkit, viewer, (ToolkitFiles ignored) -> files().stock(shop.id(), item, price, shown, money, advanced), ShopBindScreen.RELOAD_COMMAND, this::reload);
         });
     }
 

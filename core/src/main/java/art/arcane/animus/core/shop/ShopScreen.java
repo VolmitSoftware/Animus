@@ -39,10 +39,11 @@ import java.util.function.Supplier;
 public final class ShopScreen<P, S> implements Screen {
     /**
      * What every shop screen of one server shares. {@code lost} closes an owned shop whose containers are gone or no
-     * longer open to its owner, with the reason; it runs on the buyer's owner thread and must not block.
+     * longer open to its owner, with the reason, and {@code sold} hears of each trade an owned shop makes; both run on
+     * the buyer's owner thread and must not block.
      */
     public record Context<S>(ShopSettings settings, ShopTransactions<S> transactions, Optional<ShopStateStore> store, Supplier<Instant> clock,
-                             java.util.function.BiConsumer<ShopDocument, String> lost) {}
+                             java.util.function.BiConsumer<ShopDocument, String> lost, java.util.function.BiConsumer<ShopDocument, PlayerShops.Sale> sold) {}
     /**
      * How this window shows the shop. {@code villager} is the opening NPC's villager look, {@code layout} a chest GUI
      * with a list area, used with the chest style, and {@code screens} what that GUI's buttons open.
@@ -99,7 +100,7 @@ public final class ShopScreen<P, S> implements Screen {
     public static <P, S> Optional<Screen> open(ShopDocument shop, ScreenManager<P, S>.Viewer viewer, Context<S> context, View<P, S> view) {
         ScreenHost<P, S> host = viewer.host();
         if (shop.closed().isPresent()) {
-            host.message(viewer.player(), RichText.colorize(context.settings().message("closed").replace("{shop}", shop.title())));
+            host.message(viewer.player(), RichText.colorize(context.settings().message("closed").replace("{shop}", shop.title()).replace("{reason}", lower(shop.closed().get()))));
             return Optional.empty();
         }
         if (shop.permission().isPresent() && !host.permitted(viewer.player(), shop.permission().get())) {
@@ -222,7 +223,7 @@ public final class ShopScreen<P, S> implements Screen {
         if (shop.stocked()) {
             ShopStock<S> opened = host.stock(shop);
             if (opened.inventory().isEmpty()) {
-                host.message(player, RichText.colorize(text("containerUnavailable").replace("{reason}", opened.refusal().orElse("")).replace("{shop}", shop.id())));
+                host.message(player, RichText.colorize(text("containerUnavailable").replace("{reason}", opened.refusal().orElse("")).replace("{shop}", shop.title())));
                 if (opened.lost()) { context.lost().accept(shop, opened.refusal().orElse("")); viewer.close(); }
                 return;
             }
@@ -242,7 +243,7 @@ public final class ShopScreen<P, S> implements Screen {
             case NOT_TRADABLE -> "notTradable";
             case NO_PERMISSION -> "noPermission";
             case LIMIT_REACHED -> "limitReached";
-            case OUT_OF_STOCK -> "outOfStock";
+            case OUT_OF_STOCK -> shop.stocked() ? "outOfStockChest" : "outOfStock";
             case ECONOMY_UNAVAILABLE -> "economyUnavailable";
             case INSUFFICIENT_FUNDS -> "insufficientFunds";
             case INVENTORY_FULL -> "inventoryFull";
@@ -254,9 +255,11 @@ public final class ShopScreen<P, S> implements Screen {
             case CONTAINER_UNAVAILABLE -> "containerUnavailable";
             case NOT_ENOUGH_LEVELS -> "notEnoughLevels";
         };
-        host.message(player, RichText.colorize(fill(text(key).replace("{levels}", Integer.toString(entry.levels())), item, price, outcome.detail().orElse(""))));
+        String reason = outcome.detail().orElse(outcome.status() == ShopTransactions.Status.NOT_ENOUGH_ITEMS ? "the items for that" : "");
+        host.message(player, RichText.colorize(fill(text(key).replace("{levels}", Integer.toString(entry.levels())), item, price, reason)));
         if (!outcome.done()) return;
         String name = host.name(player);
+        if (shop.stocked()) context.sold().accept(shop, new PlayerShops.Sale(name, item, needs(ready.get())));
         for (ShopDocument.ShopCommand command : entry.commands()) {
             String line = command.command().replace("{player}", name).replace("{uuid}", viewer.id().toString())
                     .replace("{amount}", Integer.toString(outcome.units())).replace("{price}", outcome.price().toPlainString());
@@ -354,6 +357,16 @@ public final class ShopScreen<P, S> implements Screen {
         return name != null && entry.type() == ShopDocument.Type.COMMAND ? name : viewer.host().items().describe(ready.goods(), count);
     }
 
+    /** What a trade asks of the buyer, as the reply names items: {@code 5x Emerald, 1x Gold Ingot}. */
+    private String needs(ShopTransactions.Prepared<S> ready) {
+        List<String> parts = new ArrayList<>();
+        for (ShopTransactions.Need<S> need : ready.needs()) parts.add(viewer.host().items().describe(need.stack(), need.amount()));
+        return String.join(", ", parts);
+    }
+
+    /** A stored reason as the middle of a sentence: its first letter in lower case. */
+    static String lower(String reason) { return reason.isEmpty() ? reason : Character.toLowerCase(reason.charAt(0)) + reason.substring(1); }
+
     static String goods(ShopDocument.Goods goods) { return goods.amount() + "x " + readable(goods.item().id()); }
 
     static String readable(String id) {
@@ -375,7 +388,7 @@ public final class ShopScreen<P, S> implements Screen {
     private String levelsLine(ShopDocument.Entry entry) { return text("levelsLine").replace("{levels}", Integer.toString(entry.levels())); }
 
     private String fill(String template, String item, String price, String reason) {
-        return template.replace("{item}", item).replace("{price}", price).replace("{reason}", reason).replace("{shop}", shop.id());
+        return template.replace("{item}", item).replace("{price}", price).replace("{reason}", reason).replace("{shop}", shop.title());
     }
 
     private static String period(long seconds) {

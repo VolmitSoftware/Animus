@@ -538,7 +538,7 @@ class CombatScreensTest extends ToolkitHarness {
     @Test void ridingSettingsSaveForTheSelection() {
         select("horse");
         open(MountScreen::new);
-        click("Riding", Click.LEFT);
+        click("Players can ride it", Click.LEFT);
         click("Enabled", Click.LEFT);
         click("Speed", Click.LEFT);
         click("Permission", Click.LEFT);

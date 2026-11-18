@@ -577,7 +577,7 @@ public final class ConversationDocument {
                     String routine = string(trigger.get("routine"));
                     if (start.gate != null) entry = string(object(object(routines.get(start.gate)).get("then")).get("routine"));
                     else if (routine != null) entry = routine;
-                } else throw new Unfit(path + ".event", "Starts on " + shown(trigger.get("event")) + ".");
+                } else throw new Unfit(path + ".event", "Starts with a " + shown(trigger.get("event")) + " trigger.");
             }
             Map<String, Block> blocks = new LinkedHashMap<>();
             for (Map.Entry<String, JsonElement> routine : routines.entrySet())
@@ -590,14 +590,14 @@ public final class ConversationDocument {
 
         private static Start start(JsonObject trigger, String path, JsonObject routines) {
             if ("proximity".equals(string(trigger.get("event")))) {
-                if (!"enter".equals(string(trigger.get("phase")))) throw new Unfit(path + ".phase", "Starts on leaving.");
+                if (!"enter".equals(string(trigger.get("phase")))) throw new Unfit(path + ".phase", "Starts when a player walks away.");
                 JsonElement radius = trigger.get("radius");
                 return new Start(StartKind.PROXIMITY, radius != null && radius.isJsonPrimitive() && radius.getAsJsonPrimitive().isNumber() ? radius.getAsDouble() : 6, trigger, null);
             }
             String action = Objects.requireNonNullElse(string(trigger.get("action")), "interact");
             StartKind kind = null;
             for (StartKind candidate : StartKind.values()) if (candidate.action().map(action::equals).orElse(false)) { kind = candidate; break; }
-            if (kind == null) throw new Unfit(path + ".action", "Starts on " + action + ".");
+            if (kind == null) throw new Unfit(path + ".action", "Starts with a " + action + " action.");
             JsonElement consume = trigger.get("consume");
             if (kind == StartKind.SNEAK_CLICK && (!present(consume) || "true".equals(string(consume)))) return new Start(kind, 6, trigger, null);
             if (kind != StartKind.CLICK) {

@@ -22,8 +22,10 @@ class ShopScreenTest {
     private final ShopLedger ledger = new ShopLedger(change -> {});
     private final ScreenManager<Player, Stack> manager = new ScreenManager<>(host, npc -> true, warning -> { throw new AssertionError(warning); });
     private final java.util.List<String> lost = new java.util.ArrayList<>();
+    private final java.util.List<String> sold = new java.util.ArrayList<>();
     private final ShopScreen.Context<Stack> context = new ShopScreen.Context<>(ShopSettings.DEFAULT,
-            new ShopTransactions<>(MockInventory.OPS, economy, ledger, () -> NOW), Optional.empty(), () -> NOW, (ShopDocument shop, String reason) -> lost.add(shop.id() + ": " + reason));
+            new ShopTransactions<>(MockInventory.OPS, economy, ledger, () -> NOW), Optional.empty(), () -> NOW, (ShopDocument shop, String reason) -> lost.add(shop.id() + ": " + reason),
+            (ShopDocument shop, PlayerShops.Sale sale) -> sold.add(shop.id() + ": " + sale));
     private final Player alex = new Player("Alex");
 
     static final String BAKERY = """
@@ -72,7 +74,8 @@ class ShopScreenTest {
 
     @Test void withoutAnEconomyPricesReadInPriceFormat() {
         ShopScreen.Context<Stack> none = new ShopScreen.Context<>(ShopSettings.DEFAULT,
-                new ShopTransactions<>(MockInventory.OPS, art.arcane.animus.core.inventory.Economy.none("Vault is not installed"), ledger, () -> NOW), Optional.empty(), () -> NOW, (ShopDocument shop, String reason) -> {});
+                new ShopTransactions<>(MockInventory.OPS, art.arcane.animus.core.inventory.Economy.none("Vault is not installed"), ledger, () -> NOW), Optional.empty(), () -> NOW, (ShopDocument shop, String reason) -> {},
+                (ShopDocument shop, PlayerShops.Sale sale) -> {});
         manager.open(alex, Optional.empty(), (ScreenManager<Player, Stack>.Viewer viewer) -> ShopScreen.open(parse(BAKERY), viewer, none));
         assertTrue(alex.frame.items().get(10).lore().stream().map(RichText::plain).anyMatch((String line) -> line.equals("Price: 12")),
                 alex.frame.items().get(10).lore().toString());
@@ -194,7 +197,7 @@ class ShopScreenTest {
 
     @Test void aClosedShopTellsBuyersAndOpensNothing() {
         assertFalse(open(parse(STALL.replace("\"kind\"", "\"closed\": \"Its chest was broken\", \"kind\""))));
-        assertEquals(List.of("Sam's stall is closed."), alex.messages);
+        assertEquals(List.of("Sam's stall is closed: its chest was broken."), alex.messages, "the buyer reads why");
     }
 
     @Test void aBookOfferShowsTheTitleItCopies() {
@@ -210,9 +213,23 @@ class ShopScreenTest {
         open(parse(STALL));
         click(10, Click.LEFT);
         assertEquals(List.of("Traded for Copy of Tales."), alex.messages);
+        assertEquals(List.of("town:baker: Sale[buyer=Alex, gave=Copy of Tales, took=5x minecraft:emerald]"), sold, "the owner hears of it");
         assertEquals(new Stack("minecraft:written_book", 1, "Tales", "generation=1"), alex.inventory.get(0));
         assertEquals(5, chest.total("minecraft:emerald"));
         assertEquals(0, chest.total("minecraft:writable_book"));
+    }
+
+    @Test void aBuyerHearsWhatIsMissingAndWhyTheShopCannotTrade() {
+        MockInventory chest = new MockInventory(27).with(1, new Stack("minecraft:written_book", 1, "Tales", ""));
+        host.stocks = (ShopDocument shop) -> ShopStock.of(chest);
+        alex.inventory.with(0, Stack.of("minecraft:emerald", 2));
+        open(parse(STALL));
+        click(10, Click.LEFT);
+        assertEquals("Sam's stall is out of Copy of Tales: its chest needs a book and quill for the copy.", alex.messages.getLast());
+        chest.with(0, Stack.of("minecraft:writable_book", 1));
+        click(10, Click.LEFT);
+        assertEquals("You need 5x minecraft:emerald; you have 2.", alex.messages.getLast());
+        assertEquals(List.of(), sold, "a refused trade is no sale");
     }
 
     @Test void aLostChestClosesTheShopButAnUnloadedOneDoesNot() {

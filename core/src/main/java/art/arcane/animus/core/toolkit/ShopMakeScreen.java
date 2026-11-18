@@ -24,11 +24,12 @@ final class ShopMakeScreen<P, S> extends ToolScreen<P, S> {
             "minecraft:zombie_villager", "minecraft:allay");
     /** What each kind does, in one line, and the item it shows as. */
     static final Map<ShopDocument.Kind, String> MEANINGS = Map.of(
-            ShopDocument.Kind.SELLING, "Players buy items from your chest.",
-            ShopDocument.Kind.BUYING, "Players sell you items; you pay from your chest.",
-            ShopDocument.Kind.TRADING, "Players swap items with your chest.",
-            ShopDocument.Kind.BOOK, "Players buy copies of books in your chest.");
-    static final Map<ShopDocument.Kind, String> ICONS = Map.of(ShopDocument.Kind.SELLING, "minecraft:chest", ShopDocument.Kind.BUYING, "minecraft:hopper",
+            ShopDocument.Kind.SELLING, "Sells items from your chest.",
+            ShopDocument.Kind.BUYING, "Buys items and pays from your chest.",
+            ShopDocument.Kind.TRADING, "Trades items with your chest.",
+            ShopDocument.Kind.BOOK, "Sells copies of the books in your chest.");
+    /** Selling is a dropper, which hands items out, and Buying a hopper, which takes them in; a chest stays the Stock button's. */
+    static final Map<ShopDocument.Kind, String> ICONS = Map.of(ShopDocument.Kind.SELLING, "minecraft:dropper", ShopDocument.Kind.BUYING, "minecraft:hopper",
             ShopDocument.Kind.TRADING, "minecraft:emerald", ShopDocument.Kind.BOOK, "minecraft:writable_book");
     private final ShopSpot spot;
     private final String world;

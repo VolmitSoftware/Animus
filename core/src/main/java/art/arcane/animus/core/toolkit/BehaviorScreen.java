@@ -47,7 +47,7 @@ final class BehaviorScreen<P, S> extends ToolScreen<P, S> {
             command(RELOAD_COMMAND);
             reload();
         });
-        button(TRIGGERS, "minecraft:tripwire_hook", title("Trigger bindings"), lore(List.of("&7What each NPC listens for", "&7Shows in chat"), any("list them")), (GuiModel.Click click) -> {
+        button(TRIGGERS, "minecraft:tripwire_hook", title("Triggers"), lore(List.of("&7What each NPC listens for", "&7Shows in chat"), any("list them")), (GuiModel.Click click) -> {
             viewer.close();
             command("animus behaviors triggers");
         });

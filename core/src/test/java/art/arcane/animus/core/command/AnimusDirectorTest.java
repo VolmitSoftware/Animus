@@ -82,7 +82,7 @@ class AnimusDirectorTest {
     @Test void aChangeIsRememberedWithTheNodeItsCommandNeeded() {
         RecentChanges changes = new RecentChanges();
         AnimusDirector saver = new AnimusDirector(new Saver(), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
-                (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> false, () -> changes);
+                (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> false, () -> changes, (UUID player) -> false);
         Actor keeper = new Actor(true, "probe.shop");
         saver.execute(keeper, new String[]{"save"});
         assertEquals("probe.shop", changes.latest(keeper.player().orElseThrow()).orElseThrow().node());
@@ -334,13 +334,13 @@ class AnimusDirectorTest {
 
     @Test void aSimplePlayerGetsTheShortHelpAndAllCommandsIsOneClickAway() {
         AnimusDirector simple = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
-                (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> true, RecentChanges::new);
+                (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> true, RecentChanges::new, (UUID player) -> false);
         Actor player = new Actor(true, AnimusDirector.ADMIN);
         simple.execute(player, new String[]{"help"});
         AnimusHelp.Page brief = player.pages.getLast();
         assertTrue(brief.brief());
         assertEquals(List.of("/animus gui", "/animus create", "/animus select", "/animus spawn", "/animus despawn", "/animus delete", "/animus list", "/animus undo",
-                "/animus editor pair"), brief.entries().stream().map(DirectorRuntimeNode::path).toList());
+                "/animus editor pair", "/animus shop item"), brief.entries().stream().map(DirectorRuntimeNode::path).toList());
         assertEquals("⇀ gui - Open the Animus menu", AnimusHelp.brief(brief).get(1).visible(), "the menu's line calls it the Animus menu");
         player.pages.clear();
         simple.execute(player, new String[0]);
@@ -360,6 +360,33 @@ class AnimusDirectorTest {
         Actor advanced = new Actor(true, AnimusDirector.ADMIN);
         new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of()).execute(advanced, new String[]{"help"});
         assertFalse(advanced.pages.getLast().brief(), "Advanced keeps the whole tree");
+    }
+
+    @Test void shopManageAndDeleteTakeTheirValuesBare() {
+        AnimusDirector real = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
+        Actor maker = new Actor(true, PermissionNodes.SHOPS_CREATE, PermissionNodes.NPC_DELETE);
+        for (String[] typed : List.of(new String[]{"shop", "manage", "players:alex-s-shop"}, new String[]{"shop", "manage", "Alex's"}, new String[]{"delete", "alex-s-shop", "confirm"})) {
+            try { real.execute(maker, typed); } catch (RuntimeException noServices) { /* This tree has no services to run the command with. */ }
+            assertFalse(maker.text().contains("Unexpected"), String.join(" ", typed) + ": " + maker.text());
+        }
+    }
+
+    @Test void aShopMakerFindsTheShopItemAndOnceTheyOwnAShopTheShopMenu() {
+        java.util.Set<UUID> owners = new java.util.HashSet<>();
+        AnimusDirector simple = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
+                (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> true, RecentChanges::new, owners::contains);
+        Actor maker = new Actor(true, PermissionNodes.TOOLS, PermissionNodes.SHOPS_CREATE);
+        simple.execute(maker, new String[]{"help"});
+        assertEquals(List.of("/animus gui", "/animus undo", "/animus shop item"), maker.pages.getLast().entries().stream().map(DirectorRuntimeNode::path).toList());
+        owners.add(maker.player().orElseThrow());
+        simple.execute(maker, new String[]{"help"});
+        assertEquals(List.of("/animus gui", "/animus undo", "/animus shop item", "/animus shop manage"), maker.pages.getLast().entries().stream().map(DirectorRuntimeNode::path).toList());
+        AnimusDirector mod = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(), (String plugin) -> true,
+                (NeedsFeature.Feature feature) -> feature == NeedsFeature.Feature.PLAYER_SHOPS ? java.util.Optional.of(art.arcane.animus.core.gui.ScreenHost.NO_PLAYER_SHOPS) : java.util.Optional.empty(),
+                (UUID player) -> true, RecentChanges::new, owners::contains);
+        mod.execute(maker, new String[]{"help"});
+        assertEquals(List.of("/animus gui", "/animus undo"), maker.pages.getLast().entries().stream().map(DirectorRuntimeNode::path).toList(),
+                "a mod server has no player shops, so its short page leaves both shop commands out");
     }
 
     /** A probe with a menu, as {@code /animus gui} and {@code /animus tools} open it, and a {@code gui} group of its own commands. */

@@ -54,12 +54,14 @@ final class SkinScreen<P, S> extends ToolScreen<P, S> {
         back();
         creating.ifPresent((CreateFlow flow) -> flow.showing(this));
         List<String> ids = toolkit.selected(viewer.id());
+        boolean mine = toolkit.skin(viewer.player()).isPresent();
         if (skins == null) icon(22, "minecraft:clock", "&7Reading skins", List.of(), Optional.empty());
         else list(skins, (SkinFiles.Entry skin) -> skin.title() + " " + skin.hash(),
-                creating.isPresent() ? "No saved skins; pick My skin, Player name or Default" : "No saved skins yet; use My skin or Player name",
+                creating.isPresent() ? "No saved skins; pick " + (mine ? "My skin, " : "") + "Player name or Default" : "No saved skins yet; use " + (mine ? "My skin or " : "") + "Player name",
                 (Integer slot, SkinFiles.Entry skin) -> entry(slot, skin, ids));
         String verb = creating.isPresent() ? "pick it" : "wear it";
-        head(MINE, title("My skin"), lore(List.of("&7Your own skin"), any(verb)), viewer.host().name(viewer.player()), (GuiModel.Click click) -> mine());
+        if (mine) head(MINE, title("My skin"), lore(List.of("&7Your own skin"), any(verb)), viewer.host().name(viewer.player()), (GuiModel.Click click) -> mine());
+        else icon(MINE, "minecraft:gray_dye", "&7My skin", List.of("&7Offline-mode servers cannot copy it", "&7Use Player name instead"), Optional.empty());
         button(NAMED, "minecraft:name_tag", title("Player name"), lore(List.of("&7Any Minecraft account's skin"), any("type a name")), (GuiModel.Click click) -> prompt("Player name", "", this::named));
         button(DEFAULT, HEAD, title("Default"), lore(List.of("&7The look without a skin"), any(verb)), (GuiModel.Click click) -> plain());
         button(ADDRESS, "minecraft:paper", title("Skin address"), lore(List.of("&7A skin PNG on the web, signed through MineSkin"), any("paste the address")),

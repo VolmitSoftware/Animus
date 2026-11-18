@@ -42,13 +42,20 @@ class ToolkitScreensTest extends ToolkitHarness {
         for (int slot : List.of(13, 22, 31, 34)) assertFalse(NOT_ON_CENTRE.contains(name(slot)), title() + " has " + name(slot) + " on slot " + slot);
     }
 
+    @Test void homeKeepsItsFourButtonsWhereNoPlayerShopsRun() {
+        host.containerShops = false;
+        toolkit.home(alex.id);
+        assertEquals(Map.of(10, "New NPC", 12, "NPCs", 14, "Wand", 16, "Web editor", 18, "Close", 25, "Mode: Simple", 26, "Help"), buttons());
+    }
+
     @Test void homeShowsTheCommonTasksInSimpleAndTheLibraryInAdvanced() {
         toolkit.home(alex.id);
         assertEquals("Animus", title());
-        assertEquals(Map.of(10, "New NPC", 12, "NPCs", 14, "Wand", 16, "Web editor", 18, "Close", 25, "Mode: Simple", 26, "Help"), buttons());
+        assertEquals(Map.of(9, "New NPC", 11, "NPCs", 13, "Wand", 15, "Your shops", 17, "Web editor", 18, "Close", 25, "Mode: Simple", 26, "Help"), buttons(),
+                "an admin may make shops, so Your shops joins the row");
         centreIsSafe();
         click("Mode: Simple", Click.LEFT);
-        assertEquals(Map.ofEntries(Map.entry(10, "New NPC"), Map.entry(12, "NPCs"), Map.entry(14, "Wand"), Map.entry(16, "Web editor"),
+        assertEquals(Map.ofEntries(Map.entry(9, "New NPC"), Map.entry(11, "NPCs"), Map.entry(13, "Wand"), Map.entry(15, "Your shops"), Map.entry(17, "Web editor"),
                 Map.entry(18, "Folders"), Map.entry(19, "Behaviors"), Map.entry(20, "Shops"), Map.entry(21, "Routes"), Map.entry(22, "Recordings"), Map.entry(23, "Holograms"), Map.entry(24, "GUIs"),
                 Map.entry(25, "Skins"), Map.entry(26, "Trait groups"), Map.entry(27, "Close"), Map.entry(34, "Mode: Advanced"), Map.entry(35, "Help")), buttons(), "Advanced adds a row; Simple items stay where they were");
         centreIsSafe();
@@ -553,11 +560,31 @@ class ToolkitScreensTest extends ToolkitHarness {
         assertEquals(List.of(Toolkit.CLICK_SOUND + "@0.3"), alex.sounds);
     }
 
-    @Test void helpPrintsALineWithTheWikiAndKeepsTheWindow() {
+    @Test void withNoSkinsSavedTheSkinListPointsOnlyAtWhatWorks() {
+        toolkit.selectOnly(alex.id, "guard");
+        toolkit.open(alex.id, (Toolkit<MockScreenHost.Player, Stack> kit, ScreenManager<MockScreenHost.Player, Stack>.Viewer viewer, Toolkit.Commands given) -> new SkinScreen<>(kit, viewer, given));
+        drain();
+        assertTrue(shows("No saved skins yet; use Player name"), "this server cannot copy a skin, so My skin is not offered: " + buttons());
+        playerSkin = Optional.of(new art.arcane.animus.core.presentation.BodySkin("e30=", "c2ln"));
+        toolkit.open(alex.id, (Toolkit<MockScreenHost.Player, Stack> kit, ScreenManager<MockScreenHost.Player, Stack>.Viewer viewer, Toolkit.Commands given) -> new SkinScreen<>(kit, viewer, given));
+        drain();
+        assertTrue(shows("No saved skins yet; use My skin or Player name"), buttons().toString());
+    }
+
+    @Test void theSelectionsScreenOpensInOneWindowOverHome() {
+        toolkit.selectOnly(alex.id, "guard");
+        toolkit.open(alex.id);
+        assertEquals(1, alex.windows.size(), "no Home window first: " + alex.windows);
+        click("Back", Click.LEFT);
+        assertEquals("Animus", title(), "Back still leads to Home");
+    }
+
+    @Test void helpPrintsALineWithTheDocsLinkAndKeepsTheWindow() {
         toolkit.home(alex.id);
         Object window = alex.window;
         click("Help", Click.LEFT);
         assertTrue(alex.messages.getLast().contains("https://docs.volmitsoftware.com/animus/21-in-game-toolkit"), alex.messages.getLast());
+        assertTrue(alex.lines.getLast().visible().endsWith("[Docs]"), "the link reads [Docs], as every reply's does: " + alex.lines.getLast().visible());
         assertTrue(alex.messages.getLast().contains("/animus gui opens this menu"), "Home's help names the command that opens it: " + alex.messages.getLast());
         assertEquals(window, alex.window);
     }

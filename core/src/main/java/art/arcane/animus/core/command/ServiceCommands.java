@@ -70,10 +70,11 @@ final class ServiceCommands {
         @NeedsFeature(NeedsFeature.Feature.PLAYER_SHOPS)
         void item() { services.shops().item(actor()); }
 
-        @Director(description = "Run your shops, or one shop by its id", origin = DirectorOrigin.PLAYER)
+        @Director(description = "Run your shops, or one shop by its name", origin = DirectorOrigin.PLAYER)
         @AnimusPermission(PermissionNodes.SHOPS_CREATE)
         @NeedsFeature(NeedsFeature.Feature.PLAYER_SHOPS)
-        void manage(@Param(name = "shop", defaultValue = "", description = "The shop id; all your shops when left out") String shop) {
+        @Positional("shop")
+        void manage(@Param(name = "shop", defaultValue = "", description = "Your shop's name or title; all your shops when left out") String shop) {
             services.shops().manage(actor(), given(shop));
         }
 

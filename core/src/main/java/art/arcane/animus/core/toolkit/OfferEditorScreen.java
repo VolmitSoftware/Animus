@@ -28,6 +28,8 @@ final class OfferEditorScreen<P, S> extends ToolScreen<P, S> {
     static final int COLUMNS = 9, PAGES = 5, MAXIMUM = COLUMNS * PAGES, MOST = 64;
     static final int TOP = 0, FIRST = 1, SECOND = 2;
     static final String BOOK = "minecraft:written_book";
+    /** The slot a new offer starts in: pink, the menu's own colour, so an empty editor never looks like an empty chest. */
+    static final String STARTER = "minecraft:pink_stained_glass_pane";
 
     /** One offer column: the item on top, or a book's title, and the price items under it, each carrying its amount as its count. */
     static final class Offer {
@@ -58,6 +60,8 @@ final class OfferEditorScreen<P, S> extends ToolScreen<P, S> {
     }
 
     @Override String title() { return "Offers"; }
+    /** Prices here are often emeralds, so Save is green wool, as a shop window's Confirm is. */
+    @Override String saveIcon() { return "minecraft:lime_wool"; }
     @Override int rows() { return 4; }
     @Override String node() { return PlayerShopFlow.node(toolkit.shopFlow().manager(viewer.player())); }
     @Override void begin() { load(); }
@@ -181,6 +185,7 @@ final class OfferEditorScreen<P, S> extends ToolScreen<P, S> {
         Optional<Offer> offer = index < offers.size() ? Optional.of(offers.get(index)) : Optional.empty();
         if (kind == ShopDocument.Kind.BOOK && row == TOP) {
             if (offer.isPresent()) icon(slot, BOOK, title(offer.get().book.orElse("")), List.of("&7" + role(row)), Optional.empty());
+            else if (index == offers.size() && offers.isEmpty()) icon(slot, STARTER, title("Put a signed book in your chest"), List.of("&7Its copies then sell here, by title"), Optional.empty());
             else if (index == offers.size()) icon(slot, "minecraft:light_gray_stained_glass_pane", "&7No more books", List.of("&7Put a signed book in your chest"), Optional.empty());
             return;
         }
@@ -193,10 +198,17 @@ final class OfferEditorScreen<P, S> extends ToolScreen<P, S> {
             return;
         }
         boolean chosen = picked.filter((Picked at) -> at.offer() == index && at.row() == row).isPresent();
-        String hint = row == TOP && offer.isEmpty() ? "&7Or click an item in your inventory" : "&7Then click an item in your inventory";
-        button(slot, chosen ? "minecraft:lime_stained_glass_pane" : "minecraft:light_gray_stained_glass_pane", chosen ? title("Picked") : "&7" + role(row),
+        boolean starter = row == TOP && offer.isEmpty() && !chosen;
+        String hint = row == TOP && offer.isEmpty() ? "&7" + role(row) + " what you click" : "&7Then click an item in your inventory";
+        String icon = chosen ? "minecraft:lime_stained_glass_pane" : starter ? STARTER : "minecraft:light_gray_stained_glass_pane";
+        button(slot, icon, chosen ? title("Picked") : starter ? title(starter()) : "&7" + role(row),
                 lore(List.of(chosen ? "&fClick an item in your inventory" : hint), any(chosen ? "unpick it" : "pick this slot")),
                 (GuiModel.Click click) -> picked = chosen ? Optional.empty() : Optional.of(new Picked(index, row)));
+    }
+
+    /** The starter slot's name for this shop's kind, from the shop's side: what clicking an item makes it do. */
+    private String starter() {
+        return "Click an item in your inventory to " + switch (kind) { case BUYING -> "buy it"; case TRADING -> "trade it away"; default -> "sell it"; };
     }
 
     private void amount(int index, int row, GuiModel.Click click) {

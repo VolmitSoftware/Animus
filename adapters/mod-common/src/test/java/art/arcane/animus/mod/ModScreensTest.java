@@ -86,11 +86,14 @@ class ModScreensTest {
         List<ItemStack> dropped = new ArrayList<>();
         // Vanilla add answers true for a creative player with no room, after setting the stack's count to nothing.
         java.util.function.Predicate<ItemStack> creative = (ItemStack stack) -> { stack.setCount(0); return true; };
-        assertEquals(ScreenHost.WandGift.DROPPED, ModScreens.give(wand, false, creative, dropped::add));
+        int[] handed = {0};
+        assertEquals(ScreenHost.WandGift.DROPPED, ModScreens.give(wand, false, creative, dropped::add, () -> handed[0]++));
         assertEquals(List.of(wand), dropped);
         assertEquals(1, wand.getCount(), "the dropped wand is whole");
-        assertEquals(ScreenHost.WandGift.GIVEN, ModScreens.give(AnimusMenuTest.stack(Items.STICK), true, (ItemStack stack) -> true, dropped::add));
+        assertEquals(0, handed[0], "a dropped wand is not in the hand");
+        assertEquals(ScreenHost.WandGift.GIVEN, ModScreens.give(AnimusMenuTest.stack(Items.STICK), true, (ItemStack stack) -> true, dropped::add, () -> handed[0]++));
         assertEquals(1, dropped.size());
+        assertEquals(1, handed[0], "a given wand moves to the main hand");
     }
 
     @Test void namesAndLoreAreUpright() {

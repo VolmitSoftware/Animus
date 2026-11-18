@@ -97,6 +97,12 @@ public interface ScreenHost<P, S> {
      */
     default Optional<String> stockRefusal(P player, art.arcane.animus.core.shop.ShopDocument.Container container) { return Optional.of(NO_CHEST_SHOPS); }
 
+    /**
+     * Whether a shop's chest block is gone: its chunk is loaded on this thread and the block holds no inventory any more,
+     * as after its owner broke it. False whenever that cannot be told here, such as for an unloaded chunk.
+     */
+    default boolean containerGone(art.arcane.animus.core.shop.ShopDocument.Container container) { return false; }
+
     /** Opens the block's inventory for the player as if they opened it by hand; empty when it opened, else why not. */
     default Optional<String> openContainer(P player, art.arcane.animus.core.shop.ShopDocument.Container container) { return Optional.of(NO_CHEST_SHOPS); }
 

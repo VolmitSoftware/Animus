@@ -73,7 +73,7 @@ final class MountScreen<P, S> extends ToolScreen<P, S> {
         String ridden = rides.orElse(rideEntity.isEmpty() ? "nothing" : rideEntity.getFirst());
         List<String> lines = new ArrayList<>(List.of("&7Rides &f" + ridden, "&7Carries &f" + names(riders.stream().sorted().toList(), 6)));
         for (String problem : problems) lines.add("&c" + problem);
-        if (selected.size() > 1) lines.add("&7First of " + ToolkitFiles.count(selected.size()) + "; Riding changes all");
+        if (selected.size() > 1) lines.add("&7First of " + ToolkitFiles.count(selected.size()) + "; changes apply to all");
         icon(SUMMARY, "minecraft:name_tag", title(first), lines, Optional.empty());
 
         button(RIDE, "minecraft:saddle", title("Ride another NPC"), lore(List.of("&7" + first + " rides the NPC you click"), any("pick it with the wand")),
@@ -90,7 +90,7 @@ final class MountScreen<P, S> extends ToolScreen<P, S> {
         });
         button(SEAT, "minecraft:oak_stairs", title("Seat"), lore(List.of("&7Players sit on top with a click, as GSit seats players"), any("open")),
                 (GuiModel.Click click) -> push(new SettingsScreen<>(toolkit, viewer, commands, CombatFields.seat())));
-        button(RIDING, "minecraft:carrot_on_a_stick", title("Riding"), lore(List.of("&7How players ride it: permission, speed, leash, lifetime"), any("open")),
+        button(RIDING, "minecraft:carrot_on_a_stick", title("Players can ride it"), lore(List.of("&7How players ride it: permission, speed, leash, lifetime"), any("open")),
                 (GuiModel.Click click) -> push(new SettingsScreen<>(toolkit, viewer, commands, CombatFields.riding())));
         confirm(DISMOUNT, "minecraft:barrier", "Dismount", first + " stops riding; Undo in chat brings it back", 0, true,
                 () -> toolkit.write(viewer, (ToolkitFiles ignored) -> new CombatFiles(toolkit.npcs()).dismount(first)));

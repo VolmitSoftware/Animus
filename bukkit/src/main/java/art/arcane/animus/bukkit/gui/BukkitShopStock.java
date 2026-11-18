@@ -79,6 +79,13 @@ final class BukkitShopStock {
         return checked.inventory().isPresent() ? Optional.empty() : Optional.of(checked.reason());
     }
 
+    /** Whether the block is loaded on this thread and no longer holds an inventory, as after it was broken. */
+    boolean gone(ShopDocument.Container container) {
+        World world = world(container.world());
+        if (world == null || !world.isChunkLoaded(container.x() >> 4, container.z() >> 4) || !owned(world, container.x() >> 4, container.z() >> 4)) return false;
+        return !(world.getBlockAt(container.x(), container.y(), container.z()).getState() instanceof Container);
+    }
+
     /** Opens the block's inventory for the player as if they opened it by hand; empty when it opened, else why not. */
     Optional<String> show(Player player, ShopDocument.Container container) {
         Checked checked = check(player.getUniqueId(), container, "you");

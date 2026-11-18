@@ -106,7 +106,7 @@ class PermissionAuditTest extends ToolkitHarness {
                         new SettingsScreen<>(kit, viewer, lent, CombatFields.combat("melee"))),
                 new Refused("Target rules", PermissionNodes.COMBAT, (Toolkit<Player, Stack> kit, ScreenManager<Player, Stack>.Viewer viewer, Toolkit.Commands lent) ->
                         new TargetRulesScreen<>(kit, viewer, lent, "targets")),
-                new Refused("Riding", PermissionNodes.NPC_EDIT, (Toolkit<Player, Stack> kit, ScreenManager<Player, Stack>.Viewer viewer, Toolkit.Commands lent) ->
+                new Refused("Players can ride it", PermissionNodes.NPC_EDIT, (Toolkit<Player, Stack> kit, ScreenManager<Player, Stack>.Viewer viewer, Toolkit.Commands lent) ->
                         new SettingsScreen<>(kit, viewer, lent, CombatFields.riding())),
                 new Refused("Mounts", PermissionNodes.NPC_EDIT, MountScreen::new),
                 new Refused("Equipment", PermissionNodes.NPC_EDIT, EquipmentScreen::new),

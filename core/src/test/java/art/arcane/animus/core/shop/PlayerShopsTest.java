@@ -104,9 +104,55 @@ class PlayerShopsTest {
     }
 
     @Test void aClosedShopTellsABuyerWhoClicksIt() throws IOException {
-        Files.writeString(directory.resolve(PATH), stall(sam.id, ",\"closed\":\"Closed by its owner\""));
+        Files.writeString(directory.resolve(PATH), stall(sam.id, ",\"closed\":\"Its owner closed it\""));
         shops.reload((ShopCatalog ignored) -> {});
         shops.openShop(alex, "players:sams-stall", Optional.empty());
-        assertEquals(List.of("Sam's stall is closed."), alex.messages.stream().map(RichText::plain).toList());
+        assertEquals(List.of("Sam's stall is closed: its owner closed it."), alex.messages.stream().map(RichText::plain).toList());
+    }
+
+    private void npc(String id, String shop) throws IOException {
+        Path file = directory.resolve("npcs/" + id + ".json");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, "{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"" + UUID.nameUUIDFromBytes(id.getBytes(java.nio.charset.StandardCharsets.UTF_8)) + "\",\"id\":\"" + id
+                + "\",\"group\":\"\",\"name\":\"" + id + "\",\"type\":\"minecraft:villager\",\"spawned\":true,\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0},"
+                + "\"modules\":{\"animus:shop\":{\"shop\":\"" + shop + "\"}}}");
+        assertTrue(runtime.npcs().reload().isEmpty(), runtime.npcs().diagnostics().toString());
+    }
+
+    @Test void aChestShopOnlyItsNpcOpensIsRunByThatNpc() throws IOException {
+        npc("stall", "players:sams-stall");
+        npc("bakery", "town:bakery");
+        assertEquals(List.of("players:sams-stall"), shops.players().runBy(runtime.npcs().stored(), Set.of("stall")).stream().map(ShopDocument::id).toList());
+        assertEquals(List.of(), shops.players().runBy(runtime.npcs().stored(), Set.of("bakery")), "a shop without chests is no chest shop");
+        npc("stall-two", "players:sams-stall");
+        assertEquals(List.of(), shops.players().runBy(runtime.npcs().stored(), Set.of("stall")), "another NPC still opens it");
+        assertEquals(1, shops.players().runBy(runtime.npcs().stored(), Set.of("stall", "stall-two")).size());
+    }
+
+    @Test void deletingAShopsNpcWithItsShopIsOneChangeThatUndoesBoth() throws IOException {
+        npc("stall", "players:sams-stall");
+        String line = new art.arcane.animus.core.admin.Administration(runtime).delete("stall", List.of("players:sams-stall"), "its shop Sam's stall");
+        assertTrue(line.startsWith("Deleted stall and its shop Sam's stall; tx "), line);
+        assertTrue(runtime.npcs().find("stall").isEmpty());
+        assertEquals(null, runtime.documents().read(PATH));
+        new art.arcane.animus.core.admin.Administration(runtime).rollback(line.substring(line.indexOf("tx ") + 3));
+        assertTrue(runtime.documents().read(PATH) != null, "undo brings the shop back with its NPC");
+        runtime.npcs().reload();
+        assertTrue(runtime.npcs().find("stall").isPresent());
+    }
+
+    @Test void theNpcLimitRefusesAShopInShopWords() {
+        assertEquals(Optional.of("A shop needs an NPC and you own 2, your limit; remove one to open a shop"), PlayerShops.npcFull(2, OptionalInt.of(2)));
+        assertEquals(Optional.empty(), PlayerShops.npcFull(1, OptionalInt.of(2)));
+        assertEquals(Optional.empty(), PlayerShops.npcFull(9, OptionalInt.empty()));
+    }
+
+    @Test void aSaleLineSpeaksFromTheShopsSide() throws IOException {
+        ShopDocument stall = shops.players().shop("players:sams-stall").orElseThrow();
+        assertEquals("&aSam's stall&a sold 1x Diamond to Alex for 5x Emerald", PlayerShops.line(stall, new PlayerShops.Sale("Alex", "1x Diamond", "5x Emerald")));
+        Files.writeString(directory.resolve(PATH), stall(sam.id, "").replace("\"kind\":\"selling\"", "\"kind\":\"buying\""));
+        shops.reload((ShopCatalog ignored) -> {});
+        ShopDocument buyer = shops.players().shop("players:sams-stall").orElseThrow();
+        assertEquals("&aSam's stall&a bought 16x Cod from Alex for 1x Emerald", PlayerShops.line(buyer, new PlayerShops.Sale("Alex", "1x Emerald", "16x Cod")));
     }
 }

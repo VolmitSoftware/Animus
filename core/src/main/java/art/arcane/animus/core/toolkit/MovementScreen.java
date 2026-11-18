@@ -89,7 +89,7 @@ final class MovementScreen<P, S> extends ToolScreen<P, S> {
         PropertyScreen.Section movement = PropertyScreen.SECTIONS.stream().filter((PropertyScreen.Section section) -> section.name().equals("Movement")).findFirst().orElseThrow();
         opens(SETTINGS, "minecraft:feather", "Movement settings", lore(List.of("&7Speed, doors, water, falls"), any("open")), () ->
                 new FieldScreen<>(toolkit, viewer, commands, "Movement settings", PropertyScreen.section(PropertyScreen.SCHEMA, movement, Optional.empty()), NpcScreen.scope(toolkit, ids), movement.path()));
-        opens(MOUNTS, "minecraft:saddle", "Mounts and riding", lore(List.of("&7Ride, carry and player riding"), any("open")), () -> new MountScreen<>(toolkit, viewer, commands));
+        opens(MOUNTS, "minecraft:saddle", "Mounts", lore(List.of("&7What it rides on, what it carries, who can ride it"), any("open")), () -> new MountScreen<>(toolkit, viewer, commands));
     }
 
     /** Walk once: a saved route to walk now without saving it on the NPCs. */

@@ -25,6 +25,12 @@ class TextPromptsTest {
 
     void run() { while (!owner.isEmpty()) owner.removeFirst().run(); }
 
+    @Test void anAnvilSaysHowToAnswerAsItOpensAndOnItsPaper() {
+        ScreenHost.Prompt prompt = new ScreenHost.Prompt("Shop name", "old", "1 to 64 characters", answers::add);
+        assertEquals("Shop name: click the paper to confirm, Esc to cancel", RichText.plain(RichText.colorize(TextPrompts.opened(prompt))));
+        assertEquals(List.of("Click to confirm", "Esc to cancel", "1 to 64 characters"), TextPrompts.lore(prompt).stream().map((String line) -> RichText.plain(RichText.colorize(line))).toList());
+    }
+
     @Test void aTypedLineIsTrimmedAndAnsweredOnceOnTheOwner() {
         prompts.start(alex, waiting(TextPrompts.Input.CHAT, null));
         assertTrue(prompts.typed(alex, "  Baker "));
@@ -71,8 +77,8 @@ class TextPromptsTest {
     }
 
     @Test void theAnvilResultSaysHowToAnswerThenTheHint() {
-        assertEquals(List.of("Click to confirm"), plain(TextPrompts.lore(new ScreenHost.Prompt("Name", "old", answers::add))));
-        assertEquals(List.of("Click to confirm", "Letters, digits, - and _"), plain(TextPrompts.lore(new ScreenHost.Prompt("Id", "", "Letters, digits, - and _", answers::add))));
+        assertEquals(List.of("Click to confirm", "Esc to cancel"), plain(TextPrompts.lore(new ScreenHost.Prompt("Name", "old", answers::add))));
+        assertEquals(List.of("Click to confirm", "Esc to cancel", "Letters, digits, - and _"), plain(TextPrompts.lore(new ScreenHost.Prompt("Id", "", "Letters, digits, - and _", answers::add))));
     }
 
     @Test void theChatFallbackSaysWhatToTypeAndHowToCancel() {

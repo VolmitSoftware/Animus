@@ -30,7 +30,8 @@ class ShopStyleTest {
     private final ShopLedger ledger = new ShopLedger(change -> {});
     private final ScreenManager<Player, Stack> manager = new ScreenManager<>(host, npc -> true, warning -> { throw new AssertionError(warning); });
     private final ShopScreen.Context<Stack> context = new ShopScreen.Context<>(ShopSettings.DEFAULT,
-            new ShopTransactions<>(MockInventory.OPS, economy, ledger, () -> NOW), Optional.empty(), () -> NOW, (ShopDocument shop, String reason) -> {});
+            new ShopTransactions<>(MockInventory.OPS, economy, ledger, () -> NOW), Optional.empty(), () -> NOW, (ShopDocument shop, String reason) -> {},
+            (ShopDocument shop, PlayerShops.Sale sale) -> {});
     private final Player alex = new Player("Alex");
 
     static final String MARKET = """

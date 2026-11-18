@@ -96,7 +96,7 @@ final class ConversationScreen<P, S> extends ToolScreen<P, S> {
 
     private void start() {
         StartKind kind = working.start.kind;
-        button(START, "minecraft:lever", title("Starts on"), lore(List.of("&fNow: " + kind.label()), hints("next", "previous", "")),
+        button(START, "minecraft:lever", title("Starts when"), lore(List.of("&fNow: " + kind.label()), hints("next", "previous", "")),
                 (GuiModel.Click click) -> { working.start(cycle(click, List.of(StartKind.values()), kind)); edited(); });
         if (kind == StartKind.PROXIMITY)
             button(RADIUS, "minecraft:compass", title("Distance"), lore(numberRow("How near a player walks", number(working.start.radius) + " blocks"), hints("1 more", "1 less", "10 at a time")),

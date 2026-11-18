@@ -75,12 +75,12 @@ class BehaviorScreensTest extends ToolkitHarness {
         select("guard", "baker");
         openList();
         assertEquals(Map.of(0, "harbor:ferryman", 1, "town:patrol", 2, "town:talk", BehaviorScreen.CREATE, "New conversation", BehaviorScreen.RELOAD, "Reload",
-                BehaviorScreen.TRIGGERS, "Trigger bindings", ToolScreen.BACK, "Back", ToolScreen.SEARCH, "Search", ToolScreen.HELP, "Help"), buttons());
+                BehaviorScreen.TRIGGERS, "Triggers", ToolScreen.BACK, "Back", ToolScreen.SEARCH, "Search", ToolScreen.HELP, "Help"), buttons());
         assertEquals("Conversation\nNow: on 0 of 2\nClick: use on 2 NPCs\nRight-click: details", lore("town:talk"));
         assertEquals("Node graph\nNow: on 1 of 2\nClick: use on 2 NPCs\nRight-click: details", lore("town:patrol"));
         assertTrue(lore("harbor:ferryman").contains("Now: on 0 of 2, 1 by trait group"), lore("harbor:ferryman"));
         assertFalse(lore("town:talk").contains("Loose file"), "the file's place shows only in details");
-        assertTrue(lore("Trigger bindings").contains("Shows in chat"), lore("Trigger bindings"));
+        assertTrue(lore("Triggers").contains("Shows in chat"), lore("Triggers"));
     }
 
     @Test void aClickUsesItOnTheSelectionAndDetachIsInTheDetails() throws IOException {
@@ -155,7 +155,7 @@ class BehaviorScreensTest extends ToolkitHarness {
     @Test void aBehaviorThatIsNoConversationSaysWhy() {
         openList();
         click("town:patrol", Click.RIGHT);
-        assertTrue(lore("Not a conversation").contains("Starts on timer."), lore("Not a conversation"));
+        assertTrue(lore("Not a conversation").contains("Starts with a timer trigger."), lore("Not a conversation"));
     }
 
     @Test void cancelARunListsTheRunningRunsToClick() {
@@ -187,7 +187,7 @@ class BehaviorScreensTest extends ToolkitHarness {
         openList();
         click("Reload", Click.LEFT);
         assertEquals(BehaviorScreen.RELOAD_COMMAND, alex.commands.getLast());
-        click("Trigger bindings", Click.LEFT);
+        click("Triggers", Click.LEFT);
         assertEquals("animus behaviors triggers", alex.commands.getLast());
         assertNull(alex.window);
     }

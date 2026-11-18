@@ -5,20 +5,30 @@ import art.arcane.animus.core.config.ShopSettings;
 import art.arcane.animus.core.editor.DocumentKind;
 import art.arcane.animus.core.editor.EditorDocuments;
 import art.arcane.animus.core.editor.EditorError;
+import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.text.RichText;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.BiConsumer;
@@ -27,9 +37,11 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
- * Container shops as the last catalog holds them: which blocks keep whose stock, how many shops a player owns and may
- * own, and the writes that follow the world rather than a player: closing a shop whose chest is lost and dropping a
- * chest its owner broke. Lookups read the last catalog without locks, from any thread; writes run on the file lane.
+ * Chest shops as the last catalog holds them: which blocks keep whose stock, how many shops a player owns and may own,
+ * and the writes that follow the world rather than a player: closing a shop whose chest is lost and dropping a chest its
+ * owner broke. Each shop also counts its sales since its owner last opened its menu, kept in {@value #SALES}, and tells
+ * its online owner of each one unless they turned that off. Lookups read the last catalog without locks, from any
+ * thread; writes run on the file lane.
  */
 public final class PlayerShops {
     /** One container block, its world as the shop file names it. */
@@ -37,6 +49,23 @@ public final class PlayerShops {
         public static Block of(ShopDocument.Container container) { return new Block(container.world(), container.x(), container.y(), container.z()); }
         public String shown() { return world + " " + x + " " + y + " " + z; }
     }
+
+    /** One trade a chest shop made: who traded, what the shop handed over and what it took, as the buyer's reply names them. */
+    public record Sale(String buyer, String gave, String took) {
+        public Sale { Objects.requireNonNull(buyer); Objects.requireNonNull(gave); Objects.requireNonNull(took); }
+    }
+
+    /** The shop's sales since its owner last opened its menu, and whether the owner turned the sale line off. */
+    private record Tally(int unseen, boolean quiet) {
+        static final Tally NONE = new Tally(0, false);
+    }
+
+    /** The namespace of the shops players make in game. */
+    public static final String NAMESPACE = "players";
+
+    /** Where the sale counts and the sale line switches are kept. */
+    public static final String SALES = "state/shop-sales.json";
+    static final int SALES_SCHEMA = 1;
 
     private final Supplier<DocumentStore> store;
     private final Executor files;
@@ -46,6 +75,8 @@ public final class PlayerShops {
     private final Consumer<String> log;
     private volatile Map<Block, String> blocks = Map.of();
     private volatile Map<String, ShopDocument> shops = Map.of();
+    private final Map<String, Tally> sales = new ConcurrentHashMap<>();
+    private volatile boolean salesRead;
 
     /**
      * @param reload reads the catalog again after a write
@@ -62,8 +93,9 @@ public final class PlayerShops {
     /** The {@code [shops]} settings a hotload last set. */
     public ShopSettings settings() { return settings.get(); }
 
-    /** Takes the container shops of a newly loaded catalog. */
+    /** Takes the chest shops of a newly loaded catalog; the first one also reads the sale counts. Runs on the file lane. */
     public void index(ShopCatalog catalog) {
+        if (!salesRead) readSales();
         Map<Block, String> nextBlocks = new HashMap<>();
         Map<String, ShopDocument> nextShops = new HashMap<>();
         for (ShopDocument shop : catalog.shops().values()) {
@@ -96,6 +128,24 @@ public final class PlayerShops {
     /** The container shops {@code player} owns, by id. */
     public List<ShopDocument> owned(UUID player) { return all().stream().filter((ShopDocument shop) -> shop.owns(player)).toList(); }
 
+    /**
+     * The chest shop a player means by {@code named}: its id, its id without {@code players:}, or its title in any case,
+     * the player's own shops first.
+     */
+    public Optional<ShopDocument> find(String named, UUID player) {
+        String wanted = named.strip();
+        Optional<ShopDocument> exact = shop(wanted).or(() -> shop(NAMESPACE + ":" + wanted));
+        if (exact.isPresent()) return exact;
+        Predicate<ShopDocument> called = (ShopDocument shop) -> RichText.plain(RichText.colorize(shop.title())).equalsIgnoreCase(wanted)
+                || shop.id().substring(shop.id().indexOf(':') + 1).equalsIgnoreCase(wanted);
+        return owned(player).stream().filter(called).findFirst().or(() -> all().stream().filter(called).findFirst());
+    }
+
+    /** The player's shops as {@code /animus shop manage} completes them: their ids, without {@code players:}. */
+    public List<String> names(UUID player) {
+        return owned(player).stream().map((ShopDocument shop) -> shop.id().startsWith(NAMESPACE + ":") ? shop.id().substring(NAMESPACE.length() + 1) : shop.id()).toList();
+    }
+
     /** Whoever may run a shop they do not own: the console, {@code animus.admin} and {@code animus.npc.others}. */
     public static boolean manager(Optional<UUID> player, Predicate<String> has) {
         return player.isEmpty() || has.test(PermissionNodes.ADMIN) || has.test(PermissionNodes.NPC_OTHERS);
@@ -106,6 +156,71 @@ public final class PlayerShops {
         if (player.isEmpty() || has.test(PermissionNodes.ADMIN)) return OptionalInt.empty();
         for (int limit = ShopSettings.MAXIMUM_PLAYER_LIMIT; limit >= 0; limit--) if (has.test(PermissionNodes.SHOP_LIMIT_PREFIX + limit)) return OptionalInt.of(limit);
         return OptionalInt.of(settings.playerLimit());
+    }
+
+    /**
+     * Why a player at their NPC limit may not open a shop, since its NPC counts toward that limit; empty while one more
+     * NPC fits. {@code owned} is how many NPCs they own.
+     */
+    public static Optional<String> npcFull(long owned, OptionalInt limit) {
+        if (limit.isEmpty() || owned < limit.getAsInt()) return Optional.empty();
+        return Optional.of(limit.getAsInt() == 0 ? "A shop needs an NPC and you cannot make NPCs; ask an admin for an " + PermissionNodes.LIMIT_PREFIX + "<n> node"
+                : "A shop needs an NPC and you own " + owned + ", your limit; remove one to open a shop");
+    }
+
+    /**
+     * The chest shops that would be left without an NPC if {@code leaving} were deleted: each one every NPC that opens it
+     * is among them, and at least one is. {@code npcs} are the stored definitions.
+     */
+    public List<ShopDocument> runBy(Collection<NpcDefinition> npcs, Set<String> leaving) {
+        Map<String, Boolean> kept = new HashMap<>();
+        for (NpcDefinition definition : npcs) {
+            Optional<ShopBinding> binding;
+            try { binding = ShopBinding.parse(definition.json()); }
+            catch (IllegalArgumentException invalid) { continue; }
+            if (binding.isEmpty() || !shops.containsKey(binding.get().shop())) continue;
+            boolean stays = !leaving.contains(definition.id());
+            kept.merge(binding.get().shop(), stays, Boolean::logicalOr);
+        }
+        List<ShopDocument> orphaned = new ArrayList<>();
+        for (Map.Entry<String, Boolean> shop : kept.entrySet()) if (!shop.getValue()) orphaned.add(shops.get(shop.getKey()));
+        orphaned.sort(Comparator.comparing(ShopDocument::id));
+        return orphaned;
+    }
+
+    /**
+     * A chest shop traded: one more sale for its owner's menu, and a line to the owner when they are online and have not
+     * turned it off. On the buyer's owner thread; the count is written on the file lane.
+     */
+    public void sold(ShopDocument shop, Sale sale) {
+        Tally now = sales.merge(shop.id(), new Tally(1, false), (Tally before, Tally one) -> new Tally(Math.min(Integer.MAX_VALUE - 1, before.unseen()) + 1, before.quiet()));
+        saveSales();
+        if (!now.quiet()) shop.owner().ifPresent((ShopDocument.Owner owner) -> tell.accept(owner.uuid(), line(shop, sale)));
+    }
+
+    /** What the owner reads of a sale, from the shop's side: it sold to a player, or a buying shop bought from one. */
+    static String line(ShopDocument shop, Sale sale) {
+        String title = "&a" + shop.title() + "&a";
+        return shop.kind().orElse(ShopDocument.Kind.TRADING) == ShopDocument.Kind.BUYING
+                ? title + " bought " + sale.took() + " from " + sale.buyer() + " for " + sale.gave()
+                : title + " sold " + sale.gave() + " to " + sale.buyer() + " for " + sale.took();
+    }
+
+    /** The shop's sales since this was last asked, which starts the count again: what its owner's menu shows when it opens. */
+    public int seen(String id) {
+        int[] unseen = {0};
+        sales.computeIfPresent(id, (String key, Tally tally) -> { unseen[0] = tally.unseen(); return new Tally(0, tally.quiet()); });
+        if (unseen[0] > 0) saveSales();
+        return unseen[0];
+    }
+
+    /** Whether the owner turned the sale line of this shop off. */
+    public boolean quiet(String id) { return sales.getOrDefault(id, Tally.NONE).quiet(); }
+
+    /** Turns the shop's sale line off, or back on; the count goes on either way. */
+    public void quiet(String id, boolean quiet) {
+        sales.merge(id, new Tally(0, quiet), (Tally before, Tally ignored) -> new Tally(before.unseen(), quiet));
+        saveSales();
     }
 
     /** Why a player who owns {@code owned} shops may not make another, or empty while they are under their limit. */
@@ -194,6 +309,47 @@ public final class PlayerShops {
                 catch (IOException | RuntimeException failure) { log.accept(label + ": " + failure.getMessage()); }
             });
         } catch (RejectedExecutionException full) { log.accept(label + ": the file queue is full"); }
+    }
+
+    /**
+     * Reads {@value #SALES} once, adding its counts to any made before it was read. A missing file reads as no sales; an
+     * unreadable one is logged and left until the next count replaces it. File lane.
+     */
+    private void readSales() {
+        salesRead = true;
+        try {
+            Path file = store.get().resolve(SALES);
+            if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) return;
+            JsonObject saved = JsonDocuments.object(JsonDocuments.read(file));
+            if (!(saved.get("schemaVersion") instanceof JsonElement version) || !version.isJsonPrimitive() || version.getAsInt() != SALES_SCHEMA)
+                throw new IOException("schemaVersion is not " + SALES_SCHEMA);
+            if (!(saved.get("shops") instanceof JsonObject listed)) return;
+            for (Map.Entry<String, JsonElement> shop : listed.entrySet()) {
+                if (!(shop.getValue() instanceof JsonObject tally)) continue;
+                int unseen = tally.get("sales") instanceof JsonElement count && count.isJsonPrimitive() ? Math.max(0, count.getAsInt()) : 0;
+                boolean quiet = tally.get("quiet") instanceof JsonElement off && off.isJsonPrimitive() && off.getAsBoolean();
+                sales.merge(shop.getKey(), new Tally(unseen, quiet), (Tally made, Tally read) -> new Tally(made.unseen() + read.unseen(), read.quiet() || made.quiet()));
+            }
+        } catch (IOException | RuntimeException unreadable) { log.accept("Shop sales in " + SALES + " are unreadable: " + unreadable.getMessage()); }
+    }
+
+    /** Writes every count and switch that is not the default, on the file lane, after the saved ones were read in. */
+    private void saveSales() {
+        later("Saving shop sales", () -> {
+            if (!salesRead) readSales();
+            JsonObject listed = new JsonObject();
+            for (Map.Entry<String, Tally> shop : new TreeMap<>(sales).entrySet()) {
+                if (shop.getValue().equals(Tally.NONE)) continue;
+                JsonObject tally = new JsonObject();
+                tally.addProperty("sales", shop.getValue().unseen());
+                if (shop.getValue().quiet()) tally.addProperty("quiet", true);
+                listed.add(shop.getKey(), tally);
+            }
+            JsonObject saved = new JsonObject();
+            saved.addProperty("schemaVersion", SALES_SCHEMA);
+            saved.add("shops", listed);
+            DocumentStore.atomic(store.get().resolve(SALES), JsonDocuments.write(saved));
+        });
     }
 
     private static String upper(String text) { return text.isEmpty() ? "Its chest cannot be used" : Character.toUpperCase(text.charAt(0)) + text.substring(1); }

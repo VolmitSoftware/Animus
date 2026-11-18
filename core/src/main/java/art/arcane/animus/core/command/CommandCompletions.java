@@ -64,7 +64,7 @@ final class CommandCompletions {
             case "to" -> ModelSetting.values(given.getOrDefault("part", ""));
             case "value" -> given.containsKey("setting") ? healthValues(given.get("setting")) : List.of(NpcCommands.RESET);
             case "disguise" -> List.of(NpcCommands.RESET);
-            case "shop" -> services.shops().shopIds();
+            case "shop" -> shops(actor);
             case "quest" -> services.quests().questIds();
             case "stage" -> List.of("1", "2", "3");
             case "objective" -> services.quests().customObjectives(given.getOrDefault("quest", ""));
@@ -149,6 +149,15 @@ final class CommandCompletions {
             case "location" -> ScheduleCommands.references(tree.runtime().npcs().find(given.getOrDefault("npc", "")).map(NpcDefinition::json).orElse(new JsonObject()));
             default -> List.of();
         };
+    }
+
+    /**
+     * Shop ids for staff with {@code animus.shops}; a player who only runs their own shops gets those, by the names
+     * {@code /animus shop manage} takes.
+     */
+    private List<String> shops(CommandActor actor) {
+        if (actor.player().isEmpty() || actor.permitted(PermissionNodes.SHOPS)) return tree.services.shops().shopIds();
+        return tree.services.shops().players().names(actor.player().get());
     }
 
     /** NPC ids, and {@code @selected} when the player has one NPC selected. */

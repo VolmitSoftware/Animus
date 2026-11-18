@@ -43,8 +43,12 @@ public final class AnimusHelp {
             new Topic("Trait groups", DocsLink.GROUPS, List.of("groups")),
             new Topic("Diagnostics", DocsLink.DIAGNOSTICS, List.of("debug", "proof")));
 
-    /** The commands the short page lists, by their words after {@code /animus}, in order; {@code gui} only for a player it opens the menu for. */
-    static final List<String> COMMON = List.of(ToolkitCommands.GUI, "create", "select", "spawn", "despawn", "delete", "list", "undo", "editor pair");
+    /**
+     * The commands the short page lists, by their words after {@code /animus}, in order; {@code gui} only for a player it
+     * opens the menu for, and {@link #SHOP_MANAGE} only for one who owns a shop.
+     */
+    static final List<String> COMMON = List.of(ToolkitCommands.GUI, "create", "select", "spawn", "despawn", "delete", "list", "undo", "editor pair", "shop item", "shop manage");
+    static final String SHOP_MANAGE = "shop manage";
     /** What the short page says {@code /animus gui} does; the group's own description goes on to its chest GUI commands. */
     static final String MENU = "Open the Animus menu";
     static final String ALL = "/" + BuildIdentity.ID + " help all";

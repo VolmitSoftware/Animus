@@ -390,15 +390,17 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
         if (ModWand.carried(player)) return WandGift.MOVED;
         Optional<ItemStack> wand = stack(Toolkit.WAND_ITEM, Optional.of(Toolkit.WAND_NAME), Toolkit.WAND_LORE, new ArrayList<>());
         if (wand.isEmpty()) return WandGift.NONE;
-        return give(ModWand.mark(wand.get()), player.getInventory().getFreeSlot() >= 0, player.getInventory()::add, (ItemStack stack) -> drop(player, stack));
+        return give(ModWand.mark(wand.get()), player.getInventory().getFreeSlot() >= 0, player.getInventory()::add, (ItemStack stack) -> drop(player, stack),
+                () -> ModWand.carried(player));
     }
 
     /**
-     * Puts the wand in the inventory when it has a free slot, else drops it at the player's feet. Vanilla's add is not
-     * asked without a free slot: for a creative player it answers true and empties the stack.
+     * Puts the wand in the inventory when it has a free slot, then {@code toHand} moves it to the main hand; else drops
+     * it at the player's feet. Vanilla's add is not asked without a free slot: for a creative player it answers true and
+     * empties the stack.
      */
-    static WandGift give(ItemStack wand, boolean room, java.util.function.Predicate<ItemStack> add, java.util.function.Consumer<ItemStack> drop) {
-        if (room && add.test(wand)) return WandGift.GIVEN;
+    static WandGift give(ItemStack wand, boolean room, java.util.function.Predicate<ItemStack> add, java.util.function.Consumer<ItemStack> drop, Runnable toHand) {
+        if (room && add.test(wand)) { toHand.run(); return WandGift.GIVEN; }
         drop.accept(wand);
         return WandGift.DROPPED;
     }

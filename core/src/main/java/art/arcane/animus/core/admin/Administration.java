@@ -347,6 +347,17 @@ public final class Administration {
 
     public String delete(String id) throws IOException { return "Deleted " + id + "; tx " + runtime.npcs().delete(id); }
 
+    /** Deletes the NPC and the shop files {@code shops} in one transaction, so one undo brings both back; {@code shown} names the shops in the reply. */
+    public String delete(String id, List<String> shops, String shown) throws IOException {
+        if (shops.isEmpty()) return delete(id);
+        List<DocumentStore.Change> files = new ArrayList<>();
+        for (String shop : shops) {
+            String path = art.arcane.animus.core.shop.PlayerShops.path(shop), current = runtime.documents().read(path);
+            if (current != null) files.add(new DocumentStore.Change(path, JsonDocuments.hash(current), null));
+        }
+        return "Deleted " + id + " and " + shown + "; tx " + runtime.npcs().delete(id, files);
+    }
+
     public List<String> validate() throws IOException { return checked("All definitions valid", runtime.npcs().validate()); }
 
     /**
