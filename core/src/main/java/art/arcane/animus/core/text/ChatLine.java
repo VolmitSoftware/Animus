@@ -1,9 +1,11 @@
 package art.arcane.animus.core.text;
 
+import art.arcane.animus.core.command.CommandSyntax;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalInt;
+import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.kyori.adventure.text.Component;
@@ -17,8 +19,8 @@ import net.kyori.adventure.text.format.TextDecoration;
 /**
  * One reply line with click chips such as {@code [Click to copy]}. A player gets hover text and the click; the console,
  * which cannot click, gets {@link #console()}: the text with each chip's value written out once. Build a line with the
- * factories and chip methods, or let {@link #parse} find transaction ids and links in a finished reply. A player in
- * Simple mode gets {@link #withoutTransactionIds()}: each change keeps its {@code [Undo]} but not its id.
+ * factories and chip methods, or let {@link #parse} find transaction ids, links and commands in a finished reply. A
+ * player in Simple mode gets {@link #withoutTransactionIds()}: each change keeps its {@code [Undo]} but not its id.
  */
 public final class ChatLine {
     /** The Animus pages of the Volmit wiki. */
@@ -29,9 +31,10 @@ public final class ChatLine {
     public static final String UNDO = "/animus undo ";
     private static final Pattern URL = Pattern.compile("https?://[^\\s§]+");
     private static final Pattern HASH = Pattern.compile("\\b[0-9a-f]{64}\\b");
-    /** An Animus command in a {@code Next:} line: words after {@code /animus}, ending at a semicolon, a comma and space, or the line's end. */
-    private static final Pattern COMMAND = Pattern.compile("(?<![A-Za-z0-9_./])/animus(?:\\x20[A-Za-z0-9<>|_=:@./-]+(?:,[A-Za-z0-9<>|_=:@./-]+)*)*");
-    private static final String NEXT = "Next: ";
+    /** Where an Animus command starts in a reply: {@code /animus} as a word of its own, or right after a colour code. */
+    private static final Pattern COMMAND = Pattern.compile("(?:(?<![A-Za-z0-9_./])|(?<=§[0-9A-Fa-fK-Ok-oRrXx]))/animus(?=$|[\\s.,;:!?)'\"§])");
+    /** The first placeholder in a command, such as {@code <npc>}, {@code [page]} or the {@code <file>} of {@code key=<file>}. */
+    private static final Pattern PLACEHOLDER = Pattern.compile(" [<\\[]|(?<==)<");
     private static final int SHORT_ID = 8, SHORT_HASH = 12;
 
     private enum Click { COPY, OPEN, SUGGEST, RUN, NONE }
@@ -63,31 +66,29 @@ public final class ChatLine {
      * A finished reply with its transaction ids, long ids and links made clickable: {@code tx <uuid>} becomes a short id
      * that copies the full one plus {@code [Undo]}, which runs {@code /animus undo}; a 64-character hex id, such as an
      * import id, shows its first 12 characters and copies the full id; a wiki link becomes {@code [Docs]}; any other link
-     * becomes {@code [Open]} and {@code [Click to copy]}; after {@code Next: }, each {@code /animus} command goes into the
-     * player's chat box on click, cut before its first {@code <placeholder>}. A reply with none of these comes back as one text piece.
+     * becomes {@code [Open]} and {@code [Click to copy]}; each {@code /animus} command, up to its last value as the command
+     * tree reads it, goes into the player's chat box on click, cut before its first placeholder. A reply with none of
+     * these comes back as one text piece.
      */
     public static ChatLine parse(String text) {
         ChatLine line = new ChatLine();
         if (text == null) return line;
         String coloured = ReplyText.plain(text);
         List<Matcher> matchers = List.of(TRANSACTION.matcher(coloured), HASH.matcher(coloured), URL.matcher(coloured), COMMAND.matcher(coloured));
-        int next = coloured.indexOf(NEXT);
-        int commands = next < 0 ? -1 : next + NEXT.length();
         int index = 0;
         while (true) {
             Matcher match = null;
-            for (Matcher candidate : matchers) {
-                boolean command = candidate.pattern() == COMMAND;
-                if (command && commands < 0) continue;
-                if (candidate.find(command ? Math.max(index, commands) : index) && (match == null || candidate.start() < match.start())) match = candidate;
-            }
+            for (Matcher candidate : matchers)
+                if (candidate.find(index) && (match == null || candidate.start() < match.start())) match = candidate;
             if (match == null) break;
             line.raw(coloured.substring(index, match.start()));
             int end = match.end();
             if (match.pattern() == TRANSACTION) line.transaction(match.group().substring(0, match.start(1) - match.start()), match.group(1)).undo(match.group(1));
             else if (match.pattern() == HASH) line.copy(match.group().substring(0, SHORT_HASH), match.group(), "Click to copy the full id");
-            else if (match.pattern() == COMMAND) line.command(match.group());
-            else {
+            else if (match.pattern() == COMMAND) {
+                end = CommandSyntax.animus().end(coloured, match.start());
+                line.command(coloured.substring(match.start(), end));
+            } else {
                 String url = trimUrl(match.group());
                 end = match.start() + url.length();
                 if (url.startsWith(DOCS)) line.docs(url);
@@ -136,11 +137,15 @@ public final class ChatLine {
     /** {@code label} in {@code tone} with {@code hover} and no click, such as a parameter chip. The console sees the label. */
     public ChatLine hover(String label, Palette tone, String hover) { return chip(new Chip(label, tone, Click.NONE, "", hover, label)); }
 
-    /** The command as itself in pink; a click puts it, up to its first placeholder, in the chat box. The console sees the command. */
+    /**
+     * The command as itself in pink, a long id in it cut to its first characters; a click puts it, up to its first
+     * placeholder, in the chat box. The console sees the command.
+     */
     private ChatLine command(String command) {
-        int placeholder = command.indexOf(" <");
-        String typed = placeholder < 0 ? command : command.substring(0, placeholder + 1);
-        return chip(new Chip(command, Palette.PINK, Click.SUGGEST, typed, "Click to put it in your chat box", command));
+        Matcher placeholder = PLACEHOLDER.matcher(command);
+        String typed = placeholder.find() ? command.substring(0, placeholder.start() + (command.charAt(placeholder.start()) == ' ' ? 1 : 0)) : command;
+        String label = HASH.matcher(command).replaceAll((MatchResult hash) -> hash.group().substring(0, SHORT_HASH));
+        return chip(new Chip(label, Palette.PINK, Click.SUGGEST, typed, "Click to put it in your chat box", command));
     }
 
     /** {@code [<label>]} that opens the link and {@code [Click to copy]} that copies it; the console sees the link once. */

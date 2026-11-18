@@ -300,7 +300,7 @@ public final class ShopImporter {
         for (String key : List.of("confirmation-window-enabled", "confirmation-window")) if (source.has(key)) report.field("/" + key, Status.CONVERTED);
         boolean log = flag(source, "logging-enabled", false);
         if (source.has("logging-enabled")) report.field("/logging-enabled", Status.CONVERTED);
-        if (source.has("command")) report.field("/command", Status.UNSUPPORTED_PRESERVED, "per-shop open commands are not created; use /animus shop open or a behavior with animus:open-shop");
+        if (source.has("command")) report.field("/command", Status.UNSUPPORTED_PRESERVED, "per-shop open commands are not created; use /animus shop open <shop> or a behavior with animus:open-shop");
         JsonArray pages = new JsonArray();
         JsonObject pageSection = source.has("pages") && source.get("pages").isJsonObject() ? source.getAsJsonObject("pages") : new JsonObject();
         TreeMap<Integer, Map.Entry<String, JsonElement>> ordered = new TreeMap<>();

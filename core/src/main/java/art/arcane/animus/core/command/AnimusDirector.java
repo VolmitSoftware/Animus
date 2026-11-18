@@ -208,7 +208,7 @@ public final class AnimusDirector {
         DirectorInvocation invocation = DirectorInvocation.pretokenized(sender, label, words);
         for (DirectorRuntimeNode gate = node; gate != null; gate = gate.getParent())
             if (!gate.getDescriptor().getOrigin().validFor(actor.player().isPresent())) {
-                actor.tell(Palette.error(actor.player().isPresent() ? "Console only; run /" + label + " " + String.join(" ", tokens) + " from the server console"
+                actor.tell(Palette.error(actor.player().isPresent() ? "Console only; run it from the server console: /" + label + " " + String.join(" ", tokens)
                         : "Players only; run it in game"));
                 return false;
             }
@@ -235,7 +235,7 @@ public final class AnimusDirector {
         if (result.isSuccess()) return true;
         if (threw != null) {
             System.getLogger("Animus").log(System.Logger.Level.ERROR, node.path() + " failed for " + sender.getName(), threw);
-            actor.tell(Palette.error(hidden ? ChoiceCommands.NOT_AVAILABLE : node.path() + " failed; the server log has the cause"));
+            actor.tell(Palette.error(hidden ? ChoiceCommands.NOT_AVAILABLE : failed(node.path())));
             return false;
         }
         // A hidden command answers every refusal the same way, so a forged click learns nothing.
@@ -421,7 +421,7 @@ public final class AnimusDirector {
     public Optional<String> needs(DirectorRuntimeNode node) {
         for (DirectorRuntimeNode cursor = node; cursor != null; cursor = cursor.getParent()) {
             NeedsPlugin plugin = annotation(cursor, NeedsPlugin.class);
-            if (plugin != null && !plugins.test(plugin.value())) return Optional.of(cursor.path() + " needs " + plugin.value());
+            if (plugin != null && !plugins.test(plugin.value())) return Optional.of(needsPlugin(cursor.path(), plugin.value()));
             NeedsFeature feature = annotation(cursor, NeedsFeature.class);
             if (feature != null) {
                 Optional<String> lacking = features.apply(feature.value());
@@ -446,7 +446,7 @@ public final class AnimusDirector {
     /** Why this node alone, not the groups above it, cannot run here. */
     private Optional<String> own(DirectorRuntimeNode node) {
         NeedsPlugin plugin = annotation(node, NeedsPlugin.class);
-        if (plugin != null && !plugins.test(plugin.value())) return Optional.of(node.path() + " needs " + plugin.value());
+        if (plugin != null && !plugins.test(plugin.value())) return Optional.of(needsPlugin(node.path(), plugin.value()));
         NeedsFeature feature = annotation(node, NeedsFeature.class);
         return feature == null ? Optional.empty() : features.apply(feature.value());
     }
@@ -455,7 +455,7 @@ public final class AnimusDirector {
         return node.getMethod() != null ? node.getMethod().getAnnotation(type) : node.getInstance().getClass().getAnnotation(type);
     }
 
-    private static DirectorRuntimeNode named(DirectorRuntimeNode group, String word) {
+    static DirectorRuntimeNode named(DirectorRuntimeNode group, String word) {
         for (DirectorRuntimeNode child : group.getChildren())
             if (child.allNames().stream().anyMatch((String name) -> name.equalsIgnoreCase(word))) return child;
         return null;
@@ -573,10 +573,21 @@ public final class AnimusDirector {
             Optional<DirectorRuntimeParameter> free = node.getParameters().stream().filter((DirectorRuntimeParameter parameter) -> !parameter.getDescriptor().isRequired()
                     && !parameter.getDescriptor().isContextual() && !keyed.contains(parameter)).findFirst();
             return Optional.of("Unexpected \"" + word + "\"; " + free.map((DirectorRuntimeParameter parameter) -> "write " + parameter.getDescriptor().getName() + "=" + word)
-                    .orElse(node.path() + " takes no more values"));
+                    .orElse(complete(node.path())));
         }
         return Optional.empty();
     }
+
+    // These replies end a clause with the command they name, so the words after it never read as its values.
+
+    /** The reply when a command's handler threw. */
+    static String failed(String path) { return "Could not finish " + path + "; the server log has the cause"; }
+
+    /** Why a command cannot run: the plugin it needs is not running. */
+    static String needsPlugin(String path, String plugin) { return plugin + " is needed for " + path; }
+
+    /** After {@code Unexpected "word"; }: the command has every value it takes. */
+    static String complete(String path) { return "nothing more fits in " + path; }
 
     /** A word that gives no key: not {@code key=value} for this command, nor anything else shaped like a key Director refuses. */
     private static boolean bare(DirectorRuntimeNode node, String word) { return keyed(node, word) == null && !KEY.matcher(word).matches(); }
@@ -727,7 +738,7 @@ public final class AnimusDirector {
         } catch (RuntimeException unavailable) { return List.of(); }
     }
 
-    private static DirectorRuntimeParameter parameter(DirectorRuntimeNode node, String key) {
+    static DirectorRuntimeParameter parameter(DirectorRuntimeNode node, String key) {
         for (DirectorRuntimeParameter parameter : node.getParameters()) {
             if (parameter.getDescriptor().getName().equalsIgnoreCase(key)) return parameter;
             for (String alias : parameter.getDescriptor().getAliases()) if (alias.equalsIgnoreCase(key)) return parameter;

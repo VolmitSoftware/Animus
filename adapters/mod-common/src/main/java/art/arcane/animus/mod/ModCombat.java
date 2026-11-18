@@ -50,7 +50,7 @@ import net.minecraft.world.phys.HitResult;
  */
 final class ModCombat implements AutoCloseable {
     static final String PROTECTION = "none (mod servers have no standard protection API)";
-    static final String MOB_CONTROL_UNAVAILABLE = "Mob control is not available on mod servers; use /animus combat target or combat guard";
+    static final String MOB_CONTROL_UNAVAILABLE = "Mob control is not available on mod servers; use /animus combat target <npc> <target> or /animus combat guard <npc> <charge>";
     private final AnimusRuntime runtime;
     private final PersistedNpcService<ServerPlayer, ItemStack> living;
     private final VanillaCombatWorld world;

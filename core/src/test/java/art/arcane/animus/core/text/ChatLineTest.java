@@ -94,17 +94,60 @@ class ChatLineTest {
         assertEquals("[Animus]: No NPCs yet /animus setup", RichText.plain(line.console()));
     }
 
-    @Test void commandsAfterNextBecomeSuggestionsAndAPlaceholderIsLeftForThePlayer() {
-        ChatLine line = ChatLine.parse(Palette.reply("Next: /animus import citizens accept <categories|all>; accept commands lets them run"));
-        assertEquals("[Animus]: Next: /animus import citizens accept <categories|all>; accept commands lets them run", plain(line.component()));
-        assertEquals(List.of("suggest_command /animus import citizens accept "), clicks(line.component()));
-        assertEquals("[Animus]: Next: /animus import citizens accept <categories|all>; accept commands lets them run", RichText.plain(line.console()));
-        ChatLine two = ChatLine.parse(Palette.reply("Next: place NPCs with /animus tools; edit them with /animus editor pair"));
-        assertEquals(List.of("suggest_command /animus tools", "suggest_command /animus editor pair"), clicks(two.component()));
-        ChatLine list = ChatLine.parse(Palette.reply("Next: /animus import citizens review, then /animus import citizens accept shops,spawn"));
-        assertEquals(List.of("suggest_command /animus import citizens review", "suggest_command /animus import citizens accept shops,spawn"), clicks(list.component()));
-        ChatLine before = ChatLine.parse(Palette.reply("Run /animus status first"));
-        assertFalse(before.interactive(), "only a Next: line makes its commands clickable");
+    @Test void aCommandInASentenceEndsAtItsLastValueAndTheSentenceStaysText() {
+        ChatLine line = ChatLine.parse(Palette.error("No NPC named ghost; /animus list shows ids"));
+        assertEquals("[Animus]: No NPC named ghost; /animus list shows ids", plain(line.component()));
+        assertEquals(List.of("suggest_command /animus list"), clicks(line.component()));
+        assertEquals("[Animus]: No NPC named ghost; /animus list shows ids", RichText.plain(line.console()));
+        assertEquals(List.of("/animus list"), chips(line.component()));
+        assertEquals(List.of("/animus list"), chips(ChatLine.parse(Palette.reply("Next: /animus list shows ids")).component()), "a Next: line reads the same");
+        assertEquals(List.of("/animus spawn guard"), chips(ChatLine.parse(Palette.reply("Runtime guard: despawned; /animus spawn guard shows it")).component()));
+        assertEquals(List.of("/animus gui list menu"), chips(ChatLine.parse(Palette.reply("No chest GUI named x; /animus gui list menu shows them")).component()));
+        assertEquals(List.of("/animus gui"), chips(ChatLine.parse(Palette.reply("Ready. /animus gui opens the menu")).component()));
+        assertEquals(List.of("/animus record stop"), chips(ChatLine.parse(Palette.reply("Already recording; /animus record stop or cancel first")).component()));
+    }
+
+    @Test void aCommandKeepsTheValuesItTakesAndEndsAtPunctuation() {
+        assertEquals(List.of("/animus npc health guard killable on"), chips(ChatLine.parse(Palette.reply("guard: not killable; /animus npc health guard killable on makes it killable")).component()));
+        assertEquals(List.of("/animus combat mob guard stop"), chips(ChatLine.parse(Palette.reply("guard now leads that mob; /animus combat mob guard stop lets it go")).component()));
+        assertEquals(List.of("/animus npc disguise guard \"zombie setBaby true\""), chips(ChatLine.parse(Palette.reply("guard has no disguise; /animus npc disguise guard \"zombie setBaby true\" sets one")).component()));
+        assertEquals(List.of("/animus tools wand"), chips(ChatLine.parse(Palette.reply("select one with the wand (/animus tools wand)")).component()));
+        assertEquals(List.of("/animus reload"), chips(ChatLine.parse(Palette.reply("Fix the file, then /animus reload.")).component()));
+        assertEquals(List.of("/animus help all"), chips(ChatLine.parse(Palette.reply("/animus help all lists every command")).component()));
+        ChatLine colour = ChatLine.parse(RichText.colorize(Palette.reply("&7More: &f/animus debug network&7, &fperformance")));
+        assertEquals(List.of("/animus debug network"), chips(colour.component()));
+        assertFalse(ChatLine.parse(Palette.reply("Only GET /animus/v1/events upgrades")).interactive(), "a path under /animus is not a command");
+    }
+
+    @Test void aPlaceholderStaysInTheChipAndTheClickStopsBeforeIt() {
+        ChatLine release = ChatLine.parse(Palette.reply("Next: read the behavior, then /animus import denizen release <behavior>"));
+        assertEquals(List.of("suggest_command /animus import denizen release "), clicks(release.component()));
+        assertEquals(List.of("/animus import denizen release <behavior>"), chips(release.component()));
+        ChatLine build = ChatLine.parse(Palette.reply("No builds; /animus build start <npc> schematic=<file> starts one"));
+        assertEquals(List.of("/animus build start <npc> schematic=<file>"), chips(build.component()));
+        assertEquals(List.of("suggest_command /animus build start "), clicks(build.component()));
+        ChatLine anchor = ChatLine.parse(Palette.reply("guard has no anchors; /animus npc anchor guard add <name> saves one where you stand"));
+        assertEquals(List.of("/animus npc anchor guard add <name>"), chips(anchor.component()));
+        assertEquals(List.of("suggest_command /animus npc anchor guard add "), clicks(anchor.component()));
+        ChatLine assign = ChatLine.parse(Palette.reply("No NPC lists town; /animus groups assign town ids=<npc> adds one"));
+        assertEquals(List.of("suggest_command /animus groups assign town ids="), clicks(assign.component()));
+    }
+
+    @Test void severalCommandsInOneLineEachGetTheirOwnChip() {
+        ChatLine line = ChatLine.parse(Palette.reply("an apply was interrupted; /animus import citizens apply finishes it, /animus import citizens rollback undoes it"));
+        assertEquals(List.of("/animus import citizens apply", "/animus import citizens rollback"), chips(line.component()));
+        ChatLine next = ChatLine.parse(Palette.reply("Next: /animus import citizens review, then /animus import citizens apply"));
+        assertEquals(List.of("suggest_command /animus import citizens review", "suggest_command /animus import citizens apply"), clicks(next.component()));
+        ChatLine rollback = ChatLine.parse(Palette.reply("Next: /animus rollback 0f1e2d3c, then /animus import citizens rollback"));
+        assertEquals(List.of("/animus rollback 0f1e2d3c", "/animus import citizens rollback"), chips(rollback.component()));
+    }
+
+    @Test void aLongIdInACommandShowsTwelveCharactersAndTheClickKeepsItWhole() {
+        String id = "de14bc7b40fae6f816c27297122ab341732aa8b44952290cb2446a2cbff248ca";
+        ChatLine line = ChatLine.parse(Palette.reply("Review the report, then /animus import apply " + id + " " + DocsLink.IMPORTS.url()));
+        assertEquals("[Animus]: Review the report, then /animus import apply de14bc7b40fa [Docs]", plain(line.component()));
+        assertEquals(List.of("suggest_command /animus import apply " + id, "open_url " + DocsLink.IMPORTS.url()), clicks(line.component()));
+        assertEquals("[Animus]: Review the report, then /animus import apply " + id + " " + DocsLink.IMPORTS.url(), RichText.plain(line.console()));
     }
 
     @Test void aLineWithoutChipsIsPlainText() {
@@ -136,6 +179,15 @@ class ChatLineTest {
     }
 
     private static String plain(Component component) { return PlainTextComponentSerializer.plainText().serialize(component); }
+
+    /** The text of each chip that puts a command in the chat box, in order. */
+    private static List<String> chips(Component root) {
+        List<String> found = new ArrayList<>();
+        ClickEvent click = root.clickEvent();
+        if (click != null && click.action() == ClickEvent.Action.SUGGEST_COMMAND) found.add(plain(root));
+        for (Component child : root.children()) found.addAll(chips(child));
+        return found;
+    }
 
     private static List<String> clicks(Component root) {
         List<String> found = new ArrayList<>();

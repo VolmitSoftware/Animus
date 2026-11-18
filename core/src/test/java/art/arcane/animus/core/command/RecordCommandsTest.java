@@ -58,7 +58,7 @@ class RecordCommandsTest {
         AnimusDirectorTest.Actor state = run(true, "record", "ghost", "enabled=maybe");
         assertTrue(state.text().contains("Unknown state maybe; use enabled=on, enabled=off or enabled=toggle"), state.text());
         AnimusDirectorTest.Actor extra = run(true, "record", "ghost", "off", "again");
-        assertTrue(extra.text().contains("Unexpected \"again\"; /animus record ghost takes no more values"), extra.text());
+        assertTrue(extra.text().contains("Unexpected \"again\"; nothing more fits in /animus record ghost"), extra.text());
         assertEquals(List.of(), control.calls);
         run(true, "record", "ghost", "off");
         assertEquals(List.of("ghost false"), control.calls, "the toggle also takes a bare on or off");

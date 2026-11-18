@@ -107,12 +107,12 @@ public final class BuildCommands {
 
     public void undo(CommandActor actor, String build) { run(actor, (BuildService<?, ?> builds, CommandActor owner) -> owner.tell(builds.undo(build))); }
 
-    public void survey(CommandActor actor, String build) { run(actor, (BuildService<?, ?> builds, CommandActor owner) -> clipped(owner, builds.survey(build))); }
+    public void survey(CommandActor actor, String build) { run(actor, (BuildService<?, ?> builds, CommandActor owner) -> clipped(owner, build, builds.survey(build))); }
 
     /** At most {@link #CLIPPED} lines, then how many there were and the next step. */
-    private static void clipped(CommandActor owner, List<String> lines) {
+    private static void clipped(CommandActor owner, String build, List<String> lines) {
         lines.stream().limit(CLIPPED).forEach(owner::tell);
-        if (lines.size() > CLIPPED) owner.tell("Showing " + CLIPPED + " of " + lines.size() + "; place what is listed, then /animus build survey again");
+        if (lines.size() > CLIPPED) owner.tell("Showing " + CLIPPED + " of " + lines.size() + "; place what is listed, then /animus build survey " + build + " again");
     }
 
     /** The held items go to the build; only a player can donate. Runs on the player's own owner. */

@@ -132,7 +132,7 @@ class AnimusDirectorTest {
         AnimusDirector throwing = new AnimusDirector(new Throwing(), (String parameter, CommandActor actor) -> List.of());
         Actor admin = new Actor(true, AnimusDirector.ADMIN);
         throwing.execute(admin, new String[]{"broken"});
-        assertEquals(List.of("[Animus]: /probe broken failed; the server log has the cause"), admin.lines);
+        assertEquals(List.of("[Animus]: Could not finish /probe broken; the server log has the cause"), admin.lines);
     }
 
     /** A command that notes whether its NPC was left out. */
@@ -175,7 +175,7 @@ class AnimusDirectorTest {
         assertEquals(List.of("health guard [] []", "health guard [killable] []", "health guard [killable] [on]", "health guard [maximum] [20]",
                 "health guard [regenerate] [off]", "list 2 false", "list 3 true"), probe.calls);
         run(admin, "health", "guard", "killable", "on", "extra");
-        assertTrue(admin.text().contains("Unexpected \"extra\"; /probe health takes no more values"), admin.text());
+        assertTrue(admin.text().contains("Unexpected \"extra\"; nothing more fits in /probe health"), admin.text());
         admin.lines.clear();
         run(admin, "list", "2", "true");
         assertTrue(admin.text().contains("Unexpected \"true\"; write loud=true"), "an optional value outside the list still needs its key: " + admin.text());
@@ -725,7 +725,7 @@ class AnimusDirectorTest {
             admin.lines.clear();
             without.execute(admin, typed);
             assertEquals(1, admin.lines.size(), admin.text());
-            assertTrue(admin.lines.getFirst().matches(".* needs (ModelEngine|LibsDisguises|Quests|BeautyQuests|BetonQuest|MythicMobs)"), admin.text());
+            assertTrue(admin.lines.getFirst().matches(".*(ModelEngine|LibsDisguises|Quests|BeautyQuests|BetonQuest|MythicMobs) is needed for /animus .*"), admin.text());
         }
         AnimusDirector with = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of(), (String plugin) -> true);
         with.execute(admin, new String[]{"import"});
