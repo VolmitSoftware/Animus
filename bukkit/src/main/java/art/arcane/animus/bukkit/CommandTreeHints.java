@@ -19,6 +19,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -37,8 +39,8 @@ import org.bukkit.plugin.java.JavaPlugin;
  * command once. Only the client's copy changes: the server still hands every word to {@link AnimusDirector}, which
  * refuses unknown words itself and takes the other names too, and suggestions still come from the server. The hidden
  * commands chat buttons run reach a player's tree only while a button waits for them, so a click runs a command the client
- * knows and completion never offers it otherwise; {@link #refresh} sends the tree again when that changes. Spigot has no
- * such event and keeps its single free-text argument.
+ * knows and completion never offers it otherwise; {@link #refresh} sends the tree again when that changes, and
+ * {@link #sweep} once a question expires unanswered. Spigot has no such event and keeps its single free-text argument.
  */
 final class CommandTreeHints {
     private static final String EVENT = "com.destroystokyo.paper.event.brigadier.AsyncPlayerSendCommandsEvent";
@@ -85,6 +87,20 @@ final class CommandTreeHints {
     void refresh(Player player) {
         if (installed && buttons.stale(player.getUniqueId())) player.updateCommands();
     }
+
+    /**
+     * For the owner timer, every tick: once a second, hands each player whose tree still carries the button commands
+     * though nothing waits for them any more to {@code deliver}, which runs {@link #refresh} on the player's own thread.
+     */
+    Runnable sweep(BiConsumer<UUID, Consumer<Player>> deliver) {
+        int[] ticks = {0};
+        return () -> {
+            if (++ticks[0] % SWEEP_TICKS != 0) return;
+            for (UUID player : buttons.expired()) deliver.accept(player, this::refresh);
+        };
+    }
+
+    private static final int SWEEP_TICKS = 20;
 
     /** Replaces each label's free-text node under {@code root} with the actor's own tree; {@code buttons} adds the hidden button commands. */
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -140,6 +156,9 @@ final class CommandTreeHints {
 
         /** Whether the player's tree disagrees with whether a button waits for them. */
         boolean stale(UUID player) { return waiting.test(player) != carrying.contains(player); }
+
+        /** The players whose tree carries the button commands though nothing waits for them any more. */
+        List<UUID> expired() { return carrying.stream().filter((UUID player) -> !waiting.test(player)).toList(); }
 
         void forget(UUID player) { carrying.remove(player); }
     }

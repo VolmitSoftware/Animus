@@ -7,6 +7,7 @@ import art.arcane.animus.core.extension.ModuleHost;
 import art.arcane.animus.core.gui.exchange.GlossIds;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.owner.NpcOwnership;
+import art.arcane.animus.core.quest.QuestService;
 import art.arcane.animus.core.toolkit.ToolkitMode;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
@@ -55,7 +56,8 @@ final class CommandCompletions {
     /**
      * The values a command's parameter takes, where its name means something narrower than everywhere else: a GUI or
      * hologram id is {@code namespace:path}, a module condition is a condition, a shop or Gloss source is the inbox entry
-     * that import reads, and a state delete's UUID is a player's.
+     * that import reads, a state delete's UUID is a player's, and a choice's token and option are those of a question
+     * waiting for the actor.
      */
     static String kind(String command, String parameter) {
         return switch (command + " " + parameter) {
@@ -66,12 +68,17 @@ final class CommandCompletions {
             case "import gloss file source" -> GLOSS_SOURCE;
             case "import preview file" -> IMPORT_FILE;
             case "behaviors state delete player uuid", "behaviors state delete relationship uuid" -> PLAYER_UUID;
+            case "choice token" -> CHOICE_TOKEN;
+            case "choice option" -> CHOICE_OPTION;
+            case "quest choice token" -> QUEST_TOKEN;
+            case "quest choice option" -> QUEST_OPTION;
             default -> parameter;
         };
     }
 
     static final String GUI_ID = " gui-id", ACTION = " action", CONDITION = " condition", SHOP_SOURCE = " shop-source", GLOSS_SOURCE = " gloss-source",
-            IMPORT_FILE = " import-file", PLAYER_UUID = " player-uuid";
+            IMPORT_FILE = " import-file", PLAYER_UUID = " player-uuid", CHOICE_TOKEN = " choice-token", CHOICE_OPTION = " choice-option",
+            QUEST_TOKEN = " quest-token", QUEST_OPTION = " quest-option";
 
     /** Values for {@code parameter}, or for a {@link #kind} of one; {@code given} holds what was typed already, by parameter name. */
     Collection<String> values(String parameter, CommandActor actor, Map<String, String> given) {
@@ -84,6 +91,10 @@ final class CommandCompletions {
             case GLOSS_SOURCE -> CompletionFiles.glossSources(data());
             case IMPORT_FILE -> CompletionFiles.inboxFiles(data());
             case PLAYER_UUID -> Stream.concat(actor.player().stream(), actor.nearbyPlayers().stream()).map(UUID::toString).distinct().toList();
+            case CHOICE_TOKEN -> ChoiceCommands.tokens(actor, tree.questions());
+            case CHOICE_OPTION -> ChoiceCommands.answers(actor, tree.questions(), given.getOrDefault("token", ""));
+            case QUEST_TOKEN -> actor.player().flatMap(services.quests()::offer).stream().toList();
+            case QUEST_OPTION -> QuestService.ANSWERS;
             case "npc" -> npcs(actor);
             // Blocks for mount set (1-32) and speak (1-64).
             case "range" -> List.of("4", "8", "16", "32");

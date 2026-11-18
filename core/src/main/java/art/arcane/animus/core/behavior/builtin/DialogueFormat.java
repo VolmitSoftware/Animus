@@ -53,6 +53,13 @@ public final class DialogueFormat {
         return List.copyOf(parts);
     }
 
+    /** The reply to a typed answer that is none of {@code answers}: the word as typed, then the answers to pick from. */
+    public static String notAnAnswer(String typed, List<String> answers) {
+        String last = answers.getLast();
+        String listed = answers.size() == 1 ? last : String.join(", ", answers.subList(0, answers.size() - 1)) + " or " + last;
+        return "\"" + typed + "\" is not an answer here; pick " + listed;
+    }
+
     static String colour(ChoiceOption option, int index, int count) {
         Optional<String> chosen = option.colour().flatMap(RichText::colourCode);
         if (chosen.isPresent()) return chosen.get();

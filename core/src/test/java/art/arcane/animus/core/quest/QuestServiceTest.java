@@ -92,6 +92,20 @@ class QuestServiceTest {
         throw new AssertionError("no offer buttons in " + alex.messages);
     }
 
+    @Test void aTypedAnswerToAnOfferIsCheckedBeforeTheOfferIsUsedUp() {
+        assertEquals(Optional.empty(), quests.offer(alex.id), "nothing offered yet");
+        assertTrue(quests.interacted(alex, healer, false, false));
+        assertEquals(Optional.of(token()), quests.offer(alex.id), "completion offers the waiting offer's token");
+        alex.messages.clear();
+        quests.choice(alex, quests.offer(alex.id).orElseThrow(), "acept");
+        assertTrue(quests.offered(alex.id), "a misspelt answer leaves the offer waiting");
+        assertTrue(alex.messages.stream().anyMatch((String line) -> RichText.plain(line).contains("\"acept\" is not an answer here; pick accept or decline")), alex.messages.toString());
+        quests.choice(alex, quests.offer(alex.id).orElseThrow(), "Accept");
+        assertFalse(quests.offered(alex.id), "an answer in any case is taken");
+        assertEquals("active", quests.status(alex.id, "town:herbs"));
+        assertEquals(Optional.empty(), quests.offer(alex.id));
+    }
+
     @Test void aPlayerTakesTalksBringsKillsAndTurnsInTheQuest() throws Exception {
         assertFalse(quests.interacted(alex, farmer, false, false), "the farmer has nothing for a player without the quest");
         assertTrue(quests.interacted(alex, healer, false, false), "the healer offers the quest");

@@ -137,7 +137,7 @@ final class AnimusBukkit {
     private volatile HoloService<Player, ItemStack> guis;
     private volatile art.arcane.animus.bukkit.quest.BukkitQuests quests;
     private volatile art.arcane.animus.bukkit.integration.quests.QuestIntegrations questPlugins;
-    private AutoCloseable screenTicks, hireTicks, scheduleTicks, triggerTicks, bossBarTicks;
+    private AutoCloseable screenTicks, hireTicks, scheduleTicks, triggerTicks, bossBarTicks, hintTicks;
     private art.arcane.animus.bukkit.runtime.BukkitBossBars bossBars;
     private final DialogueTriggers dialogueTriggers = new DialogueTriggers(() -> {
         BehaviorCommands current = behaviors;
@@ -405,6 +405,8 @@ final class AnimusBukkit {
             director = new AnimusCommandTree(commandServices).director();
             hints.install(host, List.of(BuildIdentity.ID, host.getName().toLowerCase(java.util.Locale.ROOT) + ":" + BuildIdentity.ID), () -> director,
                     (Player player) -> new BukkitActor(player, replies));
+            NpcRuntime<Player, ItemStack> players = living;
+            hintTicks = ownerTicks.apply(hints.sweep((UUID player, java.util.function.Consumer<Player> refresh) -> players.players().deliver(player, refresh)));
             extensions.start();
             startEditor(modulePlatform, regions);
             updateMetrics(runtime.metrics());
@@ -468,7 +470,7 @@ final class AnimusBukkit {
         if (behaviors != null) behaviors.close();
         if (builtins != null) builtins.close();
         if (commandGrants != null) { commandGrants.close(); commandGrants = null; }
-        for (AutoCloseable ticks : java.util.Arrays.asList(hireTicks, scheduleTicks, screenTicks, triggerTicks, metricsTicks, bossBarTicks)) {
+        for (AutoCloseable ticks : java.util.Arrays.asList(hireTicks, scheduleTicks, screenTicks, triggerTicks, metricsTicks, bossBarTicks, hintTicks)) {
             if (ticks == null) continue;
             try { ticks.close(); }
             catch (Exception ignored) { /* The scheduler stops with the plugin. */ }

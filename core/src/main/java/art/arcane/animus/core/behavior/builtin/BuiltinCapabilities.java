@@ -240,13 +240,16 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         choices.maximum(next.pendingChoices());
     }
 
+    /** Whether a conversation question waits for {@code player}'s answer. */
+    public boolean choiceWaiting(UUID player) { return choices.waiting(player); }
+
+    /** Each conversation question waiting for {@code player}'s answer, oldest first: its token and its option ids. */
+    public Map<String, List<String>> choicesWaiting(UUID player) { return choices.questions(player); }
+
     /**
      * Owner only. Handles a click from the client. Forged, stale, foreign and out-of-range clicks are rejected,
      * and a rejected click publishes nothing.
      */
-    /** Whether a dialogue choice waits for {@code player} to click it. */
-    public boolean choiceWaiting(UUID player) { return choices.waiting(player); }
-
     public PendingChoices.Selection selectChoice(UUID player, String token, String option) {
         return choices.select(player, token, option, npc -> platform.unavailable().isEmpty() && !closed
                 && platform.npcStatus(npc).spawned() && platform.playerInRange(npc, Optional.of(player), CHOICE_RANGE));

@@ -54,6 +54,12 @@ class CommandCompletionsTest {
         assertEquals(CommandCompletions.GLOSS_SOURCE, CommandCompletions.kind("import gloss file", "source"));
         assertEquals(CommandCompletions.IMPORT_FILE, CommandCompletions.kind("import preview", "file"));
         assertEquals("file", CommandCompletions.kind("npc skin", "file"));
+        assertEquals(CommandCompletions.CHOICE_TOKEN, CommandCompletions.kind("choice", "token"), "a question waiting for the player, never a pairing token");
+        assertEquals(CommandCompletions.CHOICE_OPTION, CommandCompletions.kind("choice", "option"));
+        assertEquals(CommandCompletions.QUEST_TOKEN, CommandCompletions.kind("quest choice", "token"));
+        assertEquals(CommandCompletions.QUEST_OPTION, CommandCompletions.kind("quest choice", "option"));
+        assertEquals("token", CommandCompletions.kind("editor revoke", "token"));
+        assertEquals(List.of("accept", "decline"), List.copyOf(new AnimusCommandTree(null).values("quest choice", "option", new Standing(), java.util.Map.of())));
         assertEquals(List.of("gloss:", "harbor:", "town:"), CommandCompletions.namespaces(List.of("town:board", "town:map", "harbor:menu")),
                 "a GUI id starts from a namespace, never an NPC-style id");
         art.arcane.animus.api.Capabilities.Availability say = capability("say", art.arcane.animus.api.Capabilities.Kind.ACTION, true),

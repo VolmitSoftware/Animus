@@ -165,11 +165,17 @@ public final class QuestService<P, S> implements QuestControl, AutoCloseable {
     /** Opens the journal on the player's owner. */
     public boolean journal(P player) { return !closed && screens.open(player, Optional.empty(), (ScreenManager<P, S>.Viewer viewer) -> Optional.of(new QuestJournal<>(this, viewer))); }
 
-    /** A click on an offer's accept or decline button, on the player's owner. */
+    /** The answers an offer takes, as its buttons send them. */
+    public static final List<String> ANSWERS = QuestPlay.ANSWERS;
+
+    /** A click on an offer's accept or decline button, or the answer typed, on the player's owner. */
     public void choice(P player, String token, String option) { if (!closed) play.choice(player, token, option); }
 
     /** Whether a quest offer's buttons wait for {@code player} to click one. */
     public boolean offered(UUID player) { return !closed && play.offered(player); }
+
+    /** The token of the quest offer waiting for {@code player}'s answer. */
+    public Optional<String> offer(UUID player) { return closed ? Optional.empty() : play.offer(player); }
 
     @Override public Optional<String> unavailable() { return closed ? Optional.of("quests are stopping") : Optional.empty(); }
 

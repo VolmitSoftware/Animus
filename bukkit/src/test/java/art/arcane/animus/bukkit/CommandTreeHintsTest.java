@@ -100,6 +100,21 @@ class CommandTreeHintsTest {
         assertFalse(buttons.stale(alex));
     }
 
+    @Test void aTreeStillCarryingTheButtonCommandsAfterItsQuestionExpiredIsFound() {
+        Set<UUID> waiting = new java.util.HashSet<>();
+        CommandTreeHints.Buttons buttons = new CommandTreeHints.Buttons(waiting::contains);
+        UUID alex = UUID.randomUUID(), sam = UUID.randomUUID();
+        waiting.add(alex);
+        waiting.add(sam);
+        buttons.include(alex);
+        buttons.include(sam);
+        assertTrue(buttons.expired().isEmpty(), "both questions still wait");
+        waiting.remove(alex);
+        assertTrue(buttons.expired().contains(alex) && !buttons.expired().contains(sam), "alex's question expired unanswered, so the sweep sends alex a new tree");
+        buttons.include(alex);
+        assertTrue(buttons.expired().isEmpty(), "the new tree leaves the commands out");
+    }
+
     @Test void guiAloneParsesForEveryPlayerWhoMayOpenTheMenu() throws ReflectiveOperationException {
         CommandDispatcher<Object> builder = client(new Actor(Set.of(art.arcane.animus.core.command.PermissionNodes.TOOLS)));
         assertTrue(parses(builder, "animus gui"), "/animus gui opens the menu");

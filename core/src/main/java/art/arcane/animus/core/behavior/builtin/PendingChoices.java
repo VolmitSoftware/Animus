@@ -70,6 +70,16 @@ public final class PendingChoices {
         return false;
     }
 
+    /** Each open prompt to {@code player}, oldest first: its token and its option ids. */
+    synchronized Map<String, List<String>> questions(UUID player) {
+        long now = nanos.getAsLong();
+        Map<String, List<String>> open = new LinkedHashMap<>();
+        prompts.forEach((String token, Prompt prompt) -> {
+            if (prompt.player.equals(player) && !expired(prompt, now)) open.put(token, prompt.options.stream().map(ChoiceOption::id).toList());
+        });
+        return open;
+    }
+
     /** A click from the wrong player, on a bad option or out of range leaves the prompt for its rightful answer. */
     Selection select(UUID player, String token, String option, Predicate<NpcHandle> npcAvailable) {
         Prompt prompt;

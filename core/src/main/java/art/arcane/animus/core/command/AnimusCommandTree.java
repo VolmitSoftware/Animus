@@ -122,7 +122,26 @@ public final class AnimusCommandTree extends CommandGroup {
         return new AnimusDirector(this, this::values, services == null ? (String plugin) -> true : services.plugins(),
                 services == null ? AnimusDirector.EVERY_FEATURE : this::lacking,
                 (UUID player) -> services == null || services.mode(player) == ToolkitMode.SIMPLE, this::changes,
-                (UUID player) -> services != null && !services.shops().players().owned(player).isEmpty());
+                (UUID player) -> services != null && !services.shops().players().owned(player).isEmpty(), this::waiting);
+    }
+
+    /** Whether a question of {@code question}'s kind waits for the player's answer. */
+    private boolean waiting(Answers.Question question, UUID player) {
+        if (services == null) return false;
+        return switch (question) {
+            case CONVERSATION -> services.builtins() != null && services.builtins().choiceWaiting(player);
+            case QUEST_OFFER -> services.quests().offered(player);
+        };
+    }
+
+    /** The conversation questions waiting for players, from the built-in capabilities once they run. */
+    ChoiceCommands.Questions questions() {
+        BuiltinCapabilities builtins = services == null ? null : services.builtins();
+        if (builtins == null) return ChoiceCommands.NONE;
+        return new ChoiceCommands.Questions() {
+            @Override public Map<String, List<String>> waiting(UUID player) { return builtins.choicesWaiting(player); }
+            @Override public PendingChoices.Selection select(UUID player, String token, String option) { return builtins.selectChoice(player, token, option); }
+        };
     }
 
     /** Why this platform lacks a {@link NeedsFeature} feature, as its services say; empty where it has it. */
@@ -639,14 +658,12 @@ public final class AnimusCommandTree extends CommandGroup {
         return Optional.of(line);
     }
 
-    @Director(hidden = true, description = "Answer a dialogue choice")
+    @Director(hidden = true, description = "Answer a question an NPC asked you")
     @AnimusPermission("")
-    void choice(@Param(name = "token", description = "The prompt token") String token,
-                @Param(name = "option", description = "The chosen option") String option) {
-        CommandActor actor = actor();
-        BuiltinCapabilities builtins = services.builtins();
-        ChoiceCommands.choose(actor, token, option, builtins == null
-                ? (UUID player, String prompt, String chosen) -> PendingChoices.Selection.UNKNOWN : builtins::selectChoice);
+    @Answers(Answers.Question.CONVERSATION)
+    void choice(@Param(name = "token", description = "Which question; tab completion offers the ones waiting for you") String token,
+                @Param(name = "option", description = "Your answer; tab completion offers them") String option) {
+        ChoiceCommands.choose(actor(), token, option, questions());
     }
 
     /**

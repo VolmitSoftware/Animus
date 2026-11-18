@@ -39,7 +39,7 @@ public final class AnimusHelp {
             new Topic("Services", DocsLink.SERVICES, List.of("shop", "hologram", "build")),
             new Topic("Web editor", DocsLink.PAIRING, List.of("editor")),
             new Topic("Quests", DocsLink.QUESTS, List.of("quest")),
-            new Topic("Behaviors", DocsLink.BEHAVIORS, List.of("behaviors")),
+            new Topic("Behaviors", DocsLink.BEHAVIORS, List.of("behaviors", "choice")),
             new Topic("Trait groups", DocsLink.GROUPS, List.of("groups")),
             new Topic("Diagnostics", DocsLink.DIAGNOSTICS, List.of("debug", "proof")));
 

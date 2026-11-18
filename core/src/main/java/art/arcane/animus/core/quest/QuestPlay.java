@@ -19,6 +19,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -38,6 +39,7 @@ final class QuestPlay<P, S> {
     /** Seconds an offer's buttons stay valid. */
     static final long OFFER_SECONDS = 120;
     private static final String ACCEPT = "accept", DECLINE = "decline";
+    static final List<String> ANSWERS = List.of(ACCEPT, DECLINE);
     /** Taking quests and their offer markers need this node; quests already taken keep counting without it. */
     static final String USE = art.arcane.animus.core.command.PermissionNodes.QUESTS_USE;
     private static final String PROGRESS_SOUND = "minecraft:entity.experience_orb.pickup", STAGE_SOUND = "minecraft:block.note_block.chime",
@@ -61,9 +63,12 @@ final class QuestPlay<P, S> {
     int offers() { return offers.size(); }
 
     /** Whether an offer to {@code player} waits for its answer. */
-    boolean offered(UUID player) {
+    boolean offered(UUID player) { return offer(player).isPresent(); }
+
+    /** The token of the offer waiting for {@code player}'s answer. */
+    Optional<String> offer(UUID player) {
         Offer offer = offers.get(player);
-        return offer != null && offer.expires() >= System.currentTimeMillis();
+        return offer != null && offer.expires() >= System.currentTimeMillis() ? Optional.of(offer.token()) : Optional.empty();
     }
     void forget(UUID player) { offers.remove(player); reminded.remove(player); }
 
@@ -228,10 +233,12 @@ final class QuestPlay<P, S> {
                 List.of(new ChoiceOption(ACCEPT, "Accept"), new ChoiceOption(DECLINE, "Decline"))));
     }
 
-    void choice(P player, String token, String option) {
+    void choice(P player, String token, String typed) {
         UUID id = host.id(player);
         Offer offer = offers.get(id);
         if (offer == null || !offer.token().equals(token) || offer.expires() < System.currentTimeMillis()) { tell(player, "&7That offer has run out; ask again."); return; }
+        String option = typed.toLowerCase(Locale.ROOT);
+        if (!ANSWERS.contains(option)) { tell(player, "&c" + DialogueFormat.notAnAnswer(typed, ANSWERS)); return; }
         offers.remove(id, offer);
         Optional<QuestDocument> quest = service.catalog().quest(offer.quest());
         if (quest.isEmpty()) { tell(player, "&7That quest is no longer offered."); return; }
@@ -240,7 +247,6 @@ final class QuestPlay<P, S> {
             host.message(player, DialogueFormat.speech(service.npcName(offer.npc()), QuestText.fill(quest.get().messages().decline().orElse("Perhaps another time."), name, quest.get())));
             return;
         }
-        if (!option.equals(ACCEPT)) return;
         Optional<String> refused = refusal(player, quest.get());
         if (refused.isPresent()) { tell(player, "&c" + refused.get()); return; }
         started(player, quest.get());

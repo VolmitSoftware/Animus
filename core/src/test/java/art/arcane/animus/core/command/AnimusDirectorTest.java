@@ -82,7 +82,7 @@ class AnimusDirectorTest {
     @Test void aChangeIsRememberedWithTheNodeItsCommandNeeded() {
         RecentChanges changes = new RecentChanges();
         AnimusDirector saver = new AnimusDirector(new Saver(), (String command, String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
-                (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> false, () -> changes, (UUID player) -> false);
+                (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> false, () -> changes, (UUID player) -> false, AnimusDirector.NOTHING_WAITS);
         Actor keeper = new Actor(true, "probe.shop");
         saver.execute(keeper, new String[]{"save"});
         assertEquals("probe.shop", changes.latest(keeper.player().orElseThrow()).orElseThrow().node());
@@ -241,6 +241,81 @@ class AnimusDirectorTest {
         assertFalse(director.complete(admin, new String[]{"se"}).contains("secret"));
     }
 
+    /** A tree with a hidden command a chat button runs to answer a question, as {@code /animus choice} is. */
+    @Director(name = "probe")
+    static final class Asking {
+        static final String TOKEN = "b".repeat(32);
+        final List<String> calls = new ArrayList<>();
+
+        @Director @AnimusPermission("probe.status") void status() { calls.add("status"); }
+
+        @Director(hidden = true, description = "Answer a question an NPC asked you") @AnimusPermission("") @Answers(Answers.Question.CONVERSATION)
+        void answer(@Param(name = "token") String token, @Param(name = "option") String option) { calls.add("answer " + token + " " + option); }
+    }
+
+    @Test void anAnswerCommandIsOfferedToAPlayerOnlyWhileTheirQuestionWaits() {
+        Asking asking = new Asking();
+        Set<UUID> asked = new java.util.HashSet<>();
+        AnimusDirector director = new AnimusDirector(asking, (String command, String parameter, CommandActor actor, java.util.Map<String, String> given) -> switch (parameter) {
+                    case "token" -> List.of(Asking.TOKEN);
+                    case "option" -> Asking.TOKEN.equals(given.get("token")) ? List.of("loaf", "leave") : List.of();
+                    default -> List.of();
+                }, (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> false, RecentChanges::new, (UUID player) -> false,
+                (Answers.Question question, UUID player) -> question == Answers.Question.CONVERSATION && asked.contains(player));
+        Actor player = new Actor(true, "probe.status");
+
+        assertEquals(List.of("status"), director.complete(player, new String[]{""}), "nothing waits, so completion leaves it out");
+        assertEquals(List.of(), director.complete(player, new String[]{"answer", ""}));
+        director.execute(player, new String[]{"help"});
+        assertEquals(List.of("status"), player.entries(), "and help does too");
+        director.execute(player, new String[]{"help", "answer"});
+        assertTrue(player.text().contains("No help for \"answer\""), player.text());
+        player.lines.clear();
+        director.execute(player, new String[]{"answer", Asking.TOKEN, "loaf"});
+        director.execute(player, new String[]{"answer"});
+        assertEquals(List.of("[Animus]: No question is waiting for you", "[Animus]: No question is waiting for you"), player.lines, "one plain sentence, whatever was typed");
+        assertTrue(asking.calls.isEmpty(), "nothing ran");
+
+        asked.add(player.player().orElseThrow());
+        player.lines.clear();
+        assertEquals(List.of("answer", "status"), director.complete(player, new String[]{""}), "a waiting question puts its command in completion");
+        assertEquals(List.of("answer"), director.complete(player, new String[]{"an"}));
+        assertEquals(List.of(Asking.TOKEN), director.complete(player, new String[]{"answer", ""}), "then the question's token");
+        assertEquals(List.of("leave", "loaf"), director.complete(player, new String[]{"answer", Asking.TOKEN, ""}), "then its answers");
+        director.execute(player, new String[]{"help"});
+        assertEquals(List.of("answer", "status"), player.entries(), "help lists it while the question waits");
+        director.execute(player, new String[]{"help", "answer"});
+        assertTrue(player.text().startsWith("[Animus]: answer: Answer a question an NPC asked you\n[Animus]: Usage: /probe answer <token> <option>"), player.text());
+        player.lines.clear();
+        director.execute(player, new String[]{"answer", Asking.TOKEN});
+        assertTrue(player.text().contains("Missing argument \"option\"") && player.text().contains("Usage: /probe answer <token> <option>"), player.text());
+        director.execute(player, new String[]{"answer", Asking.TOKEN, "loaf"});
+        assertEquals(List.of("answer " + Asking.TOKEN + " loaf"), asking.calls, "a typed answer runs as a click does");
+
+        Actor other = new Actor(true, "probe.status");
+        assertEquals(List.of("status"), director.complete(other, new String[]{""}), "another player's question is not theirs");
+        Actor console = new Actor(false, "probe.status");
+        assertEquals(List.of("status"), director.complete(console, new String[]{""}), "nor the console's");
+    }
+
+    @Test void eachChoiceCommandShowsWhileItsOwnQuestionWaits() {
+        Set<Answers.Question> waiting = java.util.EnumSet.noneOf(Answers.Question.class);
+        AnimusDirector real = new AnimusDirector(new AnimusCommandTree(null), (String command, String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
+                (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> false, RecentChanges::new, (UUID player) -> false,
+                (Answers.Question question, UUID player) -> waiting.contains(question));
+        Actor player = new Actor(true, "animus.status", PermissionNodes.QUESTS_USE);
+        assertFalse(real.complete(player, new String[]{""}).contains("choice"));
+        assertFalse(real.complete(player, new String[]{"quest", ""}).contains("choice"));
+        waiting.add(Answers.Question.CONVERSATION);
+        assertEquals(List.of("choice"), real.complete(player, new String[]{"ch"}), "a conversation question waits");
+        assertFalse(real.complete(player, new String[]{"quest", ""}).contains("choice"), "the quest offer's answer waits for an offer");
+        real.execute(player, new String[]{"help"});
+        AnimusHelp.Section behaviors = player.pages.getLast().sections().stream().filter((AnimusHelp.Section section) -> section.title().equals("Behaviors")).findFirst().orElseThrow();
+        assertEquals(List.of("choice"), behaviors.entries().stream().map((DirectorRuntimeNode node) -> node.getDescriptor().getName()).toList(), "help files it under Behaviors");
+        waiting.add(Answers.Question.QUEST_OFFER);
+        assertTrue(real.complete(player, new String[]{"quest", ""}).contains("choice"), "an offer waits");
+    }
+
     @Test void groupsShowHelpAndUnknownWordsAreRefused() {
         Actor admin = new Actor(false, AnimusDirector.ADMIN);
         run(admin, "group");
@@ -375,7 +450,7 @@ class AnimusDirectorTest {
 
     @Test void aSimplePlayerGetsTheShortHelpAndAllCommandsIsOneClickAway() {
         AnimusDirector simple = new AnimusDirector(new AnimusCommandTree(null), (String command, String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
-                (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> true, RecentChanges::new, (UUID player) -> false);
+                (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> true, RecentChanges::new, (UUID player) -> false, AnimusDirector.NOTHING_WAITS);
         Actor player = new Actor(true, AnimusDirector.ADMIN);
         simple.execute(player, new String[]{"help"});
         AnimusHelp.Page brief = player.pages.getLast();
@@ -415,7 +490,7 @@ class AnimusDirectorTest {
     @Test void aShopMakerFindsTheShopItemAndOnceTheyOwnAShopTheShopMenu() {
         java.util.Set<UUID> owners = new java.util.HashSet<>();
         AnimusDirector simple = new AnimusDirector(new AnimusCommandTree(null), (String command, String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
-                (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> true, RecentChanges::new, owners::contains);
+                (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> true, RecentChanges::new, owners::contains, AnimusDirector.NOTHING_WAITS);
         Actor maker = new Actor(true, PermissionNodes.TOOLS, PermissionNodes.SHOPS_CREATE);
         simple.execute(maker, new String[]{"help"});
         assertEquals(List.of("/animus gui", "/animus undo", "/animus shop item"), maker.pages.getLast().entries().stream().map(DirectorRuntimeNode::path).toList());
@@ -424,7 +499,7 @@ class AnimusDirectorTest {
         assertEquals(List.of("/animus gui", "/animus undo", "/animus shop item", "/animus shop manage"), maker.pages.getLast().entries().stream().map(DirectorRuntimeNode::path).toList());
         AnimusDirector mod = new AnimusDirector(new AnimusCommandTree(null), (String command, String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(), (String plugin) -> true,
                 (NeedsFeature.Feature feature) -> feature == NeedsFeature.Feature.PLAYER_SHOPS ? java.util.Optional.of(art.arcane.animus.core.gui.ScreenHost.NO_PLAYER_SHOPS) : java.util.Optional.empty(),
-                (UUID player) -> true, RecentChanges::new, owners::contains);
+                (UUID player) -> true, RecentChanges::new, owners::contains, AnimusDirector.NOTHING_WAITS);
         mod.execute(maker, new String[]{"help"});
         assertEquals(List.of("/animus gui", "/animus undo"), maker.pages.getLast().entries().stream().map(DirectorRuntimeNode::path).toList(),
                 "a mod server has no player shops, so its short page leaves both shop commands out");
@@ -515,7 +590,7 @@ class AnimusDirectorTest {
     @Test void aPlayerWithOnlyTheDefaultNodesIsShownWhatTheyMayRun() {
         java.util.Set<UUID> owners = new java.util.HashSet<>();
         AnimusDirector simple = new AnimusDirector(new AnimusCommandTree(null), (String command, String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
-                (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> true, RecentChanges::new, owners::contains);
+                (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> true, RecentChanges::new, owners::contains, AnimusDirector.NOTHING_WAITS);
         Actor player = new Actor(true, "animus.status", PermissionNodes.SEAT, PermissionNodes.QUESTS_USE, "animus.build.donate");
         simple.execute(player, new String[0]);
         AnimusHelp.Page brief = player.pages.getLast();

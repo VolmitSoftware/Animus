@@ -35,6 +35,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -102,6 +103,7 @@ public final class AnimusDirector {
     private final Predicate<UUID> simple;
     private final Supplier<RecentChanges> changes;
     private final Predicate<UUID> shopOwner;
+    private final BiPredicate<Answers.Question, UUID> waiting;
 
     /**
      * Completion values for a parameter of a command, such as NPC ids for {@code npc}. {@code command} is the command's words
@@ -118,15 +120,17 @@ public final class AnimusDirector {
      * @param simple  whether a player is in Simple mode
      * @param changes where each player's reported changes are kept for {@code /animus undo}, read for each command
      * @param shopOwner whether a player owns a chest shop, so the short page lists {@code shop manage}
+     * @param waiting whether a question of a kind waits for a player's answer, which opens its {@link Answers} command to them
      */
     AnimusDirector(Object root, Completer values, Predicate<String> plugins, Function<NeedsFeature.Feature, Optional<String>> features, Predicate<UUID> simple,
-                   Supplier<RecentChanges> changes, Predicate<UUID> shopOwner) {
+                   Supplier<RecentChanges> changes, Predicate<UUID> shopOwner, BiPredicate<Answers.Question, UUID> waiting) {
         this.values = Objects.requireNonNull(values);
         this.plugins = Objects.requireNonNull(plugins);
         this.features = Objects.requireNonNull(features);
         this.simple = Objects.requireNonNull(simple);
         this.changes = Objects.requireNonNull(changes);
         this.shopOwner = Objects.requireNonNull(shopOwner);
+        this.waiting = Objects.requireNonNull(waiting);
         engine = DirectorEngineFactory.create(Objects.requireNonNull(root), DirectorEngineOptions.builder()
                 .dispatcher((DirectorExecutionMode mode, Runnable task) -> {
                     try { task.run(); }
@@ -142,8 +146,11 @@ public final class AnimusDirector {
 
     /** As {@link #AnimusDirector(Object, Completer, Predicate)} on a platform that lacks the features {@code features} names a reason for. */
     public AnimusDirector(Object root, Completer values, Predicate<String> plugins, Function<NeedsFeature.Feature, Optional<String>> features) {
-        this(root, values, plugins, features, (UUID player) -> false, kept(new RecentChanges()), (UUID player) -> false);
+        this(root, values, plugins, features, (UUID player) -> false, kept(new RecentChanges()), (UUID player) -> false, NOTHING_WAITS);
     }
+
+    /** No question waits for anyone. */
+    static final BiPredicate<Answers.Question, UUID> NOTHING_WAITS = (Answers.Question question, UUID player) -> false;
 
     /** A platform with every {@link NeedsFeature} feature. */
     static final Function<NeedsFeature.Feature, Optional<String>> EVERY_FEATURE = (NeedsFeature.Feature feature) -> Optional.empty();
@@ -213,7 +220,9 @@ public final class AnimusDirector {
                 return false;
             }
         if (!allowed(actor, node)) { actor.tell(Palette.error(refused(actor, node))); return false; }
-        boolean hidden = hidden(node);
+        Optional<Answers.Question> question = question(node);
+        if (question.isPresent() && !waits(actor, question.get())) { actor.tell(Palette.error(question.get().none)); return false; }
+        boolean hidden = hidden(node) && question.isEmpty();
         Optional<String> stray = stray(node, words.subList(words.size() - given.size(), words.size()));
         if (stray.isPresent()) {
             actor.tell(Palette.error(hidden ? ChoiceCommands.NOT_AVAILABLE : stray.get()));
@@ -332,7 +341,7 @@ public final class AnimusDirector {
         if (opensMenu(actor, words)) return menuHelp(actor);
         if (menuRefused(actor, words)) return true;
         Optional<DirectorRuntimeNode> found = path(words);
-        if (found.isEmpty() || hidden(found.get())) {
+        if (found.isEmpty() || hidden(found.get()) && !visible(actor, found.get())) {
             actor.rich(ChatLine.error("No help for \"" + String.join(" ", words) + "\"").run("Help", "/" + label + " help", "Show the commands"));
             return true;
         }
@@ -780,14 +789,27 @@ public final class AnimusDirector {
 
     /**
      * Whether help and completion list the node: its plugin runs, and the actor may run it, or for a group, something
-     * inside it; {@code gui} for every player who may open the menu with it.
+     * inside it; {@code gui} for every player who may open the menu with it. A hidden command only while the question it
+     * {@link Answers} waits for the actor.
      */
     public boolean visible(CommandActor actor, DirectorRuntimeNode node) {
-        if (node.getDescriptor().isHidden() || needs(node).isPresent()) return false;
+        if (needs(node).isPresent()) return false;
+        if (node.getDescriptor().isHidden()) return question(node).filter((Answers.Question question) -> waits(actor, question)).isPresent() && allowed(actor, node);
         if (allowed(actor, node) || menuWord(actor, node)) return true;
         if (node.isInvocable()) return false;
         for (DirectorRuntimeNode child : node.getChildren()) if (visible(actor, child)) return true;
         return false;
+    }
+
+    /** The question the node's command answers, for a command marked {@link Answers}. */
+    private static Optional<Answers.Question> question(DirectorRuntimeNode node) {
+        Answers answers = node.getMethod() == null ? null : node.getMethod().getAnnotation(Answers.class);
+        return answers == null ? Optional.empty() : Optional.of(answers.value());
+    }
+
+    /** Whether such a question waits for the actor, who must be a player. */
+    private boolean waits(CommandActor actor, Answers.Question question) {
+        return actor.player().filter((UUID player) -> waiting.test(question, player)).isPresent();
     }
 
     private static boolean hidden(DirectorRuntimeNode node) {

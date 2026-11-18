@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -46,6 +47,20 @@ class PendingChoicesTest {
         open(PLAYER);
         clock.addAndGet(Duration.ofSeconds(10).toNanos());
         assertFalse(choices.waiting(PLAYER), "an expired prompt is closed");
+    }
+
+    @Test void theQuestionsWaitingForAPlayerAreTheirOpenPromptsWithTheirAnswers() {
+        assertEquals(Map.of(), choices.questions(PLAYER));
+        String first = open(PLAYER);
+        String other = choices.open(new NpcHandle(UUID.randomUUID()), PLAYER, Optional.empty(), "bread", List.of(new ChoiceOption("loaf", "A loaf, please")), Duration.ofSeconds(30));
+        open(STRANGER);
+        assertEquals(List.of(first, other), List.copyOf(choices.questions(PLAYER).keySet()), "oldest first, and never another player's");
+        assertEquals(List.of("yes", "no"), choices.questions(PLAYER).get(first));
+        assertEquals(List.of("loaf"), choices.questions(PLAYER).get(other));
+        assertEquals(PendingChoices.Selection.ACCEPTED, choices.select(PLAYER, first, "no", npc -> true));
+        assertEquals(List.of(other), List.copyOf(choices.questions(PLAYER).keySet()), "an answered prompt is gone");
+        clock.addAndGet(Duration.ofSeconds(30).toNanos());
+        assertEquals(Map.of(), choices.questions(PLAYER), "an expired prompt is gone");
     }
 
     @Test void forgedTokenIsRejected() {

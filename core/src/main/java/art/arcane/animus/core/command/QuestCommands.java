@@ -30,7 +30,8 @@ final class QuestCommands extends CommandGroup {
 
     @Director(hidden = true, description = "Answer a quest offer", origin = DirectorOrigin.PLAYER)
     @AnimusPermission(PermissionNodes.QUESTS_USE)
-    void choice(@Param(name = "token", description = "The offer token") String token,
+    @Answers(Answers.Question.QUEST_OFFER)
+    void choice(@Param(name = "token", description = "Which offer; tab completion offers the one waiting for you") String token,
                 @Param(name = "option", description = "accept or decline") String option) {
         CommandActor actor = actor();
         actor.player().ifPresent((UUID player) -> quests().choice(player, token, option));
