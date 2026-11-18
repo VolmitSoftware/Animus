@@ -31,6 +31,12 @@ class ModTextTest {
         assertEquals("Lists NPCs", ((HoverEvent.ShowText) style.getHoverEvent()).value().getString());
     }
 
+    @Test void dottedWordsStayPlainText() {
+        Component line = ModText.component("§cMissing animus.tools; see config.toml for int3:greet");
+        assertEquals("Missing animus.tools; see config.toml for int3:greet", line.getString());
+        assertEquals(java.util.Optional.empty(), line.visit((Style piece, String text) -> java.util.Optional.ofNullable(piece.getClickEvent()), Style.EMPTY));
+    }
+
     @Test void theDirectorTreeLoadsAndRendersItsHelpWithoutBukkit() {
         AnimusDirector director = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
         List<String> lines = AnimusHelp.lines(AnimusHelp.page(director.engine().getRoot(), director.engine().getRoot().getChildren(), 0));

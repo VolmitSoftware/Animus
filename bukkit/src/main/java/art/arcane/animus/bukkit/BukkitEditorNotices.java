@@ -5,7 +5,6 @@ import art.arcane.animus.core.editor.EditorNotice;
 import art.arcane.animus.core.editor.EditorNoticeChannel;
 import java.util.Optional;
 import java.util.UUID;
-import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.HoverEvent;
 import net.md_5.bungee.api.chat.TextComponent;
@@ -40,19 +39,19 @@ final class BukkitEditorNotices implements EditorNoticeChannel {
         if (!player.isOnline() || !notice.reaches(player.getUniqueId(), player.hasPermission(PERMISSION))) return;
         notice.sound().ifPresent((EditorNotifySettings.Sound sound) -> player.playSound(player.getLocation(), sound.id(), SoundCategory.MASTER, (float) sound.volume(), (float) sound.pitch()));
         notice.chat().ifPresent((EditorNotice.Line chat) -> {
-            TextComponent line = new TextComponent(TextComponent.fromLegacyText(chat.text()));
-            chat.hover().ifPresent((String hover) -> line.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text(TextComponent.fromLegacyText(hover)))));
+            TextComponent line = new TextComponent(BukkitChat.components(chat.text()));
+            chat.hover().ifPresent((String hover) -> line.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text(BukkitChat.components(hover)))));
             chat.suggest().ifPresent((String command) -> line.setClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, command)));
             TextComponent whole = new TextComponent();
             whole.addExtra(line);
             chat.copy().ifPresent((EditorNotice.Copy copy) -> {
-                TextComponent piece = new TextComponent(TextComponent.fromLegacyText(copy.text()));
+                TextComponent piece = new TextComponent(BukkitChat.components(copy.text()));
                 piece.setClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, copy.value()));
-                piece.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text(TextComponent.fromLegacyText(copy.hover()))));
+                piece.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text(BukkitChat.components(copy.hover()))));
                 whole.addExtra(piece);
             });
             player.spigot().sendMessage(whole);
         });
-        notice.actionBar().ifPresent((String bar) -> player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(bar)));
+        notice.actionBar().ifPresent((String bar) -> BukkitChat.actionBar(player, bar));
     }
 }

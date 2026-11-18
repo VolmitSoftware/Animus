@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.gui;
 
+import art.arcane.animus.bukkit.BukkitChat;
 import art.arcane.animus.bukkit.folia.FoliaRegions;
 import art.arcane.animus.bukkit.BukkitWorldLookup;
 
@@ -22,8 +23,6 @@ import art.arcane.animus.bukkit.toolkit.BukkitWand;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.toolkit.Toolkit;
-import art.arcane.volmlib.util.plugin.ComponentMessenger;
-import art.arcane.volmlib.util.plugin.ComponentText;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -249,10 +248,8 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         }
     }
 
-    @Override public void message(Player player, String text) { player.sendMessage(text); }
-    @Override public void actionBar(Player player, String text) {
-        player.spigot().sendMessage(net.md_5.bungee.api.ChatMessageType.ACTION_BAR, net.md_5.bungee.api.chat.TextComponent.fromLegacy(text));
-    }
+    @Override public void message(Player player, String text) { BukkitChat.send(player, text); }
+    @Override public void actionBar(Player player, String text) { BukkitChat.actionBar(player, text); }
     @Override public void title(Player player, String title, String subtitle, int fadeIn, int stay, int fadeOut) { player.sendTitle(title, subtitle, fadeIn, stay, fadeOut); }
     @Override public void sound(Player player, String sound, String source, float volume, float pitch) {
         NamespacedKey key = NamespacedKey.fromString(MinecraftIds.normalize(sound));
@@ -267,7 +264,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         if (player.isPresent()) { player.get().performCommand(command); return; }
         later.test(null, () -> server.dispatchCommand(server.getConsoleSender(), command));
     }
-    @Override public void broadcast(String text) { for (Player online : server.getOnlinePlayers()) later.test(online, () -> online.sendMessage(text)); }
+    @Override public void broadcast(String text) { for (Player online : server.getOnlinePlayers()) later.test(online, () -> BukkitChat.send(online, text)); }
     @Override public Optional<Pose> pose(Player player) {
         Location at = player.getLocation();
         World world = player.getWorld();
@@ -340,7 +337,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
                 if (!scope.equals("server") && online.getWorld() != world) return;
                 if (scope.equals("radius") && online.getLocation().distanceSquared(center) > radius * radius) return;
                 if (permission.isPresent() && !online.hasPermission(permission.get())) return;
-                online.sendMessage(text);
+                BukkitChat.send(online, text);
             });
         }
     }
@@ -367,10 +364,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         return wand.map((ItemStack stack) -> BukkitWand.give(player, stack)).orElse(WandGift.NONE);
     }
     @Override public boolean prompt(Player player, Prompt prompt) { return prompts.open(player, prompt); }
-    @Override public void chat(Player player, ChatLine line) {
-        if (line.interactive()) ComponentMessenger.send(player, ComponentText.component(line.component()));
-        else player.sendMessage(line.console());
-    }
+    @Override public void chat(Player player, ChatLine line) { BukkitChat.send(player, line); }
     @Override public void parts(Player player, List<art.arcane.animus.core.text.TextPart> parts) {
         player.spigot().sendMessage(art.arcane.animus.bukkit.BukkitChoiceMessages.components(parts));
         if (parts.stream().anyMatch((art.arcane.animus.core.text.TextPart part) -> part.command().isPresent())) buttonsShown.accept(player);
@@ -407,7 +401,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         String data = stack.hasItemMeta() ? stack.getItemMeta().getAsComponentString() : "";
         boolean lost = item.isPresent() && item.get().components().isEmpty() && data != null && !data.isBlank() && !data.equals("[]");
         if (item.isEmpty() || lost) {
-            player.sendMessage(Palette.error("That item holds more data than a shop offer can keep"));
+            BukkitChat.send(player, Palette.error("That item holds more data than a shop offer can keep"));
             return;
         }
         ScreenManager<Player, ItemStack> current = manager;

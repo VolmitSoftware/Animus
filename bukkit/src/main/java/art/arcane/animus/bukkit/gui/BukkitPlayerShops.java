@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.gui;
 
+import art.arcane.animus.bukkit.BukkitChat;
 import art.arcane.animus.bukkit.toolkit.BukkitWand;
 import art.arcane.animus.core.shop.PlayerShops;
 import art.arcane.animus.core.shop.ShopDocument;
@@ -55,15 +56,15 @@ public final class BukkitPlayerShops implements Listener {
         if (!picking && !(item && player.isSneaking())) return;
         Block block = event.getClickedBlock();
         if (!BukkitShopStock.container(block)) {
-            if (!picking) player.sendMessage(Palette.error("That is not a chest, barrel or other container"));
+            if (!picking) BukkitChat.send(player, Palette.error("That is not a chest, barrel or other container"));
             return;
         }
         boolean refused = event.useInteractedBlock() == Event.Result.DENY;
         event.setUseInteractedBlock(Event.Result.DENY);
         event.setUseItemInHand(Event.Result.DENY);
-        if (refused) { player.sendMessage(Palette.error("You cannot use that chest: protection does not let you open it")); return; }
+        if (refused) { BukkitChat.send(player, Palette.error("You cannot use that chest: protection does not let you open it")); return; }
         Optional<ShopSpot> spot = BukkitShopStock.spot(player, block);
-        if (spot.isEmpty()) { player.sendMessage(Palette.error("Leave a free space beside the chest for the shop's NPC")); return; }
+        if (spot.isEmpty()) { BukkitChat.send(player, Palette.error("Leave a free space beside the chest for the shop's NPC")); return; }
         if (picking) toolkit.chestClicked(player.getUniqueId(), spot.get());
         else toolkit.newShop(player.getUniqueId(), spot.get());
     }
@@ -74,7 +75,7 @@ public final class BukkitPlayerShops implements Listener {
         Optional<ShopDocument> shop = holder(event.getInventory());
         if (shop.isEmpty() || mayRun(player, shop.get())) return;
         event.setCancelled(true);
-        player.sendMessage(Palette.error("This chest belongs to " + owner(shop.get()) + "'s shop"));
+        BukkitChat.send(player, Palette.error("This chest belongs to " + owner(shop.get()) + "'s shop"));
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -86,7 +87,7 @@ public final class BukkitPlayerShops implements Listener {
         if (shop.isEmpty()) return;
         if (!mayRun(event.getPlayer(), shop.get())) {
             event.setCancelled(true);
-            event.getPlayer().sendMessage(Palette.error("This chest belongs to " + owner(shop.get()) + "'s shop"));
+            BukkitChat.send(event.getPlayer(), Palette.error("This chest belongs to " + owner(shop.get()) + "'s shop"));
             return;
         }
         if (listed.isPresent()) shops.broken(listed.get(), block(listed.get(), block));
@@ -103,7 +104,7 @@ public final class BukkitPlayerShops implements Listener {
             Optional<ShopDocument> shop = at(beside);
             if (shop.isPresent() && !mayRun(event.getPlayer(), shop.get())) {
                 event.setCancelled(true);
-                event.getPlayer().sendMessage(Palette.error("A chest here would join " + owner(shop.get()) + "'s shop"));
+                BukkitChat.send(event.getPlayer(), Palette.error("A chest here would join " + owner(shop.get()) + "'s shop"));
                 return;
             }
         }

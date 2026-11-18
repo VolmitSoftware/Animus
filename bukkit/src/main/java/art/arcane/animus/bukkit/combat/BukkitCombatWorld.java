@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.combat;
 
+import art.arcane.animus.bukkit.BukkitChat;
 import art.arcane.animus.bukkit.BukkitWorldLookup;
 import art.arcane.animus.bukkit.runtime.DefinitionItems;
 import art.arcane.animus.core.npc.NpcItem;
@@ -276,16 +277,14 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
     }
     @Override public void tell(UUID player, String speaker, String message) {
         Player online = plugin.getServer().getPlayer(player);
-        if (online != null) online.sendMessage(DialogueFormat.speech(speaker, message));
+        if (online != null) BukkitChat.send(online, DialogueFormat.speech(speaker, message));
     }
     @Override public void actionBar(UUID player, String text) {
         Player online = plugin.getServer().getPlayer(player);
         if (online != null) actionBar(online, text);
     }
-    /** A health line above the hotbar, as Spigot sends one. */
-    public static void actionBar(Player player, String text) {
-        player.spigot().sendMessage(net.md_5.bungee.api.ChatMessageType.ACTION_BAR, net.md_5.bungee.api.chat.TextComponent.fromLegacy(text));
-    }
+    /** A health line above the hotbar. */
+    public static void actionBar(Player player, String text) { BukkitChat.actionBar(player, text); }
     @Override public void credit(TargetRef killer, UUID npc) {
         Player online = killer.kind() == TargetKind.PLAYER ? plugin.getServer().getPlayer(killer.id()) : null;
         if (online != null) online.incrementStatistic(Statistic.MOB_KILLS);

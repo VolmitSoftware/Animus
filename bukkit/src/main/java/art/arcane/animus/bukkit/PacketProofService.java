@@ -153,7 +153,7 @@ final class PacketProofService implements Listener, AutoCloseable {
                 try { owner.guard.bind(body.entityId(), state.spawn()); }
                 catch (RuntimeException e) { fail(owner, e); return; }
                 owner.expiresAt = System.nanoTime() + LIFETIME_NANOS;
-                viewer.sendMessage("Proof spawned id=" + body.entityId() + " uuid=" + body.uuid() + " type=" + type
+                BukkitChat.send(viewer, "Proof spawned id=" + body.entityId() + " uuid=" + body.uuid() + " type=" + type
                         + " x=" + location.getX() + " y=" + location.getY() + " z=" + location.getZ()
                         + " height=" + body.height() + " world-registered=" + (plugin.getServer().getEntity(body.uuid()) == null ? 0 : 1));
             }));
@@ -183,7 +183,7 @@ final class PacketProofService implements Listener, AutoCloseable {
             if (failure != null) { fail(session, failure); return; }
             body.pose = next;
             session.guard.updateSnapshot(id, body.state.move(new WorldPosition(next.world().toString(), new Vec3(next.x(), next.y(), next.z()))));
-            viewer.sendMessage("Proof moved id=" + id + " x=" + next.x() + " y=" + next.y() + " z=" + next.z());
+            BukkitChat.send(viewer, "Proof moved id=" + id + " x=" + next.x() + " y=" + next.y() + " z=" + next.z());
         }));
     }
 
@@ -207,14 +207,14 @@ final class PacketProofService implements Listener, AutoCloseable {
         ControlSession control = new ControlSession(body, packets.subscribeControl(viewer), point, System.nanoTime());
         session.control = control; session.lastControl = control;
         if (controlTicker == null) controlTicker = plugin.getServer().getScheduler().runTaskTimer(plugin, this::tickControls, 1, 1);
-        viewer.sendMessage("Proof control started id=" + id + " generation=" + control.loop.generation()
+        BukkitChat.send(viewer, "Proof control started id=" + id + " generation=" + control.loop.generation()
                 + " speed=2.0 leash=8.0 lifetime-seconds=30 | unmounted remote control; awaiting fresh input");
     }
 
     void stopControl(Player viewer) {
         requireAvailable();
         ProofSession session = sessions.get(viewer.getUniqueId());
-        if (session == null || session.control == null) { viewer.sendMessage("Proof control stopped reason=idle"); return; }
+        if (session == null || session.control == null) { BukkitChat.send(viewer, "Proof control stopped reason=idle"); return; }
         stopControl(session, "command", true);
     }
 
@@ -283,7 +283,7 @@ final class PacketProofService implements Listener, AutoCloseable {
         if (control == null) return;
         session.control = null; control.loop.close(reason); control.subscription.close();
         control.state = "STOPPED"; control.reason = reason;
-        if (notify && session.viewer.isOnline()) session.viewer.sendMessage("Proof control stopped reason=" + reason);
+        if (notify && session.viewer.isOnline()) BukkitChat.send(session.viewer, "Proof control stopped reason=" + reason);
         stopControlTickerWhenIdle();
     }
     private void stopControlTickerWhenIdle() {
@@ -318,15 +318,15 @@ final class PacketProofService implements Listener, AutoCloseable {
                 Math.min(MovementProfile.MAX_HEIGHT, body.body.height()), BodyMobility.ORDINARY_STEP, BodyMobility.JUMP, BodyMobility.FALL, true);
         NavigationPlan plan = navigation.plan(body.pose.world(), bounds, start, goal, profile, new PathPlanner.Limits(2048, 2048, 128));
         session.plan = plan;
-        viewer.sendMessage("Proof path queued id=" + id + " request=" + plan.id());
+        BukkitChat.send(viewer, "Proof path queued id=" + id + " request=" + plan.id());
         plan.future().whenComplete((result, failure) -> scheduler.reply(viewer, () -> {
             if (!current(session) || session.plan != plan) return;
             session.plan = null;
             if (session.bodies.get(id) != body || body.state.snapshot().revision() != snapshot.revision()) return;
-            if (failure != null) { viewer.sendMessage("Proof path failed: " + failure.getClass().getSimpleName()); return; }
+            if (failure != null) { BukkitChat.send(viewer, "Proof path failed: " + failure.getClass().getSimpleName()); return; }
             String capture = plan.capture().map(p -> " sampled=" + p.sampledVoxels() + " unavailable=" + p.unavailableVoxels()
                     + " capture-ticks=" + p.firstTick() + ".." + p.lastTick()).orElse("");
-            viewer.sendMessage("Proof path id=" + id + " status=" + result.status() + " steps=" + result.path().size()
+            BukkitChat.send(viewer, "Proof path id=" + id + " status=" + result.status() + " steps=" + result.path().size()
                     + " visited=" + result.visitedNodes() + " peak-frontier=" + result.peakFrontier() + capture
                     + " | planning only; terrain requires revalidation before movement");
         }));
@@ -358,7 +358,7 @@ final class PacketProofService implements Listener, AutoCloseable {
                 if (failure != null) { fail(session, failure); return; }
                 if (riderIds.isEmpty()) session.mounts.remove(vehicleId);
                 else session.mounts.put(vehicleId, Set.copyOf(riderIds));
-                viewer.sendMessage("Proof passengers vehicle=" + vehicleId + " count=" + riderIds.size()
+                BukkitChat.send(viewer, "Proof passengers vehicle=" + vehicleId + " count=" + riderIds.size()
                         + " | static presentation only; detach before moving or interacting");
             }));
         } catch (RuntimeException e) { session.mountPending.removeAll(affected); throw e; }
@@ -397,7 +397,7 @@ final class PacketProofService implements Listener, AutoCloseable {
                 }, body.body.typeKey().equals(DragonBody.TYPE) ? DragonBody.hitShape(body.pose.yaw()) : ViewerSession.HitShape.BOUNDS);
         if (!result.accepted()) {
             session.rejected++;
-            viewer.sendMessage("Proof rejected id=" + input.body().entityId() + " reason=" + result.rejection());
+            BukkitChat.send(viewer, "Proof rejected id=" + input.body().entityId() + " reason=" + result.rejection());
             return;
         }
         var action = input.action() == NativePacketAdapter.Action.ATTACK ? VirtualNpcInteractionEvent.Action.ATTACK : VirtualNpcInteractionEvent.Action.INTERACT;
@@ -406,7 +406,7 @@ final class PacketProofService implements Listener, AutoCloseable {
         if (!current(session) || session.bodies.get(body.body.entityId()) != body || body.moving || viewer.isDead()
                 || mounted(session, body.body.entityId()) || session.mountPending.contains(body.body.entityId())
                 || !viewer.hasPermission("animus.admin") || body.state.snapshot().revision() != result.npc().revision()) return;
-        if (event.isCancelled()) { viewer.sendMessage("Proof interaction cancelled id=" + body.body.entityId()); return; }
+        if (event.isCancelled()) { BukkitChat.send(viewer, "Proof interaction cancelled id=" + body.body.entityId()); return; }
         session.accepted++;
         var observed = observer;
         if (observed != null) observed.accepted(body.body.uuid(), viewer.getUniqueId(), action == VirtualNpcInteractionEvent.Action.ATTACK, result.distance(), true);
@@ -414,7 +414,7 @@ final class PacketProofService implements Listener, AutoCloseable {
             cancelPlan(session);
             session.guard.updateSnapshot(body.body.entityId(), body.state.damage(1));
         }
-        viewer.sendMessage("Proof accepted id=" + body.body.entityId() + " action=" + action + " health=" + body.state.snapshot().health());
+        BukkitChat.send(viewer, "Proof accepted id=" + body.body.entityId() + " action=" + action + " health=" + body.state.snapshot().health());
         if (!body.state.snapshot().active()) {
             if (session.control != null && session.control.body == body) stopControl(session, "body-retired", true);
             session.bodies.remove(body.body.entityId());
@@ -459,7 +459,7 @@ final class PacketProofService implements Listener, AutoCloseable {
         clear(session.viewer);
         Throwable cause = failure;
         while (cause.getCause() != null) cause = cause.getCause();
-        session.viewer.sendMessage("Packet proof failed: " + cause.getClass().getSimpleName() + ": " + cause.getMessage());
+        BukkitChat.send(session.viewer, "Packet proof failed: " + cause.getClass().getSimpleName() + ": " + cause.getMessage());
         AnimusLog.shared().failure("Packet proof operation failed", failure, plugin.getLogger()::warning, (String line, Throwable trace) -> plugin.getLogger().log(java.util.logging.Level.WARNING, line, trace));
     }
     private void requireAvailable() { if (!live()) throw new IllegalStateException(status(null)); }

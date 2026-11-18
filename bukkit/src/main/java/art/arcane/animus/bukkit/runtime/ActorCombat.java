@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.bukkit.BukkitChat;
 import art.arcane.animus.bukkit.combat.BukkitCombatWorld;
 import art.arcane.animus.bukkit.combat.BukkitShots;
 import art.arcane.animus.core.behavior.builtin.DialogueFormat;
@@ -434,7 +435,7 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         Player online = combat.online(player.id());
         return online != null && combat.owns(online) && online.hasPermission(node);
     }
-    @Override public void tell(UUID player, String speaker, String message) { combat.deliver(player, (Player online) -> online.sendMessage(DialogueFormat.speech(speaker, message))); }
+    @Override public void tell(UUID player, String speaker, String message) { combat.deliver(player, (Player online) -> BukkitChat.send(online, DialogueFormat.speech(speaker, message))); }
     @Override public void actionBar(UUID player, String text) { combat.deliver(player, (Player online) -> BukkitCombatWorld.actionBar(online, text)); }
     @Override public void credit(TargetRef killer, UUID npc) {
         if (killer.kind() == TargetKind.PLAYER) combat.deliver(killer.id(), (Player online) -> online.incrementStatistic(org.bukkit.Statistic.MOB_KILLS));

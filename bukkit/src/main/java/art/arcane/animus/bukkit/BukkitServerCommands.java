@@ -99,7 +99,7 @@ final class BukkitServerCommands implements ServerCommandSync.Host {
         @Override public boolean execute(CommandSender sender, String label, String[] arguments) {
             boolean permitted = spec.permission().map(sender::hasPermission).orElse(true);
             Optional<UUID> player = sender instanceof Player online ? Optional.of(online.getUniqueId()) : Optional.empty();
-            if (!ServerCommandSync.fire(dispatcher, spec, player, permitted, alias(label), String.join(" ", arguments))) sender.sendMessage(NO_PERMISSION);
+            if (!ServerCommandSync.fire(dispatcher, spec, player, permitted, alias(label), String.join(" ", arguments))) BukkitChat.send(sender, NO_PERMISSION);
             return true;
         }
     }

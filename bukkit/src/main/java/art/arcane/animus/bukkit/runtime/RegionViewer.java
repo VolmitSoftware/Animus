@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.bukkit.BukkitChat;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.text.RichText;
@@ -578,7 +579,7 @@ final class RegionViewer {
         boolean ownClick = target.equals(actor.uuid) && action == VirtualNpcInteractionEvent.Action.INTERACT && "MAIN_HAND".equals(input.hand());
         if (ownClick && actor.publication.ride() && !input.secondaryAction()) {
             String refusal = actor.requestRide(player);
-            if (refusal != null) player.sendMessage(RichText.colorize(Palette.error("Cannot ride " + actor.spec.name() + ": " + refusal)));
+            if (refusal != null) BukkitChat.send(player, RichText.colorize(Palette.error("Cannot ride " + actor.spec.name() + ": " + refusal)));
             else attach(body, actor);
             return;
         }
@@ -586,7 +587,7 @@ final class RegionViewer {
         if (ownClick && actor.seatAsked(input.secondaryAction())) {
             String refusal = actor.requestSeat(player, true);
             if (refusal == null) attachSeat(body, actor);
-            else if (!refusal.isEmpty()) player.sendMessage(RichText.colorize(Palette.error("Cannot sit on " + actor.spec.name() + ": " + refusal)));
+            else if (!refusal.isEmpty()) BukkitChat.send(player, RichText.colorize(Palette.error("Cannot sit on " + actor.spec.name() + ": " + refusal)));
         }
     }
 

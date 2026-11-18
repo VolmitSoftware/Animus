@@ -33,4 +33,10 @@ class BukkitChoiceMessagesTest {
         for (BaseComponent child : buttons.getLast().getExtra()) declined.add(child.getColorRaw());
         assertTrue(declined.contains(ChatColor.RED));
     }
+
+    @Test void dottedWordsInAnAnswerChooseItInsteadOfOpeningALink() {
+        BaseComponent[] rendered = BukkitChoiceMessages.components(DialogueFormat.buttons("animus", "b".repeat(32),
+                List.of(new BehaviorPlatform.ChoiceOption("read", "Read config.toml"))));
+        assertEquals(List.of(ClickEvent.Action.RUN_COMMAND + " /animus choice " + "b".repeat(32) + " read"), BukkitActorTest.clicks(rendered));
+    }
 }

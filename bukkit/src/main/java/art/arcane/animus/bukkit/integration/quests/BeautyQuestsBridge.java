@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.integration.quests;
 
+import art.arcane.animus.bukkit.BukkitChat;
 import art.arcane.animus.bukkit.api.NpcInfo;
 import art.arcane.animus.bukkit.event.VirtualNpcDeathEvent;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
@@ -184,7 +185,7 @@ final class BeautyQuestsBridge {
         @Override public void itemClick(Player player, Consumer<String> chosen) {
             choose(player.getUniqueId(), chosen, System.currentTimeMillis());
             player.closeInventory();
-            player.sendMessage("Click the Animus NPC to kill within " + CHOOSE_MILLIS / 1000 + " seconds.");
+            BukkitChat.send(player, "Click the Animus NPC to kill within " + CHOOSE_MILLIS / 1000 + " seconds.");
         }
 
         void choose(UUID player, Consumer<String> chosen, long now) { choosing.put(player, new Choice(chosen, now + CHOOSE_MILLIS)); }

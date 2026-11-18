@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.quest;
 
+import art.arcane.animus.bukkit.BukkitChat;
 import art.arcane.animus.bukkit.event.VirtualNpcDeathEvent;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.BehaviorFacts;
@@ -64,8 +65,8 @@ public final class BukkitQuests implements Listener, AutoCloseable {
         for (Player online : plugin.getServer().getOnlinePlayers()) service.onPlayer(online.getUniqueId(), () -> service.joined(online));
         PluginCommand journal = plugin.getCommand("quests");
         if (journal != null) journal.setExecutor((sender, command, label, arguments) -> {
-            if (!(sender instanceof Player player)) { sender.sendMessage(Palette.error("Only a player has a quest journal")); return true; }
-            if (!player.hasPermission(PermissionNodes.QUESTS_USE)) { sender.sendMessage(Palette.error("You may not use quests here")); return true; }
+            if (!(sender instanceof Player player)) { BukkitChat.send(sender, Palette.error("Only a player has a quest journal")); return true; }
+            if (!player.hasPermission(PermissionNodes.QUESTS_USE)) { BukkitChat.send(sender, Palette.error("You may not use quests here")); return true; }
             service.journal(player.getUniqueId());
             return true;
         });

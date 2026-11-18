@@ -4,7 +4,6 @@ import art.arcane.animus.core.command.CommandActor;
 import art.arcane.animus.core.command.CommandSound;
 import art.arcane.animus.core.command.Coordinates;
 import art.arcane.animus.core.text.ChatLine;
-import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import art.arcane.volmlib.util.plugin.ComponentMessenger;
@@ -35,11 +34,8 @@ record BukkitActor(CommandSender sender, ReplyScheduler replies) implements Comm
      * fallbacks, which every Bukkit console renders.
      */
     @Override public void tell(String message) { rich(line(message)); }
-    @Override public void plain(String line) { sender.sendMessage(sender instanceof Player ? line : RichText.legacy(line)); }
-    @Override public void rich(ChatLine line) {
-        if (sender instanceof Player && line.interactive()) ComponentMessenger.send(sender, ComponentText.component(line.component()));
-        else plain(line.console());
-    }
+    @Override public void plain(String line) { BukkitChat.send(sender, line); }
+    @Override public void rich(ChatLine line) { BukkitChat.send(sender, line); }
     @Override public Optional<UUID> player() { return sender instanceof Player player ? Optional.of(player.getUniqueId()) : Optional.empty(); }
     @Override public boolean reply(Runnable action) { return replies.reply(sender, action); }
     @Override public Optional<WorldPosition> position() {

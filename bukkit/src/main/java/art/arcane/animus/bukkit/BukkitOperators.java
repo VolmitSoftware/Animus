@@ -24,6 +24,6 @@ final class BukkitOperators implements OperatorChannel {
     private static void deliver(Player player, List<String> lines, boolean sound) {
         if (!player.isOnline() || !player.hasPermission(NOTIFY)) return;
         if (sound) player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, VOLUME, PITCH);
-        for (String line : lines) player.sendMessage(line);
+        for (String line : lines) BukkitChat.send(player, line);
     }
 }

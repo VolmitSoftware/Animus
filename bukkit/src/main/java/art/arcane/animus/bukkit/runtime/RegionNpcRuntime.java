@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.bukkit.BukkitChat;
 import art.arcane.animus.bukkit.BukkitWorldLookup;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.config.CombatBudgets;
@@ -501,7 +502,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
                 org.bukkit.Location place = new org.bukkit.Location(world, target.point().x(), target.point().y(), target.point().z(), rider.getLocation().getYaw(), rider.getLocation().getPitch());
                 if (world != null) regions.teleport(rider, place);
             }
-            if (message != null && rider.isOnline()) rider.sendMessage(message);
+            if (message != null && rider.isOnline()) BukkitChat.send(rider, message);
         });
     }
     @Override public Optional<String> selection(UUID viewer) {

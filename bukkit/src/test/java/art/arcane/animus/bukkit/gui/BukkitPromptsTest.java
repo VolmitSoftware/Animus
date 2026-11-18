@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
+import net.md_5.bungee.api.chat.BaseComponent;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
@@ -48,7 +49,9 @@ class BukkitPromptsTest {
     final Player player = proxy(Player.class, (Object proxy, Method method, Object[] arguments) -> switch (method.getName()) {
         case "getUniqueId" -> id;
         case "getName" -> "Alex";
-        case "sendMessage" -> { told.add(String.valueOf(arguments[0])); yield null; }
+        case "spigot" -> new Player.Spigot() {
+            @Override public void sendMessage(BaseComponent... components) { told.add(BaseComponent.toPlainText(components)); }
+        };
         case "getOpenInventory" -> showing ? view() : craftingView();
         case "closeInventory" -> { showing = false; serverCloses++; yield null; }
         case "hashCode" -> 1;

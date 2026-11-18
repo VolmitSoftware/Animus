@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.folia;
 
+import art.arcane.animus.bukkit.BukkitChat;
 import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
@@ -91,22 +92,22 @@ public final class FoliaStationaryProofService implements Listener, AutoCloseabl
                 if (!available() || ticket!=null && !pendingSpawns.current(ticket)) return;
                 owner.require(viewer);
                 if(ticket!=null && !pendingSpawns.current(ticket,epochs.capture(viewer))){
-                    viewer.sendMessage("Folia proof request cancelled reason=viewer-teleported");return;
+                    BukkitChat.send(viewer, "Folia proof request cancelled reason=viewer-teleported");return;
                 }
                 if (!viewer.isOnline() || viewer.isDead() || !viewer.hasPermission("animus.admin")) return;
                 switch(requested) {
                     case "spawn" -> spawn(viewer,skinHash,ticket,epoch);
-                    case "clear" -> viewer.sendMessage("Folia proof cleared");
+                    case "clear" -> BukkitChat.send(viewer, "Folia proof cleared");
                     case "status" -> {
                         Lease lease=sessions.get(viewer.getUniqueId());
                         if(lease!=null && lease.viewer!=viewer)lease=null;
-                        viewer.sendMessage(status()+ (lease==null?"":" | body="+(lease.body==null?"pending":lease.body.entityId())
+                        BukkitChat.send(viewer, status()+ (lease==null?"":" | body="+(lease.body==null?"pending":lease.body.entityId())
                                 +" | uuid="+(lease.body==null?"pending":lease.body.uuid())+" | generation="+lease.generation+" | viewer-epoch="+lease.epoch.sequence()+" | phase="+lease.phase
                                 +" | accepted="+lease.accepted+" | rejected="+lease.rejected+" | transport-ready="+lease.visible));
                     }
                     default -> throw new IllegalArgumentException("proof folia status | spawn [skin=] | clear");
                 }
-            } catch (RuntimeException failure) { if(owner.owns(viewer)) viewer.sendMessage("Folia proof: "+failure.getMessage()); }
+            } catch (RuntimeException failure) { if(owner.owns(viewer)) BukkitChat.send(viewer, "Folia proof: "+failure.getMessage()); }
             finally { released.run(); }
         },released);
     }
@@ -170,7 +171,7 @@ public final class FoliaStationaryProofService implements Listener, AutoCloseabl
                             if(problem!=null){fail(lease,"packet-spawn-failed");return;}
                             if(!eligible(lease)){lease.resources.close();return;}
                             lease.guard.bind(lease.body.entityId(),lease.state.spawn()); lease.visible=true; lease.phase="VISIBLE";
-                            lease.viewer.sendMessage("Folia proof spawned id="+lease.body.entityId()+" uuid="+lease.body.uuid()+" generation="+lease.generation+" viewer-epoch="+lease.epoch.sequence()+" world="+lease.worldId
+                            BukkitChat.send(lease.viewer, "Folia proof spawned id="+lease.body.entityId()+" uuid="+lease.body.uuid()+" generation="+lease.generation+" viewer-epoch="+lease.epoch.sequence()+" world="+lease.worldId
                                     +" x="+lease.feet.x()+" y="+lease.feet.y()+" z="+lease.feet.z()+" height="+lease.body.height()+" preview=true owner-checked=true");
                         }));
             }));
@@ -207,7 +208,7 @@ public final class FoliaStationaryProofService implements Listener, AutoCloseabl
         var request=new ViewerSession.Request(lease.id,lease.guard.sessionId(),input.body().entityId(),
                 new WorldPosition(lease.worldId.toString(),position(eye)),new Vec3(direction.getX(),direction.getY(),direction.getZ()),System.nanoTime());
         var validated=lease.guard.validate(request,(serverEye,point,distance)->terrain.lineOfSight(lease.viewer,lease.world,serverEye.point(),point,distance));
-        if(!validated.accepted()) {lease.rejected++;lease.viewer.sendMessage("Folia proof rejected reason="+validated.rejection());return;}
+        if(!validated.accepted()) {lease.rejected++;BukkitChat.send(lease.viewer, "Folia proof rejected reason="+validated.rejection());return;}
         if(!current(lease)) return;
         var action=input.action()==NativePacketAdapter.Action.ATTACK?VirtualNpcInteractionEvent.Action.ATTACK:VirtualNpcInteractionEvent.Action.INTERACT;
         var event=new VirtualNpcInteractionEvent(lease.viewer,lease.body.uuid(),action,validated.distance(),true);
@@ -217,17 +218,17 @@ public final class FoliaStationaryProofService implements Listener, AutoCloseabl
         Location after=lease.viewer.getEyeLocation(); Vector look=after.getDirection();
         var hit=lease.state.snapshot().bounds().rayDistance(position(after),new Vec3(look.getX(),look.getY(),look.getZ()),4.5);
         if(hit.isEmpty() || !terrain.lineOfSight(lease.viewer,lease.world,position(after),position(after).add(new Vec3(look.getX(),look.getY(),look.getZ()).normalized().multiply(hit.getAsDouble())),hit.getAsDouble())) return;
-        if(event.isCancelled()){lease.viewer.sendMessage("Folia proof interaction cancelled id="+lease.body.entityId());return;}
+        if(event.isCancelled()){BukkitChat.send(lease.viewer, "Folia proof interaction cancelled id="+lease.body.entityId());return;}
         var observed=observer;
         if(observed!=null)observed.accepted(lease.body.uuid(),lease.viewer.getUniqueId(),action==VirtualNpcInteractionEvent.Action.ATTACK,validated.distance(),true);
-        lease.accepted++; lease.viewer.sendMessage("Folia proof accepted id="+lease.body.entityId()+" action="+action+" preview=true");
+        lease.accepted++; BukkitChat.send(lease.viewer, "Folia proof accepted id="+lease.body.entityId()+" action="+action+" preview=true");
         // This proof changes no health, command state, real entity or persisted definition.
     }
     private boolean current(Lease lease) {return !closed.get() && lease.resources.active() && sessions.get(lease.id)==lease;}
     private void fail(Lease lease,String reason) {
         boolean notify=current(lease) && owner.owns(lease.viewer);
         lease.resources.close();
-        if(notify) lease.viewer.sendMessage("Folia proof retired reason="+reason);
+        if(notify) BukkitChat.send(lease.viewer, "Folia proof retired reason="+reason);
     }
     private void retire(Player viewer) {
         pendingSpawns.invalidate(viewer);

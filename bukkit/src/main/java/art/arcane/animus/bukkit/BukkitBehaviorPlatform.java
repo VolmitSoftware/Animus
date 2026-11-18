@@ -7,8 +7,6 @@ import art.arcane.animus.core.behavior.builtin.DialogueFormat;
 import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.core.text.Placeholders;
 import art.arcane.animus.core.text.RichText;
-import net.md_5.bungee.api.ChatMessageType;
-import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.inventory.meta.BookMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import art.arcane.animus.core.runtime.NpcRuntime;
@@ -129,7 +127,7 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         String line = DialogueFormat.speech(active.name(), text);
         boolean personal = personal(active.name()) || personal(text);
         return deliver(living.players(), living.hidden(), active, audience, active.state().position(), false,
-                (Player viewer) -> viewer.sendMessage(personal ? DialogueFormat.speech(fill(viewer, active.name()), fill(viewer, text)) : line));
+                (Player viewer) -> BukkitChat.send(viewer, personal ? DialogueFormat.speech(fill(viewer, active.name()), fill(viewer, text)) : line));
     }
 
     @Override public int presentChoices(NpcHandle npc, UUID player, String prompt, String token, List<ChoiceOption> options) {
@@ -138,7 +136,7 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         return living.players().deliver(player, online -> {
             List<ChoiceOption> shown = options.stream().map((ChoiceOption option) -> new ChoiceOption(option.id(), fill(online, option.text()), option.colour(),
                     option.hover().map((String hover) -> fill(online, hover)), option.style())).toList();
-            online.sendMessage(DialogueFormat.speech(fill(online, active.name()), fill(online, prompt)));
+            BukkitChat.send(online, DialogueFormat.speech(fill(online, active.name()), fill(online, prompt)));
             online.spigot().sendMessage(BukkitChoiceMessages.components(DialogueFormat.buttons(BuildIdentity.ID, token, shown)));
             buttonsShown.accept(online);
         }) ? 1 : 0;
@@ -420,7 +418,7 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
             }
             case PLAYER -> {
                 Optional<Player> online = player.isEmpty() ? Optional.empty() : here(player.get());
-                online.ifPresent((Player target) -> target.sendMessage(personal ? RichText.colorize(fill(target, text)) : line));
+                online.ifPresent((Player target) -> BukkitChat.send(target, personal ? RichText.colorize(fill(target, text)) : line));
                 return online.isPresent() ? 1 : 0;
             }
             case WORLD -> {
@@ -448,12 +446,12 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         String line = RichText.colorize(text);
         boolean personal = personal(text);
         return deliver(living.players(), living.hidden(), active, new Audience(Optional.empty(), radius), active.state().position(), false,
-                (Player viewer) -> viewer.sendMessage(personal ? RichText.colorize(fill(viewer, text)) : line));
+                (Player viewer) -> BukkitChat.send(viewer, personal ? RichText.colorize(fill(viewer, text)) : line));
     }
 
     private boolean send(Player recipient, String text, String line, boolean personal) {
-        if (!personal) { recipient.sendMessage(line); return true; }
-        return living.players().deliver(recipient.getUniqueId(), (Player owned) -> owned.sendMessage(RichText.colorize(fill(owned, text))));
+        if (!personal) { BukkitChat.send(recipient, line); return true; }
+        return living.players().deliver(recipient.getUniqueId(), (Player owned) -> BukkitChat.send(owned, RichText.colorize(fill(owned, text))));
     }
 
     @Override public int title(UUID player, Title title) {
@@ -466,7 +464,7 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
 
     @Override public int actionbar(UUID player, String text) {
         Optional<Player> online = here(player);
-        online.ifPresent((Player target) -> target.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(RichText.colorize(fill(target, text)))));
+        online.ifPresent((Player target) -> BukkitChat.actionBar(target, RichText.colorize(fill(target, text))));
         return online.isPresent() ? 1 : 0;
     }
 
@@ -769,7 +767,7 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         if (meta != null) {
             meta.setTitle(bounded(RichText.colorize(book.title()), MAXIMUM_BOOK_TITLE));
             meta.setAuthor(RichText.colorize(book.author()));
-            meta.setPages(book.pages().stream().limit(MAXIMUM_BOOK_PAGES).map(RichText::colorize).toList());
+            meta.spigot().setPages(book.pages().stream().limit(MAXIMUM_BOOK_PAGES).map((String page) -> BukkitChat.components(RichText.colorize(page))).toList());
             stack.setItemMeta(meta);
         }
         hand(online.get(), stack);

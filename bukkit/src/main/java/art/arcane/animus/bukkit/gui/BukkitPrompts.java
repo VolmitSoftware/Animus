@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.gui;
 
+import art.arcane.animus.bukkit.BukkitChat;
 import art.arcane.animus.core.gui.ScreenHost;
 import art.arcane.animus.core.gui.TextPrompts;
 import art.arcane.animus.core.text.RichText;
@@ -119,7 +120,7 @@ final class BukkitPrompts implements Listener {
         name(view, prompt.initial());
         top.setItem(INPUT, paper(prompt.initial()));
         view.setRepairCost(0);
-        player.sendMessage(RichText.colorize(TextPrompts.opened(prompt)));
+        BukkitChat.send(player, RichText.colorize(TextPrompts.opened(prompt)));
         return true;
     }
 
@@ -148,7 +149,7 @@ final class BukkitPrompts implements Listener {
     /** The chat fallback: the next line the player sends answers. */
     void ask(Player player, ScreenHost.Prompt prompt) {
         prompts.start(player.getUniqueId(), new TextPrompts.Waiting(prompt, TextPrompts.Input.CHAT, null, owner(player, null)));
-        for (String line : TextPrompts.chat(prompt)) player.sendMessage(RichText.colorize(line));
+        for (String line : TextPrompts.chat(prompt)) BukkitChat.send(player, RichText.colorize(line));
     }
 
     /**

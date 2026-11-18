@@ -10,8 +10,6 @@ import art.arcane.animus.core.metrics.ReactMetricCatalog;
 import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.text.RichText;
-import net.md_5.bungee.api.ChatMessageType;
-import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.server.PluginDisableEvent;
@@ -509,7 +507,7 @@ final class AnimusBukkit {
     boolean command(CommandSender sender, String[] arguments) {
         AnimusDirector active = director;
         String failure = startupFailure;
-        if (failure != null) { sender.sendMessage(Palette.error("Animus did not start: " + failure + ". Fix it and restart; the server log has the details")); return true; }
+        if (failure != null) { BukkitChat.send(sender, Palette.error("Animus did not start: " + failure + ". Fix it and restart; the server log has the details")); return true; }
         BukkitActor actor = new BukkitActor(sender, replies);
         if (stopping || active == null || runtime == null || !runtime.isRunning()) { actor.tell(Palette.error("Not running; the server log has the startup error")); return true; }
         active.execute(actor, arguments);
@@ -535,7 +533,7 @@ final class AnimusBukkit {
         Player player = host.getServer().getPlayer(id);
         if (player == null || stopping) return false;
         String coloured = RichText.colorize(line);
-        return replies.reply(player, () -> player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(coloured)));
+        return replies.reply(player, () -> BukkitChat.actionBar(player, coloured));
     }
 
     /** Registers Animus as a React metric source when React is enabled; React's API is reached only by reflection. */
@@ -762,11 +760,11 @@ final class AnimusBukkit {
                     String signature = skin.has("signature") && !skin.get("signature").isJsonNull() ? skin.get("signature").getAsString() : null;
                     if (!stopping) replies.reply(player, () -> {
                         try { if (!stopping && proof.finishSkinLoad(player, request)) proof.spawn(player, type, texture, signature); }
-                        catch (RuntimeException e) { player.sendMessage(Palette.error("Proof: " + e.getMessage())); }
+                        catch (RuntimeException e) { BukkitChat.send(player, Palette.error("Proof: " + e.getMessage())); }
                     });
                 } catch (IOException | RuntimeException e) {
                     if (!stopping) replies.reply(player, () -> {
-                        if (proof.finishSkinLoad(player, request)) player.sendMessage(Palette.error("Cannot load proof skin: " + e.getMessage()));
+                        if (proof.finishSkinLoad(player, request)) BukkitChat.send(player, Palette.error("Cannot load proof skin: " + e.getMessage()));
                     });
                 }
             }); } catch (RejectedExecutionException e) { proof.finishSkinLoad(player, request); throw e; }
