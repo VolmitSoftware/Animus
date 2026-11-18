@@ -46,10 +46,85 @@ class AdministrationTest {
             }
             List<String> lines = admin.reload();
             assertEquals(2, lines.size(), lines.toString());
-            assertTrue(lines.getFirst().matches("Upgraded 2 files to schemaVersion 2; rollback [a-f0-9-]{36}"), lines.getFirst());
+            assertTrue(lines.getFirst().matches("Upgraded NPC Guard and trait group guards to the current file format; /animus rollback [a-f0-9-]{36} restores the originals"),
+                    lines.getFirst());
             assertEquals("Reloaded; 1 saved, 1 spawned", lines.get(1));
             for (String path : paths) assertEquals(Files.readString(after.resolve(path)), Files.readString(root.resolve(path)), path);
             assertEquals(List.of("Reloaded; 1 saved, 1 spawned"), admin.reload(), "nothing is left to upgrade");
+        }
+    }
+    /** Rolling back an upgrade restores the version-one files, which this build refuses; the reply says so in words and still names the rollback. */
+    @Test void rollingBackAnUpgradeSaysInWordsThatTheOriginalFilesCannotLoad() throws Exception {
+        Path before = art.arcane.animus.core.editor.SharedFixtures.fixture("upgrades/before");
+        try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            for (String path : List.of("groups/guards.json", "npcs/town/citizens-9.json")) {
+                Files.createDirectories(root.resolve(path).getParent());
+                Files.writeString(root.resolve(path), Files.readString(before.resolve(path)));
+            }
+            java.util.regex.Matcher upgraded = java.util.regex.Pattern.compile("rollback ([a-f0-9-]{36})").matcher(admin.reload().getFirst());
+            assertTrue(upgraded.find());
+            String tx = upgraded.group(1);
+            List<String> lines = admin.rollback(tx).stream().map(RichText::plain).toList();
+            assertTrue(lines.getFirst().matches("\\[Animus]: Rolled back " + tx.substring(0, 8) + "; tx [a-f0-9-]{36}"), lines.toString());
+            assertTrue(lines.contains("[Animus]: Restored the original file of NPC Guard; this version cannot load it, so the current one stays in use."), lines.toString());
+            assertTrue(lines.contains("[Animus]: Restored the original file of trait group guards; this version cannot load it, so the current one stays in use."), lines.toString());
+            assertEquals(3, lines.size(), lines.toString());
+            assertEquals("Guard", runtime.npcs().find("citizens-9").orElseThrow().name(), "the running NPC stays");
+        }
+    }
+    /** A broken definition file is named as players name it, with the reason in words, by reload and validate alike. */
+    @Test void reloadAndValidateNameABrokenFileInWords() throws Exception {
+        try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            admin.create("guard", "minecraft:player", "world", 1, 64, 2, "town", "Town Guard");
+            String broken = runtime.documents().read("npcs/town/guard.json").replace("\"guard\"", "\"bob\"").replace("Town Guard", "Bob")
+                    .replaceFirst("\"uuid\": \"[^\"]+\"", "\"uuid\": \"0a1b2c3d-0000-4000-8000-0000000000b0\"").replaceFirst("\"y\": [0-9.]+", "\"y\": \"high\"");
+            Files.writeString(root.resolve("npcs/town/bob.json"), broken);
+            List<String> reloaded = admin.reload().stream().map(RichText::plain).toList();
+            assertTrue(reloaded.getFirst().startsWith("Reloaded; 1 saved"), reloaded.toString());
+            assertEquals("[Animus]: Refused NPC Bob: position y should be a coordinate within ±30000000; it was not loaded.", reloaded.get(1), reloaded.toString());
+            assertEquals(2, reloaded.size(), reloaded.toString());
+            List<String> validated = admin.validate().stream().map(RichText::plain).toList();
+            assertEquals(List.of("[Animus]: 1 definition file has problems; the server log has the exact lines",
+                    "NPC Bob: position y should be a coordinate within ±30000000."), validated);
+        }
+    }
+    /** An import that installs while a file it never wrote is broken still installs, and counts that file instead of naming it. */
+    @Test void anImportCountsABrokenFileItDidNotWrite() throws Exception {
+        String source = """
+                {"npc":{"1":{"uuid":"00000000-0000-0000-0000-000000000001","name":"Guard",
+                "traits":{"type":"PLAYER","location":{"world":"world","x":0,"y":64,"z":0}}}}}
+                """;
+        try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            Path input = runtime.documents().resolve("imports/inbox/sample.yml"); Files.createDirectories(input.getParent()); Files.writeString(input, source);
+            String original = id("Preview ", admin.preview("sample.yml", Optional.empty(), Map.of()).getFirst());
+            String application = id("Application ", admin.stage(original, "reject", Optional.empty()).getFirst());
+            Files.createDirectories(root.resolve("npcs/town"));
+            Files.writeString(root.resolve("npcs/town/bob.json"), "{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"0a1b2c3d-0000-4000-8000-0000000000b0\",\"id\":\"bob\",\"group\":\"town\","
+                    + "\"name\":\"Bob\",\"type\":\"minecraft:player\",\"spawned\":false,\"groups\":[\"missing\"],\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}}");
+            List<String> installed = admin.applyPlan(original, application).stream().map(RichText::plain).toList();
+            assertTrue(installed.getFirst().startsWith("[Animus]: Installed NPCs; tx "), installed.toString());
+            assertEquals("[Animus]: 1 other file cannot load; /animus validate names it.", installed.get(1), installed.toString());
+            assertTrue(installed.stream().noneMatch((String line) -> line.contains("Bob")), installed.toString());
+            assertEquals(1, runtime.npcs().all().size());
+        }
+    }
+    /** Rolling back Gale's upgrade names Gale only; Fern, broken by hand and never in that change, is counted. */
+    @Test void aRollbackNamesOnlyTheFilesItRestored() throws Exception {
+        try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            Files.createDirectories(root.resolve("npcs/town"));
+            Files.writeString(root.resolve("npcs/town/fern.json"), "{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"0a1b2c3d-0000-4000-8000-0000000000f0\",\"id\":\"fern\","
+                    + "\"group\":\"town\",\"name\":\"Fern\",\"type\":\"minecraft:player\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":\"high\",\"z\":0,\"yaw\":0,\"pitch\":0}}");
+            Files.writeString(root.resolve("npcs/town/gale.json"), "{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"0a1b2c3d-0000-4000-8000-0000000000a1\",\"id\":\"gale\","
+                    + "\"group\":\"town\",\"name\":\"Gale\",\"type\":\"minecraft:player\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}}");
+            java.util.regex.Matcher upgraded = java.util.regex.Pattern.compile("rollback ([a-f0-9-]{36})").matcher(admin.reload().getFirst());
+            assertTrue(upgraded.find());
+            List<String> lines = admin.rollback(upgraded.group(1)).stream().map(RichText::plain).toList();
+            assertEquals(List.of("[Animus]: Restored the original file of NPC Gale; this version cannot load it, so the current one stays in use.",
+                    "[Animus]: 1 other file cannot load; /animus validate names it."), lines.subList(1, lines.size()));
         }
     }
     @Test void commandEditsPersistAcrossRestartAndCanBeUndone() throws Exception {
@@ -220,7 +295,7 @@ class AdministrationTest {
             String first = admin.edit("guard", "{\"name\":\"One\"}");
             admin.edit("guard", "{\"name\":\"Two\"}");
             String early = first.substring(first.lastIndexOf(' ') + 1);
-            assertEquals("Cannot undo " + art.arcane.animus.core.text.ChatLine.shortId(early) + ": npcs/guard.json changed after it; undo the later change first",
+            assertEquals("Cannot undo " + art.arcane.animus.core.text.ChatLine.shortId(early) + ": NPC Two changed after it; undo the later change first",
                     assertThrows(IOException.class, () -> admin.rollback(early)).getMessage());
         }
     }

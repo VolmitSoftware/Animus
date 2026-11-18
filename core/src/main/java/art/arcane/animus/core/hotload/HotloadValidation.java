@@ -111,7 +111,7 @@ public final class HotloadValidation {
             upgrade = Optional.of(new Upgrade(migrated, from, text));
         }
         Optional<String> id = EditorDocuments.idFor(kind, path);
-        if (id.isEmpty()) return Verdict.refused("$: " + path + " is not where a " + kind.wireName() + " document belongs");
+        if (id.isEmpty()) return Verdict.refused("$: this folder is not where a " + art.arcane.animus.core.text.PlainWords.of(kind.wireName()) + " file belongs");
         GuiValidator gui = HoloCatalog.validator(context.data(), context.commandsAllowed());
         List<String> errors = switch (kind) {
             case INVENTORY -> gui.problems(GuiKind.INVENTORY, id.get(), snapshot.content());

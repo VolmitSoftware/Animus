@@ -265,6 +265,26 @@ class CitizensDropInTest {
         }
     }
 
+    /** A broken NPC the import never wrote is counted after the rollback, never named as one it restored. */
+    @Test void anImportRollbackCountsABrokenFileItDidNotTouch() throws Exception {
+        Files.writeString(Files.createDirectories(root.resolve("plugins/Animus/imports")).resolve("saves.yml"), SAVES);
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            CitizensDropIn flow = dropIn(store, npcs);
+            flow.preview("reject", Optional.empty(), Map.of(), false);
+            flow.applyStaged();
+            Files.createDirectories(store.resolve("npcs/town"));
+            Files.writeString(store.resolve("npcs/town/fern.json"), FERN);
+            String rolledBack = art.arcane.animus.core.text.RichText.plain(joined(flow.rollbackApplied()));
+            assertTrue(rolledBack.contains("Citizens import undone"), rolledBack);
+            assertTrue(rolledBack.contains("1 other file cannot load; /animus validate names it."), rolledBack);
+            assertFalse(rolledBack.contains("Fern"), rolledBack);
+        }
+    }
+
+    static final String FERN = "{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"0a1b2c3d-0000-4000-8000-0000000000f0\",\"id\":\"fern\",\"group\":\"town\",\"name\":\"Fern\","
+            + "\"type\":\"minecraft:player\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":\"high\",\"z\":0,\"yaw\":0,\"pitch\":0}}";
+
     /** A guard that died for good after apply is Animus's own write: rollback undoes the death, then the import. */
     @Test void rollbackUndoesADeathAnimusRecordedOnAnImportedNpc() throws Exception {
         Files.writeString(Files.createDirectories(root.resolve("plugins/Animus/imports")).resolve("saves.yml"), SAVES);
@@ -295,7 +315,7 @@ class CitizensDropInTest {
             String edit = npcs.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), renamed));
             List<String> stopped = flow.rollbackApplied();
             String text = joined(stopped);
-            assertTrue(text.contains("Rollback stopped: citizens-2 changed after the import"), text);
+            assertTrue(text.contains("Rollback stopped: NPC Head Baker changed after the import"), text);
             assertFalse(text.contains("npcs/") || text.contains("/animus reload"), "no file path, no advice that does not help: " + text);
             assertEquals("Next: /animus rollback " + edit.substring(0, 8) + ", then /animus import citizens rollback", stopped.getLast(), text);
             assertEquals(3, npcs.all().size(), "nothing is half undone");

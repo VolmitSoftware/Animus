@@ -8,6 +8,7 @@ import art.arcane.animus.core.migration.CitizensImporter;
 import art.arcane.animus.core.migration.ImportApplications;
 import art.arcane.animus.core.migration.ModuleImports;
 import art.arcane.animus.core.extension.ModuleHooks;
+import art.arcane.animus.core.hotload.FileWords;
 import art.arcane.animus.api.ImportConverters;
 import art.arcane.animus.core.behavior.schema.NpcSchemaGenerator;
 import art.arcane.animus.core.behavior.schema.Suggestions;
@@ -18,6 +19,7 @@ import art.arcane.animus.core.storage.*;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.DocsLink;
 import art.arcane.animus.core.text.Palette;
+import art.arcane.animus.core.text.PlainWords;
 import com.google.gson.*;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -25,6 +27,7 @@ import java.util.*;
 
 /** Shared, filesystem-only administration. The platform is responsible for permission and scheduling. */
 public final class Administration {
+    private static final System.Logger LOG = System.getLogger("Animus");
     private final AnimusRuntime runtime;
     public Administration(AnimusRuntime runtime) { this.runtime = runtime; }
     /**
@@ -388,7 +391,19 @@ public final class Administration {
         return "Deleted " + id + " and " + shown + "; tx " + runtime.npcs().delete(id, files);
     }
 
-    public List<String> validate() throws IOException { return checked("All definitions valid", runtime.npcs().validate()); }
+    /**
+     * Checks every definition file without loading it. Each problem names the file as players do with the reason in
+     * words; the server log has the exact lines.
+     */
+    public List<String> validate() throws IOException {
+        List<String> errors = runtime.npcs().validate();
+        if (errors.isEmpty()) return List.of(summary("All definitions valid"));
+        for (String error : errors) LOG.log(System.Logger.Level.WARNING, "Validate: " + error);
+        List<String> lines = new ArrayList<>(List.of(Palette.error(PlainWords.count(errors.size(), "definition file has", "definition files have")
+                + " problems; the server log has the exact lines")));
+        lines.addAll(FileWords.refusals(errors, this::text, FileWords.After.CHECK));
+        return lines;
+    }
 
     /**
      * Upgrades NPC and group files below the current schema first, as startup does: one journaled transaction whose
@@ -398,18 +413,38 @@ public final class Administration {
         SchemaMigrations.Report upgraded = SchemaMigrations.standard()
                 .apply(runtime.documents(), List.of(SchemaMigrations.NPC, SchemaMigrations.GROUP));
         List<String> lines = new ArrayList<>();
-        if (!upgraded.migrated().isEmpty())
-            lines.add("Upgraded " + upgraded.migrated().size() + (upgraded.migrated().size() == 1 ? " file" : " files") + " to schemaVersion "
-                    + NpcDefinition.SCHEMA_VERSION + "; rollback " + String.join(", ", upgraded.transactions()));
-        lines.addAll(checked("Reloaded", runtime.npcs().reload()));
+        if (!upgraded.migrated().isEmpty()) {
+            LOG.log(System.Logger.Level.INFO, "Upgraded " + String.join(", ", upgraded.migrated()) + " to schemaVersion " + NpcDefinition.SCHEMA_VERSION
+                    + "; rollback " + String.join(", ", upgraded.transactions()));
+            List<String> names = upgraded.migrated().stream().map((String path) -> FileWords.named(path, this::text)).toList();
+            lines.add("Upgraded " + (names.size() <= 3 ? PlainWords.list(names) : names.size() + " files") + " to the current file format"
+                    + (upgraded.transactions().size() == 1 ? "; /animus rollback " + upgraded.transactions().getFirst() + " restores the originals"
+                    : "; the server log names the rollbacks"));
+        }
+        List<String> errors = runtime.npcs().reload();
+        lines.add(summary("Reloaded"));
+        lines.addAll(red(FileWords.refusals(logged("Reload", errors), this::text, FileWords.After.RELOAD)));
         return lines;
     }
 
-    /** {@code All definitions valid; 3 saved, 2 spawned}, or the problems with the command that shows the rest. */
-    private List<String> checked(String operation, List<String> errors) {
-        if (!errors.isEmpty()) return errors;
+    /** {@code All definitions valid; 3 saved, 2 spawned}. */
+    private String summary(String operation) {
         long spawned = runtime.npcs().all().stream().filter(NpcDefinition::spawned).count();
-        return List.of(operation + "; " + runtime.npcs().all().size() + " saved, " + spawned + " spawned");
+        return operation + "; " + runtime.npcs().all().size() + " saved, " + spawned + " spawned";
+    }
+
+    /** Sends each exact line a reload refused to the server log, and returns them for the reply to put in words. */
+    private static List<String> logged(String operation, List<String> errors) {
+        for (String error : errors) LOG.log(System.Logger.Level.WARNING, operation + " refused " + error);
+        return errors;
+    }
+
+    private static List<String> red(List<String> lines) { return lines.stream().map(Palette::error).toList(); }
+
+    /** The paths a committed transaction wrote; none when it cannot be read, so each refused file is only counted. */
+    private Set<String> touched(String transaction) {
+        try { return Set.copyOf(runtime.documents().paths(transaction)); }
+        catch (IOException unknown) { return Set.of(); }
     }
 
     /** One step of the Citizens drop-in flow; the catalogs its transactions touched reload even when it fails part way. */
@@ -497,10 +532,10 @@ public final class Administration {
     private List<String> installed(String tx) throws IOException {
         List<String> errors = runtime.npcs().reload();
         List<String> notes = catalogs(List.of(tx), false);
-        if (!errors.isEmpty()) throw new IOException("Import stored, but these files were refused and keep their last valid version: " + String.join("; ", errors));
-        if (tx.equals("already-applied")) return List.of("Already installed; nothing changed, /animus list shows the NPCs");
-        List<String> lines = new ArrayList<>(List.of(Palette.success("Installed NPCs; tx " + tx + "; /animus list shows them, /animus spawn <id> shows one")));
-        lines.addAll(notes);
+        List<String> lines = new ArrayList<>(List.of(tx.equals("already-applied") ? "Already installed; nothing changed, /animus list shows the NPCs"
+                : Palette.success("Installed NPCs; tx " + tx + "; /animus list shows them, /animus spawn <id> shows one")));
+        lines.addAll(red(FileWords.refusals(logged("Import", errors), touched(tx), this::text, FileWords.After.RELOAD)));
+        if (!tx.equals("already-applied")) lines.addAll(notes);
         return lines;
     }
 
@@ -513,16 +548,27 @@ public final class Administration {
         return path.startsWith(root) ? root.relativize(path).toString().replace('\\', '/') : path.toString();
     }
 
+    /**
+     * Restores the files a transaction changed and reloads them. A restored file the reload refuses, such as the original
+     * of an upgraded NPC, gets a line in words while the running version stays; the server log has the exact problem.
+     */
     public List<String> rollback(String transaction) throws IOException {
         undoable(transaction);
         String tx = runtime.documents().rollback(transaction);
         // Rebuild after an explicit undo, which intentionally restores older revisions.
         List<String> errors = runtime.npcs().reloadAfterRollback();
         List<String> notes = catalogs(List.of(tx), true);
-        if (!errors.isEmpty()) throw new IOException("Rollback stored, but reload failed: " + String.join("; ", errors));
         List<String> lines = new ArrayList<>(List.of(Palette.success("Rolled back " + ChatLine.shortId(transaction) + "; tx " + tx)));
+        // Only the files this rollback restored read as restored; any other broken file is counted.
+        lines.addAll(red(FileWords.refusals(logged("Rollback " + tx, errors), touched(tx), this::text, FileWords.After.ROLLBACK)));
         lines.addAll(notes);
         return lines;
+    }
+
+    /** A data file's text, for naming it in a reply; null when it is gone or unreadable. */
+    private String text(String path) {
+        try { return runtime.documents().read(path); }
+        catch (IOException unreadable) { return null; }
     }
 
     /**
@@ -541,7 +587,7 @@ public final class Administration {
             if (later == null && !hash.equals(change.expectedHash())) later = change.path();
         }
         if (undone) throw new IOException("Change " + ChatLine.shortId(full) + " is already undone; nothing changed");
-        if (later != null) throw new IOException("Cannot undo " + ChatLine.shortId(full) + ": " + later + " changed after it; undo the later change first");
+        if (later != null) throw new IOException("Cannot undo " + ChatLine.shortId(full) + ": " + FileWords.named(later, this::text) + " changed after it; undo the later change first");
     }
 
     /**

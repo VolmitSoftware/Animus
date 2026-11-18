@@ -1,6 +1,7 @@
 package art.arcane.animus.core.migration;
 
 import art.arcane.animus.core.combat.HealthSettings;
+import art.arcane.animus.core.hotload.FileWords;
 import art.arcane.animus.core.shop.ShopDocument;
 import art.arcane.animus.core.npc.DefinitionBatch;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -59,6 +60,7 @@ public final class CitizensDropIn {
     static final String CITIZENS_RUNNING = "Citizens is still enabled, so imported NPCs stay off to avoid running twice; remove it from plugins/, restart and run this again";
     static final String INTERRUPTED = "an apply was interrupted; /animus import citizens apply finishes it, /animus import citizens rollback undoes it";
     private static final Set<String> DENIZEN = Set.of("assignment", "triggers", "constants", "denizen_flags", "denizenflags");
+    private static final System.Logger LOG = System.getLogger("Animus");
 
     private final DocumentStore store;
     private final NpcRepository npcs;
@@ -258,7 +260,7 @@ public final class CitizensDropIn {
         List<String> errors = npcs.reload();
         List<String> lines = new ArrayList<>(List.of(Palette.success("Released " + behavior + " on " + changed.size() + " NPCs"
                 + (others.isEmpty() ? "" : " and enabled it in server-behaviors.json") + "; tx " + transaction)));
-        if (!errors.isEmpty()) lines.add(problems(errors));
+        lines.addAll(problems(errors, FileWords.After.RELOAD, List.of(transaction)));
         if (!others.isEmpty()) lines.add("It starts once the behaviors reload");
         lines.add("Undo the import and every release with /animus import citizens rollback");
         return lines;
@@ -546,7 +548,7 @@ public final class CitizensDropIn {
         allowCommands(state).ifPresent(lines::add);
         finished(state);
         List<String> errors = npcs.reload();
-        if (!errors.isEmpty()) lines.add(problems(errors));
+        lines.addAll(problems(errors, FileWords.After.RELOAD, ids(state)));
         int guards = guards(imported(state));
         if (combatLimit > 0 && guards > combatLimit)
             lines.add("Combat: " + guards + " guards imported, at most " + combatLimit + " fight or scan at once ([combat] maximumNpcs); see /animus combat status");
@@ -579,7 +581,7 @@ public final class CitizensDropIn {
         List<String> errors = npcs.reload();
         lines.addFirst(Palette.success("Installed import " + state.get("importId").getAsString().substring(0, 12) + "; NPCs spawn with their patrols, schedules, combat, riding, shops and builds on; tx " + definitions));
         if (copied > 0) lines.add("Copied " + copied + " schematics into schematics/");
-        if (!errors.isEmpty()) lines.add(problems(errors));
+        lines.addAll(problems(errors, FileWords.After.RELOAD, ids(state)));
         int behaviors = imported(state).stream().mapToInt((NpcDefinition definition) -> definition.json().has("behaviors") ? definition.json().getAsJsonArray("behaviors").size() : 0).sum();
         if (behaviors > 0) lines.add("Text and command behaviors in behaviors/citizens/ run now");
         return lines;
@@ -626,7 +628,7 @@ public final class CitizensDropIn {
         if (!citizens && !ShopkeepersDropIn.applied(state) && !interrupted(state)) throw new IOException("No applied Citizens import to roll back");
         List<String> lines = new ArrayList<>();
         JsonArray transactions = ImportJournal.transactions(state);
-        List<String> stopped = null;
+        List<String> stopped = null, undone = new ArrayList<>();
         // Newest first; each undo leaves the list as soon as it commits, so a retry after a conflict skips what is undone.
         for (int index = transactions.size() - 1; index >= 0; index--) {
             String transaction = transactions.get(index).getAsString();
@@ -634,10 +636,11 @@ public final class CitizensDropIn {
             try {
                 String inverse = journal.undo(state, transaction);
                 committed.add(inverse);
+                undone.add(inverse);
                 rolledBack = true;
                 lines.add("Rolled back " + shortId(transaction) + "; tx " + inverse);
             } catch (ImportJournal.Blocked blocked) {
-                stopped = stopped(blocked.blocked);
+                stopped = stopped(blocked.blocked, this::text);
                 break;
             } catch (IOException | RuntimeException conflict) {
                 stopped = List.of(Palette.error("Rollback stopped: " + conflict.getMessage()), "Next: fix that, then /animus import citizens rollback");
@@ -666,7 +669,7 @@ public final class CitizensDropIn {
         }
         writeState(state);
         List<String> errors = npcs.reloadAfterRollback();
-        if (!errors.isEmpty()) lines.add(problems(errors));
+        lines.addAll(problems(errors, FileWords.After.ROLLBACK, undone));
         if (stopped != null) lines.addAll(stopped);
         else lines.add(Palette.success("Citizens import undone; the preview stays staged and /animus import citizens apply reinstalls it"));
         return lines;
@@ -676,9 +679,8 @@ public final class CitizensDropIn {
      * Why rollback stopped at a document changed after the import: the NPC or file by name, then the change to undo first
      * when a later transaction made it, else that it was edited by hand.
      */
-    private static List<String> stopped(DocumentStore.Blocked blocked) {
-        String path = blocked.path().startsWith(DocumentStore.DEFINITION_POINTERS) ? blocked.path().substring(DocumentStore.DEFINITION_POINTERS.length()) : blocked.path();
-        String what = art.arcane.animus.core.storage.NpcPaths.file(path) ? art.arcane.animus.core.storage.NpcPaths.idOf(path) : path;
+    private static List<String> stopped(DocumentStore.Blocked blocked, java.util.function.Function<String, String> read) {
+        String what = FileWords.named(blocked.path(), read);
         if (blocked.by().isPresent())
             return List.of(Palette.error("Rollback stopped: " + what + " changed after the import"),
                     "Next: /animus rollback " + shortId(blocked.by().get()) + ", then /animus import citizens rollback");
@@ -1028,8 +1030,25 @@ public final class CitizensDropIn {
         return String.join(", ", counts.entrySet().stream().map((Map.Entry<String, Integer> entry) -> entry.getKey() + " " + entry.getValue()).toList());
     }
 
-    /** Definition files the reload refused; each keeps its last valid version. */
-    static String problems(List<String> errors) { return Palette.error("Refused on reload, last valid kept: " + String.join("; ", errors)); }
+    /**
+     * Each file of these transactions the reload refused, as a red line in words after an install or a rollback; any
+     * other refused file is counted. The server log has the exact problems.
+     */
+    private List<String> problems(List<String> errors, FileWords.After after, java.util.Collection<String> transactions) {
+        for (String error : errors) LOG.log(System.Logger.Level.WARNING, "Citizens import " + (after == FileWords.After.ROLLBACK ? "rollback" : "reload") + " refused " + error);
+        Set<String> touched = new java.util.HashSet<>();
+        for (String transaction : transactions) {
+            try { touched.addAll(store.paths(transaction)); }
+            catch (IOException unknown) { /* A receipt that cannot be read leaves its files counted, not named. */ }
+        }
+        return FileWords.refusals(errors, touched, this::text, after).stream().map(Palette::error).toList();
+    }
+
+    /** A data file's text, for naming it in a reply; null when it is gone or unreadable. */
+    private String text(String path) {
+        try { return store.read(path); }
+        catch (IOException unreadable) { return null; }
+    }
 
     /** The first characters of a transaction id, enough to tell it apart in a report. */
     static String shortId(String transaction) { return transaction.substring(0, Math.min(8, transaction.length())); }

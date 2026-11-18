@@ -13,6 +13,7 @@ import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.storage.SchemaMigrations;
 import art.arcane.animus.core.storage.WriteNotices;
+import art.arcane.animus.core.text.PlainWords;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -40,8 +41,9 @@ import java.util.function.Predicate;
 /**
  * Applies hand edits to the data folder live, as Adapt does: every 500 ms it checks the watched files, waits until a
  * change reads the same twice, checks it with the editor's validators, applies it through the same catalog reloads an
- * editor apply uses, and tells online operators each changed key with a note block ding. An invalid edit keeps the last
- * valid version and operators see the exact field error. Animus's own writes are never reported.
+ * editor apply uses, and tells online operators what happened to each file in one sentence with a note block ding. The
+ * server log keeps each changed key with its old and new value. An invalid edit keeps the last valid version and
+ * operators see why in words. Animus's own writes are never reported.
  */
 public final class HotloadService implements AutoCloseable {
     public static final long POLL_MILLIS = 500;
@@ -177,7 +179,7 @@ public final class HotloadService implements AutoCloseable {
             }
         }
         boolean screens = false;
-        List<String> applied = new ArrayList<>();
+        List<Logged> applied = new ArrayList<>();
         for (Item item : checked) {
             Item settled = reloadRefusal(item, reported);
             String file = item.target().path();
@@ -188,8 +190,7 @@ public final class HotloadService implements AutoCloseable {
                 if (item.target().kind().filter((DocumentKind kind) -> kind == DocumentKind.NPC).isPresent() && item.snapshot().content() != null)
                     parts.runtime().npcs().refused(file, JsonDocuments.hash(item.snapshot().content()));
                 parts.warn().accept("Hotload refused " + file + ": " + error);
-                String kept = item.target().area() == HotloadTargets.Area.SCHEMATIC ? "builds cannot use it until it is fixed" : HotloadMessages.KEPT;
-                parts.operators().notifyOperators(List.of(HotloadMessages.refused(file, error, kept)), settings().sound());
+                parts.operators().notifyOperators(HotloadMessages.refused(item.target(), engine.known(file), item.snapshot().content(), error), settings().sound());
                 continue;
             }
             String transaction = upgraded.get(file);
@@ -197,25 +198,30 @@ public final class HotloadService implements AutoCloseable {
             Optional<HotloadEngine.Delta> delta = transaction == null ? engine.settle(item.snapshot(), HotloadEngine.Outcome.APPLIED)
                     : Optional.of(new HotloadEngine.Delta(file, replaced.get(file), item.verdict().upgrade().orElseThrow().text()));
             if (delta.isEmpty()) continue;
+            String before = delta.get().before(), after = delta.get().after();
+            // An upgraded file gets the upgrade line instead of a change line, since its diff is mostly the migration's own.
             if (transaction != null) {
-                HotloadValidation.Upgrade upgrade = item.verdict().upgrade().orElseThrow();
-                int to = SchemaMigrations.standard().current(upgrade.kind());
+                int to = SchemaMigrations.standard().current(item.verdict().upgrade().orElseThrow().kind());
                 parts.log().accept("Upgraded " + file + " to schemaVersion " + to + "; rollback " + transaction);
-                parts.operators().notifyOperators(List.of(HotloadMessages.upgraded(file, upgrade.from(), to, transaction)), settings().sound());
+                parts.operators().notifyOperators(HotloadMessages.upgraded(item.target(), after, transaction), settings().sound());
             }
             screens |= item.target().area() == HotloadTargets.Area.CONFIG || item.verdict().kind().map(SCREENS::contains).orElse(false);
             boolean liveSwitch = parts.living().switchesLive();
             Predicate<String> restart = item.target().area() == HotloadTargets.Area.CONFIG ? (String key) -> SettingsLiveness.restartRequired(key, liveSwitch) : (String key) -> false;
             item.verdict().warnings().forEach(parts.warn());
-            List<HotloadDiff.Change> changes = HotloadDiff.diff(file, delta.get().before(), delta.get().after());
+            List<HotloadDiff.Change> changes = HotloadDiff.diff(file, before, after);
             if (changes.isEmpty()) continue;
-            applied.add(file + " (" + changes.size() + (changes.size() == 1 ? " change)" : " changes)"));
-            parts.operators().notifyOperators(HotloadMessages.applied(file, changes, restart), settings().sound());
+            applied.add(new Logged(file + " (" + PlainWords.count(changes.size(), "change", "changes") + ")", HotloadMessages.logged(file, before, after, changes)));
+            if (transaction == null) parts.operators().notifyOperators(HotloadMessages.applied(item.target(), before, after, changes, restart), settings().sound());
         }
-        if (applied.size() > LISTED_FILES) parts.log().accept("Hotloaded " + applied.size() + " files, first " + String.join(", ", applied.subList(0, 3)));
-        else applied.forEach((String line) -> parts.log().accept("Hotloaded " + line));
+        if (applied.size() > LISTED_FILES)
+            parts.log().accept("Hotloaded " + applied.size() + " files, first " + String.join(", ", applied.subList(0, 3).stream().map(Logged::brief).toList()));
+        else applied.forEach((Logged line) -> parts.log().accept("Hotloaded " + line.detail()));
         if (screens) parts.refreshScreens().run();
     }
+
+    /** An applied file in the server log: a count for the many-file summary, and each changed key when files are listed one by one. */
+    private record Logged(String brief, String detail) {}
 
     /** What a file-lane apply reported: the reload problems, and the rollback transaction of each file it upgraded. */
     private record Applied(List<String> problems, Map<String, String> upgrades) {}

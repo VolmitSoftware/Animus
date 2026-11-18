@@ -59,7 +59,8 @@ class PaletteTest {
     }
 
     @Test void brandTemplatesUsePinkAndNoOldBrandColour() {
-        String hotload = HotloadMessages.applied("config.toml", List.of(new HotloadDiff.Change("statusMessage", null, null)), (String key) -> false).getFirst();
+        String hotload = HotloadMessages.applied(art.arcane.animus.core.hotload.HotloadTargets.of("config.toml").orElseThrow(), "a = 1", "a = 2",
+                List.of(new HotloadDiff.Change("a", "1", "2")), (String key) -> false).console();
         String watch = RichText.colorize(DebugWatch.line(new AnimusMetrics(() -> 0L, () -> 1L).snapshot()));
         String speech = DialogueFormat.speech("Greeter", "Hello");
         String buttons = String.join("", DialogueFormat.buttons("animus", "t".repeat(32), List.of(new ChoiceOption("rumours", "Rumours"), new ChoiceOption("quests", "Quests"))).stream().map((art.arcane.animus.core.text.TextPart part) -> part.text()).toList());

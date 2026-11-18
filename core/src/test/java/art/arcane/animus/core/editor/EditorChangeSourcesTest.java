@@ -55,7 +55,7 @@ class EditorChangeSourcesTest {
         runtime.catalogs(new RuntimeCatalogs(new RuntimeCatalogs.Parts(runtime, () -> {}, () -> null, () -> CompletableFuture.completedFuture(null),
                 () -> CompletableFuture.completedFuture(null), () -> CompletableFuture.completedFuture(null), (String line) -> {})));
         hotload = new HotloadService(new HotloadService.Parts(runtime, runtime.fileExecutor((Runnable task, art.arcane.animus.core.extension.MutationLane.EngineTaskEvent event, Throwable failure) -> {}),
-                Runnable::run, new FakeNpcRuntime<Object>((java.util.UUID id) -> Optional.empty()), (List<String> sent, boolean sound) -> {}, () -> {}, (String line) -> {}, (String line) -> {}));
+                Runnable::run, new FakeNpcRuntime<Object>((java.util.UUID id) -> Optional.empty()), (art.arcane.animus.core.text.ChatLine sent, boolean sound) -> {}, () -> {}, (String line) -> {}, (String line) -> {}));
         hotload.start();
         harness = new EditorHarness(directory.resolve("host"));
         service = new EditorService(runtime, harness.host, (String line) -> {}, (String line) -> {});

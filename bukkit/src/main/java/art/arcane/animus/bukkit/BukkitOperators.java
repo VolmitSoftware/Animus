@@ -1,7 +1,7 @@
 package art.arcane.animus.bukkit;
 
 import art.arcane.animus.core.hotload.OperatorChannel;
-import java.util.List;
+import art.arcane.animus.core.text.ChatLine;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -16,14 +16,13 @@ final class BukkitOperators implements OperatorChannel {
         this.replies = replies;
     }
 
-    @Override public void notifyOperators(List<String> lines, boolean sound) {
-        List<String> sent = List.copyOf(lines);
-        replies.eachPlayer((Player player) -> deliver(player, sent, sound), "Hotload could not schedule operator messages");
+    @Override public void notifyOperators(ChatLine line, boolean sound) {
+        replies.eachPlayer((Player player) -> deliver(player, line, sound), "Hotload could not schedule operator messages");
     }
 
-    private static void deliver(Player player, List<String> lines, boolean sound) {
+    private static void deliver(Player player, ChatLine line, boolean sound) {
         if (!player.isOnline() || !player.hasPermission(NOTIFY)) return;
         if (sound) player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, VOLUME, PITCH);
-        for (String line : lines) BukkitChat.send(player, line);
+        BukkitChat.send(player, line);
     }
 }
