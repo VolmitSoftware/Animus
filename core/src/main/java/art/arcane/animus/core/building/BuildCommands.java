@@ -168,10 +168,10 @@ public final class BuildCommands {
     private static BlockPos position(String text) {
         Function<String, Integer> whole = (String part) -> {
             try { return Integer.parseInt(part.strip()); }
-            catch (NumberFormatException invalid) { throw new IllegalArgumentException("at= takes whole block coordinates"); }
+            catch (NumberFormatException invalid) { throw new IllegalArgumentException("at takes whole block coordinates, not " + text); }
         };
         String[] parts = text.split(",", -1);
-        if (parts.length != 3) throw new IllegalArgumentException("at= takes x,y,z");
+        if (parts.length != 3) throw new IllegalArgumentException("at takes x,y,z, not " + text);
         return new BlockPos(whole.apply(parts[0]), whole.apply(parts[1]), whole.apply(parts[2]));
     }
 }

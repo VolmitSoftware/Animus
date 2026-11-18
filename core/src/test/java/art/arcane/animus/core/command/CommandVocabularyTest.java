@@ -100,8 +100,8 @@ class CommandVocabularyTest {
     }
 
     @Test void failuresWithoutAMessageNeverReadNull() {
-        assertEquals("IllegalStateException", CommandGroup.reason(new IllegalStateException()));
-        assertEquals("IOException", CommandGroup.reason(new IOException(" ")));
+        assertEquals("That failed; the server log has the cause", CommandGroup.reason(new IllegalStateException()));
+        assertEquals("That failed; the server log has the cause", CommandGroup.reason(new IOException(" ")));
         assertEquals("world missing", CommandGroup.reason(new IllegalArgumentException("world missing")));
     }
 

@@ -36,6 +36,9 @@ class ShopResetReplyTest {
             @Override public Optional<UUID> player() { return Optional.empty(); }
             @Override public boolean reply(Runnable action) { action.run(); return true; }
         };
+        java.nio.file.Files.createDirectories(directory.resolve("shops/town"));
+        java.nio.file.Files.writeString(directory.resolve("shops/town/baker.json"), ShopOpenAsNpcTest.BAKERY.replace("town:bakery", "town:baker"));
+        shops.reload((art.arcane.animus.core.shop.ShopCatalog ignored) -> {});
         try {
             shops.reset(console, "town:baker", Optional.of("Steve"));
             assertEquals("[Animus]: Cleared limits and stock of town:baker for Steve", lines.getLast());

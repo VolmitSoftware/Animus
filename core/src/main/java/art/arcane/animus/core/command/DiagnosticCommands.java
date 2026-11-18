@@ -123,7 +123,7 @@ final class DiagnosticCommands {
             CommandActor actor = actor();
             List<Integer> seated = new ArrayList<>();
             try { for (String rider : riders.split(",")) if (!rider.isBlank()) seated.add(Integer.parseInt(rider.strip())); }
-            catch (NumberFormatException invalid) { actor.tell(Palette.error("riders are entity ids, such as riders=12,13; /animus proof status lists them")); return; }
+            catch (NumberFormatException invalid) { actor.tell(Palette.error("riders takes entity ids, such as riders=12,13, not " + riders + "; /animus proof status lists them")); return; }
             if (seated.size() > 8) { actor.tell(Palette.error("At most 8 riders; give up to 8 ids")); return; }
             proof().mount(actor, vehicle, seated);
         }

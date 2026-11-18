@@ -25,7 +25,7 @@ final class WorldCommands {
     /** A combat answer, or its refusal in red. */
     static void combat(CommandActor actor, Supplier<String> work) {
         try { actor.tell(work.get()); }
-        catch (RuntimeException refused) { actor.tell(Palette.error("Combat: " + refused.getMessage())); }
+        catch (RuntimeException refused) { actor.tell(Palette.error("Combat: " + CommandGroup.reason(refused))); }
     }
 
     @Director(name = "navigation", description = "Send NPCs on a trip, turn them, watch or stop how they move")
@@ -82,7 +82,7 @@ final class WorldCommands {
             CommandActor actor = actor();
             npc(actor, npc).ifPresent((String id) -> {
                 try { actor.tell(NavigationReport.readable(living().navigationStatus(id))); }
-                catch (RuntimeException refused) { actor.tell(Palette.error("Navigation: " + refused.getMessage())); }
+                catch (RuntimeException refused) { actor.tell(Palette.error("Navigation: " + reason(refused))); }
             });
         }
 
@@ -104,14 +104,14 @@ final class WorldCommands {
         void status() {
             CommandActor actor = actor();
             try { actor.tell(living().rideStatus()); }
-            catch (RuntimeException refused) { actor.tell(Palette.error("Ride: " + refused.getMessage())); }
+            catch (RuntimeException refused) { actor.tell(Palette.error("Ride: " + reason(refused))); }
         }
 
         @Director(description = "Dismount a player from the NPC they ride or sit on")
         void stop(@Param(name = "player", description = "The riding or seated player's name") String player) {
             CommandActor actor = actor();
             try { actor.tell(living().stopRider(player) ? Palette.success("Dismounted " + player) : Palette.error(player + " is not riding or sitting on an NPC")); }
-            catch (RuntimeException refused) { actor.tell(Palette.error("Ride: " + refused.getMessage())); }
+            catch (RuntimeException refused) { actor.tell(Palette.error("Ride: " + reason(refused))); }
         }
     }
 
@@ -166,14 +166,14 @@ final class WorldCommands {
             };
             if (wanted == null) { actor.tell(Palette.error("Seat: expected on or off, not " + state)); return; }
             try { actor.tell(Palette.success(living().seatToggle(player.get(), wanted) ? "Sitting on NPCs is on" : "Sitting on NPCs is off")); }
-            catch (RuntimeException refused) { actor.tell(Palette.error("Seat: " + refused.getMessage())); }
+            catch (RuntimeException refused) { actor.tell(Palette.error("Seat: " + reason(refused))); }
         }
 
         @Director(description = "Show who sits on which NPC")
         void status() {
             CommandActor actor = actor();
             try { actor.tell(living().seatStatus()); }
-            catch (RuntimeException refused) { actor.tell(Palette.error("Seat: " + refused.getMessage())); }
+            catch (RuntimeException refused) { actor.tell(Palette.error("Seat: " + reason(refused))); }
         }
     }
 

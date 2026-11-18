@@ -1,5 +1,7 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.core.command.CombatControl;
+
 import art.arcane.animus.bukkit.combat.BukkitCombatWorld;
 import art.arcane.animus.bukkit.combat.MobAttackAnimation;
 import art.arcane.animus.bukkit.combat.MobProfile;
@@ -131,15 +133,15 @@ public final class RegionManualCombat implements AutoCloseable {
 
     private String attack(String id, RegionActor actor, LivingEntity target, AttackProfile attack) {
         StrikeGate.Admission admission = strikes.reserve(actor.uuid, System.nanoTime(), attack.cooldownTicks() * TICK_NANOS);
-        if (admission == StrikeGate.Admission.IN_FLIGHT || admission == StrikeGate.Admission.COOLDOWN) return "Attack " + id + ": COOLDOWN";
-        if (admission == StrikeGate.Admission.FULL) return "Attack " + id + ": UNAVAILABLE too many attacks in flight; try again";
+        if (admission == StrikeGate.Admission.IN_FLIGHT || admission == StrikeGate.Admission.COOLDOWN) return id + " is still recovering from its last hit; try again in a moment";
+        if (admission == StrikeGate.Admission.FULL) return "Too many hits are on their way; try again in a moment";
         attacks.incrementAndGet();
         boolean queued = actor.owner.submit(new OwnerMailbox.Work() {
             @Override public void run() { strike(id, actor, target, attack); }
             @Override public void refuse(String reason) { finish(id, actor, "INACTIVE " + reason, false); }
         });
-        if (!queued) { strikes.release(actor.uuid); refused.incrementAndGet(); return "Attack " + id + ": INACTIVE the NPC is not active on a region"; }
-        return "Attack " + id + ": QUEUED on the NPC's region; the result follows in the server log";
+        if (!queued) { strikes.release(actor.uuid); refused.incrementAndGet(); return id + " is not active, so it cannot hit; it becomes active when a player comes near"; }
+        return id + " swings; on Folia the result goes to the server log";
     }
     /** On the NPC's region: where the NPC stands now goes with the hit to the target's own scheduler. */
     private void strike(String id, RegionActor actor, LivingEntity target, AttackProfile attack) {
@@ -165,7 +167,7 @@ public final class RegionManualCombat implements AutoCloseable {
             DamageSource source = DamageSource.builder(DamageType.MOB_ATTACK).withDamageLocation(new Location(target.getWorld(), origin.x(), origin.y(), origin.z())).build();
             NpcKills.landing(actor.displayName(), false, () -> target.damage(event.getDamage(), source));
             double newHealth = target.getHealth(), done = Math.max(0, oldTotal - newHealth - target.getAbsorptionAmount());
-            finish(id, actor, (done > 0 ? "APPLIED" : "NO_CHANGE") + " applied=" + done + " health-before=" + oldHealth + " health-after=" + newHealth, done > 0);
+            finish(id, actor, CombatControl.attacked(id, done > 0 ? "APPLIED" : "NO_CHANGE", done, oldHealth, newHealth), done > 0);
         } catch (RuntimeException failure) {
             finish(id, actor, "FAILED " + PersistedNpcService.concise(failure), false);
         }
@@ -204,7 +206,7 @@ public final class RegionManualCombat implements AutoCloseable {
         if (claim == null) throw new IllegalStateException("Mob already controlled or control limit reached");
         boolean handed = host.regions.execute(mob, () -> begin(id, actor, mob, claim), () -> { leases.release(claim); log("Mob control " + id + ": INVALID_TARGET the mob is gone"); });
         if (!handed) { leases.release(claim); throw new IllegalStateException("The mob's region refused the control request"); }
-        return "Mob control " + id + ": QUEUED on the mob's region; the result follows in the server log";
+        return id + " takes the mob over; on Folia the result goes to the server log";
     }
     /** On the mob's region. */
     private void begin(String id, RegionActor actor, Mob mob, MobLeases.Claim claim) {

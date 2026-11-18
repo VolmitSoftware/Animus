@@ -16,7 +16,11 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 import org.bukkit.entity.Player;
@@ -24,13 +28,17 @@ import org.bukkit.event.Event;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
  * On Paper, the command tree each client receives spells out the {@code /animus} groups and commands the player may run,
- * so the chat box marks an unknown subcommand red while it is typed. Only the client's copy changes: the server still
- * hands every word to {@link AnimusDirector}, which refuses unknown words itself, and suggestions still come from the
- * server. Spigot has no such event and keeps its single free-text argument.
+ * each under its first name, so the chat box marks an unknown subcommand red while it is typed and completion offers each
+ * command once. Only the client's copy changes: the server still hands every word to {@link AnimusDirector}, which
+ * refuses unknown words itself and takes the other names too, and suggestions still come from the server. The hidden
+ * commands chat buttons run reach a player's tree only while a button waits for them, so a click runs a command the client
+ * knows and completion never offers it otherwise; {@link #refresh} sends the tree again when that changes. Spigot has no
+ * such event and keeps its single free-text argument.
  */
 final class CommandTreeHints {
     private static final String EVENT = "com.destroystokyo.paper.event.brigadier.AsyncPlayerSendCommandsEvent";
@@ -38,11 +46,14 @@ final class CommandTreeHints {
     private static final SuggestionProvider<Object> ASK_SERVER =
             (com.mojang.brigadier.context.CommandContext<Object> context, com.mojang.brigadier.suggestion.SuggestionsBuilder builder) -> builder.buildFuture();
     static final String HELP = "help", PAGE = "page", TOPIC = "topic", ARGUMENTS = "arguments";
+    private final Buttons buttons;
+    private volatile boolean installed;
 
-    private CommandTreeHints() {}
+    /** {@code waiting} answers whether a chat button, a dialogue choice or a quest offer, waits for a player's click. */
+    CommandTreeHints(Predicate<UUID> waiting) { buttons = new Buttons(waiting); }
 
     /** Listens for the commands packet on Paper; does nothing elsewhere. */
-    static void install(JavaPlugin plugin, List<String> labels, Supplier<AnimusDirector> director, Function<Player, CommandActor> actor) {
+    void install(JavaPlugin plugin, List<String> labels, Supplier<AnimusDirector> director, Function<Player, CommandActor> actor) {
         Class<? extends Event> type;
         Method tree, firedAsync;
         try {
@@ -56,25 +67,37 @@ final class CommandTreeHints {
             if (active == null || !type.isInstance(event) || !(event instanceof PlayerEvent playerEvent)) return;
             try {
                 if (!event.isAsynchronous() && (boolean) firedAsync.invoke(event)) return;
-                rewrite((CommandNode<?>) tree.invoke(event), labels, active, actor.apply(playerEvent.getPlayer()));
+                Player player = playerEvent.getPlayer();
+                rewrite((CommandNode<?>) tree.invoke(event), labels, active, actor.apply(player), buttons.include(player.getUniqueId()));
             } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
                 log.fine("Command hints skipped for " + playerEvent.getPlayer().getName() + ": " + failure);
             }
         }, plugin);
+        plugin.getServer().getPluginManager().registerEvent(PlayerQuitEvent.class, new Listener() {}, EventPriority.MONITOR,
+                (Listener listener, Event event) -> { if (event instanceof PlayerQuitEvent quit) buttons.forget(quit.getPlayer().getUniqueId()); }, plugin);
+        installed = true;
     }
 
-    /** Replaces each label's free-text node under {@code root} with the actor's own tree. */
+    /**
+     * On the player's own thread, after chat buttons went to them or a command of theirs ran: sends their command tree
+     * again when it no longer matches whether a button waits for them. Nothing on Spigot, whose tree takes free text.
+     */
+    void refresh(Player player) {
+        if (installed && buttons.stale(player.getUniqueId())) player.updateCommands();
+    }
+
+    /** Replaces each label's free-text node under {@code root} with the actor's own tree; {@code buttons} adds the hidden button commands. */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    static void rewrite(CommandNode<?> root, List<String> labels, AnimusDirector director, CommandActor actor) throws ReflectiveOperationException {
+    static void rewrite(CommandNode<?> root, List<String> labels, AnimusDirector director, CommandActor actor, boolean buttons) throws ReflectiveOperationException {
         for (String label : labels) {
             if (root.getChild(label) == null) continue;
             remove(root, label);
-            ((CommandNode) root).addChild(tree(label, director.engine().getRoot(), director, actor));
+            ((CommandNode) root).addChild(tree(label, director.engine().getRoot(), director, actor, buttons));
         }
     }
 
-    /** The literal tree of {@code node} as {@code name}, listing only what the actor may run. */
-    static LiteralCommandNode<Object> tree(String name, DirectorRuntimeNode node, AnimusDirector director, CommandActor actor) {
+    /** The literal tree of {@code node} as {@code name}, listing only what the actor may run, each child under its first name. */
+    static LiteralCommandNode<Object> tree(String name, DirectorRuntimeNode node, AnimusDirector director, CommandActor actor, boolean buttons) {
         LiteralArgumentBuilder<Object> literal = LiteralArgumentBuilder.literal(name);
         if (!node.isInvocable()) {
             literal.executes(RUNS);
@@ -82,10 +105,8 @@ final class CommandTreeHints {
                     .then(RequiredArgumentBuilder.argument(PAGE, IntegerArgumentType.integer(0)).executes(RUNS));
             if (node.getParent() == null) help.then(RequiredArgumentBuilder.argument(TOPIC, StringArgumentType.greedyString()).suggests(ASK_SERVER).executes(RUNS));
             literal.then(help);
-            for (DirectorRuntimeNode child : node.getChildren()) {
-                if (!runnable(director, actor, child)) continue;
-                for (String alias : child.allNames()) literal.then(tree(alias, child, director, actor));
-            }
+            for (DirectorRuntimeNode child : node.getChildren())
+                if (runnable(director, actor, child, buttons)) literal.then(tree(child.getDescriptor().getName(), child, director, actor, buttons));
             return literal.build();
         }
         List<DirectorParameterDescriptor> parameters = node.getDescriptor().getParameters().stream().filter((DirectorParameterDescriptor parameter) -> !parameter.isContextual()).toList();
@@ -94,9 +115,33 @@ final class CommandTreeHints {
         return literal.build();
     }
 
-    /** Listed or hidden, what the actor may run with the plugins running; a hidden command still answers the chat chips that run it. */
-    private static boolean runnable(AnimusDirector director, CommandActor actor, DirectorRuntimeNode node) {
-        return director.visible(actor, node) || node.getDescriptor().isHidden() && AnimusDirector.allowed(actor, node) && director.needs(node).isEmpty();
+    /** Listed, or hidden while a button waits, what the actor may run with the plugins running. */
+    private static boolean runnable(AnimusDirector director, CommandActor actor, DirectorRuntimeNode node, boolean buttons) {
+        if (director.visible(actor, node)) return true;
+        if (!buttons || !AnimusDirector.allowed(actor, node) || director.needs(node).isPresent()) return false;
+        if (node.getDescriptor().isHidden()) return true;
+        return !node.isInvocable() && node.getChildren().stream().anyMatch((DirectorRuntimeNode child) -> runnable(director, actor, child, true));
+    }
+
+    /** Which players' trees carry the hidden button commands; a tree carries them while a button waits for its player. */
+    static final class Buttons {
+        private final Predicate<UUID> waiting;
+        private final Set<UUID> carrying = ConcurrentHashMap.newKeySet();
+
+        Buttons(Predicate<UUID> waiting) { this.waiting = waiting; }
+
+        /** As a tree is sent to {@code player}: whether it carries the button commands. */
+        boolean include(UUID player) {
+            boolean waits = waiting.test(player);
+            if (waits) carrying.add(player);
+            else carrying.remove(player);
+            return waits;
+        }
+
+        /** Whether the player's tree disagrees with whether a button waits for them. */
+        boolean stale(UUID player) { return waiting.test(player) != carrying.contains(player); }
+
+        void forget(UUID player) { carrying.remove(player); }
     }
 
     /** Paper's Brigadier removes a child by name; plain Brigadier needs its maps edited. */

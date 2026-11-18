@@ -48,7 +48,7 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
         catch (RuntimeException e) { throw new IOException("Cannot migrate config.json to TOML; original retained", e); }
         if (!document.equals(TomlCodec.toJsonElement(encoded)))
             throw new IOException("config.json cannot be represented losslessly in TOML; original retained");
-        DocumentStore.atomic(toml, "# Animus plugin settings. NPC and behavior documents use JSON. Every key: " + DOCS + "\n" + commented(encoded));
+        DocumentStore.atomic(toml, "# Animus plugin settings. NPC and behavior files use JSON. Every key: " + DOCS + "\n" + commented(encoded));
         return readToml(toml, warnings);
     }
 

@@ -27,7 +27,7 @@ final class SetupCommands extends CommandGroup {
                 try {
                     onboarding.dismiss();
                     if (!dismiss) state = onboarding.state(enabled, Math.max(0, services.editor().revocable().size() - 1));
-                } catch (IOException | RuntimeException problem) { failure = String.valueOf(problem.getMessage()); }
+                } catch (IOException | RuntimeException problem) { failure = CommandGroup.reason(problem); }
                 SetupState shown = state;
                 String refused = failure;
                 if (!stopping()) actor.reply(() -> {

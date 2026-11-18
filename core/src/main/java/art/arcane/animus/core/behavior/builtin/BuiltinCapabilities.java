@@ -244,6 +244,9 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
      * Owner only. Handles a click from the client. Forged, stale, foreign and out-of-range clicks are rejected,
      * and a rejected click publishes nothing.
      */
+    /** Whether a dialogue choice waits for {@code player} to click it. */
+    public boolean choiceWaiting(UUID player) { return choices.waiting(player); }
+
     public PendingChoices.Selection selectChoice(UUID player, String token, String option) {
         return choices.select(player, token, option, npc -> platform.unavailable().isEmpty() && !closed
                 && platform.npcStatus(npc).spawned() && platform.playerInRange(npc, Optional.of(player), CHOICE_RANGE));

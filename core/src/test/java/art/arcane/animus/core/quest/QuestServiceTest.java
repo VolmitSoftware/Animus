@@ -97,7 +97,9 @@ class QuestServiceTest {
         assertTrue(quests.interacted(alex, healer, false, false), "the healer offers the quest");
         assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("Could you help me with the harvest?")), alex.messages.toString());
         assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("/animus quest choice")), alex.messages.toString());
+        assertTrue(quests.offered(alex.id), "the offer buttons wait for alex");
         quests.choice(alex, token(), "accept");
+        assertFalse(quests.offered(alex.id), "an answered offer no longer waits");
         assertEquals(1, stage(), "accepting writes stage 1 to behavior state");
         assertEquals("active", quests.status(alex.id, "town:herbs"));
 

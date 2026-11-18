@@ -51,7 +51,7 @@ final class SpeakCommand {
             double blocks = Double.parseDouble(text);
             if (blocks >= 1 && blocks <= 64) return blocks;
         } catch (NumberFormatException unreadable) { /* refused below with what range takes */ }
-        throw new IllegalArgumentException("range takes 1 to 64 blocks");
+        throw new IllegalArgumentException("range takes 1 to 64 blocks, not " + text);
     }
 
     private static int ticks(String text) {
@@ -59,6 +59,6 @@ final class SpeakCommand {
             int ticks = Integer.parseInt(text);
             if (ticks >= 1 && ticks <= 1200) return ticks;
         } catch (NumberFormatException unreadable) { /* refused below with what bubble takes */ }
-        throw new IllegalArgumentException("bubble takes 1 to 1200 ticks");
+        throw new IllegalArgumentException("bubble takes 1 to 1200 ticks, not " + text);
     }
 }

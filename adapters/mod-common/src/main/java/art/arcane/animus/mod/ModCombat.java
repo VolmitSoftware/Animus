@@ -164,7 +164,7 @@ final class ModCombat implements AutoCloseable {
         return result(id, outcome.status().name(), outcome.applied(), target.health(), after);
     }
     private static String result(String id, String status, double applied, Double before, Double after) {
-        return "Attack " + id + ": " + status + " applied=" + applied + " health-before=" + before + " health-after=" + after;
+        return art.arcane.animus.core.command.CombatControl.attacked(id, status, applied, before, after);
     }
     private static double distance(Vec3 point, Hitbox box) {
         double x = Math.max(box.min().x() - point.x(), Math.max(0, point.x() - box.max().x()));

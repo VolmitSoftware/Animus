@@ -25,7 +25,7 @@ class SelectCommandTest {
     }
 
     /** A player whose replies are kept. */
-    private static final class Player extends AnimusDirectorTest.Actor {
+    private static class Player extends AnimusDirectorTest.Actor {
         final List<ChatLine> rich = new ArrayList<>();
         Player() { super(true, AnimusDirector.ADMIN); }
         @Override public void rich(ChatLine line) { rich.add(line); }
@@ -135,5 +135,17 @@ class SelectCommandTest {
         assertEquals("[Animus]: No NPC selected; /animus select <npc>, or click one with the wand (/animus tools wand)", player.lines.getLast());
         assertEquals(Optional.empty(), CommandGroup.selected(player, List.of("baker", "mayor", "smith")));
         assertEquals("[Animus]: 3 NPCs are selected; name one, or /animus select <npc> to keep only it", player.lines.getLast());
+    }
+
+    @Test void aLeftOutNpcSaysTheSelectionStoodInForIt() {
+        Player typed = new Player();
+        assertEquals(Optional.of("mayor"), CommandGroup.selected(typed, List.of("mayor")));
+        assertTrue(typed.lines.isEmpty(), "@selected typed out needs no note: " + typed.lines);
+        Player leftOut = new Player() { @Override public boolean npcLeftOut() { return true; } };
+        assertEquals(Optional.of("mayor"), CommandGroup.selected(leftOut, List.of("mayor")));
+        assertEquals(List.of("[Animus]: Using your selection, mayor"), leftOut.lines);
+        Player none = new Player() { @Override public boolean npcLeftOut() { return true; } };
+        assertEquals(Optional.empty(), CommandGroup.selected(none, List.of()));
+        assertEquals("[Animus]: Name the NPC, or select one first with /animus select <npc> or the wand (/animus tools wand)", none.lines.getLast());
     }
 }

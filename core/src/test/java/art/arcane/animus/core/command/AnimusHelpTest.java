@@ -44,9 +44,16 @@ class AnimusHelpTest {
         assertFalse(page.entries().stream().anyMatch((DirectorRuntimeNode node) -> node.getDescriptor().getName().equals("choice")), "the hidden click target stays out");
     }
 
-    @Test void everyEntryIsDrawnAsVolmLibDrawsItWithTheDescriptionOnHover() {
+    @Test void everyEntryReadsAsTheUsageLineDoesWithItsDescription() {
         Component create = MINI.deserialize(AnimusHelp.entry(child(root, "create")));
-        assertEquals("⇀ create [id] ⊰type⊱ ⊰name⊱ ⊰folder⊱ ⊰world⊱ ⊰x⊱ ⊰y⊱ ⊰z⊱ ⊰spawned⊱", PLAIN.serialize(create));
+        assertEquals("⇀ create <id> [type] [name] [folder] [world] [x] [y] [z] [spawned] - Make an NPC where you stand, or at x y z", PLAIN.serialize(create),
+                "required values in <angles> and optional ones in [brackets], as usage lines write them");
+        List<String> chips = hovers(create).stream().map(PLAIN::serialize).toList();
+        assertTrue(chips.stream().anyMatch((String hover) -> hover.startsWith("type\n")), chips.toString());
+        assertTrue(chips.stream().noneMatch((String hover) -> hover.contains("String") || hover.contains("boolean")), "no Java type names: " + chips);
+        assertTrue(chips.stream().anyMatch((String hover) -> hover.contains("Takes true or false")), chips.toString());
+        assertTrue(PLAIN.serialize(hovers(MINI.deserialize(AnimusHelp.entry(child(root, "validate")))).getFirst()).contains("Click to run it"),
+                "a command without values says a click runs it");
         ClickEvent click = first(create);
         assertEquals(ClickEvent.Action.SUGGEST_COMMAND, click.action());
         assertEquals("/animus create ", ((ClickEvent.Payload.Text) click.payload()).value());
@@ -139,7 +146,8 @@ class AnimusHelpTest {
                 if (lines.stream().mapToInt(DirectorMiniMenu::chatRows).sum() > DirectorMiniMenu.CHAT_LINE_COUNT) broken.add(group.path() + " page " + (index + 1) + " overflows");
                 for (String line : lines) {
                     String plain = PLAIN.serialize(MINI.deserialize(line));
-                    if (plain.contains("&") || plain.contains("§") || plain.contains("<#")) broken.add(group.path() + ": " + plain);
+                    if (plain.matches(".*&[0-9a-fk-orA-FK-OR].*") || plain.contains("§") || plain.contains("<#") || plain.contains("⊰") || plain.contains("⊱")) broken.add(group.path() + ": " + plain);
+                    if (plain.startsWith("⇀ ") && !plain.contains(" - ")) broken.add(group.path() + " has an entry without its description: " + plain);
                 }
             }
         }

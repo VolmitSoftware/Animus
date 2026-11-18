@@ -56,7 +56,7 @@ import java.util.concurrent.CompletionException;
                 Throwable cause = failure instanceof CompletionException wrapped && wrapped.getCause() != null ? wrapped.getCause() : failure;
                 if (cause instanceof IOException refused && refused.getMessage() != null && refused.getMessage().startsWith("HTTP 429"))
                     return Found.unreachable("Mojang is rate limiting this server's skin lookups; try " + name + " again in a minute");
-                return Found.unreachable("Could not reach Mojang to look up " + name + " (" + cause.getClass().getSimpleName() + "); the server needs internet access");
+                return Found.unreachable("Could not reach Mojang to look up " + name + " (" + art.arcane.animus.core.text.ReplyText.plain(cause.getClass().getSimpleName()) + "); the server needs internet access");
             });
         };
     }

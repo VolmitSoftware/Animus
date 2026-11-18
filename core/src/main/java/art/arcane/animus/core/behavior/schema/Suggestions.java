@@ -27,7 +27,7 @@ public final class Suggestions {
     public static String list(List<String> values) { return String.join(", ", values); }
 
     /** Optimal string alignment distance, so a swapped pair of letters counts once. */
-    static int distance(String left, String right) {
+    public static int distance(String left, String right) {
         int[][] table = new int[left.length() + 1][right.length() + 1];
         for (int i = 0; i <= left.length(); i++) table[i][0] = i;
         for (int j = 0; j <= right.length(); j++) table[0][j] = j;

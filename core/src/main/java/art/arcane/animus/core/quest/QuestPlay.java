@@ -59,6 +59,12 @@ final class QuestPlay<P, S> {
     }
 
     int offers() { return offers.size(); }
+
+    /** Whether an offer to {@code player} waits for its answer. */
+    boolean offered(UUID player) {
+        Offer offer = offers.get(player);
+        return offer != null && offer.expires() >= System.currentTimeMillis();
+    }
     void forget(UUID player) { offers.remove(player); reminded.remove(player); }
 
     // ---- reading -------------------------------------------------------------------------------------------------

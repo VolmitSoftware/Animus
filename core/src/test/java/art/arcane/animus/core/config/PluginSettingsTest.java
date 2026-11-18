@@ -59,7 +59,7 @@ class PluginSettingsTest {
         try (DocumentStore store = new DocumentStore(root)) {
             PluginSettings.load(store);
             String toml = Files.readString(root.resolve("config.toml"));
-            assertTrue(toml.startsWith("# Animus plugin settings. NPC and behavior documents use JSON. Every key: https://docs.volmitsoftware.com/animus/03-configuration\n"), toml);
+            assertTrue(toml.startsWith("# Animus plugin settings. NPC and behavior files use JSON. Every key: https://docs.volmitsoftware.com/animus/03-configuration\n"), toml);
             for (String table : java.util.List.of("npcs", "files", "modules", "behaviors", "combat", "builds", "shops", "editor", "rigs", "navigation", "hotload", "recordings", "seats", "owners"))
                 assertTrue(toml.matches("(?s).*\n# [^\n]+: https://docs\\.volmitsoftware\\.com/animus/03-configuration#" + table + "\n\\[" + table + "]\n.*"), table + " in " + toml);
             assertEquals(PluginSettings.load(store), PluginSettings.parse(toml, root.resolve("config.toml")));

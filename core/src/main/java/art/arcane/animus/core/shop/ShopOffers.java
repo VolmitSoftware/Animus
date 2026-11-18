@@ -77,7 +77,7 @@ public final class ShopOffers {
         long revision = document.has("revision") && document.get("revision").isJsonPrimitive() ? document.get("revision").getAsLong() : 0;
         document.addProperty("revision", revision + 1);
         List<String> problems = ShopDocument.parse(id, document).problems();
-        if (!problems.isEmpty()) throw new IOException("The shop would not load: " + problems.getFirst());
+        if (!problems.isEmpty()) throw new IOException("The shop would not load: " + ShopDocument.readable(problems.getFirst()));
         return new Added(document, slot, entry);
     }
 

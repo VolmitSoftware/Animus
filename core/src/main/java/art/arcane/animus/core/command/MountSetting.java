@@ -46,9 +46,14 @@ final class MountSetting {
         document.add("modules", modules);
         String described;
         try {
-            described = real ? MountDeclaration.entity(document).map(MountDeclaration.EntityMount::describe).orElseThrow() : vehicle;
+            described = real ? MountDeclaration.entity(document).map(MountDeclaration.EntityMount::describe)
+                    .orElseThrow(() -> new IllegalArgumentException(vehicle + " is not an NPC id, an entity UUID or an entity type")) : vehicle;
             MountDeclaration.parse(document);
-        } catch (IllegalArgumentException invalid) { throw new IOException(invalid.getMessage()); }
+        } catch (IllegalArgumentException invalid) {
+            String refusal = invalid.getMessage();
+            throw new IOException(refusal.contains(".range: ") ? CommandGroup.typed(refusal, "modules." + MountDeclaration.MODULE + ".range", "range", range)
+                    : CommandGroup.problem(refusal, "modules." + MountDeclaration.MODULE + ".entity"));
+        }
         String transaction = repository.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
         return id + " rides " + described + "; tx " + transaction;
     }

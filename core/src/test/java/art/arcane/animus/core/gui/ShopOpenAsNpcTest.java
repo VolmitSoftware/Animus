@@ -70,6 +70,15 @@ class ShopOpenAsNpcTest {
         @Override public boolean reply(Runnable action) { action.run(); return true; }
     };
 
+    @Test void anUnknownShopOrStyleIsAnsweredToWhoeverTypedIt() {
+        shops.open(actor, "town:nosuch", Optional.of("Alex"), Optional.empty(), Optional.empty());
+        assertEquals("[Animus]: No shop named town:nosuch; /animus shop list shows them", lines.getLast(), "the sender hears it, not only the player it was for");
+        shops.open(actor, "town:bakery", Optional.empty(), Optional.of("glass"), Optional.empty());
+        assertEquals("[Animus]: style takes native or chest, not glass", lines.getLast());
+        shops.reset(actor, "town:nosuch", Optional.empty());
+        assertEquals("[Animus]: No shop named town:nosuch; /animus shop list shows them", lines.getLast(), "nothing is cleared for a shop that does not exist");
+    }
+
     @Test void theNpcsStyleAndVillagerLookWinOverTheShopFile() {
         shops.open(actor, "town:bakery", Optional.empty(), Optional.empty(), Optional.of("baker"));
         assertTrue(alex.frame.merchant().isPresent(), "the baker opens villager trades although the file says chest: " + alex.frame);

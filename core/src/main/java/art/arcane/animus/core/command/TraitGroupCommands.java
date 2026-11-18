@@ -58,6 +58,7 @@ final class TraitGroupCommands extends CommandGroup {
                  @Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
         CommandActor actor = actor();
         NpcRepository repository = runtime().npcs();
+        if (!repository.groups().groups().containsKey(group)) { actor.tell(Palette.error("No trait group named " + group + "; /animus groups list shows them")); return; }
         try {
             services.files().execute(() -> {
                 List<String> members = memberIds(repository, group);

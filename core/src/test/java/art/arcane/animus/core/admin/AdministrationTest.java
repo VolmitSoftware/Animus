@@ -13,6 +13,15 @@ import java.io.IOException;
 import static org.junit.jupiter.api.Assertions.*;
 
 class AdministrationTest {
+    /** A refused edit names the field as the file spells it, in a sentence, never by its schema path. */
+    @Test void aRefusedEditNamesTheFieldInASentence() {
+        com.google.gson.JsonObject patch = new com.google.gson.JsonObject();
+        assertEquals("Cannot save mayor: maximumHealth in animus:health must be from 1 to 2048",
+                Administration.refusal("mayor", patch, "$.modules.animus:health.maximumHealth: must be from 1 to 2048"));
+        assertEquals("Cannot save mayor: position.y must be from -2048 to 4096", Administration.refusal("mayor", patch, "$.position.y: must be from -2048 to 4096"));
+        assertEquals("Cannot save mayor: a skin needs a player body", Administration.refusal("mayor", patch, "a skin needs a player body"));
+    }
+
     @TempDir Path root;
     @Test void statusShowsTheBudgetsInEffectAfterAHotload() throws Exception {
         try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
@@ -185,14 +194,15 @@ class AdministrationTest {
     @Test void aBodyAnimusCannotShowIsRefusedAtCreateAndEdit() throws Exception {
         try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
             runtime.start(); Administration admin = new Administration(runtime);
-            String bodies = String.join(", ", art.arcane.animus.core.presentation.BodyRules.TYPES.stream().sorted().toList());
-            assertTrue(bodies.contains("minecraft:painting") && bodies.contains("minecraft:zombie"), bodies);
-            assertEquals("marker cannot be shown; the bodies Animus shows are " + bodies,
-                    assertThrows(IOException.class, () -> admin.create("v", "marker", "world", 1, 64, 2, "", "V")).getMessage());
+            String marker = assertThrows(IOException.class, () -> admin.create("v", "marker", "world", 1, 64, 2, "", "V")).getMessage();
+            assertTrue(marker.startsWith("marker cannot be shown") && marker.endsWith("ab completion lists every body"), marker);
+            assertTrue(marker.length() < 200, "the nearest few bodies, not every body: " + marker);
+            assertEquals("horsee cannot be shown; did you mean minecraft:horse? Tab completion lists every body",
+                    assertThrows(IOException.class, () -> admin.create("v", "horsee", "world", 1, 64, 2, "", "V")).getMessage());
             List.of(admin.create("steed", "llama", "world", 1, 64, 2, "", "Steed"));
             assertEquals("minecraft:llama", runtime.npcs().find("steed").orElseThrow().json().get("type").getAsString(), "a bare type is saved namespaced");
-            assertEquals("$.type: minecraft:marker cannot be shown; the bodies Animus shows are " + bodies,
-                    assertThrows(IOException.class, () -> admin.edit("steed", "{\"type\":\"minecraft:marker\"}")).getMessage());
+            String edited = assertThrows(IOException.class, () -> admin.edit("steed", "{\"type\":\"minecraft:marker\"}")).getMessage();
+            assertTrue(edited.startsWith("$.type: minecraft:marker cannot be shown") && edited.length() < 200, edited);
         }
     }
     @Test void plainRepliesForBadJsonUnknownIdsAndRepeatedRollbacks() throws Exception {
@@ -216,10 +226,10 @@ class AdministrationTest {
     }
     @Test void aRefusedTypeChangeSaysHowToDropWhatTheNewBodyCannotShow() {
         com.google.gson.JsonObject retype = com.google.gson.JsonParser.parseString("{\"type\":\"minecraft:horse\"}").getAsJsonObject();
-        assertEquals("Cannot save steed: $.pose: sleeping is available only for minecraft:player bodies. Set a field to null in the same edit to remove it, such as {\"type\":\"minecraft:horse\",\"pose\":null}",
+        assertEquals("Cannot save steed: pose sleeping is available only for minecraft:player bodies. Set a field to null in the same edit to remove it, such as {\"type\":\"minecraft:horse\",\"pose\":null}",
                 Administration.refusal("steed", retype, "$.pose: sleeping is available only for minecraft:player bodies"));
         com.google.gson.JsonObject rename = com.google.gson.JsonParser.parseString("{\"name\":\"\"}").getAsJsonObject();
-        assertEquals("Cannot save steed: $.name: expected text", Administration.refusal("steed", rename, "$.name: expected text"));
+        assertEquals("Cannot save steed: name should be text", Administration.refusal("steed", rename, "$.name: expected text"));
     }
     @Test void anEmptyGroupCreatesTheNpcDirectlyInNpcs() throws Exception {
         try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
@@ -343,7 +353,11 @@ class AdministrationTest {
             IOException unknown = assertThrows(IOException.class, () -> admin.apply("0123456789ab"));
             assertEquals("No import id starts with 0123456789ab", unknown.getMessage());
             IOException tooShort = assertThrows(IOException.class, () -> admin.apply("abc"));
-            assertEquals("Give the import id from the preview, at least its first 8 characters", tooShort.getMessage());
+            assertEquals("Give the import id from the preview, at least its first 8 characters, not abc", tooShort.getMessage());
+            String full = "f".repeat(64);
+            assertEquals("No import id starts with " + full, assertThrows(IOException.class, () -> admin.apply(full)).getMessage(), "a whole id nothing staged names no folder");
+            IOException missing = assertThrows(IOException.class, () -> admin.preview("nosuch.yml", Optional.empty(), Map.of()));
+            assertEquals("No file nosuch.yml in imports/inbox; tab completion lists the files there", missing.getMessage());
         }
     }
 

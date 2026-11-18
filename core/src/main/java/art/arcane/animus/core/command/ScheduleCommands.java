@@ -131,7 +131,8 @@ final class ScheduleCommands extends CommandGroup {
         String line;
         try { line = edit.apply(document); }
         catch (IllegalArgumentException refused) { return List.of(Palette.error(refused.getMessage())); }
-        NpcDefinition.parse(JsonDocuments.write(document));
+        try { NpcDefinition.parse(JsonDocuments.write(document)); }
+        catch (IOException refused) { return List.of(Palette.error(CommandGroup.field(refused.getMessage()))); }
         String tx = runtime().npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
         living().refresh();
         return List.of(Palette.success(line + "; tx " + tx));
@@ -145,7 +146,7 @@ final class ScheduleCommands extends CommandGroup {
             int tick = Integer.parseInt(text);
             if (tick >= 0 && tick < ScheduleSettings.DAY_TICKS) return tick;
         } catch (NumberFormatException unreadable) { /* answered below */ }
-        throw new IllegalArgumentException("Give the time as 0-23999, or day, noon, sunset, night, midnight or sunrise");
+        throw new IllegalArgumentException("Give the time as 0-23999, or day, noon, sunset, night, midnight or sunrise, not " + text);
     }
 
     /** {@code 60} or {@code 60-120} seconds. */
@@ -159,7 +160,7 @@ final class ScheduleCommands extends CommandGroup {
             range.add(min); range.add(max);
             return range;
         } catch (NumberFormatException unreadable) {
-            throw new IllegalArgumentException("Give the stay as seconds, such as 60, or a range such as 60-120");
+            throw new IllegalArgumentException("Give the stay as seconds, such as 60, or a range such as 60-120, not " + text);
         }
     }
 

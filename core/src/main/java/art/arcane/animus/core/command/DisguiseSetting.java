@@ -42,7 +42,7 @@ final class DisguiseSetting {
         String transaction = repository.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
         if (reset) return List.of(Palette.success(id + ": disguise removed; tx " + transaction));
         List<String> lines = new ArrayList<>();
-        lines.add(Palette.success(id + ": disguised as " + repository.find(id).orElseThrow().json().get("type").getAsString() + "; tx " + transaction));
+        lines.add(Palette.success(id + ": disguised as " + repository.find(id).orElseThrow(() -> new IOException(CommandGroup.unknownNpc(id))).json().get("type").getAsString() + "; tx " + transaction));
         if (!NpcDisguise.available()) lines.add(NOT_INSTALLED);
         lines.addAll(repository.disguiseNotes(id));
         return lines;

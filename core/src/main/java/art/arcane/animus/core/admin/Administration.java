@@ -10,6 +10,7 @@ import art.arcane.animus.core.migration.ModuleImports;
 import art.arcane.animus.core.extension.ModuleHooks;
 import art.arcane.animus.api.ImportConverters;
 import art.arcane.animus.core.behavior.schema.NpcSchemaGenerator;
+import art.arcane.animus.core.behavior.schema.Suggestions;
 import art.arcane.animus.core.npc.*;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.runtime.SkinDocuments;
@@ -57,7 +58,8 @@ public final class Administration {
 
     /** Every definition {@code shown} keeps, as {@code id | name | revision}, in repository order. */
     public List<String> rows(java.util.function.Predicate<NpcDefinition> shown) {
-        return runtime.npcs().all().stream().filter(shown).map((NpcDefinition definition) -> definition.id() + " | " + definition.name() + " | revision " + definition.revision()).toList();
+        return runtime.npcs().all().stream().filter(shown)
+                .map((NpcDefinition definition) -> definition.id() + " | " + art.arcane.animus.core.text.RichText.plain(definition.name()) + " | revision " + definition.revision()).toList();
     }
 
     /**
@@ -177,7 +179,21 @@ public final class Administration {
     public static Optional<String> bodyProblem(AnimusRuntime runtime, String type) {
         java.util.Set<String> shown = runtime.bodyTypes();
         if (shown.contains(art.arcane.animus.core.platform.MinecraftIds.normalize(type))) return Optional.empty();
-        return Optional.of("$.type: " + type + " cannot be shown; the bodies Animus shows are " + String.join(", ", new TreeSet<>(shown)));
+        String close = nearest(type, shown);
+        return Optional.of("$.type: " + type + " cannot be shown" + (close.isEmpty() ? "; tab completion lists every body" : close + " Tab completion lists every body"));
+    }
+
+    /** {@code ; did you mean a, b or c?} with the bodies spelled closest to {@code type}, or nothing when none is close. */
+    static String nearest(String type, java.util.Collection<String> shown) {
+        String typed = art.arcane.animus.core.platform.MinecraftIds.normalize(type);
+        String bare = typed.substring(typed.indexOf(':') + 1);
+        List<String> close = shown.stream()
+                .map((String body) -> Map.entry(body, Math.min(Suggestions.distance(body, typed), Suggestions.distance(body.substring(body.indexOf(':') + 1), bare))))
+                .filter((Map.Entry<String, Integer> scored) -> scored.getValue() <= Math.max(2, bare.length() / 3) || scored.getKey().contains(bare) && bare.length() >= 3)
+                .sorted(Map.Entry.<String, Integer>comparingByValue().thenComparing(Map.Entry.comparingByKey()))
+                .limit(3).map(Map.Entry::getKey).toList();
+        if (close.isEmpty()) return "";
+        return "; did you mean " + (close.size() == 1 ? close.getFirst() : String.join(", ", close.subList(0, close.size() - 1)) + " or " + close.getLast()) + "?";
     }
 
     /** Refuses an id another NPC already has, in any folder, with the toolkit's wording. */
@@ -317,13 +333,27 @@ public final class Administration {
      * refused field in the same edit, since fields such as a skin or pose stay behind otherwise.
      */
     public static String refusal(String id, JsonObject patch, String message) {
-        String line = "Cannot save " + id + ": " + message;
+        String line = "Cannot save " + id + ": " + sentence(message);
         int colon = message.indexOf(':');
         if (!patch.has("type") || !message.startsWith("$.") || colon < 0) return line;
         JsonObject example = new JsonObject();
         example.add("type", patch.get("type"));
         example.add(message.substring(2, colon).split("[.\\[]")[0], JsonNull.INSTANCE);
         return line + ". Set a field to null in the same edit to remove it, such as " + example;
+    }
+
+    /**
+     * A definition problem as a sentence: {@code $.modules.animus:health.maximumHealth: must be ...} reads
+     * "maximumHealth in animus:health must be ...", {@code $.name: expected text} reads "name should be text". Other text
+     * stays.
+     */
+    static String sentence(String message) {
+        int split = message.indexOf(": ");
+        if (!message.startsWith("$.") || split < 0) return message;
+        String path = message.substring(2, split), says = message.substring(split + 2);
+        java.util.regex.Matcher module = java.util.regex.Pattern.compile("modules\\.([^.]+:[^.]+)\\.(.+)").matcher(path);
+        String field = module.matches() ? module.group(2) + " in " + module.group(1) : path;
+        return says.startsWith("expected ") ? field + " should be " + says.substring("expected ".length()) : field + " " + says;
     }
 
     public String spawned(String id, boolean spawn) throws IOException {
@@ -410,6 +440,7 @@ public final class Administration {
         if (!file.matches("[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]{1,8}")) throw new IOException("Give a plain file name under imports/inbox/, such as saves.yml; tab completion lists them");
         CitizensImporter importer = new CitizensImporter().players(runtime.importHost().players().get());
         Path path = runtime.documents().resolve("imports/inbox/" + file);
+        if (!java.nio.file.Files.isRegularFile(path)) throw new IOException("No file " + file + " in imports/inbox; tab completion lists the files there");
         CitizensImporter.Preview preview;
         if (converter.isEmpty() && file.endsWith(".yml") && CitizensImporter.recognizes(JsonDocuments.read(path)))
             preview = importer.preview(path, runtime.documents(), worlds);
@@ -446,8 +477,8 @@ public final class Administration {
      * the full id on click, so a typed short id answers when it names exactly one.
      */
     private String imported(String folder, String kind, String given) throws IOException {
-        if (given.matches("[a-f0-9]{64}")) return given;
-        if (!given.matches("[a-f0-9]{8,63}")) throw new IOException("Give the " + kind + " id from the preview, at least its first 8 characters");
+        if (given.matches("[a-f0-9]{64}") && java.nio.file.Files.isDirectory(runtime.documents().resolve(folder + "/" + given))) return given;
+        if (!given.matches("[a-f0-9]{8,64}")) throw new IOException("Give the " + kind + " id from the preview, at least its first 8 characters, not " + given);
         List<String> matches = new ArrayList<>();
         Path parent = runtime.documents().resolve(folder);
         if (java.nio.file.Files.isDirectory(parent)) {

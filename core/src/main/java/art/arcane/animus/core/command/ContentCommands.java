@@ -16,7 +16,11 @@ import art.arcane.animus.core.migration.CitizensDropIn;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.rig.RigCatalog;
 import art.arcane.animus.core.rig.pack.RigPackBuilder;
+import art.arcane.animus.core.extension.MutationLane;
+import art.arcane.animus.core.text.ChatLine;
+import art.arcane.animus.core.text.DocsLink;
 import art.arcane.animus.core.text.Palette;
+import art.arcane.animus.core.text.PlainWords;
 import art.arcane.volmlib.util.director.annotations.Director;
 import art.arcane.volmlib.util.director.annotations.Param;
 import java.nio.file.Path;
@@ -70,14 +74,52 @@ final class ContentCommands {
             ExtensionRuntime extensions = extensions(actor);
             if (extensions == null) return;
             AnimusRuntime active = runtime();
-            ExtensionRuntime.Status snapshot = extensions.status();
-            actor.tell("Modules " + snapshot.state() + " | startup=" + extensions.startupStatuses().size()
-                    + " | " + ModuleCapabilityListing.of(extensions.capabilities()).counts() + " | failure=" + snapshot.failure()
-                    + " | invocations=" + snapshot.invocations() + " | dropped-notices=" + extensions.droppedInteractionNotices());
-            active.moduleHooks().status().forEach(actor::tell);
-            if (snapshot.lifecycle() != null) actor.tell("Module lifecycle: " + snapshot.lifecycle());
-            if (snapshot.cleanup() != null) actor.tell("Module cleanup: " + snapshot.cleanup());
-            actor.tell("File work: " + active.fileStatus());
+            Report report = report(extensions.status(), extensions.startupStatuses().size(), ModuleCapabilityListing.of(extensions.capabilities()),
+                    extensions.droppedInteractionNotices(), active.moduleHooks().status(), active.fileStatus());
+            if (actor.player().isPresent()) actor.rich(ChatLine.reply(report.headline()).details("Details", report.details()).docs(DocsLink.MODULES));
+            else { actor.tell(report.headline()); report.details().forEach(actor::tell); }
+        }
+
+        /** Why {@code key} cannot be run as asked: no such capability, or one of the other kind; empty when it can. */
+        static Optional<String> wrongKind(List<Capabilities.Availability> all, Capabilities.Key key, boolean action) {
+            Optional<Capabilities.Availability> found = all.stream().filter((Capabilities.Availability capability) -> capability.descriptor().key().equals(key)).findFirst();
+            if (found.isEmpty()) return Optional.of("No capability named " + key + "; /animus modules capabilities lists them");
+            Capabilities.Kind kind = found.get().descriptor().kind();
+            if (kind == (action ? Capabilities.Kind.ACTION : Capabilities.Kind.CONDITION)) return Optional.empty();
+            return Optional.of(key + " is " + (kind == Capabilities.Kind.ACTION ? "an action; run it with /animus modules action"
+                    : kind == Capabilities.Kind.CONDITION ? "a condition; check it with /animus modules condition" : "a trigger, which starts behaviors and cannot be run"));
+        }
+
+        /** {@code /animus modules status}: one headline, then the counters behind it, in words. */
+        record Report(String headline, List<String> details) {}
+
+        static Report report(ExtensionRuntime.Status snapshot, int installed, ModuleCapabilityListing capabilities, long dropped, List<String> hooks, MutationLane.Status files) {
+            ModuleHost.InvocationStatus calls = snapshot.invocations();
+            String failure = switch (snapshot.failure() == null ? "none" : snapshot.failure().split(":", 2)[0]) {
+                case "none" -> "";
+                case "module-startup" -> "; modules did not start, the server log has the cause";
+                case "module-initialization-observer" -> "; a module failed while starting, the server log has the cause";
+                default -> "; module cleanup failed, the server log has the cause";
+            };
+            String headline = "Modules " + PlainWords.of(snapshot.state()) + ": " + installed + " installed, " + capabilities.counts() + ", "
+                    + PlainWords.count(calls.handlersOutstanding(), "call", "calls") + " running" + failure;
+            List<String> details = new ArrayList<>();
+            details.add("Module calls: " + calls.admitted() + " admitted, " + calls.handlersOutstanding() + " running, " + calls.timedOutHandlers() + " timed out, "
+                    + calls.unobservedHandlers() + " unanswered, " + calls.queuedDeliveries() + " results waiting, " + calls.activeDeliveries() + " delivering, "
+                    + calls.overBudgetDeliveries() + " over budget, " + calls.completedSlowDeliveries() + " slow" + (calls.closed() ? "; closed" : ""));
+            if (dropped > 0) details.add("Click notices dropped: " + dropped);
+            details.addAll(hooks);
+            StartupModules.Lifecycle lifecycle = snapshot.lifecycle();
+            if (lifecycle != null && (lifecycle.closing() || !lifecycle.started()))
+                details.add("Module " + (lifecycle.closing() ? "shutdown" : "startup") + ": " + PlainWords.of(lifecycle.phase()) + (lifecycle.module().isEmpty() ? "" : " of " + lifecycle.module())
+                        + ", " + lifecycle.elapsedMillis() + " ms");
+            StartupModules.Cleanup cleanup = snapshot.cleanup();
+            if (cleanup != null && cleanup.closing())
+                details.add("Module cleanup: " + cleanup.retainedLoaders() + " loaders kept, " + cleanup.hostInvocations() + " calls open" + (cleanup.archivesReleased() ? ", files released" : ""));
+            details.add("File work: " + files.admitted() + " admitted, " + files.queuedMutations() + " queued, " + files.runningMutations() + " running, "
+                    + files.queuedDeliveries() + " results waiting, " + files.activeDeliveries() + " delivering, " + files.failedEngineTasks() + " failed"
+                    + (files.lastEngineFailure() == null || files.lastEngineFailure().isBlank() || files.lastEngineFailure().equals("none") ? "" : "; last failure: " + files.lastEngineFailure()));
+            return new Report(headline, List.copyOf(details));
         }
 
         @Director(description = "List installed modules and their state")
@@ -90,8 +132,8 @@ final class ContentCommands {
                     .collect(Collectors.toMap((ModuleHost.ModuleStatus module) -> module.manifest().id(), (ModuleHost.ModuleStatus module) -> module));
             List<String> rows = extensions.startupStatuses().stream().map((StartupModules.Status startup) -> {
                 ModuleHost.ModuleStatus current = live.get(startup.id());
-                return startup.id() + " | " + startup.archive() + " | " + (current == null ? startup.state() : current.state())
-                        + " | " + (current == null ? startup.reason() : current.reason());
+                return startup.id() + " | " + startup.archive() + " | " + PlainWords.of(current == null ? startup.state() : current.state().name())
+                        + " | " + PlainWords.reason(current == null ? startup.reason() : current.reason());
             }).toList();
             listing(actor, "Modules (" + rows.size() + ")", "/" + BuildIdentity.ID + " modules list", rows, page, "No modules installed");
         }
@@ -103,7 +145,8 @@ final class ContentCommands {
             if (extensions == null) return;
             Outcome<ModuleHost.ModuleStatus> resumed = extensions.resume(module);
             if (resumed.status() == Outcome.Status.OK) actor.tell(Palette.success("Module " + module + " resumed"));
-            else actor.tell(Palette.error("Module " + module + ": " + resumed.diagnostics().stream().map(Diagnostic::message).collect(Collectors.joining("; "))));
+            else if (resumed.status() == Outcome.Status.NOT_FOUND) actor.tell(Palette.error("No module named " + module + "; /animus modules list shows them"));
+            else actor.tell(Palette.error("Module " + module + " is not suspended, so there is nothing to resume"));
         }
 
         @Director(description = "List the actions and conditions modules offer")
@@ -140,16 +183,28 @@ final class ContentCommands {
             Optional<NpcDefinition> definition = runtime().npcs().find(id.get());
             if (definition.isEmpty()) { actor.tell(Palette.error(unknownNpc(id.get()))); return; }
             Capabilities.Key key = new Capabilities.Key(parts[0], parts[1]);
+            Optional<String> wrong = wrongKind(extensions.capabilities(), key, action);
+            if (wrong.isPresent()) { actor.tell(Palette.error(wrong.get())); return; }
             NpcHandle handle = new NpcHandle(definition.get().uuid());
             CompletionStage<? extends Outcome<?>> result;
             try { result = action ? extensions.action(key, handle, actor.player(), input) : extensions.condition(key, handle, actor.player(), input); }
             catch (RuntimeException refused) { actor.tell(Palette.error("Module " + key + ": " + reason(refused))); return; }
             result.whenComplete((Outcome<?> outcome, Throwable failure) -> {
-                if (failure != null) reply(actor, Palette.error("Module " + key + ": FAILED; result delivery failed, the server log has the cause"));
-                else reply(actor, "Module " + key + ": " + outcome.status() + outcome.value().map((Object value) -> "; result " + value).orElseGet(() ->
-                        "; " + outcome.diagnostics().stream().map(Diagnostic::code).collect(Collectors.joining(", "))));
+                if (failure != null) reply(actor, Palette.error(key + " failed; the server log has the cause"));
+                else reply(actor, outcome(key.toString(), action, outcome));
             });
         }
+    }
+
+    /**
+     * What a module action or condition answered, in a sentence: a condition's true or false, an action's result, or why it
+     * did not run, from its diagnostics' own messages.
+     */
+    static String outcome(String key, boolean action, Outcome<?> outcome) {
+        if (outcome.status() == Outcome.Status.OK)
+            return Palette.success(key + (action ? " ran" + outcome.value().map((Object value) -> "; result " + value).orElse("") : " is " + outcome.value().map(String::valueOf).orElse("answered")));
+        String why = outcome.diagnostics().stream().map(Diagnostic::message).filter((String message) -> message != null && !message.isBlank()).collect(Collectors.joining("; "));
+        return Palette.error(key + " " + (outcome.status() == Outcome.Status.NOT_FOUND ? "was not found" : "did not run") + (why.isEmpty() ? "" : ": " + PlainWords.reason(why)));
     }
 
     @Director(name = "rigs", aliases = "rig", description = "Load rigs and play their animations")

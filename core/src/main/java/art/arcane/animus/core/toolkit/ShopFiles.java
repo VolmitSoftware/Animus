@@ -120,7 +120,7 @@ final class ShopFiles {
         long revision = document.has("revision") && document.get("revision").isJsonPrimitive() ? document.get("revision").getAsLong() : 0;
         document.addProperty("revision", revision + 1);
         List<String> problems = ShopDocument.parse(id, document).problems();
-        if (!problems.isEmpty()) throw new IOException("The shop would not load: " + problems.getFirst());
+        if (!problems.isEmpty()) throw new IOException("The shop would not load: " + ShopDocument.readable(problems.getFirst()));
         return "Removed " + offer.entry().id() + " from " + id + "; tx " + store.commit(List.of(new DocumentStore.Change(shop.path(), JsonDocuments.hash(current), JsonDocuments.write(document))));
     }
 
@@ -180,7 +180,7 @@ final class ShopFiles {
         String tx = store.commit(List.of(new DocumentStore.Change(shop.path(), JsonDocuments.hash(current), JsonDocuments.write(added.document()))));
         String where = advanced ? " (offer " + added.entry() + ", slot " + (added.slot() + 1) + ")" : "";
         String money = price.signum() > 0 ? unpaid.map((String why) -> "; no one can pay money yet: " + why).orElse("") : "";
-        return "Added an offer: players buy " + goods(item) + " for " + shown + where + money + "; tx " + tx;
+        return "Added an offer: sells " + goods(item) + " for " + shown + where + money + "; tx " + tx;
     }
 
     /** {@code Diamond sword}, or {@code 16 Bread} for a stack: the item as the Offers list names it. */
@@ -245,7 +245,7 @@ final class ShopFiles {
         if (!id) document.addProperty("title", name);
         String text = JsonDocuments.write(document);
         List<String> problems = ShopDocument.parse(chosen, text).problems();
-        if (!problems.isEmpty()) throw new IOException(problems.getFirst());
+        if (!problems.isEmpty()) throw new IOException(ShopDocument.readable(problems.getFirst()));
         List<NpcRepository.Draft> drafts = binding(chosen, ids);
         String tx = RouteFiles.commit(npcs, store, drafts, List.of(new DocumentStore.Change(path, "missing", text)));
         String on = drafts.isEmpty() ? "" : " on " + ToolkitFiles.named(drafts);

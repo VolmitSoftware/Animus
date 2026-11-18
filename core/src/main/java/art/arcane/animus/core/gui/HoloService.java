@@ -610,11 +610,13 @@ public final class HoloService<P, S> implements AutoCloseable {
 
     /** Opens a chest GUI for the actor, or for the named player. */
     public void open(CommandActor actor, String gui, Optional<String> player) {
+        if (shops.catalog().gui(gui).isEmpty()) { actor.tell(Palette.error("No chest GUI named " + gui + "; /animus gui list shows them")); return; }
         deliver(actor, player, (P viewer) -> shops.openGui(viewer, gui, Map.of(), Optional.empty()));
     }
 
     /** Opens a display menu for the actor, or for the named player. */
     public void menu(CommandActor actor, String menu, Optional<String> player) {
+        if (catalog.menu(menu).isEmpty()) { actor.tell(Palette.error("No menu named " + menu + "; /animus gui list menu shows them")); return; }
         if (transport.unavailable() != null) { actor.tell(Palette.error("Menus unavailable: " + transport.unavailable())); return; }
         deliver(actor, player, (P viewer) -> openMenu(viewer, menu, Map.of(), Optional.empty()));
     }

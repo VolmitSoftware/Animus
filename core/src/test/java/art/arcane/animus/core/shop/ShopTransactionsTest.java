@@ -212,6 +212,21 @@ class ShopTransactionsTest {
         assertEquals(0, new BigDecimal("20").compareTo(economy.balance(ALEX)));
     }
 
+    /** A failure with no message of its own sends the buyer to the server log, never a Java class name; one with a message keeps it. */
+    @Test void aFailureWithoutAMessageSendsTheBuyerToTheServerLog() {
+        economy.give(ALEX, "40");
+        MockInventory silent = new MockInventory() {
+            @Override public void set(int slot, Stack stack) { throw new IllegalStateException(); }
+        };
+        ShopTransactions.Outcome unnamed = transactions(economy).perform("town:baker", prepare(shop("buy", BREAD)), buyer(silent, Set.of()), false);
+        assertEquals(Status.FAILED, unnamed.status());
+        assertEquals(java.util.Optional.of("the server log has the cause"), unnamed.detail());
+        MockInventory said = new MockInventory() {
+            @Override public void set(int slot, Stack stack) { throw new IllegalStateException("inventory went away"); }
+        };
+        assertEquals(java.util.Optional.of("inventory went away"), transactions(economy).perform("town:baker", prepare(shop("buy", BREAD)), buyer(said, Set.of()), false).detail());
+    }
+
     private static final String SELL = "{\"id\":\"wheat\",\"type\":\"sell\",\"item\":{\"id\":\"minecraft:wheat\",\"count\":8},\"price\":2}";
 
     @Test void sellingTakesItemsFromAnywhereAndPays() {

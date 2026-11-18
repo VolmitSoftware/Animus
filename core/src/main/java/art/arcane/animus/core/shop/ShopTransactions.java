@@ -312,5 +312,10 @@ public final class ShopTransactions<S> {
         finally { paid.ifPresent(this::refund); }
     }
 
-    private static String reason(RuntimeException failure) { return failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage(); }
+    /** Why a purchase failed, for the buyer: the failure's message, or that the server log has it, never a Java class name. */
+    private static String reason(RuntimeException failure) {
+        if (failure.getMessage() != null && !failure.getMessage().isBlank()) return failure.getMessage();
+        System.getLogger("Animus").log(System.Logger.Level.WARNING, "A shop purchase failed", failure);
+        return "the server log has the cause";
+    }
 }

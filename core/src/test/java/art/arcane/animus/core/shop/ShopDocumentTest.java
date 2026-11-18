@@ -34,6 +34,14 @@ class ShopDocumentTest {
         assertTrue(problems(ShopScreenTest.BAKERY.replace("\"schemaVersion\": 1", "\"schemaVersion\": 2")).contains("$.schemaVersion: shop schemaVersion 2 is not supported; Animus reads version 1"));
     }
 
+    @Test void aProblemReadsAsAPlaceAPersonCanFindInTheMenu() {
+        assertEquals("Slot 1 on page 1, book: a book shop's trades name the book they copy",
+                ShopDocument.readable("$.pages[0].trade.0.book: a book shop's trades name the book they copy"));
+        assertEquals("Slot 11 on page 2: entry id bread is used twice in this shop", ShopDocument.readable("$.pages[1].buy.10.id: entry id bread is used twice in this shop"));
+        assertEquals("Page 3, name: at most 32 characters", ShopDocument.readable("$.pages[2].name: at most 32 characters"));
+        assertEquals("kind: expected selling, buying, trading or book", ShopDocument.readable("$.kind: expected selling, buying, trading or book"));
+    }
+
     @Test void levelsAreAWholeCostOnBuyCommandAndTradeEntries() {
         String buy = "{\"schemaVersion\":1,\"revision\":1,\"id\":\"town:baker\",\"pages\":[{\"name\":\"One\",\"buy\":{\"0\":{\"id\":\"b\",\"type\":\"buy\",\"item\":{\"id\":\"minecraft:bread\"},\"price\":0,\"levels\":LEVELS}}}]}";
         assertEquals(List.of(), problems(buy.replace("LEVELS", "5")));

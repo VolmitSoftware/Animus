@@ -24,9 +24,11 @@ class GuiDraftsTest {
             assertEquals(4, board.rows());
             assertEquals("gui/inventories/town/board.json already exists; pick another id",
                     assertThrows(IOException.class, () -> GuiDrafts.create(store, DocumentKind.INVENTORY, "town:board", GuiDrafts.inventory("Again", 1))).getMessage());
-            assertEquals("rows= is 1 to 6", assertThrows(IOException.class, () -> GuiDrafts.inventory("Too tall", 7)).getMessage());
-            assertEquals("An id is namespace:path in lowercase, such as town:welcome",
+            assertEquals("rows takes 1 to 6, not 7", assertThrows(IOException.class, () -> GuiDrafts.inventory("Too tall", 7)).getMessage());
+            assertEquals("A chest GUI id is namespace:path in lowercase, such as town:board, not Board",
                     assertThrows(IOException.class, () -> GuiDrafts.create(store, DocumentKind.INVENTORY, "Board", GuiDrafts.inventory("x", 1))).getMessage());
+            assertEquals("A hologram id is namespace:path in lowercase, such as town:welcome, not npc2",
+                    assertThrows(IOException.class, () -> GuiDrafts.create(store, DocumentKind.HOLOGRAM, "npc2", new com.google.gson.JsonObject())).getMessage());
         }
     }
 

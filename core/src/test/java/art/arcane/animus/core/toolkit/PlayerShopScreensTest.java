@@ -216,7 +216,7 @@ class PlayerShopScreensTest extends ToolkitHarness {
         click("Save", Click.LEFT);
         click("Back", Click.LEFT);
         click("Kind: Selling", Click.RIGHT);
-        said("$.pages[0].trade.0.book: a book shop's trades name the book they copy");
+        said("It cannot be a book shop yet. Slot 1 on page 1, book: a book shop's trades name the book they copy");
         assertEquals("selling", stored(SHOP).get("kind").getAsString());
     }
 

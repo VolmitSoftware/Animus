@@ -52,7 +52,7 @@ final class PlayerShopFiles {
         if (text == null) throw new IOException("That shop is gone");
         JsonObject document = JsonDocuments.object(text);
         ShopDocument.Result parsed = ShopDocument.parse(id, document);
-        if (parsed.shop().isEmpty()) throw new IOException("The shop file has a problem: " + parsed.problems().getFirst());
+        if (parsed.shop().isEmpty()) throw new IOException("The shop file has a problem: " + ShopDocument.readable(parsed.problems().getFirst()));
         return new Shop(parsed.shop().get(), document, npcsOf(id));
     }
 
@@ -105,7 +105,7 @@ final class PlayerShopFiles {
         NpcDefinition bound = NpcDefinition.parse(JsonDocuments.write(definition));
         String document = JsonDocuments.write(document(shop, title, plan));
         List<String> problems = ShopDocument.parse(shop, JsonDocuments.object(document)).problems();
-        if (!problems.isEmpty()) throw new IOException(problems.getFirst());
+        if (!problems.isEmpty()) throw new IOException(ShopDocument.readable(problems.getFirst()));
         String tx = art.arcane.animus.core.npc.DefinitionBatch.commit(store, List.of(bound), Map.of(bound.path(), "missing"),
                 List.of(new DocumentStore.Change(PlayerShops.path(shop), "missing", document)));
         npcs.reload();
@@ -182,10 +182,12 @@ final class PlayerShopFiles {
 
     /** Changes how the shop trades; refused while an offer does not fit the new kind, such as a trade without a book in a book shop. */
     String kind(String id, ShopDocument.Kind kind) throws IOException {
-        return write(id, (JsonObject document) -> {
-            document.addProperty("kind", kind.key());
-            return "The shop is now a " + kind.key() + " shop";
-        });
+        try {
+            return write(id, (JsonObject document) -> {
+                document.addProperty("kind", kind.key());
+                return "The shop is now a " + kind.key() + " shop";
+            });
+        } catch (IOException refused) { throw new IOException("It cannot be a " + kind.key() + " shop yet. " + refused.getMessage(), refused); }
     }
 
     /** The shop's title and the name of every NPC that opens it. */
@@ -263,7 +265,7 @@ final class PlayerShopFiles {
         if (current == null) throw new IOException("That shop is gone");
         document.addProperty("revision", EditorDocuments.revision(JsonDocuments.object(current)) + 1);
         List<String> problems = ShopDocument.parse(id, document).problems();
-        if (!problems.isEmpty()) throw new IOException(problems.getFirst());
+        if (!problems.isEmpty()) throw new IOException(ShopDocument.readable(problems.getFirst()));
         return new DocumentStore.Change(path, JsonDocuments.hash(current), JsonDocuments.write(document));
     }
 }

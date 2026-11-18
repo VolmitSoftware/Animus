@@ -26,4 +26,18 @@ public interface CombatControl {
 
     /** Ends every mob control the NPC holds. */
     String releaseMobs(String npc);
+
+    /**
+     * One manual hit's answer in words: {@code guard hit for 2 damage; health 20 to 18}, or why it did nothing, such as
+     * {@code guard's hit did nothing: out of reach}. {@code status} is the platform's code for the outcome.
+     */
+    static String attacked(String npc, String status, double applied, Double before, Double after) {
+        if (applied > 0) return npc + " hit for " + number(applied) + " damage" + (before == null || after == null ? "" : "; health " + number(before) + " to " + number(after));
+        int space = status.indexOf(' ');
+        String code = space < 0 ? status : status.substring(0, space), detail = space < 0 ? "" : status.substring(space + 1);
+        return npc + "'s hit did nothing: " + (code.equals("APPLIED") || code.equals("NO_CHANGE") ? "the target took no damage" : art.arcane.animus.core.text.PlainWords.of(code))
+                + (detail.isEmpty() ? "" : ", " + detail);
+    }
+
+    private static String number(double value) { return value == Math.rint(value) ? String.valueOf((long) value) : String.valueOf(Math.round(value * 100) / 100.0); }
 }

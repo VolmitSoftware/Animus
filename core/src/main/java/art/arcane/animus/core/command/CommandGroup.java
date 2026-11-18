@@ -8,6 +8,7 @@ import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.storage.NpcPaths;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.Palette;
+import art.arcane.animus.core.text.ReplyText;
 import art.arcane.animus.core.toolkit.Toolkit;
 import art.arcane.volmlib.util.director.help.DirectorMiniMenu;
 import java.io.IOException;
@@ -77,10 +78,18 @@ abstract class CommandGroup {
         return toolkit.map((Toolkit<?, ?> found) -> found.selected(player)).orElseGet(() -> living().selection(player).map(List::of).orElse(List.of()));
     }
 
-    /** What {@link #SELECTED} names: the one selected NPC. None, or several, is a refusal that says what to do. */
+    /**
+     * What {@link #SELECTED} names: the one selected NPC. None, or several, is a refusal that says what to do. When the
+     * player left the NPC out, the reply says the selection stood in, or asks for the NPC.
+     */
     static Optional<String> selected(CommandActor actor, List<String> selection) {
-        if (selection.size() == 1) return Optional.of(selection.getFirst());
-        actor.tell(Palette.error(selection.isEmpty() ? "No NPC selected; /animus select <npc>, or click one with the wand (/animus tools wand)"
+        boolean leftOut = actor.npcLeftOut();
+        if (selection.size() == 1) {
+            if (leftOut) actor.tell("Using your selection, " + selection.getFirst());
+            return Optional.of(selection.getFirst());
+        }
+        actor.tell(Palette.error(selection.isEmpty() ? leftOut ? "Name the NPC, or select one first with /animus select <npc> or the wand (/animus tools wand)"
+                : "No NPC selected; /animus select <npc>, or click one with the wand (/animus tools wand)"
                 : selection.size() + " NPCs are selected; name one, or /animus select <npc> to keep only it"));
         return Optional.empty();
     }
@@ -184,10 +193,55 @@ abstract class CommandGroup {
     /** The refusal for an NPC id nothing matches. */
     static String unknownNpc(String id) { return "No NPC named " + id + "; /animus list shows ids"; }
 
-    /** A failure's message, or its kind when it has none, so a reply never reads "null". */
+    /**
+     * A refusal from validating a file, about the field at {@code path} under its {@code $.}, in the words a command took
+     * it: {@code maximum must be from 1 to 2048, not 5000} rather than the schema path. Any other refusal reads as
+     * {@link ReplyText} makes it.
+     */
+    static String typed(String refusal, String path, String parameter, String value) {
+        String problem = problem(refusal, path);
+        if (!refusal.contains("$." + path + ": ")) return problem;
+        if (problem.startsWith("expected ")) problem = "takes " + problem.substring("expected ".length());
+        return parameter + " " + problem + ", not " + value;
+    }
+
+    /**
+     * A validator's first problem named by its own field, as an option of a command calls it: {@code
+     * $.modules.animus:schedule.locations[2].chance: expected 1-100} reads {@code chance takes 1-100}.
+     */
+    static String field(String refusal) {
+        java.util.regex.Matcher path = SCHEMA_FIELD.matcher(refusal);
+        if (!path.find()) return ReplyText.plain(refusal);
+        String rest = refusal.substring(path.end());
+        int end = rest.indexOf("; ");
+        String problem = end < 0 ? rest : rest.substring(0, end);
+        if (problem.startsWith("expected ")) problem = "takes " + problem.substring("expected ".length());
+        return ReplyText.plain(path.group(1) + " " + problem);
+    }
+
+    private static final java.util.regex.Pattern SCHEMA_FIELD = java.util.regex.Pattern.compile("\\$\\.(?:\\S*[.\\]])?([A-Za-z][\\w-]*): ");
+
+    /** The first problem a validator names for the field at {@code path}, without the path; any other refusal as {@link ReplyText} makes it. */
+    static String problem(String refusal, String path) {
+        String field = "$." + path + ": ";
+        int at = refusal.indexOf(field);
+        if (at < 0) return ReplyText.plain(refusal);
+        String rest = refusal.substring(at + field.length());
+        int end = rest.indexOf("; ");
+        return ReplyText.plain(end < 0 ? rest : rest.substring(0, end));
+    }
+
+    /**
+     * A failure as a reply reads it: a missing or locked file by its name in the Animus folder, else its message with any
+     * path or schema path made plain. One without a message never shows its Java name; the server log gets it whole.
+     */
     static String reason(Throwable failure) {
+        if (failure instanceof java.nio.file.NoSuchFileException missing) return "No file " + ReplyText.plain(missing.getFile());
+        if (failure instanceof java.nio.file.AccessDeniedException denied) return "Animus may not read or write " + ReplyText.plain(denied.getFile()) + "; check the folder's permissions";
         String message = failure.getMessage();
-        return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
+        if (message != null && !message.isBlank()) return ReplyText.plain(message);
+        System.getLogger("Animus").log(System.Logger.Level.WARNING, "A command failed", failure);
+        return "That failed; the server log has the cause";
     }
 
     /** The command a clicked NPC id suggests. */
@@ -208,21 +262,31 @@ abstract class CommandGroup {
         if (actor.player().isEmpty()) {
             actor.plain("--- " + title + " ---");
             if (rows.isEmpty()) actor.plain(empty);
-            for (String row : rows) {
+            for (String written : rows) {
+                String row = ReplyText.plain(written);
                 int detail = row.indexOf('\n');
                 actor.plain("⇀ " + (detail < 0 ? row : row.substring(0, detail) + " (" + row.substring(detail + 1).replace("\n", "; ") + ")"));
             }
             return;
         }
         List<String> entries = rows.stream().map((String row) -> entry(row, click)).toList();
-        actor.menu(new DirectorMiniMenu.ContentMenu(title, command, entries, "<#AAAAAA>" + DirectorMiniMenu.escapeText(empty) + "</#AAAAAA>", page, DirectorMiniMenu.MAX_ENTRIES_PER_PAGE));
+        DirectorMiniMenu.ContentMenu menu = new DirectorMiniMenu.ContentMenu(title, command, entries, "<#AAAAAA>" + DirectorMiniMenu.escapeText(empty) + "</#AAAAAA>", page,
+                DirectorMiniMenu.MAX_ENTRIES_PER_PAGE);
+        actor.menu(menu);
+        pastTheEnd(actor, page, menu.page().pages());
+    }
+
+    /** After a page shown in place of {@code asked}, which is past the last of {@code pages}: that it is the last. */
+    static void pastTheEnd(CommandActor actor, int asked, int pages) {
+        if (asked > pages) actor.tell("There is no page " + asked + "; this is the last page, " + pages);
     }
 
     /**
      * {@code id | rest}: the id in pink, the rest in grey, on one chat row. A longer rest ends in an ellipsis and the hover
      * shows all of it, then any detail lines; with {@code click}, the row suggests a command and its hover says which.
      */
-    static String entry(String text, Function<String, String> click) {
+    static String entry(String written, Function<String, String> click) {
+        String text = ReplyText.plain(written);
         int lines = text.indexOf('\n');
         String row = lines < 0 ? text : text.substring(0, lines), detail = lines < 0 ? "" : text.substring(lines + 1);
         int split = row.indexOf(" | ");

@@ -168,6 +168,9 @@ public final class QuestService<P, S> implements QuestControl, AutoCloseable {
     /** A click on an offer's accept or decline button, on the player's owner. */
     public void choice(P player, String token, String option) { if (!closed) play.choice(player, token, option); }
 
+    /** Whether a quest offer's buttons wait for {@code player} to click one. */
+    public boolean offered(UUID player) { return !closed && play.offered(player); }
+
     @Override public Optional<String> unavailable() { return closed ? Optional.of("quests are stopping") : Optional.empty(); }
 
     /** The quest by id, or by name in the namespace of {@code namespace} when it has no colon. */

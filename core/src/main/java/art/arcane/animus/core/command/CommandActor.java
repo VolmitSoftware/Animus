@@ -37,8 +37,14 @@ public interface CommandActor {
     /** Plays {@code sound} to the player on the player's own owner; the console hears nothing. */
     default void play(CommandSound sound) {}
 
-    /** UUIDs of entities near the player, nearest first, for completing combat targets; empty for the console. */
+    /** UUIDs of mobs near the player, living entities that are not players, nearest first, for completing combat targets; empty for the console. */
     default List<UUID> nearby() { return List.of(); }
+
+    /** UUIDs of the other players near the player, nearest first, for completing a player's UUID; empty for the console. */
+    default List<UUID> nearbyPlayers() { return List.of(); }
+
+    /** Whether the running command was given no NPC, so the player's selection stands in for it. */
+    default boolean npcLeftOut() { return false; }
 
     /** A line exactly as given, without the prefix. */
     default void plain(String line) { tell(line); }
@@ -66,10 +72,13 @@ public interface CommandActor {
     }
 
     /**
-     * A whole page of MiniMessage lines, as VolmLib's menus render them. Platforms that show hover and click clear the chat
-     * window first and send each line styled, as every Volmit plugin does; the default prints each line as plain text.
+     * A whole page of MiniMessage lines, as VolmLib's menus render them: each line in turn, below what the chat already
+     * shows, with nothing pushed in front of it.
      */
     default void page(List<String> lines) {
-        for (String line : lines) if (!line.isBlank()) plain(MiniMessage.miniMessage().stripTags(line));
+        for (String line : lines) if (line != null && !line.isBlank()) miniMessage(line);
     }
+
+    /** One MiniMessage line. Platforms that show hover and click send it styled; the default prints it as plain text. */
+    default void miniMessage(String line) { plain(MiniMessage.miniMessage().stripTags(line)); }
 }

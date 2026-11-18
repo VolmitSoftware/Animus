@@ -55,7 +55,7 @@ final class ServiceCommands {
         @Positional({"price", "mode"})
         void stock(@Param(name = "shop", description = "The shop id, such as town:baker; a new id makes the shop") String shop,
                    @Param(name = "price", defaultValue = "", description = "What the offer costs or pays; buy and sell need it") String price,
-                   @Param(name = "mode", defaultValue = "buy", description = "buy (players buy it), sell (players sell it) or trade (for your off-hand item)") String mode,
+                   @Param(name = "mode", defaultValue = "buy", description = "buy (the shop sells it), sell (the shop buys it) or trade (for your off-hand item)") String mode,
                    @Param(name = "page", defaultValue = "1", description = "The shop page, from 1") int page) {
             services.shops().stock(actor(), shop, mode, given(price), page);
         }
@@ -181,8 +181,12 @@ final class ServiceCommands {
 
     /** Writes a new chest GUI or hologram file on the file lane, then reloads the GUI catalogs so it shows. */
     static void created(CommandGroup group, CommandActor actor, DocumentKind kind, String id, Draft draft) {
-        group.files(actor, () -> List.of(Palette.success(GuiDrafts.create(group.runtime().documents(), kind, id, draft.build()))),
-                () -> group.services.guis().reloadAll(actor));
+        java.util.concurrent.atomic.AtomicBoolean made = new java.util.concurrent.atomic.AtomicBoolean();
+        group.files(actor, () -> {
+            String line = GuiDrafts.create(group.runtime().documents(), kind, id, draft.build());
+            made.set(true);
+            return List.of(Palette.success(line));
+        }, () -> { if (made.get()) group.services.guis().reloadAll(actor); });
     }
 
     @Director(name = "hologram", aliases = "holograms", description = "Make holograms in game")
@@ -389,7 +393,13 @@ final class ServiceCommands {
             CommandActor actor = actor();
             services.editor().tokens(actor).ifPresent((List<String> rows) ->
                     listing(actor, "Editor tokens (" + rows.size() + ")", "/" + BuildIdentity.ID + " editor tokens", rows, page, "No editor tokens; /animus editor pair makes one",
-                            (String token) -> "/" + BuildIdentity.ID + " editor revoke " + token));
+                            Editor::revoking));
+        }
+
+        /** The command a token row fills in: its head is the token id, then its label in quotes, which revoke does not take. */
+        static String revoking(String head) {
+            int space = head.indexOf(' ');
+            return "/" + BuildIdentity.ID + " editor revoke " + (space < 0 ? head : head.substring(0, space));
         }
 
         @Director(description = "Revoke a token, or all of them")

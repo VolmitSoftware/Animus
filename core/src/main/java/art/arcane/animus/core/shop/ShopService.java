@@ -275,7 +275,8 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
      */
     public void open(CommandActor actor, String shop, Optional<String> player, Optional<String> style, Optional<String> npc) {
         Optional<ShopDocument.Style> chosen = style.flatMap(ShopDocument.Style::of);
-        if (style.isPresent() && chosen.isEmpty()) { actor.tell("style= is native or chest"); return; }
+        if (style.isPresent() && chosen.isEmpty()) { actor.tell(Palette.error("style takes native or chest, not " + style.get())); return; }
+        if (catalog.shop(shop).isEmpty()) { actor.tell(Palette.error(noShop(shop))); return; }
         Optional<ShopBinding> as = Optional.empty();
         if (npc.isPresent()) {
             Optional<NpcDefinition> definition = runtime.npcs().find(npc.get());
@@ -321,6 +322,7 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
 
     /** Clears the limits and stock counters of a shop, for everyone or one player by name or UUID. */
     public void reset(CommandActor actor, String shop, Optional<String> named) {
+        if (catalog.shop(shop).isEmpty()) { actor.tell(Palette.error(noShop(shop))); return; }
         Optional<UUID> player = Optional.empty();
         if (named.isPresent()) {
             player = playerNamed.apply(named.get()).or(() -> { try { return Optional.of(UUID.fromString(named.get())); } catch (IllegalArgumentException invalid) { return Optional.empty(); } });
@@ -336,14 +338,14 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
      */
     public void stock(CommandActor actor, String shop, String mode, Optional<String> price, int page) {
         Optional<ShopDocument.Mode> named = ShopDocument.Mode.of(mode);
-        if (named.isEmpty()) { actor.tell(Palette.error("mode= is buy, sell or trade")); return; }
+        if (named.isEmpty()) { actor.tell(Palette.error("mode takes buy, sell or trade, not " + mode)); return; }
         ShopDocument.Mode chosen = named.get();
         Optional<java.math.BigDecimal> amount;
         try { amount = price.map(java.math.BigDecimal::new); }
-        catch (NumberFormatException notNumber) { actor.tell(Palette.error("price= is a number, such as price=10 or price=2.5")); return; }
+        catch (NumberFormatException notNumber) { actor.tell(Palette.error("price takes a number, such as price=10 or price=2.5, not " + price.orElse(""))); return; }
         String path;
         try { path = art.arcane.animus.core.editor.EditorDocuments.pathFor(art.arcane.animus.core.editor.DocumentKind.SHOP, shop); }
-        catch (art.arcane.animus.core.editor.EditorError invalid) { actor.tell(Palette.error("A shop id is namespace:path in lowercase, such as town:baker")); return; }
+        catch (art.arcane.animus.core.editor.EditorError invalid) { actor.tell(Palette.error("A shop id is namespace:path in lowercase, such as town:baker, not " + shop)); return; }
         deliver(actor, Optional.empty(), (P player) -> {
             Optional<NpcItem> held = host.worn(player, EquipmentSlot.MAIN_HAND);
             if (held.isEmpty()) { actor.tell(Palette.error("Hold the item to offer in your main hand")); return; }
@@ -353,8 +355,7 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
                 com.google.gson.JsonObject document = current == null ? ShopOffers.empty(shop) : JsonDocuments.object(current);
                 ShopOffers.Added added = ShopOffers.add(document, chosen, held.get(), cost, amount, page);
                 String tx = runtime.documents().commit(List.of(new DocumentStore.Change(path, current == null ? "missing" : JsonDocuments.hash(current), JsonDocuments.write(added.document()))));
-                String what = held.get().count() + " " + held.get().id().substring(held.get().id().indexOf(':') + 1) + " as " + chosen.key() + " offer " + added.entry();
-                answer(actor, Palette.success((current == null ? "Created " + path + " and added " : "Added ") + what + " in slot " + (added.slot() + 1) + " of page " + page + "; tx " + tx));
+                answer(actor, Palette.success(stockLine(current == null, shop, chosen, held.get().count(), held.get().id(), added.slot(), page) + "; tx " + tx));
                 reload((ShopCatalog next) -> {});
             });
         });
@@ -409,6 +410,9 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
 
     private void answer(CommandActor actor, String message) { if (!closed && !actor.reply(() -> actor.tell(message))) log.accept(message); }
 
+    /** The refusal for a shop id no shop file has. */
+    static String noShop(String id) { return "No shop named " + id + "; /animus shop list shows them"; }
+
     /** Forgets every window; the caller closes the platform windows. Then saves the counters. */
     @Override public void close() {
         if (closed) return;
@@ -416,5 +420,15 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
         try { settingsListener.close(); } catch (Exception ignored) { /* Removing a listener cannot fail. */ }
         screens.clear();
         store.close();
+    }
+
+    /**
+     * The reply to {@code /animus shop stock}, from the shop's side and with the slot counted from 1, such as "Made shop
+     * town:smith; it sells 4 bread in slot 1 of page 1". The file keeps the slot from 0.
+     */
+    static String stockLine(boolean created, String shop, ShopDocument.Mode mode, int count, String item, int slot, int page) {
+        String verb = switch (mode) { case BUY -> "sells"; case SELL -> "buys"; case TRADE -> "trades"; };
+        String what = count + " " + item.substring(item.indexOf(':') + 1).replace('_', ' ');
+        return (created ? "Made shop " + shop + "; it " : shop + " now ") + verb + " " + what + " in slot " + (slot + 1) + " of page " + page;
     }
 }

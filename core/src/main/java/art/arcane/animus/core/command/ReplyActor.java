@@ -2,6 +2,7 @@ package art.arcane.animus.core.command;
 
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.Palette;
+import art.arcane.animus.core.text.ReplyText;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import art.arcane.volmlib.util.director.help.DirectorMiniMenu;
@@ -26,6 +27,8 @@ public final class ReplyActor implements CommandActor {
     /** The node the running command needed, kept with each change it reports; empty for the menu. */
     private String node = "";
     private boolean answered, refused, waiting, sounded;
+    /** The command was given no NPC, so it acts on the player's selection. */
+    private boolean leftOut;
 
     ReplyActor(CommandActor actor, boolean simple, RecentChanges changes) { this(actor, simple, changes, false); }
 
@@ -64,12 +67,13 @@ public final class ReplyActor implements CommandActor {
 
     @Override public void plain(String line) {
         heard(line != null && line.startsWith(Palette.error("")));
-        actor.plain(line);
+        actor.plain(ReplyText.plain(line));
     }
 
     @Override public void help(AnimusHelp.Page page) { heard(false); actor.help(page); }
     @Override public void menu(DirectorMiniMenu.ContentMenu menu) { heard(false); actor.menu(menu); }
     @Override public void page(List<String> lines) { heard(false); actor.page(lines); }
+    @Override public void miniMessage(String line) { heard(false); actor.miniMessage(line); }
     @Override public ChatLine line(String message) { return actor.line(message); }
     @Override public CommandActor origin() { return actor.origin(); }
     @Override public boolean permitted(String node) { return actor.permitted(node); }
@@ -80,6 +84,11 @@ public final class ReplyActor implements CommandActor {
     @Override public Optional<Vec3> target() { return actor.target(); }
     @Override public void play(CommandSound sound) { actor.play(sound); }
     @Override public List<UUID> nearby() { return actor.nearby(); }
+    @Override public List<UUID> nearbyPlayers() { return actor.nearbyPlayers(); }
+    @Override public boolean npcLeftOut() { return leftOut; }
+
+    /** The command about to run was given no NPC; its {@code @selected} stands in for one. */
+    void selectionStandsIn() { leftOut = true; }
 
     /**
      * The command about to run needs {@code permission}; each change it reports keeps that node for {@code /animus undo}.

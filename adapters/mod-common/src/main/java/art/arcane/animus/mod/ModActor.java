@@ -8,7 +8,6 @@ import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
-import art.arcane.volmlib.util.director.help.DirectorMiniMenu;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -17,7 +16,6 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import net.minecraft.core.BlockPos;
 import net.minecraft.commands.CommandSourceStack;
-import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSoundPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundSource;
@@ -55,22 +53,24 @@ record ModActor(CommandSourceStack source, ModTicks ticks) implements CommandAct
         ServerPlayer player = source.getPlayer();
         return player == null ? Optional.empty() : Optional.of(new WorldPosition(ModWorldKeys.key(player.level()), new Vec3(player.getX(), player.getY(), player.getZ())));
     }
-    /** Living entities within {@link #NEARBY} blocks, nearest first, without the player. Runs on the server thread. */
-    @Override public List<UUID> nearby() {
+    /** Mobs within {@link #NEARBY} blocks, living entities that are not players, nearest first. Runs on the server thread. */
+    @Override public List<UUID> nearby() { return near((LivingEntity candidate) -> !(candidate instanceof net.minecraft.world.entity.player.Player)); }
+    /** Other players within {@link #NEARBY} blocks, nearest first. */
+    @Override public List<UUID> nearbyPlayers() { return near((LivingEntity candidate) -> candidate instanceof net.minecraft.world.entity.player.Player); }
+    private List<UUID> near(java.util.function.Predicate<LivingEntity> kind) {
         ServerPlayer player = source.getPlayer();
         if (player == null) return List.of();
         AABB area = player.getBoundingBox().inflate(NEARBY);
-        return player.level().getEntitiesOfClass(LivingEntity.class, area, (LivingEntity candidate) -> candidate != player).stream()
+        return player.level().getEntitiesOfClass(LivingEntity.class, area, (LivingEntity candidate) -> candidate != player && kind.test(candidate)).stream()
                 .sorted(Comparator.comparingDouble((LivingEntity entity) -> entity.distanceToSqr(player))).limit(NEARBY_LIMIT).map(LivingEntity::getUUID).toList();
     }
     private static final double NEARBY = 16;
     private static final int NEARBY_LIMIT = 20;
 
-    /** As VolmLib does for a Bukkit player: blank lines first so a page re-renders in place, then each line. */
-    @Override public void page(List<String> lines) {
-        if (source.getPlayer() == null) { CommandActor.super.page(lines); return; }
-        source.sendSystemMessage(Component.literal("\n".repeat(DirectorMiniMenu.CHAT_LINE_COUNT - 1)));
-        for (String line : lines) if (line != null && !line.isBlank()) source.sendSystemMessage(ModText.miniMessage(line));
+    /** One MiniMessage line, styled for a player and plain for the console. */
+    @Override public void miniMessage(String line) {
+        if (source.getPlayer() == null) CommandActor.super.miniMessage(line);
+        else source.sendSystemMessage(ModText.miniMessage(line));
     }
     @Override public Optional<Coordinates.Facing> facing() {
         ServerPlayer player = source.getPlayer();

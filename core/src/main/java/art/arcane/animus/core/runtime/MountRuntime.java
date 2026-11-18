@@ -113,7 +113,7 @@ final class MountRuntime<P, I> implements AutoCloseable {
         return summary.toString();
     }
     String rideStatus() {
-        if (!riders.available()) return "Riding unavailable: " + riders.unavailable();
+        if (!riders.available()) return "Players cannot ride NPCs: " + riders.unavailable();
         List<String> lines = riders.status();
         return "Riders " + riders.count() + "/" + RideLedger.MAX_RIDERS + (lines.isEmpty() ? "" : " | " + String.join(" | ", lines));
     }

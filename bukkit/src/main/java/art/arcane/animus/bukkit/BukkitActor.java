@@ -7,7 +7,6 @@ import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
-import art.arcane.volmlib.util.director.help.DirectorMiniMenu;
 import art.arcane.volmlib.util.plugin.ComponentMessenger;
 import art.arcane.volmlib.util.plugin.ComponentText;
 import java.util.Comparator;
@@ -16,6 +15,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Location;
 import org.bukkit.SoundCategory;
 import org.bukkit.block.Block;
@@ -48,21 +48,24 @@ record BukkitActor(CommandSender sender, ReplyScheduler replies) implements Comm
         return at.getWorld() == null ? Optional.empty() : Optional.of(new WorldPosition(at.getWorld().getName(), new Vec3(at.getX(), at.getY(), at.getZ())));
     }
     /**
-     * Living entities within {@link #NEARBY} blocks, nearest first. Completion runs on the player's own thread; on Folia an
-     * entity read the region refuses offers nothing.
+     * Mobs within {@link #NEARBY} blocks, nearest first. Completion runs on the player's own thread; on Folia an entity read
+     * the region refuses offers nothing.
      */
-    @Override public List<UUID> nearby() {
+    @Override public List<UUID> nearby() { return near((Entity entity) -> entity instanceof LivingEntity && !(entity instanceof Player)); }
+    /** Other players within {@link #NEARBY} blocks, nearest first. */
+    @Override public List<UUID> nearbyPlayers() { return near(Player.class::isInstance); }
+    private List<UUID> near(java.util.function.Predicate<Entity> kind) {
         if (!(sender instanceof Player player)) return List.of();
         try {
             Location at = player.getLocation();
-            return player.getNearbyEntities(NEARBY, NEARBY, NEARBY).stream().filter(LivingEntity.class::isInstance)
+            return player.getNearbyEntities(NEARBY, NEARBY, NEARBY).stream().filter(kind)
                     .sorted(Comparator.comparingDouble((Entity entity) -> entity.getLocation().distanceSquared(at))).limit(NEARBY_LIMIT).map(Entity::getUniqueId).toList();
         } catch (RuntimeException refused) { return List.of(); }
     }
     private static final double NEARBY = 16;
     private static final int NEARBY_LIMIT = 20;
-    /** VolmLib's own delivery, as Iris and Adapt use it: the chat window cleared, then each MiniMessage line. */
-    @Override public void page(List<String> lines) { DirectorMiniMenu.deliver(sender, lines); }
+    /** One MiniMessage line, styled with its hover and click, as VolmLib's menus send each of theirs. */
+    @Override public void miniMessage(String line) { ComponentMessenger.send(sender, ComponentText.component(MiniMessage.miniMessage().deserialize(line))); }
     @Override public Optional<Coordinates.Facing> facing() {
         if (!(sender instanceof Player player)) return Optional.empty();
         Location at = player.getLocation();

@@ -35,9 +35,9 @@ class SpeakCommandTest {
     }
 
     @Test void valuesOutsideTheirRangesAreRefusedWithTheRange() {
-        assertEquals("range takes 1 to 64 blocks", assertThrows(IllegalArgumentException.class, () -> SpeakCommand.arguments("Hi", Optional.empty(), "65", "")).getMessage());
-        assertEquals("range takes 1 to 64 blocks", assertThrows(IllegalArgumentException.class, () -> SpeakCommand.arguments("Hi", Optional.empty(), "far", "")).getMessage());
-        assertEquals("bubble takes 1 to 1200 ticks", assertThrows(IllegalArgumentException.class, () -> SpeakCommand.arguments("Hi", Optional.empty(), "", "0")).getMessage());
+        assertEquals("range takes 1 to 64 blocks, not 65", assertThrows(IllegalArgumentException.class, () -> SpeakCommand.arguments("Hi", Optional.empty(), "65", "")).getMessage());
+        assertEquals("range takes 1 to 64 blocks, not far", assertThrows(IllegalArgumentException.class, () -> SpeakCommand.arguments("Hi", Optional.empty(), "far", "")).getMessage());
+        assertEquals("bubble takes 1 to 1200 ticks, not 0", assertThrows(IllegalArgumentException.class, () -> SpeakCommand.arguments("Hi", Optional.empty(), "", "0")).getMessage());
         assertEquals("Give target or range, not both", assertThrows(IllegalArgumentException.class, () -> SpeakCommand.arguments("Hi", Optional.of(ALEX), "8", "")).getMessage());
         assertEquals("Give the NPC something to say", assertThrows(IllegalArgumentException.class, () -> SpeakCommand.arguments(" ", Optional.empty(), "", "")).getMessage());
     }

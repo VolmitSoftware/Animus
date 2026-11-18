@@ -47,6 +47,22 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
     private static final BigDecimal MAXIMUM_PRICE = new BigDecimal("1000000000000");
     /** The most experience levels one entry costs. */
     public static final int MAXIMUM_LEVELS = 100_000;
+    private static final java.util.regex.Pattern OFFER_PROBLEM = java.util.regex.Pattern.compile("^\\$\\.pages\\[(\\d+)]\\.(?:buy|sell|trade)\\.(\\d+)(?:\\.([\\w.\\[\\]]+))?: (.*)$", java.util.regex.Pattern.DOTALL);
+    private static final java.util.regex.Pattern PAGE_PROBLEM = java.util.regex.Pattern.compile("^\\$\\.pages\\[(\\d+)](?:\\.([\\w.\\[\\]]+))?: (.*)$", java.util.regex.Pattern.DOTALL);
+
+    /**
+     * A problem as a chat reply names it: an offer by its slot and page counted from 1, as the shop's menu shows them, and
+     * any other field by name without its schema path, such as {@code Slot 1 on page 1, book: ...}.
+     */
+    public static String readable(String problem) {
+        java.util.regex.Matcher offer = OFFER_PROBLEM.matcher(problem);
+        if (offer.matches())
+            return "Slot " + (Integer.parseInt(offer.group(2)) + 1) + " on page " + (Integer.parseInt(offer.group(1)) + 1)
+                    + (offer.group(3) == null || offer.group(3).equals("id") ? "" : ", " + offer.group(3)) + ": " + offer.group(4);
+        java.util.regex.Matcher page = PAGE_PROBLEM.matcher(problem);
+        if (page.matches()) return "Page " + (Integer.parseInt(page.group(1)) + 1) + (page.group(2) == null ? "" : ", " + page.group(2)) + ": " + page.group(3);
+        return problem.startsWith("$.") ? problem.substring(2) : problem;
+    }
 
     public enum Mode {
         BUY, SELL, TRADE;

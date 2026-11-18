@@ -94,7 +94,7 @@ final class ToolkitCommands extends CommandGroup {
         UUID player = actor.player().orElseThrow();
         if (word.isBlank()) { actor.tell("Mode: " + toolkit.mode(player).label()); return; }
         Optional<ToolkitMode> chosen = ToolkitMode.parse(word);
-        if (chosen.isEmpty()) { actor.tell(Palette.error("Mode is simple or advanced")); return; }
+        if (chosen.isEmpty()) { actor.tell(Palette.error("menu-mode takes simple or advanced, not " + word)); return; }
         toolkit.mode(player, chosen.get());
         actor.tell(Palette.success("Mode: " + chosen.get().label()));
     }
@@ -130,7 +130,7 @@ final class ToolkitCommands extends CommandGroup {
             services.files().execute(() -> {
                 Administration.Inspection inspection;
                 try { inspection = administration.inspect(id); }
-                catch (IOException | RuntimeException failure) { reply(actor, Palette.error(String.valueOf(failure.getMessage()))); return; }
+                catch (IOException | RuntimeException failure) { reply(actor, Palette.error(reason(failure))); return; }
                 java.util.Optional<String> fights = inspection.fights(runtime().combatStatistics());
                 if (!stopping()) actor.reply(() -> { if (!stopping()) AnimusCommandTree.inspect(actor, inspection, living().inspect(id), fights); });
             });

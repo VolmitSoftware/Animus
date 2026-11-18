@@ -298,6 +298,22 @@ class HoloServiceTest {
         assertTrue(displays.of(alex).isEmpty());
     }
 
+    @Test void anUnknownGuiOrMenuIsNamedForWhoeverTypedIt() {
+        reload();
+        List<String> told = new ArrayList<>();
+        art.arcane.animus.core.command.CommandActor admin = new art.arcane.animus.core.command.CommandActor() {
+            @Override public boolean permitted(String node) { return true; }
+            @Override public void tell(String message) { told.add(art.arcane.animus.core.text.RichText.plain(message)); }
+            @Override public Optional<java.util.UUID> player() { return Optional.of(alex.id); }
+            @Override public boolean reply(Runnable action) { action.run(); return true; }
+        };
+        holograms.open(admin, "nosuch", Optional.empty());
+        assertEquals(List.of("[Animus]: No chest GUI named nosuch; /animus gui list shows them"), told, "a chest GUI, never a shop");
+        told.clear();
+        holograms.menu(admin, "nosuch", Optional.of("Alex"));
+        assertEquals(List.of("[Animus]: No menu named nosuch; /animus gui list menu shows them"), told);
+    }
+
     @Test void glossKindsAreRefusedWithoutGloss() {
         assertEquals("gloss-unavailable", holograms.refusal(GuiBinding.Kind.GLOSS).orElseThrow().diagnostics().getFirst().code());
         assertTrue(holograms.refusal(GuiBinding.Kind.MENU).isEmpty());

@@ -53,7 +53,7 @@ public final class PendingChoices {
         long now = nanos.getAsLong();
         prompts.values().removeIf(prompt -> expired(prompt, now) || prompt.npc.equals(npc) && prompt.player.equals(player));
         if (prompts.size() >= maximum)
-            throw new CapabilityRefusal(Outcome.Status.BUSY, "choice-capacity", "Too many dialogue choices are waiting for an answer");
+            throw new CapabilityRefusal(Outcome.Status.BUSY, "choice-capacity", "Too many questions are waiting for an answer");
         byte[] bytes = new byte[TOKEN_BYTES];
         random.nextBytes(bytes);
         String token = HexFormat.of().formatHex(bytes);
@@ -62,6 +62,13 @@ public final class PendingChoices {
     }
 
     synchronized void discard(String token) { prompts.remove(token); }
+
+    /** Whether a prompt to {@code player} is open: not answered, replaced or expired. */
+    synchronized boolean waiting(UUID player) {
+        long now = nanos.getAsLong();
+        for (Prompt prompt : prompts.values()) if (prompt.player.equals(player) && !expired(prompt, now)) return true;
+        return false;
+    }
 
     /** A click from the wrong player, on a bad option or out of range leaves the prompt for its rightful answer. */
     Selection select(UUID player, String token, String option, Predicate<NpcHandle> npcAvailable) {

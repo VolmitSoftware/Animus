@@ -348,7 +348,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         return List.copyOf(errors);
     }
     @Override public String rideStatus() {
-        if (!available()) return "Riding unavailable: " + down();
+        if (!available()) return "Players cannot ride NPCs: " + down();
         owner();
         return mountRuntime.rideStatus();
     }

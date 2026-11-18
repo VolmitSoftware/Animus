@@ -128,8 +128,10 @@ final class AnimusBukkit {
     private BuildService<Player, ItemStack> builds;
     private ExtensionRuntime extensions;
     private volatile BehaviorCommands behaviors;
-    private BuiltinCapabilities builtins;
+    private volatile BuiltinCapabilities builtins;
     private CommandGrants commandGrants;
+    /** The command tree each Paper client gets, with the chat-button commands while a button waits for its player. */
+    private final CommandTreeHints hints = new CommandTreeHints(this::buttonWaiting);
     private volatile AnimusDirector director;
     private BukkitScreens screens;
     private BukkitToolkit toolkit;
@@ -236,7 +238,7 @@ final class AnimusBukkit {
             Function<Runnable, AutoCloseable> ownerTicks = regions != null ? regions::globalTicks : tick -> host.getServer().getScheduler().runTaskTimer(host, tick, 1, 1)::cancel;
             Economy vault = runtime.moduleHooks().economy(BukkitScreens.vault(host.getServer()));
             screens = new BukkitScreens(host, (Player player, Runnable task) -> replies.reply(player == null ? host.getServer().getConsoleSender() : player, task),
-                    () -> ShopService.economy(runtime.shopSettings(), vault));
+                    () -> ShopService.economy(runtime.shopSettings(), vault), hints::refresh);
             shops = new ShopService<>(runtime, screens, living, commands,
                     (String name) -> Optional.ofNullable(host.getServer().getPlayerExact(name)).map(Player::getUniqueId), message -> host.getLogger().info(message));
             screens.bind(shops.screens());
@@ -285,7 +287,7 @@ final class AnimusBukkit {
             host.getServer().getPluginManager().registerEvents(commandGrants, host);
             BukkitBehaviorPlatform behaviorPlatform = new BukkitBehaviorPlatform(host, living, combat, builds, this::buildsRefusal,
                     (Runnable tick) -> ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, tick)), () -> guis, scheduling, mainThread, runtime.placeholders(),
-                    () -> ShopService.economy(runtime.shopSettings(), vault), commandGrants);
+                    () -> ShopService.economy(runtime.shopSettings(), vault), commandGrants, hints::refresh);
             builtins = new BuiltinCapabilities(behaviorPlatform,
                     runtime.behaviorState(), new DialogueChoices((UUID player) -> Optional.ofNullable(host.getServer().getPlayer(player)),
                             host.getServer().getPluginManager()::callEvent, dialogueTriggers),
@@ -389,7 +391,7 @@ final class AnimusBukkit {
             host.getServer().getPluginManager().registerEvents(new ReactWatcher(), host);
             bindReact();
             director = new AnimusCommandTree(commandServices).director();
-            CommandTreeHints.install(host, List.of(BuildIdentity.ID, host.getName().toLowerCase(java.util.Locale.ROOT) + ":" + BuildIdentity.ID), () -> director,
+            hints.install(host, List.of(BuildIdentity.ID, host.getName().toLowerCase(java.util.Locale.ROOT) + ":" + BuildIdentity.ID), () -> director,
                     (Player player) -> new BukkitActor(player, replies));
             extensions.start();
             startEditor(modulePlatform, regions);
@@ -497,7 +499,15 @@ final class AnimusBukkit {
         BukkitActor actor = new BukkitActor(sender, replies);
         if (stopping || active == null || runtime == null || !runtime.isRunning()) { actor.tell(Palette.error("Not running; the server log has the startup error")); return true; }
         active.execute(actor, arguments);
+        if (sender instanceof Player player) hints.refresh(player);
         return true;
+    }
+
+    /** Whether a dialogue choice or a quest offer waits for the player to click one of its buttons. */
+    private boolean buttonWaiting(UUID player) {
+        BuiltinCapabilities choices = builtins;
+        art.arcane.animus.bukkit.quest.BukkitQuests offers = quests;
+        return choices != null && choices.choiceWaiting(player) || offers != null && offers.service().offered(player);
     }
 
     List<String> complete(CommandSender sender, String[] arguments) {

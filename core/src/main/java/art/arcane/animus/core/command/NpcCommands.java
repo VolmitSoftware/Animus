@@ -50,7 +50,7 @@ final class NpcCommands extends CommandGroup {
               @Param(name = "from-name", defaultValue = "", description = "true: with no skin set, wear the skin of the account named like the NPC") String fromName) {
         CommandActor actor = actor();
         for (String[] option : new String[][]{{"follow", follow}, {"from-name", fromName}})
-            if (!option[1].isBlank() && flag(option[1]).isEmpty()) { actor.tell(Palette.error(option[0] + " takes true or false")); return; }
+            if (!option[1].isBlank() && flag(option[1]).isEmpty()) { actor.tell(Palette.error(option[0] + " takes true or false, not " + option[1])); return; }
         npc(actor, npc).ifPresent((String id) -> skin(this, actor, id, new SkinRequest(player, url, file, slim, flag(follow), flag(fromName)), SkinLookup.shared()));
     }
 
@@ -119,7 +119,7 @@ final class NpcCommands extends CommandGroup {
                         if (png.isEmpty()) { group.reply(actor, Palette.error("file= names a .png in plugins/Animus/skins/, such as guard.png")); return; }
                         if (Files.size(png.get()) > art.arcane.animus.core.skin.SkinFile.MAXIMUM_IMAGE) { group.reply(actor, Palette.error("skins/" + request.file() + " is over " + art.arcane.animus.core.skin.SkinFile.MAXIMUM_IMAGE + " bytes; a skin PNG is a few kilobytes")); return; }
                         bytes = Files.readAllBytes(png.get());
-                    } catch (IOException unreadable) { group.reply(actor, Palette.error("Cannot read skins/" + request.file() + ": " + unreadable.getClass().getSimpleName())); return; }
+                    } catch (IOException unreadable) { group.reply(actor, Palette.error("Cannot read skins/" + request.file() + "; check the file and its permissions")); return; }
                     signed(group, actor, id, new SkinSigner.Image(bytes), request.slim(), SkinSigner.label(request.file()), skins, options);
                 });
             } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
@@ -192,7 +192,13 @@ final class NpcCommands extends CommandGroup {
     void rename(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
                 @Param(name = "name", description = "The new display name; quote it to use spaces") String name) {
         CommandActor actor = actor();
-        npc(actor, npc).ifPresent((String id) -> files(actor, () -> { String line = new Administration(runtime()).rename(id, name); living().refresh(); return List.of(Palette.success(line)); }));
+        npc(actor, npc).ifPresent((String id) -> files(actor, () -> {
+            String line;
+            try { line = new Administration(runtime()).rename(id, name); }
+            catch (IOException refused) { throw new IOException(AnimusCommandTree.made(refused.getMessage(), id, "", name)); }
+            living().refresh();
+            return List.of(Palette.success(line));
+        }));
     }
 
     @Director(description = "Show, set or reset one vanilla attribute of an NPC, such as scale or movement_speed")
@@ -233,9 +239,9 @@ final class NpcCommands extends CommandGroup {
         double number = 0;
         if (!reset) {
             try { number = Double.parseDouble(value); }
-            catch (NumberFormatException notNumber) { throw new IllegalArgumentException("value must be a number or reset"); }
-            String problem = NpcAttributes.problem(known.id(), number);
-            if (problem != null) throw new IllegalArgumentException(problem);
+            catch (NumberFormatException notNumber) { throw new IllegalArgumentException("value takes a number or reset, not " + value); }
+            if (NpcAttributes.problem(known.id(), number) != null)
+                throw new IllegalArgumentException(known.id() + " takes " + NpcAttributes.format(known.minimum()) + " to " + NpcAttributes.format(known.maximum()) + ", not " + value);
         }
         NpcRepository.Draft draft = repository.draft(id);
         JsonObject document = draft.document();
@@ -331,7 +337,7 @@ final class NpcCommands extends CommandGroup {
             case "on", "true" -> true;
             case "off", "false" -> false;
             case DiagnosticCommands.TOGGLE -> LookClose.parse(repository.find(id).orElseThrow(() -> new IOException(CommandGroup.unknownNpc(id))).json()).isEmpty();
-            default -> throw new IllegalArgumentException("enabled must be on, off or toggle");
+            default -> throw new IllegalArgumentException("enabled takes on, off or toggle, not " + enabled);
         };
         NpcRepository.Draft draft = repository.draft(id);
         JsonObject document = draft.document();
@@ -380,7 +386,9 @@ final class NpcCommands extends CommandGroup {
                     + art.arcane.animus.core.command.Coordinates.shown(anchor.position())));
             return id + " anchors: " + String.join(", ", shown);
         }
-        if (!name.matches(NpcAnchors.NAME)) throw new IllegalArgumentException("An anchor name is 1-32 lowercase letters, digits, _ or -");
+        if (!verb.equals("add") && !verb.equals("remove")) throw new IllegalArgumentException("action takes list, add or remove, not " + action);
+        if (name.isEmpty()) throw new IllegalArgumentException("Name the anchor to " + verb + ", such as /animus npc anchor " + id + " " + verb + " gate");
+        if (!name.matches(NpcAnchors.NAME)) throw new IllegalArgumentException("Anchor " + name + " is not a name: use 1-32 lowercase letters, digits, _ or -");
         JsonObject anchors = document.has(NpcAnchors.FIELD) && document.get(NpcAnchors.FIELD).isJsonObject() ? document.getAsJsonObject(NpcAnchors.FIELD) : new JsonObject();
         switch (verb) {
             case "add" -> {
@@ -393,7 +401,7 @@ final class NpcCommands extends CommandGroup {
                 anchors.add(name, anchor);
             }
             case "remove" -> { if (anchors.remove(name) == null) throw new IllegalArgumentException(id + " has no anchor named " + name); }
-            default -> throw new IllegalArgumentException("action must be list, add or remove");
+            default -> throw new IllegalArgumentException("action takes list, add or remove, not " + action);
         }
         if (anchors.isEmpty()) document.remove(NpcAnchors.FIELD);
         else document.add(NpcAnchors.FIELD, anchors);

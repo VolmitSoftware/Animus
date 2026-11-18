@@ -23,7 +23,7 @@ public final class GuiDrafts {
 
     /** An empty chest GUI {@code rows} high, 1 to 6, titled {@code title}. */
     public static JsonObject inventory(String title, int rows) throws IOException {
-        if (rows < 1 || rows > 6) throw new IOException("rows= is 1 to 6");
+        if (rows < 1 || rows > 6) throw new IOException("rows takes 1 to 6, not " + rows);
         JsonObject document = new JsonObject();
         document.addProperty("schemaVersion", GuiDocument.SCHEMA_VERSION);
         document.addProperty("revision", 1);
@@ -57,7 +57,10 @@ public final class GuiDrafts {
     public static String create(DocumentStore store, DocumentKind kind, String id, JsonObject document) throws IOException {
         String path;
         try { path = EditorDocuments.pathFor(kind, id); }
-        catch (EditorError invalid) { throw new IOException("An id is namespace:path in lowercase, such as town:welcome"); }
+        catch (EditorError invalid) {
+            throw new IOException((kind == DocumentKind.HOLOGRAM ? "A hologram id" : "A chest GUI id") + " is namespace:path in lowercase, such as "
+                    + (kind == DocumentKind.HOLOGRAM ? "town:welcome" : "town:board") + ", not " + id);
+        }
         if (store.read(path) != null) throw new IOException(path + " already exists; pick another id");
         String text = JsonDocuments.write(document);
         List<String> problems = kind == DocumentKind.HOLOGRAM ? HologramDocument.parse(id, text).problems() : GuiDocument.parse(id, text).problems();

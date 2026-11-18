@@ -58,7 +58,7 @@ class ToolkitCommandsTest {
 
     @Test void theModeCompletesBothWords() {
         AnimusCommandTree tree = new AnimusCommandTree(null);
-        assertEquals(List.of("simple", "advanced"), List.copyOf(tree.values(ToolkitCommands.MENU_MODE, new AnimusDirectorTest.Actor(true), java.util.Map.of())));
+        assertEquals(List.of("simple", "advanced"), List.copyOf(tree.values("", ToolkitCommands.MENU_MODE, new AnimusDirectorTest.Actor(true), java.util.Map.of())));
     }
 
     @Test void theModeIsShownSetAndRefused() throws Exception {
@@ -82,7 +82,7 @@ class ToolkitCommandsTest {
                 assertEquals("[Animus]: Mode: Simple", player.lines.getLast());
                 assertEquals(ToolkitMode.SIMPLE, toolkit.mode(id));
                 ToolkitCommands.menuMode(player, toolkit, "expert");
-                assertEquals("[Animus]: Mode is simple or advanced", player.lines.getLast());
+                assertEquals("[Animus]: menu-mode takes simple or advanced, not expert", player.lines.getLast());
                 assertEquals(ToolkitMode.SIMPLE, toolkit.mode(id), "a bad word changes nothing");
             } finally { toolkit.close(); }
         }

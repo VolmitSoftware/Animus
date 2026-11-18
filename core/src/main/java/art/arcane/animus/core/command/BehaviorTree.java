@@ -32,7 +32,7 @@ final class BehaviorTree {
         @Director(description = "Show the catalog, runtime and trigger health")
         void status() { with(services, (BehaviorCommands behaviors) -> behaviors.status(actor())); }
 
-        @Director(description = "List behavior documents")
+        @Director(description = "List behavior files")
         @Positional("page")
         void list(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             with(services, (BehaviorCommands behaviors) -> behaviors.list(actor(), page));
@@ -83,7 +83,7 @@ final class BehaviorTree {
             });
         }
 
-        @Director(description = "List trigger bindings and how often they fired")
+        @Director(description = "List each NPC's triggers and how often they fired")
         @Positional("page")
         void triggers(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             with(services, (BehaviorCommands behaviors) -> behaviors.triggers(actor(), page));

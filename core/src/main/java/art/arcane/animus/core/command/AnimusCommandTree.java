@@ -24,6 +24,7 @@ import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.DocsLink;
 import art.arcane.animus.core.text.Palette;
+import art.arcane.animus.core.text.ReplyText;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.toolkit.Toolkit;
 import art.arcane.animus.core.toolkit.ToolkitMode;
@@ -139,8 +140,10 @@ public final class AnimusCommandTree extends CommandGroup {
      */
     RecentChanges changes() { return toolkit().map(Toolkit::changes).orElse(own); }
 
-    /** Completion values by parameter name; {@code given} holds the values already typed. */
-    Collection<String> values(String parameter, CommandActor actor, Map<String, String> given) { return new CommandCompletions(this).values(parameter, actor, given); }
+    /** Completion values for a parameter of a command, such as {@code gui create}; {@code given} holds the values already typed. */
+    Collection<String> values(String command, String parameter, CommandActor actor, Map<String, String> given) {
+        return new CommandCompletions(this).values(command, parameter, actor, given);
+    }
 
     private Administration administration() { return new Administration(runtime()); }
 
@@ -153,7 +156,7 @@ public final class AnimusCommandTree extends CommandGroup {
             services.files().execute(() -> {
                 List<String> lines;
                 try { lines = administration.status(services.editor().listenerState()); }
-                catch (RuntimeException failure) { reply(actor, Palette.error("Status unavailable: " + failure.getMessage())); return; }
+                catch (RuntimeException failure) { reply(actor, Palette.error("Status unavailable: " + reason(failure))); return; }
                 if (!stopping()) actor.reply(() -> { if (!stopping()) status(actor, lines, living().status()); });
             });
         } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
@@ -246,7 +249,7 @@ public final class AnimusCommandTree extends CommandGroup {
                     Administration.Creation plain = administration.creation(id, body, placement.world(), placement.point(), yaw, folder, shown, actor.player(), spawned);
                     creation = look.isEmpty() ? plain : administration.templated(plain, look.get().fields(), !name.isEmpty());
                 }
-                catch (IOException | RuntimeException failure) { reply(actor, Palette.error(reason(failure))); return; }
+                catch (IOException | RuntimeException failure) { reply(actor, Palette.error(made(reason(failure), id, folder, shown))); return; }
                 String notes = look.map((NpcTemplates.Template chosen) -> chosen.notes().isEmpty() ? "" : "; " + String.join("; ", chosen.notes())).orElse("");
                 String extra = (look.isPresent() ? " from Mythic mob " + mythic : "") + notes;
                 if (!stopping()) actor.reply(() -> commit(actor, creation.definition(), creation.draft(), PermissionNodes.NPC_CREATE, "create", atLimit, (String tx) -> {
@@ -258,6 +261,20 @@ public final class AnimusCommandTree extends CommandGroup {
     }
 
     static final String DEFAULT_TYPE = "minecraft:player";
+
+    /** A refusal of a new NPC's id, folder or name in the words the command took them, with the value as typed. */
+    static String made(String refusal, String id, String folder, String name) {
+        String plain = ReplyText.plain(refusal);
+        for (String[] field : new String[][]{{"id: ", "id", id}, {"group: ", "folder", folder}, {"name: ", "name", ""}}) {
+            if (!plain.startsWith(field[0])) continue;
+            String problem = plain.substring(field[0].length());
+            int end = problem.indexOf("; ");
+            if (end >= 0) problem = problem.substring(0, end);
+            if (problem.startsWith("expected ")) problem = "takes " + problem.substring("expected ".length());
+            return field[1] + " " + problem + (field[2].isEmpty() ? "" : ", not " + field[2]);
+        }
+        return plain;
+    }
 
     /**
      * {@code Made guard [Edit] [Undo]}: {@code [Edit]} opens the new NPC's screen in the Animus menu; the console gets no
@@ -314,12 +331,15 @@ public final class AnimusCommandTree extends CommandGroup {
         String summary = inspection.summary(), id = inspection.effective().qualifiedId(), position = inspection.position();
         String problem = inspection.problem().map((String text) -> " | trait group problem: " + text).orElse("");
         if (actor.player().isEmpty()) {
-            actor.tell(summary + (position.isEmpty() ? "" : " | " + position) + problem);
+            actor.tell(RichText.plain(summary) + (position.isEmpty() ? "" : " | " + position) + problem);
             actor.tell(runtime);
             fights.ifPresent((String line) -> actor.tell("Fights: " + line));
             return;
         }
-        ChatLine head = ChatLine.reply("").copyable(id).text(Palette.GREY + summary.substring(id.length()));
+        String name = inspection.effective().name(), afterId = summary.substring(id.length());
+        ChatLine head = ChatLine.reply("").copyable(id);
+        if (afterId.startsWith(" | " + name)) head.text(Palette.GREY + " | ").text(name).text(Palette.GREY + afterId.substring(name.length() + 3));
+        else head.text(Palette.GREY + afterId);
         if (!position.isEmpty()) head.text(Palette.GREY + " | ").copyable(position);
         head.text(Palette.GREY + problem).copy("[JSON]", inspection.stored(), "Copy the stored JSON");
         if (!inspection.provenance().isEmpty()) head.copy("[Merged]", inspection.merged(), "Copy the JSON after trait groups");
@@ -356,7 +376,9 @@ public final class AnimusCommandTree extends CommandGroup {
         npc(actor, npc).ifPresent((String source) -> files(actor, () -> {
             Optional<String> full = owner.flatMap((UUID player) -> NpcOwnership.full(runtime().npcs().all(), player, limit));
             if (full.isPresent()) return List.of(Palette.error(full.get()));
-            String line = administration().duplicate(source, id, owner);
+            String line;
+            try { line = administration().duplicate(source, id, owner); }
+            catch (IOException refused) { throw new IOException(made(refused.getMessage(), id, "", "")); }
             living().refresh();
             return List.of(Palette.success(line + "; Next: /" + BuildIdentity.ID + " spawn " + id));
         }));
@@ -366,9 +388,10 @@ public final class AnimusCommandTree extends CommandGroup {
     @AnimusPermission(PermissionNodes.NPC_DELETE)
     @Positional("confirm")
     void delete(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
-                @Param(name = "confirm", defaultValue = "", description = "confirm, to delete an NPC and the shop it alone runs") String confirm) {
+                @Param(name = "confirm", defaultValue = "", description = "confirm, to delete your selected NPC or an NPC and the shop it alone runs") String confirm) {
         CommandActor actor = actor();
         npc(actor, npc).ifPresent((String id) -> {
+            if (askedFirst(actor, id, confirm.equalsIgnoreCase("confirm"))) return;
             List<ShopDocument> shops = services == null ? List.of() : services.shops().players().runBy(runtime().npcs().stored(), Set.of(id));
             if (!shops.isEmpty() && refusedShopDelete(actor, id, shops, confirm.equalsIgnoreCase("confirm"))) return;
             List<String> files = shops.stream().map(ShopDocument::id).toList();
@@ -380,6 +403,17 @@ public final class AnimusCommandTree extends CommandGroup {
                 return List.of(Palette.success(line));
             });
         });
+    }
+
+    /**
+     * A delete the selection stood in for, with no NPC typed, names the NPC and waits for confirm, so a left-out word never
+     * deletes unasked. True when it stops here.
+     */
+    static boolean askedFirst(CommandActor actor, String id, boolean confirmed) {
+        if (!actor.npcLeftOut() || confirmed) return false;
+        String command = "/" + BuildIdentity.ID + " delete " + id + " confirm";
+        actor.rich(ChatLine.reply("Delete " + id + ", your selected NPC? ").run("Delete", command, "Deletes " + id + "; undo brings it back"));
+        return true;
     }
 
     /**

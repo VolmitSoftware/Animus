@@ -420,8 +420,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     }
 
     @Override public String rideStatus() {
-        if (!available()) return "Riding unavailable: NPC runtime " + (closed ? "closed" : unavailable);
-        if (packets.riderUnavailable() != null) return "Riding unavailable: " + packets.riderUnavailable();
+        if (!available()) return "Players cannot ride NPCs: NPC runtime " + (closed ? "closed" : unavailable);
+        if (packets.riderUnavailable() != null) return "Players cannot ride NPCs: " + packets.riderUnavailable();
         List<String> lines = new ArrayList<>();
         for (RegionRides.Lease<RegionActor> lease : rides.leases()) { String line = lease.actor().rideLine(); if (line != null) lines.add(line); }
         return "Riders " + rides.size() + "/" + art.arcane.animus.core.control.RideLedger.MAX_RIDERS + (lines.isEmpty() ? "" : " | " + String.join(" | ", lines));

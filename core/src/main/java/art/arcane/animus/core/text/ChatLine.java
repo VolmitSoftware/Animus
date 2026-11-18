@@ -66,9 +66,10 @@ public final class ChatLine {
      * becomes {@code [Open]} and {@code [Click to copy]}; after {@code Next: }, each {@code /animus} command goes into the
      * player's chat box on click, cut before its first {@code <placeholder>}. A reply with none of these comes back as one text piece.
      */
-    public static ChatLine parse(String coloured) {
+    public static ChatLine parse(String text) {
         ChatLine line = new ChatLine();
-        if (coloured == null) return line;
+        if (text == null) return line;
+        String coloured = ReplyText.plain(text);
         List<Matcher> matchers = List.of(TRANSACTION.matcher(coloured), HASH.matcher(coloured), URL.matcher(coloured), COMMAND.matcher(coloured));
         int next = coloured.indexOf(NEXT);
         int commands = next < 0 ? -1 : next + NEXT.length();
@@ -105,7 +106,7 @@ public final class ChatLine {
 
     /** Text that is already section-coded, whose values must not be read as colour codes again. */
     private ChatLine raw(String coloured) {
-        if (coloured != null && !coloured.isEmpty()) pieces.add(coloured);
+        if (coloured != null && !coloured.isEmpty()) pieces.add(ReplyText.plain(coloured));
         return this;
     }
 
@@ -153,7 +154,7 @@ public final class ChatLine {
      * console sees nothing in its place, so send it the lines themselves.
      */
     public ChatLine details(String label, List<String> lines) {
-        String text = String.join("\n", lines.stream().map(RichText::plain).toList());
+        String text = String.join("\n", lines.stream().map((String line) -> ReplyText.plain(RichText.plain(line))).toList());
         return chip(new Chip("[" + label + "]", Palette.PINK_LIGHT, Click.COPY, text, text + "\n\nClick to copy", null));
     }
 

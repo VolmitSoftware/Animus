@@ -23,6 +23,8 @@ final class HealthSetting {
             "after-death", new Field("respawn", "afterDeath", Kind.AFTER_DEATH),
             "delay", new Field("respawn", "delayTicks", Kind.TICKS));
     static final List<String> NAMES = FIELDS.keySet().stream().sorted().toList();
+    /** The order {@link #show} reads them in. */
+    private static final List<String> SHOWN = List.of("killable", "maximum", "regenerate", "show-health", "after-death", "delay");
 
     private HealthSetting() {}
 
@@ -31,19 +33,32 @@ final class HealthSetting {
         NpcDefinition definition = repository.find(id).orElseThrow(() -> new IOException(CommandGroup.unknownNpc(id)));
         JsonObject modules = definition.json().getAsJsonObject("modules");
         JsonElement health = modules == null ? null : modules.get(HealthSettings.MODULE);
-        if (health == null || !health.isJsonObject()) return id + ": not killable (no " + HealthSettings.MODULE + " module)";
-        if (setting.isEmpty()) return id + ": " + health;
-        Field field = field(setting);
-        JsonObject holder = field.section().isEmpty() ? health.getAsJsonObject() : child(health.getAsJsonObject(), field.section());
+        if (health == null || !health.isJsonObject()) return id + ": not killable; /animus npc health " + id + " killable on makes it killable";
+        if (!setting.isEmpty()) return id + ": " + setting.toLowerCase(Locale.ROOT) + " " + shown(health.getAsJsonObject(), field(setting));
+        List<String> settings = new java.util.ArrayList<>();
+        for (String name : SHOWN) settings.add(name + " " + shown(health.getAsJsonObject(), FIELDS.get(name)));
+        return id + ": " + String.join(", ", settings);
+    }
+
+    /** A setting's stored value as the command writes it: on or off, a number or a word; {@code default} when unset. */
+    private static String shown(JsonObject health, Field field) {
+        JsonObject holder = field.section().isEmpty() ? health : child(health, field.section());
         JsonElement value = holder == null ? null : holder.get(field.key());
-        return id + ": " + setting + " = " + (value == null ? "default" : value.toString());
+        if (value == null || !value.isJsonPrimitive()) return "default";
+        return words(value.getAsJsonPrimitive());
+    }
+
+    private static String words(JsonPrimitive value) {
+        if (value.isBoolean()) return value.getAsBoolean() ? "on" : "off";
+        if (value.isNumber()) { double number = value.getAsDouble(); return number == Math.rint(number) ? String.valueOf((long) number) : String.valueOf(number); }
+        return value.getAsString();
     }
 
     /** Sets or resets one setting in the NPC's own file as a new revision; the definition validates it. */
     static String set(NpcRepository repository, String id, String setting, String value) throws IOException {
         Field field = field(setting);
         boolean reset = value.equalsIgnoreCase(NpcCommands.RESET);
-        JsonPrimitive parsed = reset ? null : parse(field.kind(), value);
+        JsonPrimitive parsed = reset ? null : parse(setting.toLowerCase(Locale.ROOT), field.kind(), value);
         NpcRepository.Draft draft = repository.draft(id);
         JsonObject document = draft.document();
         JsonObject modules = document.has("modules") && document.get("modules").isJsonObject() ? document.getAsJsonObject("modules") : new JsonObject();
@@ -64,8 +79,10 @@ final class HealthSetting {
         else modules.add(HealthSettings.MODULE, health);
         if (modules.isEmpty()) document.remove("modules");
         else document.add("modules", modules);
-        String transaction = repository.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
-        return id + ": " + setting + (reset ? " reset" : " = " + parsed) + "; tx " + transaction;
+        String transaction;
+        try { transaction = repository.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document)); }
+        catch (IOException refused) { throw new IOException(CommandGroup.typed(refused.getMessage(), "modules." + HealthSettings.MODULE + "." + (field.section().isEmpty() ? "" : field.section() + ".") + field.key(), setting, value)); }
+        return id + ": " + setting + (reset ? " reset" : " " + words(parsed)) + "; tx " + transaction;
     }
 
     /** The values a setting takes, for completion: on and off, a few numbers, or the after-death choices; none for an unknown setting. */
@@ -84,28 +101,29 @@ final class HealthSetting {
 
     private static Field field(String setting) {
         Field field = FIELDS.get(setting.toLowerCase(Locale.ROOT));
-        if (field == null) throw new IllegalArgumentException("setting must be one of " + String.join(", ", NAMES));
+        if (field == null) throw new IllegalArgumentException("No health setting " + setting + "; the settings are "
+                + String.join(", ", NAMES.subList(0, NAMES.size() - 1)) + " and " + NAMES.getLast());
         return field;
     }
 
-    private static JsonPrimitive parse(Kind kind, String value) {
+    private static JsonPrimitive parse(String setting, Kind kind, String value) {
         String text = value.toLowerCase(Locale.ROOT);
         return switch (kind) {
             case FLAG -> switch (text) {
                 case "true", "on", "yes" -> new JsonPrimitive(true);
                 case "false", "off", "no" -> new JsonPrimitive(false);
-                default -> throw new IllegalArgumentException("value must be on or off");
+                default -> throw new IllegalArgumentException(setting + " takes on or off, not " + value);
             };
             case NUMBER -> {
                 try { yield new JsonPrimitive(Double.parseDouble(value)); }
-                catch (NumberFormatException invalid) { throw new IllegalArgumentException("value must be a number"); }
+                catch (NumberFormatException invalid) { throw new IllegalArgumentException(setting + " takes a number, not " + value); }
             }
             case TICKS -> {
                 try { yield new JsonPrimitive(Integer.parseInt(value)); }
-                catch (NumberFormatException invalid) { throw new IllegalArgumentException("value must be a whole number of ticks"); }
+                catch (NumberFormatException invalid) { throw new IllegalArgumentException(setting + " takes a whole number of ticks, not " + value); }
             }
             case AFTER_DEATH -> {
-                if (!AFTER_DEATH.contains(text)) throw new IllegalArgumentException("value must be respawn, permadeath or delete");
+                if (!AFTER_DEATH.contains(text)) throw new IllegalArgumentException(setting + " takes respawn, permadeath or delete, not " + value);
                 yield new JsonPrimitive(text);
             }
         };

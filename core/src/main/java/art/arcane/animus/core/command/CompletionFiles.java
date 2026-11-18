@@ -35,6 +35,12 @@ final class CompletionFiles {
     /** Folders under {@code imports/inbox/}, such as a dtlTraders data folder. */
     static List<String> inboxFolders(Path data) { return names(data.resolve("imports/inbox"), (Path entry) -> Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS), false, ""); }
 
+    /** What {@code import gloss file} reads under {@code imports/inbox/}: folders and {@code .json} bundles. */
+    static List<String> glossSources(Path data) {
+        return names(data.resolve("imports/inbox"), (Path entry) -> Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS)
+                || Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS) && entry.getFileName().toString().toLowerCase(java.util.Locale.ROOT).endsWith(".json"), false, "");
+    }
+
     /** Every entry under {@code imports/inbox/}, files and folders. */
     static List<String> inbox(Path data) { return names(data.resolve("imports/inbox"), (Path entry) -> true, false, ""); }
 

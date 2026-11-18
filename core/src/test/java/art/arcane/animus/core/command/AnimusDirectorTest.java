@@ -81,7 +81,7 @@ class AnimusDirectorTest {
 
     @Test void aChangeIsRememberedWithTheNodeItsCommandNeeded() {
         RecentChanges changes = new RecentChanges();
-        AnimusDirector saver = new AnimusDirector(new Saver(), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
+        AnimusDirector saver = new AnimusDirector(new Saver(), (String command, String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
                 (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> false, () -> changes, (UUID player) -> false);
         Actor keeper = new Actor(true, "probe.shop");
         saver.execute(keeper, new String[]{"save"});
@@ -122,6 +122,47 @@ class AnimusDirectorTest {
         assertTrue(probe.calls.isEmpty(), "no refused command ran: " + probe.calls);
     }
 
+    /** A command whose handler throws. */
+    @Director(name = "probe")
+    static final class Throwing {
+        @Director void broken() { throw new ClassCastException("class art.arcane.animus.core.command.ReplyActor cannot be cast to class art.arcane.animus.bukkit.BukkitActor"); }
+    }
+
+    @Test void aCommandThatThrowsSaysItFailedInOneSentenceAndShowsNoJavaText() {
+        AnimusDirector throwing = new AnimusDirector(new Throwing(), (String parameter, CommandActor actor) -> List.of());
+        Actor admin = new Actor(true, AnimusDirector.ADMIN);
+        throwing.execute(admin, new String[]{"broken"});
+        assertEquals(List.of("[Animus]: /probe broken failed; the server log has the cause"), admin.lines);
+    }
+
+    /** A command that notes whether its NPC was left out. */
+    @Director(name = "probe")
+    static final class Inspecting {
+        final List<String> calls = new ArrayList<>();
+        @Director void inspect(@Param(name = "npc") String npc) { calls.add(npc + " " + AnimusDirector.actor().npcLeftOut()); }
+    }
+
+    @Test void aCommandThatTakesAnNpcUsesTheSelectionWhenThePlayerLeavesItOut() {
+        Actor player = new Actor(true, AnimusDirector.ADMIN);
+        run(player, "spawn");
+        run(player, "edit", "{\"name\":\"A\"}");
+        run(player, "spawn", "speed=3");
+        assertEquals(List.of("spawn @selected 2.0 false", "edit @selected {\"name\":\"A\"}", "spawn @selected 3.0 false"), probe.calls);
+        run(player, "edit", "guard");
+        assertTrue(player.text().contains("Missing argument \"patch\""), "an NPC id typed first is the NPC, and the patch is what is missing: " + player.text());
+        assertEquals(3, probe.calls.size());
+        Actor console = new Actor(false, AnimusDirector.ADMIN);
+        run(console, "spawn");
+        assertTrue(console.text().contains("Missing argument \"npc\""), "the console has no selection: " + console.text());
+        assertEquals(3, probe.calls.size());
+        Inspecting inspecting = new Inspecting();
+        AnimusDirector marked = new AnimusDirector(inspecting, (String parameter, CommandActor actor) -> List.of());
+        marked.execute(player, new String[]{"inspect"});
+        marked.execute(player, new String[]{"inspect", "guard"});
+        marked.execute(player, new String[]{"inspect", "@selected"});
+        assertEquals(List.of("@selected true", "guard false", "@selected false"), inspecting.calls, "the command knows the selection stood in for a left-out NPC");
+    }
+
     @Test void bareWordsFillTheOptionalValuesACommandNamesInOrder() {
         Actor admin = new Actor(false, AnimusDirector.ADMIN);
         run(admin, "health", "guard");
@@ -142,7 +183,7 @@ class AnimusDirectorTest {
     }
 
     @Test void completionOffersTheNextBareOptionalValue() {
-        AnimusDirector named = new AnimusDirector(probe, (String parameter, CommandActor actor, java.util.Map<String, String> given) -> switch (parameter) {
+        AnimusDirector named = new AnimusDirector(probe, (String command, String parameter, CommandActor actor, java.util.Map<String, String> given) -> switch (parameter) {
             case "npc" -> List.of("guard");
             case "setting" -> List.of("killable", "maximum");
             case "value" -> given.containsKey("setting") ? List.of("value-for-" + given.get("setting")) : List.of("reset");
@@ -246,7 +287,7 @@ class AnimusDirectorTest {
 
     /** On Folia the packet previews answer where to go instead, and help and completion list only the Folia preview. */
     @Test void aPreviewThePlatformLacksAnswersWhyAndLeavesHelp() {
-        AnimusDirector folia = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(), (String plugin) -> true,
+        AnimusDirector folia = new AnimusDirector(new AnimusCommandTree(null), (String command, String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(), (String plugin) -> true,
                 (NeedsFeature.Feature feature) -> feature == NeedsFeature.Feature.PACKET_PREVIEW ? java.util.Optional.of(ProofControl.NOT_ON_FOLIA) : java.util.Optional.empty());
         for (String[] typed : List.of(new String[]{"proof", "status"}, new String[]{"proof", "spawn", "minecraft:player"}, new String[]{"proof", "control", "start", "3"})) {
             for (boolean player : List.of(true, false)) {
@@ -260,14 +301,14 @@ class AnimusDirectorTest {
         folia.execute(admin, new String[]{"proof"});
         assertEquals(List.of("folia"), admin.entries(), "the Folia help lists only what runs");
 
-        AnimusDirector paper = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(), (String plugin) -> true,
+        AnimusDirector paper = new AnimusDirector(new AnimusCommandTree(null), (String command, String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(), (String plugin) -> true,
                 (NeedsFeature.Feature feature) -> feature == NeedsFeature.Feature.FOLIA_PREVIEW ? java.util.Optional.of(ProofControl.FOLIA_ONLY) : java.util.Optional.empty());
         Actor operator = new Actor(true, AnimusDirector.ADMIN);
         paper.execute(operator, new String[]{"proof", "folia", "spawn"});
         assertEquals("[Animus]: " + ProofControl.FOLIA_ONLY, operator.text());
         assertFalse(paper.complete(operator, new String[]{"proof", ""}).contains("folia"));
 
-        AnimusDirector mod = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(), (String plugin) -> true,
+        AnimusDirector mod = new AnimusDirector(new AnimusCommandTree(null), (String command, String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(), (String plugin) -> true,
                 (NeedsFeature.Feature feature) -> feature == NeedsFeature.Feature.PLAYER_SHOPS ? java.util.Optional.empty() : java.util.Optional.of(ProofControl.MOD_SERVER));
         Actor modded = new Actor(false, AnimusDirector.ADMIN);
         mod.execute(modded, new String[]{"proof", "status"});
@@ -277,7 +318,7 @@ class AnimusDirectorTest {
 
     /** On a mod server the player shop commands leave help and each says what they need. */
     @Test void playerShopCommandsSayTheyNeedAChestServer() {
-        AnimusDirector mod = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(), (String plugin) -> true,
+        AnimusDirector mod = new AnimusDirector(new AnimusCommandTree(null), (String command, String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(), (String plugin) -> true,
                 (NeedsFeature.Feature feature) -> feature == NeedsFeature.Feature.PLAYER_SHOPS ? java.util.Optional.of(art.arcane.animus.core.gui.ScreenHost.NO_PLAYER_SHOPS) : java.util.Optional.empty());
         for (String command : List.of("create", "item", "manage")) {
             Actor player = new Actor(true, PermissionNodes.SHOPS_CREATE);
@@ -333,7 +374,7 @@ class AnimusDirectorTest {
     }
 
     @Test void aSimplePlayerGetsTheShortHelpAndAllCommandsIsOneClickAway() {
-        AnimusDirector simple = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
+        AnimusDirector simple = new AnimusDirector(new AnimusCommandTree(null), (String command, String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
                 (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> true, RecentChanges::new, (UUID player) -> false);
         Actor player = new Actor(true, AnimusDirector.ADMIN);
         simple.execute(player, new String[]{"help"});
@@ -373,7 +414,7 @@ class AnimusDirectorTest {
 
     @Test void aShopMakerFindsTheShopItemAndOnceTheyOwnAShopTheShopMenu() {
         java.util.Set<UUID> owners = new java.util.HashSet<>();
-        AnimusDirector simple = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
+        AnimusDirector simple = new AnimusDirector(new AnimusCommandTree(null), (String command, String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
                 (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> true, RecentChanges::new, owners::contains);
         Actor maker = new Actor(true, PermissionNodes.TOOLS, PermissionNodes.SHOPS_CREATE);
         simple.execute(maker, new String[]{"help"});
@@ -381,7 +422,7 @@ class AnimusDirectorTest {
         owners.add(maker.player().orElseThrow());
         simple.execute(maker, new String[]{"help"});
         assertEquals(List.of("/animus gui", "/animus undo", "/animus shop item", "/animus shop manage"), maker.pages.getLast().entries().stream().map(DirectorRuntimeNode::path).toList());
-        AnimusDirector mod = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(), (String plugin) -> true,
+        AnimusDirector mod = new AnimusDirector(new AnimusCommandTree(null), (String command, String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(), (String plugin) -> true,
                 (NeedsFeature.Feature feature) -> feature == NeedsFeature.Feature.PLAYER_SHOPS ? java.util.Optional.of(art.arcane.animus.core.gui.ScreenHost.NO_PLAYER_SHOPS) : java.util.Optional.empty(),
                 (UUID player) -> true, RecentChanges::new, owners::contains);
         mod.execute(maker, new String[]{"help"});
@@ -446,6 +487,49 @@ class AnimusDirectorTest {
         assertEquals(6, menu.calls.size(), "no menu without the node, and none for the console: " + menu.calls);
         assertEquals(List.of("/probe gui", "/probe"), console.pages.stream().map((AnimusHelp.Page page) -> page.group().path()).toList(),
                 "the console gets the gui commands, then the root help");
+    }
+
+    @Test void guiWithoutTheMenuNamesTheNodeThatOpensItOrShowsTheGuiCommands() {
+        AnimusDirector real = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
+        Actor visitor = new Actor(true, "animus.status", PermissionNodes.SEAT);
+        real.execute(visitor, new String[]{"gui"});
+        assertEquals(List.of("[Animus]: No permission: animus.tools; ask an operator to grant it"), visitor.lines, "the menu is what /animus gui opens");
+        Actor designer = new Actor(true, PermissionNodes.GUI);
+        real.execute(designer, new String[]{"gui"});
+        assertEquals("/animus gui", designer.pages.getLast().group().path(), "with animus.gui and no menu, the gui commands' help");
+        assertTrue(designer.lines.isEmpty(), designer.text());
+    }
+
+    /** Delete with the NPC left out names the selection and waits for confirm; typed out, or confirmed, it goes ahead. */
+    @Test void aDeleteTheSelectionStoodInForAsksFirst() {
+        Actor typed = new Actor(true, PermissionNodes.NPC_DELETE);
+        assertFalse(AnimusCommandTree.askedFirst(typed, "guard", false), "an NPC typed out deletes as before");
+        Actor leftOut = new Actor(true, PermissionNodes.NPC_DELETE) { @Override public boolean npcLeftOut() { return true; } };
+        assertTrue(AnimusCommandTree.askedFirst(leftOut, "guard", false));
+        assertEquals("[Animus]: Delete guard, your selected NPC? /animus delete guard confirm", leftOut.text());
+        Actor confirmed = new Actor(true, PermissionNodes.NPC_DELETE) { @Override public boolean npcLeftOut() { return true; } };
+        assertFalse(AnimusCommandTree.askedFirst(confirmed, "guard", true));
+        assertTrue(confirmed.lines.isEmpty());
+    }
+
+    @Test void aPlayerWithOnlyTheDefaultNodesIsShownWhatTheyMayRun() {
+        java.util.Set<UUID> owners = new java.util.HashSet<>();
+        AnimusDirector simple = new AnimusDirector(new AnimusCommandTree(null), (String command, String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
+                (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> true, RecentChanges::new, owners::contains);
+        Actor player = new Actor(true, "animus.status", PermissionNodes.SEAT, PermissionNodes.QUESTS_USE, "animus.build.donate");
+        simple.execute(player, new String[0]);
+        AnimusHelp.Page brief = player.pages.getLast();
+        assertTrue(brief.brief());
+        assertEquals(List.of("/animus status", "/animus seat toggle", "/animus build donate", "/animus quest journal"),
+                brief.entries().stream().map(DirectorRuntimeNode::path).toList(), "the commands they may run, not an empty page");
+        Actor maker = new Actor(true, "animus.status", PermissionNodes.SEAT, PermissionNodes.QUESTS_USE, "animus.build.donate", PermissionNodes.SHOPS_CREATE);
+        simple.execute(maker, new String[0]);
+        assertEquals(List.of("/animus status", "/animus seat toggle", "/animus build donate", "/animus quest journal", "/animus shop item"),
+                maker.pages.getLast().entries().stream().map(DirectorRuntimeNode::path).toList(), "the shop item joins what they may run, it does not replace it");
+        owners.add(maker.player().orElseThrow());
+        simple.execute(maker, new String[0]);
+        assertEquals(List.of("/animus status", "/animus seat toggle", "/animus build donate", "/animus quest journal", "/animus shop item", "/animus shop manage"),
+                maker.pages.getLast().entries().stream().map(DirectorRuntimeNode::path).toList());
     }
 
     @Test void helpForGuiSaysItOpensTheMenuAndLeadsToTheGuiCommands() {

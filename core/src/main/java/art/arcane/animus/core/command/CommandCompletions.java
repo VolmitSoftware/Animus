@@ -6,6 +6,7 @@ import art.arcane.animus.core.extension.ModuleHooks;
 import art.arcane.animus.core.extension.ModuleHost;
 import art.arcane.animus.core.gui.exchange.GlossIds;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.owner.NpcOwnership;
 import art.arcane.animus.core.toolkit.ToolkitMode;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
@@ -25,8 +26,9 @@ import java.util.stream.Stream;
 
 /**
  * Tab completion values by parameter name for the whole {@code /animus} tree. Each parameter name means one thing
- * everywhere, so one switch serves every command: {@code group} is a trait group, {@code folder} an NPC folder,
- * {@code source} an entry of {@code imports/inbox/}. Numbers offer typical values; coordinates offer where the player
+ * everywhere, so one switch serves every command: {@code group} is a trait group, {@code folder} an NPC folder; the few
+ * a single command narrows, such as the {@code source} of {@code import shops preview}, go through {@link #kind}. NPC
+ * ids are only those the actor may act on. Numbers offer typical values; coordinates offer where the player
  * stands. Lists are whole: the director cuts them only after the typed prefix, so ids late in the alphabet still
  * complete. Called on the actor's owner; a source that cannot answer offers nothing.
  */
@@ -42,10 +44,46 @@ final class CommandCompletions {
 
     CommandCompletions(AnimusCommandTree tree) { this.tree = tree; }
 
-    /** Values for {@code parameter}; {@code given} holds what was typed already, by parameter name. */
+    /**
+     * Values for {@code parameter} of {@code command}, the words after the root such as {@code gui create}: what that
+     * argument accepts there, which for most parameters is what the name means everywhere.
+     */
+    Collection<String> values(String command, String parameter, CommandActor actor, Map<String, String> given) {
+        return values(kind(command, parameter), actor, given);
+    }
+
+    /**
+     * The values a command's parameter takes, where its name means something narrower than everywhere else: a GUI or
+     * hologram id is {@code namespace:path}, a module condition is a condition, a shop or Gloss source is the inbox entry
+     * that import reads, and a state delete's UUID is a player's.
+     */
+    static String kind(String command, String parameter) {
+        return switch (command + " " + parameter) {
+            case "gui create id", "hologram create id" -> GUI_ID;
+            case "modules action capability" -> ACTION;
+            case "modules condition capability" -> CONDITION;
+            case "import shops preview source" -> SHOP_SOURCE;
+            case "import gloss file source" -> GLOSS_SOURCE;
+            case "import preview file" -> IMPORT_FILE;
+            case "behaviors state delete player uuid", "behaviors state delete relationship uuid" -> PLAYER_UUID;
+            default -> parameter;
+        };
+    }
+
+    static final String GUI_ID = " gui-id", ACTION = " action", CONDITION = " condition", SHOP_SOURCE = " shop-source", GLOSS_SOURCE = " gloss-source",
+            IMPORT_FILE = " import-file", PLAYER_UUID = " player-uuid";
+
+    /** Values for {@code parameter}, or for a {@link #kind} of one; {@code given} holds what was typed already, by parameter name. */
     Collection<String> values(String parameter, CommandActor actor, Map<String, String> given) {
         CommandServices services = tree.services;
         return switch (parameter) {
+            case GUI_ID -> namespaces(Stream.concat(services.guis().guiIds().stream(), services.guis().menuIds().stream()).toList());
+            case ACTION -> capabilities(services.extensions() == null ? List.of() : services.extensions().capabilities(), Capabilities.Kind.ACTION);
+            case CONDITION -> capabilities(services.extensions() == null ? List.of() : services.extensions().capabilities(), Capabilities.Kind.CONDITION);
+            case SHOP_SOURCE -> CompletionFiles.inboxFolders(data());
+            case GLOSS_SOURCE -> CompletionFiles.glossSources(data());
+            case IMPORT_FILE -> CompletionFiles.inboxFiles(data());
+            case PLAYER_UUID -> Stream.concat(actor.player().stream(), actor.nearbyPlayers().stream()).map(UUID::toString).distinct().toList();
             case "npc" -> npcs(actor);
             // Blocks for mount set (1-32) and speak (1-64).
             case "range" -> List.of("4", "8", "16", "32");
@@ -88,7 +126,6 @@ final class CommandCompletions {
             case "player" -> services.players().get();
             case "mythic-mob" -> tree.runtime().templates().names(art.arcane.animus.core.integration.NpcTemplates.MYTHIC);
             case "viewer" -> services.debug().viewers();
-            case "uuid" -> Stream.concat(actor.player().stream(), actor.nearby().stream()).map(UUID::toString).distinct().toList();
             // Only /animus speak types text before its target, and it speaks to players, never NPCs.
             case "target" -> given.containsKey("text") ? speakers(actor) : targets(actor, false);
             case "bubble" -> List.of("40", "60", "100");
@@ -130,7 +167,7 @@ final class CommandCompletions {
             case "format" -> List.of("folder", "bundle");
             case "copy" -> List.of("copy");
             case "entity", "vehicle", "riders" -> services.proof().bodies(actor).stream().map(String::valueOf).toList();
-            case "file" -> given.containsKey("npc") ? CompletionFiles.skinImages(data()) : CompletionFiles.inboxFiles(data());
+            case "file" -> CompletionFiles.skinImages(data());
             case "follow", "from-name" -> List.of("true", "false");
             case "source" -> CompletionFiles.inbox(data());
             case "saves" -> CompletionFiles.inboxFiles(data()).stream().filter((String name) -> name.endsWith(".yml")).toList();
@@ -160,9 +197,28 @@ final class CommandCompletions {
         return tree.services.shops().players().names(actor.player().get());
     }
 
-    /** NPC ids, and {@code @selected} when the player has one NPC selected. */
+    /** The ids of the NPCs the actor may act on, as {@code /animus list} shows them, and {@code @selected} when the player has one NPC selected. */
     private List<String> npcs(CommandActor actor) {
-        return ids(tree.runtime().npcs().all(), actor.player().map((UUID player) -> tree.selection(player).size() == 1).orElse(false));
+        return ids(owned(tree.runtime().npcs().all(), actor), actor.player().map((UUID player) -> tree.selection(player).size() == 1).orElse(false));
+    }
+
+    /** The NPCs the actor may act on: every one for the console, admins and {@code animus.npc.others}, else the player's own. */
+    static List<NpcDefinition> owned(Collection<NpcDefinition> all, CommandActor actor) {
+        return all.stream().filter((NpcDefinition definition) -> NpcOwnership.mayAct(actor.player(), actor::permitted, definition)).toList();
+    }
+
+    /** {@code namespace:} for each namespace the ids use, and the Gloss default, for a new id to start from. */
+    static List<String> namespaces(Collection<String> ids) {
+        TreeSet<String> namespaces = new TreeSet<>();
+        namespaces.add(GlossIds.DEFAULT_NAMESPACE);
+        for (String id : ids) { int colon = id.indexOf(':'); if (colon > 0) namespaces.add(id.substring(0, colon)); }
+        return namespaces.stream().map((String namespace) -> namespace + ":").toList();
+    }
+
+    /** The keys of the capabilities of one kind that can run here. */
+    static List<String> capabilities(Collection<Capabilities.Availability> all, Capabilities.Kind kind) {
+        return all.stream().filter((Capabilities.Availability capability) -> capability.available() && capability.descriptor().kind() == kind)
+                .map((Capabilities.Availability capability) -> capability.descriptor().key().toString()).toList();
     }
 
     /** Every id, then {@code @selected} when it names one NPC. */

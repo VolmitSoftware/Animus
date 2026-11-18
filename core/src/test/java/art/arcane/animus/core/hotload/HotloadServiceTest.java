@@ -349,7 +349,7 @@ class HotloadServiceTest {
             assertTrue(atNotice.getFirst().contains("catalog-generation=2"), atNotice.getFirst());
             until(() -> runs.stream().anyMatch((String line) -> line.startsWith("Behavior run:")), replies);
             String run = runs.stream().filter((String line) -> line.startsWith("Behavior run:")).findFirst().orElseThrow();
-            assertTrue(run.startsWith("Behavior run: OK"), run);
+            assertTrue(run.startsWith("Behavior run: done"), run);
             java.util.regex.Matcher id = java.util.regex.Pattern.compile("execution=([a-f0-9-]{36})").matcher(run);
             assertTrue(id.find(), run);
             java.util.UUID execution = java.util.UUID.fromString(id.group(1));

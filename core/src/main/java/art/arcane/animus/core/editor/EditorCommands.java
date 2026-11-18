@@ -73,7 +73,7 @@ public final class EditorCommands {
         return Optional.of(api.get().parts().tokens().list().stream().map((EditorTokens.Token token) -> token.id()
                 + (token.label().isEmpty() ? "" : " \"" + token.label() + "\"")
                 + " | " + String.join(" ", token.scopes().stream().map(EditorScope::wireName).toList())
-                + (token.groups().isEmpty() ? "" : " | groups " + String.join(",", token.groups()))
+                + (token.groups().isEmpty() ? "" : " | folders " + String.join(",", token.groups()))
                 + " | expires " + EditorMessages.instant(token.expires())
                 + " | last used " + token.lastUsed().map(EditorMessages::instant).orElse("never")
                 + token.client().map((String client) -> " | " + client).orElse("")
@@ -171,7 +171,7 @@ public final class EditorCommands {
     }
 
     static Duration duration(String text) {
-        if (!text.matches("[1-9][0-9]{0,5}[dhm]")) throw new IllegalArgumentException("expires takes a number with d, h or m, such as 7d");
+        if (!text.matches("[1-9][0-9]{0,5}[dhm]")) throw new IllegalArgumentException("expires takes a number with d, h or m, such as 7d, not " + text);
         long amount = Long.parseLong(text.substring(0, text.length() - 1));
         return switch (text.charAt(text.length() - 1)) { case 'd' -> Duration.ofDays(amount); case 'h' -> Duration.ofHours(amount); default -> Duration.ofMinutes(amount); };
     }

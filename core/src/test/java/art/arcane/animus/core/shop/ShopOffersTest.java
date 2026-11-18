@@ -16,6 +16,12 @@ class ShopOffersTest {
     static final NpcItem BREAD = new NpcItem("minecraft:bread", 4, Optional.empty(), Optional.empty());
     static final NpcItem EMERALDS = new NpcItem("minecraft:emerald", 3, Optional.empty(), Optional.empty());
 
+    /** The stock reply reads from the shop's side, counts the slot from 1 and names no file. */
+    @Test void theStockReplySaysWhatTheShopSellsOrBuys() {
+        assertEquals("Made shop int3:market; it sells 1 diamond in slot 1 of page 1", ShopService.stockLine(true, "int3:market", ShopDocument.Mode.BUY, 1, "minecraft:diamond", 0, 1));
+        assertEquals("town:smith now buys 4 iron ingot in slot 3 of page 2", ShopService.stockLine(false, "town:smith", ShopDocument.Mode.SELL, 4, "minecraft:iron_ingot", 2, 2));
+    }
+
     @Test void aHeldItemBecomesABuyOfferInTheFirstFreeSlot() throws IOException {
         ShopOffers.Added first = ShopOffers.add(ShopOffers.empty("town:baker"), ShopDocument.Mode.BUY, BREAD, Optional.empty(), Optional.of(new BigDecimal("12.5")), 1);
         ShopOffers.Added second = ShopOffers.add(first.document(), ShopDocument.Mode.BUY, BREAD, Optional.empty(), Optional.of(BigDecimal.TEN), 1);

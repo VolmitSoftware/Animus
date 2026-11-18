@@ -82,7 +82,7 @@ class CommandSoundTest {
 
     @Test void aHandlerThatThrowsOrCannotRunSoundsLow() {
         assertEquals(List.of(CommandSound.FAILURE), run("broken"), "the handler threw");
-        assertEquals(List.of(CommandSound.FAILURE), run("take"), "a missing value shows the usage");
+        assertEquals(List.of(CommandSound.FAILURE), run("count"), "a missing value shows the usage");
         assertEquals(List.of(CommandSound.FAILURE), run("count", "many"), "a value that does not convert");
         assertEquals(List.of(CommandSound.FAILURE), run("console"), "a console command from a player");
         assertEquals(List.of(CommandSound.FAILURE), run("nothing"), "an unknown command");

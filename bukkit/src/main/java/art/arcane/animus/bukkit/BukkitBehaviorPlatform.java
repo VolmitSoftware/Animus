@@ -67,13 +67,17 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     private final Placeholders placeholders;
     private final Supplier<Economy> economy;
     private final CommandGrants grants;
+    /** Runs on the player's thread after choice buttons went to them. */
+    private final Consumer<Player> buttonsShown;
     private final Consumer<String> log;
 
     /** {@code relocator} is the main-thread runtime that can move NPCs; null on Folia. */
     BukkitBehaviorPlatform(JavaPlugin plugin, NpcRuntime<Player, ItemStack> living, RuntimeCombatService combat, BuildService<Player, ItemStack> builds,
                            Supplier<String> buildsUnavailable, Function<Runnable, AutoCloseable> ticks, Supplier<HoloService<Player, ItemStack>> guis,
-                           BukkitOwners owners, PersistedNpcService<Player, ItemStack> relocator, Placeholders placeholders, Supplier<Economy> economy, CommandGrants grants) {
+                           BukkitOwners owners, PersistedNpcService<Player, ItemStack> relocator, Placeholders placeholders, Supplier<Economy> economy, CommandGrants grants,
+                           Consumer<Player> buttonsShown) {
         this.placeholders = placeholders;
+        this.buttonsShown = buttonsShown;
         this.grants = grants;
         log = plugin.getLogger()::warning;
         this.economy = economy;
@@ -136,6 +140,7 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
                     option.hover().map((String hover) -> fill(online, hover)), option.style())).toList();
             online.sendMessage(DialogueFormat.speech(fill(online, active.name()), fill(online, prompt)));
             online.spigot().sendMessage(BukkitChoiceMessages.components(DialogueFormat.buttons(BuildIdentity.ID, token, shown)));
+            buttonsShown.accept(online);
         }) ? 1 : 0;
     }
 

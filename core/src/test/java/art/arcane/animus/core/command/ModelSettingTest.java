@@ -60,7 +60,7 @@ class ModelSettingTest {
     }
 
     @Test void unknownSettingsListTheKnownOnes() {
-        assertEquals("setting must be one of attack, death, hitbox, hurt, idle, interact, model, nametag-bone, scale, show-body, walk",
+        assertEquals("No model setting colour; the settings are attack, death, hitbox, hurt, idle, interact, model, nametag-bone, scale, show-body, walk",
                 assertThrows(IllegalArgumentException.class, () -> ModelSetting.set(null, "guard", "colour", "red")).getMessage());
     }
 }

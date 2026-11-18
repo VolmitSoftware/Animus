@@ -185,9 +185,10 @@ public final class ModuleImports {
     private static <T> Outcome<T> await(CompletionStage<Outcome<T>> stage) throws IOException {
         try { return stage.toCompletableFuture().get(70, TimeUnit.SECONDS); }
         catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IOException("Interrupted waiting for an import converter", interrupted); }
-        catch (ExecutionException | TimeoutException failure) { throw new IOException("Import converter did not settle: " + failure.getClass().getSimpleName(), failure); }
+        catch (ExecutionException | TimeoutException failure) { throw new IOException(failure instanceof TimeoutException ? "The import converter did not answer within 70 seconds" : "The import converter failed; the server log has the cause", failure); }
     }
+    /** Why a converter refused, in its own words; the status in words when it gave none. */
     private static String describe(Outcome<?> outcome) {
-        return outcome.status() + (outcome.diagnostics().isEmpty() ? "" : " " + outcome.diagnostics().getFirst().message());
+        return outcome.diagnostics().isEmpty() ? art.arcane.animus.core.text.PlainWords.of(outcome.status()) : outcome.diagnostics().getFirst().message();
     }
 }

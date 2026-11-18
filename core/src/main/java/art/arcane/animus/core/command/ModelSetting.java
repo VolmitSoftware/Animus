@@ -43,7 +43,7 @@ final class ModelSetting {
     /** Sets or resets one setting as a new revision; resetting {@code model} removes the whole module. */
     static String set(NpcRepository repository, String id, String setting, String value) throws IOException {
         Field field = FIELDS.get(setting.toLowerCase(Locale.ROOT));
-        if (field == null) throw new IllegalArgumentException("setting must be one of " + String.join(", ", NAMES));
+        if (field == null) throw new IllegalArgumentException("No model setting " + setting + "; the settings are " + String.join(", ", NAMES));
         boolean reset = value.equalsIgnoreCase(NpcCommands.RESET);
         NpcRepository.Draft draft = repository.draft(id);
         JsonObject document = draft.document();
@@ -62,7 +62,7 @@ final class ModelSetting {
                 holder = module.has("states") && module.get("states").isJsonObject() ? module.getAsJsonObject("states") : new JsonObject();
                 module.add("states", holder);
             }
-            JsonPrimitive parsed = reset ? null : parse(field.kind(), value);
+            JsonPrimitive parsed = reset ? null : parse(setting.toLowerCase(Locale.ROOT), field.kind(), value);
             if (reset) holder.remove(field.key());
             else holder.add(field.key(), parsed);
             if (holder != module && holder.isEmpty()) module.remove("states");
@@ -90,17 +90,17 @@ final class ModelSetting {
         };
     }
 
-    private static JsonPrimitive parse(Kind kind, String value) {
+    private static JsonPrimitive parse(String setting, Kind kind, String value) {
         return switch (kind) {
             case TEXT, STATE -> new JsonPrimitive(value);
             case NUMBER -> {
                 try { yield new JsonPrimitive(Double.parseDouble(value)); }
-                catch (NumberFormatException invalid) { throw new IllegalArgumentException("value must be a number"); }
+                catch (NumberFormatException invalid) { throw new IllegalArgumentException(setting + " takes a number, not " + value); }
             }
             case FLAG -> switch (value.toLowerCase(Locale.ROOT)) {
                 case "true", "on", "yes" -> new JsonPrimitive(true);
                 case "false", "off", "no" -> new JsonPrimitive(false);
-                default -> throw new IllegalArgumentException("value must be on or off");
+                default -> throw new IllegalArgumentException(setting + " takes on or off, not " + value);
             };
         };
     }

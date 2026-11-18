@@ -94,6 +94,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     private final Logger logger;
     private final BiPredicate<Player, Runnable> later;
     private final Supplier<Economy> economy;
+    private final java.util.function.Consumer<Player> buttonsShown;
     private volatile ScreenManager<Player, ItemStack> manager;
     private final Map<UUID, Map<String, Lane>> bars = new ConcurrentHashMap<>();
     private final Method teleportAsync, entityScheduler, entityExecute;
@@ -105,8 +106,10 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
      * @param later runs work on the player's owner on a later tick; false when it cannot be scheduled
      * @param economy the money provider after the plugin settings
      */
-    public BukkitScreens(JavaPlugin plugin, BiPredicate<Player, Runnable> later, Supplier<Economy> economy) {
+    /** {@code buttonsShown} runs on the player's thread after chat buttons went to them. */
+    public BukkitScreens(JavaPlugin plugin, BiPredicate<Player, Runnable> later, Supplier<Economy> economy, java.util.function.Consumer<Player> buttonsShown) {
         this.plugin = Objects.requireNonNull(plugin);
+        this.buttonsShown = Objects.requireNonNull(buttonsShown);
         this.server = plugin.getServer();
         this.logger = plugin.getLogger();
         this.later = Objects.requireNonNull(later);
@@ -370,6 +373,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     }
     @Override public void parts(Player player, List<art.arcane.animus.core.text.TextPart> parts) {
         player.spigot().sendMessage(art.arcane.animus.bukkit.BukkitChoiceMessages.components(parts));
+        if (parts.stream().anyMatch((art.arcane.animus.core.text.TextPart part) -> part.command().isPresent())) buttonsShown.accept(player);
     }
     @Override public boolean experience(Player player, int points) { player.giveExp(points); return true; }
 

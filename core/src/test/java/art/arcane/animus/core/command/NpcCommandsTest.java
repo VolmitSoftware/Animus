@@ -20,6 +20,39 @@ class NpcCommandsTest {
     private static final String GUARD = "{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"12345678-1234-1234-1234-123456789abc\",\"id\":\"guard\",\"group\":\"town\",\"name\":\"N\","
             + "\"type\":\"minecraft:player\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0},\"attributes\":{\"minecraft:gravity\":0.04},\"groups\":[\"giants\"]}";
 
+    @Test void healthSettingsAnswerInTheWordsTheCommandTakes() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            store.commit(List.of(new DocumentStore.Change("npcs/town/guard.json", "missing", GUARD.replace(",\"groups\":[\"giants\"]", ""))));
+            NpcRepository repository = new NpcRepository(store);
+            assertTrue(repository.reload().isEmpty());
+            assertTrue(HealthSetting.set(repository, "guard", "killable", "on").startsWith("guard: killable on; tx "));
+            assertTrue(HealthSetting.set(repository, "guard", "after-death", "permadeath").startsWith("guard: after-death permadeath; tx "), "no JSON quotes");
+            IOException tooMuch = assertThrows(IOException.class, () -> HealthSetting.set(repository, "guard", "maximum", "5000"));
+            assertEquals("maximum must be from 1 to 2048, not 5000", tooMuch.getMessage(), "the setting as typed, never the schema path");
+            IllegalArgumentException word = assertThrows(IllegalArgumentException.class, () -> HealthSetting.set(repository, "guard", "killable", "maybe"));
+            assertEquals("killable takes on or off, not maybe", word.getMessage());
+            IllegalArgumentException setting = assertThrows(IllegalArgumentException.class, () -> HealthSetting.set(repository, "guard", "speed", "1"));
+            assertEquals("No health setting speed; the settings are after-death, delay, killable, maximum, regenerate and show-health", setting.getMessage());
+            String shown = HealthSetting.show(repository, "guard", "");
+            assertEquals("guard: killable on, maximum default, regenerate default, show-health default, after-death permadeath, delay default", shown, "the settings, not the module's JSON");
+        }
+    }
+
+    @Test void aWrongValueIsNamedAsTypedBeforeAnythingElse() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            store.commit(List.of(new DocumentStore.Change("npcs/town/guard.json", "missing", GUARD.replace(",\"groups\":[\"giants\"]", ""))));
+            NpcRepository repository = new NpcRepository(store);
+            assertTrue(repository.reload().isEmpty());
+            assertEquals("action takes list, add or remove, not fly", assertThrows(IllegalArgumentException.class,
+                    () -> NpcCommands.anchor(repository, "guard", "fly", "", null)).getMessage(), "the action is wrong, not the anchor name");
+            assertEquals("enabled takes on, off or toggle, not maybe", assertThrows(IllegalArgumentException.class, () -> NpcCommands.look(repository, "guard", "maybe")).getMessage());
+            assertEquals("value takes a number or reset, not tall", assertThrows(IllegalArgumentException.class, () -> NpcCommands.attribute(repository, "guard", "scale", "tall")).getMessage());
+            assertEquals("scale takes 0.0625 to 16, not 40", assertThrows(IllegalArgumentException.class, () -> NpcCommands.attribute(repository, "guard", "scale", "40")).getMessage());
+            assertEquals("Anchor GATE is not a name: use 1-32 lowercase letters, digits, _ or -", assertThrows(IllegalArgumentException.class,
+                    () -> NpcCommands.anchor(repository, "guard", "remove", "GATE", null)).getMessage());
+        }
+    }
+
     @Test void attributeSetsShowsAndResetsOneAttributeInTheFile() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             store.commit(List.of(
@@ -82,7 +115,7 @@ class NpcCommandsTest {
             assertTrue(NpcCommands.look(repository, "guard", "on").startsWith("guard: look-close on; tx "));
             assertTrue(art.arcane.animus.core.control.LookClose.parse(repository.find("guard").orElseThrow().json()).isPresent());
             assertTrue(NpcCommands.look(repository, "guard", "toggle").startsWith("guard: look-close off; tx "));
-            assertEquals("enabled must be on, off or toggle", assertThrows(IllegalArgumentException.class, () -> NpcCommands.look(repository, "guard", "maybe")).getMessage());
+            assertEquals("enabled takes on, off or toggle, not maybe", assertThrows(IllegalArgumentException.class, () -> NpcCommands.look(repository, "guard", "maybe")).getMessage());
         }
     }
 
@@ -94,7 +127,7 @@ class NpcCommandsTest {
             IllegalArgumentException unknown = assertThrows(IllegalArgumentException.class, () -> NpcCommands.attribute(repository, "guard", "bogus", "1"));
             assertTrue(unknown.getMessage().startsWith("unknown attribute bogus"), unknown.getMessage());
             IllegalArgumentException range = assertThrows(IllegalArgumentException.class, () -> NpcCommands.attribute(repository, "guard", "scale", "40"));
-            assertEquals("expected 0.0625..16 for scale", range.getMessage());
+            assertEquals("scale takes 0.0625 to 16, not 40", range.getMessage());
             assertThrows(IllegalArgumentException.class, () -> NpcCommands.attribute(repository, "guard", "scale", "big"));
             assertEquals("guard: step_height is not set; vanilla default 0.6, range 0..10", NpcCommands.show(repository, "guard", "step_height").getFirst());
         }
@@ -106,8 +139,8 @@ class NpcCommandsTest {
 
     @Test void theAttributeCommandCompletesAttributeIds() {
         AnimusCommandTree tree = new AnimusCommandTree(null);
-        assertTrue(tree.values("attribute", new AnimusDirectorTest.Actor(false, AnimusDirector.ADMIN), java.util.Map.of()).contains("scale"));
-        assertTrue(tree.values("attribute", new AnimusDirectorTest.Actor(false, AnimusDirector.ADMIN), java.util.Map.of()).contains("movement_speed"));
+        assertTrue(tree.values("", "attribute", new AnimusDirectorTest.Actor(false, AnimusDirector.ADMIN), java.util.Map.of()).contains("scale"));
+        assertTrue(tree.values("", "attribute", new AnimusDirectorTest.Actor(false, AnimusDirector.ADMIN), java.util.Map.of()).contains("movement_speed"));
     }
 
     private static JsonObject attributes(NpcRepository repository) throws IOException { return repository.draft("guard").document().getAsJsonObject("attributes"); }

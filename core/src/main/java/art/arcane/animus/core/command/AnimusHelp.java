@@ -18,8 +18,8 @@ import java.util.Objects;
 
 /**
  * {@code /animus} help in the menu every Volmit plugin shares, VolmLib's {@link DirectorMiniMenu}: the strikethrough
- * banner, one {@code ⇀ name [required] ⊰optional⊱} line per entry whose hover holds the description, usage and an
- * example, a click that fills in a command with parameters, runs one without and opens a group, and the page bar with
+ * banner, one {@code ⇀ name <required> [optional] - description} line per entry whose hover holds the usage line, a
+ * click that fills in a command with parameters, runs one without and opens a group, and the page bar with
  * {@code 〈 Page N} and {@code Page N ❭}. The root page groups its entries under topic headings that link the wiki; a
  * topic cut by a page break repeats its heading. The console gets every entry as plain text. A player in Simple mode
  * gets the short page instead: the {@link #COMMON} commands with their descriptions, then {@code [All commands]}.
@@ -49,6 +49,8 @@ public final class AnimusHelp {
      */
     static final List<String> COMMON = List.of(ToolkitCommands.GUI, "create", "select", "spawn", "despawn", "delete", "list", "undo", "editor pair", "shop item", "shop manage");
     static final String SHOP_MANAGE = "shop manage";
+    /** The most commands the short page lists. */
+    static final int SHORT = 10;
     /** What the short page says {@code /animus gui} does; the group's own description goes on to its chest GUI commands. */
     static final String MENU = "Open the Animus menu";
     static final String ALL = "/" + BuildIdentity.ID + " help all";
@@ -219,17 +221,31 @@ public final class AnimusHelp {
     }
 
     /**
-     * One entry exactly as VolmLib's menu draws it, chips, hover and click included: the entry line of a one-entry page of
-     * its group, which sits just above the page bar.
+     * One entry as VolmLib's menu draws it, hover and click included: the entry line of a one-entry page of its group, which
+     * sits just above the page bar. Its chips read as usage lines write them, {@code <required>} and {@code [optional]}, and
+     * a command ends with its description as a group does.
      */
     static String entry(DirectorRuntimeNode node) {
         DirectorRuntimeNode group = node.getParent() == null ? node : node.getParent();
         List<String> rendered = DirectorMiniMenu.render(new DirectorMiniMenu.DirectorHelpPage(group, List.of(node), 0, 1), AnimusDirector.THEME, AnimusDirector.TEXT);
         String line = rendered.get(rendered.size() - 2);
-        if (node.isInvocable()) return line.replace(hoverText(volmLibExample(node)), hoverText(AnimusDirector.usage(node)));
+        if (node.isInvocable()) {
+            String muted = AnimusDirector.THEME.description();
+            return brackets(line.replace(hoverText(volmLibExample(node)), hoverText(AnimusDirector.usage(node))))
+                    + " <" + muted + ">- " + DirectorMiniMenu.escapeText(description(node)) + "</" + muted + ">";
+        }
         String category = DirectorMiniMenu.escapeText(AnimusDirector.TEXT.resolve(DirectorHelpMessages.CATEGORY, MessageArgs.empty()));
         return line.replace(category, DirectorMiniMenu.escapeText(description(node)));
     }
+
+    /** VolmLib's {@code [required]} and {@code ⊰optional⊱} chips as {@code <required>} and {@code [optional]}. */
+    private static String brackets(String line) {
+        String required = AnimusDirector.THEME.required(), optional = AnimusDirector.THEME.muted();
+        return line.replace(tinted(required, "["), tinted(required, "\\<")).replace(tinted(required, "]"), tinted(required, ">"))
+                .replace(tinted(optional, "⊰"), tinted(optional, "[")).replace(tinted(optional, "⊱"), tinted(optional, "]"));
+    }
+
+    private static String tinted(String colour, String text) { return "<" + colour + ">" + text + "</" + colour + ">"; }
 
     /** The example VolmLib's hover prints, {@code create id=<String> x=<String>}, which Animus swaps for its usage line. */
     private static String volmLibExample(DirectorRuntimeNode node) {

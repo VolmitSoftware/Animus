@@ -36,6 +36,18 @@ class PendingChoicesTest {
         assertEquals(1, published.size());
     }
 
+    @Test void aPlayerIsWaitingOnlyWhileOneOfTheirPromptsIsOpen() {
+        assertFalse(choices.waiting(PLAYER));
+        String token = open(PLAYER);
+        assertTrue(choices.waiting(PLAYER));
+        assertFalse(choices.waiting(STRANGER), "another player's prompt is not theirs");
+        assertEquals(PendingChoices.Selection.ACCEPTED, choices.select(PLAYER, token, "yes", npc -> true));
+        assertFalse(choices.waiting(PLAYER), "an answered prompt is closed");
+        open(PLAYER);
+        clock.addAndGet(Duration.ofSeconds(10).toNanos());
+        assertFalse(choices.waiting(PLAYER), "an expired prompt is closed");
+    }
+
     @Test void forgedTokenIsRejected() {
         open(PLAYER);
         assertEquals(PendingChoices.Selection.UNKNOWN, choices.select(PLAYER, "0".repeat(32), "yes", npc -> true));

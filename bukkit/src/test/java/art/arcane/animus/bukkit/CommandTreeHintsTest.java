@@ -28,13 +28,17 @@ class CommandTreeHintsTest {
         @Override public boolean reply(Runnable action) { action.run(); return true; }
     }
 
-    private static CommandDispatcher<Object> client(CommandActor actor) throws ReflectiveOperationException { return client(actor, (String plugin) -> true); }
+    private static CommandDispatcher<Object> client(CommandActor actor) throws ReflectiveOperationException { return client(actor, (String plugin) -> true, false); }
 
     private static CommandDispatcher<Object> client(CommandActor actor, java.util.function.Predicate<String> plugins) throws ReflectiveOperationException {
+        return client(actor, plugins, false);
+    }
+
+    private static CommandDispatcher<Object> client(CommandActor actor, java.util.function.Predicate<String> plugins, boolean buttons) throws ReflectiveOperationException {
         CommandDispatcher<Object> dispatcher = new CommandDispatcher<>();
         dispatcher.register(LiteralArgumentBuilder.literal("animus").then(RequiredArgumentBuilder.argument("args", StringArgumentType.greedyString())));
         AnimusDirector director = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor who) -> List.of(), plugins);
-        CommandTreeHints.rewrite(dispatcher.getRoot(), List.of("animus", "animus:animus"), director, actor);
+        CommandTreeHints.rewrite(dispatcher.getRoot(), List.of("animus", "animus:animus"), director, actor, buttons);
         return dispatcher;
     }
 
@@ -60,11 +64,40 @@ class CommandTreeHintsTest {
         assertFalse(parses(admin, "animus edit"), "a command missing its required value is incomplete");
     }
 
-    @Test void aPlayerSeesOnlyWhatTheyMayRunPlusHiddenChipCommands() throws ReflectiveOperationException {
-        CommandDispatcher<Object> visitor = client(new Actor(Set.of("animus.status")));
-        assertNotNull(visitor.getRoot().getChild("animus").getChild("status"));
-        assertNull(visitor.getRoot().getChild("animus").getChild("edit"));
-        assertTrue(parses(visitor, "animus choice sometoken 1"), "dialogue choice chips run a hidden command");
+    @Test void aPlayerSeesOnlyWhatTheyMayRunAndTheButtonCommandsOnlyWhileAButtonWaits() throws ReflectiveOperationException {
+        Actor player = new Actor(Set.of("animus.status", art.arcane.animus.core.command.PermissionNodes.QUESTS_USE));
+        CommandDispatcher<Object> idle = client(player);
+        assertNotNull(idle.getRoot().getChild("animus").getChild("status"));
+        assertNull(idle.getRoot().getChild("animus").getChild("edit"));
+        assertNull(idle.getRoot().getChild("animus").getChild("choice"), "no dialogue button waits, so completion does not offer its command");
+        assertNull(idle.getRoot().getChild("animus").getChild("quest").getChild("choice"), "nor the quest offer's");
+        CommandDispatcher<Object> prompted = client(player, (String plugin) -> true, true);
+        assertTrue(parses(prompted, "animus choice sometoken 1"), "a waiting dialogue button runs a command the client knows");
+        assertTrue(parses(prompted, "animus quest choice sometoken accept"));
+    }
+
+    @Test void eachGroupReachesTheClientUnderItsFirstNameOnly() throws ReflectiveOperationException {
+        CommandDispatcher<Object> admin = client(new Actor(Set.of(AnimusDirector.ADMIN)));
+        for (String plural : List.of("shops", "builds", "quests", "guis", "records", "imports", "rig", "module", "group", "behavior"))
+            assertNull(admin.getRoot().getChild("animus").getChild(plural), plural + " would be offered beside its first form");
+        for (String name : List.of("shop", "build", "quest", "gui", "record", "import", "rigs", "modules", "groups", "behaviors"))
+            assertNotNull(admin.getRoot().getChild("animus").getChild(name), name);
+    }
+
+    @Test void aPlayersTreeIsSentAgainWhenAButtonStartsOrStopsWaiting() {
+        Set<UUID> waiting = new java.util.HashSet<>();
+        CommandTreeHints.Buttons buttons = new CommandTreeHints.Buttons(waiting::contains);
+        UUID alex = UUID.randomUUID();
+        assertFalse(buttons.stale(alex), "nothing waits and nothing was sent");
+        assertFalse(buttons.include(alex), "a tree sent while nothing waits leaves the button commands out");
+        waiting.add(alex);
+        assertTrue(buttons.stale(alex), "a button now waits and alex's tree lacks its command");
+        assertTrue(buttons.include(alex));
+        assertFalse(buttons.stale(alex));
+        waiting.remove(alex);
+        assertTrue(buttons.stale(alex), "answered or gone: the command leaves the tree again");
+        assertFalse(buttons.include(alex));
+        assertFalse(buttons.stale(alex));
     }
 
     @Test void guiAloneParsesForEveryPlayerWhoMayOpenTheMenu() throws ReflectiveOperationException {

@@ -175,15 +175,14 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
                 AttackProfile attack = new AttackProfile(damage, AttackProfile.DEFAULT.reach(), AttackProfile.DEFAULT.cooldownTicks());
                 Registration attacker = registration(npc);
                 BukkitCombatBridge.AttackResult result = attacker.combatant().attack(victim, attack, world.npcName(attacker.state().snapshot().npcId()));
-                return "Attack " + npc + ": " + result.status() + " applied=" + result.appliedDamage()
-                        + " health-before=" + result.healthBefore() + " health-after=" + result.healthAfter();
+                return CombatControl.attacked(npc, result.status().name(), result.appliedDamage(), result.healthBefore(), result.healthAfter());
             }
             @Override public String control(String npc, UUID mob) {
                 if (regions != null) return regionManual.control(npc, mob);
                 if (!(manual(mob) instanceof Mob controlled)) throw new IllegalArgumentException("Target control requires an existing supported mob");
                 BukkitCombatBridge.MobLease lease = registration(npc).combatant().control(controlled, MobProfile.DEFAULT);
                 leases.put(mob, lease);
-                return "Mob control started npc=" + npc + " mob=" + mob + " lifetime-ticks=" + MobProfile.DEFAULT.lifetimeTicks();
+                return npc + " now leads that mob for " + MobProfile.DEFAULT.lifetimeTicks() / 20 + " seconds; /animus combat mob " + npc + " stop lets it go";
             }
             @Override public String releaseMobs(String npc) {
                 if (regions != null) return regionManual.releaseMobs(npc);

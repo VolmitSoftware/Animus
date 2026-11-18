@@ -296,7 +296,7 @@ public final class PlayerShops {
         if (!edit.apply(document)) return Optional.empty();
         document.addProperty("revision", EditorDocuments.revision(document) + 1);
         List<String> problems = ShopDocument.parse(id, document).problems();
-        if (!problems.isEmpty()) throw new IOException(problems.getFirst());
+        if (!problems.isEmpty()) throw new IOException(ShopDocument.readable(problems.getFirst()));
         String tx = documents.commit(List.of(new DocumentStore.Change(path, JsonDocuments.hash(current), JsonDocuments.write(document))));
         reload.run();
         return Optional.of(tx);
