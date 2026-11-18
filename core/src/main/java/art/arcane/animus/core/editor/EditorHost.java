@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
@@ -116,6 +117,15 @@ public interface EditorHost {
 
     /** Where the active NPC with this uuid stands now, its world by platform key, from any thread without blocking; empty when it is not active. */
     default Optional<WorldPosition> located(UUID npc) { return Optional.empty(); }
+
+    /** Where a player stands: the world by the name {@code position.world} uses, the feet and the facing in degrees. */
+    record Standing(String world, double x, double y, double z, float yaw, float pitch) {}
+
+    /**
+     * Where the online player stands, read on the player's owner thread; empty when the player is offline or the position cannot be
+     * read. Any thread, never blocks.
+     */
+    default CompletionStage<Optional<Standing>> standing(UUID player) { return CompletableFuture.completedFuture(Optional.empty()); }
 
     /** Shows candidate NPCs to one player only. */
     interface PreviewPresenter {

@@ -19,7 +19,7 @@
 //        and NPC arguments are pickers that show names; an unset Lore reads
 //        Empty with no "null".
 //   Unpaired (the examples workspace): Player name and MineSkin are off and
-//   say they need a paired server; a player name typed as a New NPC skin
+//   say they need a paired server; a player name typed as a New skin
 //   address says why without an exception name.
 // No console errors, no sideways scrolling.
 //
@@ -308,9 +308,9 @@ async function unpaired(browser, viewport, label, dark) {
   await noSidewaysScroll(page, `${label} unpaired chooser`);
   await dialog.getByRole('button', {name: 'Cancel', exact: true}).click();
 
-  // A player name typed as a New NPC skin address.
-  await page.evaluate((hash) => { location.hash = hash; }, `#/workspace/${id}/new/npc`);
-  await page.getByRole('heading', {name: 'New NPC'}).waitFor();
+  // A player name typed as a New skin address; a new NPC picks its skin in its Look tab.
+  await page.evaluate((hash) => { location.hash = hash; }, `#/workspace/${id}/new/skin`);
+  await page.getByRole('heading', {name: 'New skin'}).waitFor();
   const address = page.getByRole('button', {name: 'Address', exact: true}).or(page.getByRole('radio', {name: 'Address', exact: true}));
   if (await address.first().isVisible().catch(() => false)) await address.first().click();
   else await pickOption(page, page.getByRole('combobox', {name: 'Skin', exact: true}), 'Address');
@@ -320,7 +320,7 @@ async function unpaired(browser, viewport, label, dark) {
   await toast.waitFor();
   const said = await toast.innerText();
   assert.ok(!said.includes('Exception'), `${label}: no exception name in "${said}"`);
-  await shot(page, `${label}-7-new-npc-address`, toast);
+  await shot(page, `${label}-7-new-skin-address`, toast);
   assert.deepEqual(errors, [], `${label}: console errors`);
   await page.close();
 }

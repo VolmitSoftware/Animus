@@ -157,20 +157,6 @@ String mostUsedWorld(Iterable<NpcListItem> items) {
   return counts.entries.reduce((MapEntry<String, int> best, MapEntry<String, int> next) => next.value > best.value ? next : best).key;
 }
 
-/// The bodies New NPC offers before "Other".
-const List<String> commonBodies = <String>[
-  'minecraft:player',
-  'minecraft:villager',
-  'minecraft:wandering_trader',
-  'minecraft:zombie',
-  'minecraft:skeleton',
-  'minecraft:iron_golem',
-  'minecraft:armor_stand',
-  'minecraft:piglin',
-  'minecraft:horse',
-  'minecraft:cat',
-];
-
 /// The file name a new NPC called [name] gets in [folder]: its name as a
 /// slug, numbered when [taken] (every NPC id) already has it.
 String newNpcId(String name, String folder, Set<String> taken) {

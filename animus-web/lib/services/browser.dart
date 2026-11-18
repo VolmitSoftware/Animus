@@ -261,6 +261,16 @@ const String mainHeadingId = 'animus-main-heading';
 /// Moves focus to the main heading of the screen that is about to show.
 void focusMainHeading() => focusWhenShown(mainHeadingId, previous: web.document.getElementById(mainHeadingId));
 
+/// Puts [text] on the clipboard; false when the browser refused.
+Future<bool> copyText(String text) async {
+  try {
+    await web.window.navigator.clipboard.writeText(text).toDart;
+    return true;
+  } on Object {
+    return false;
+  }
+}
+
 /// Focuses the element with [id] now, when it exists.
 void focusById(String id) => (web.document.getElementById(id) as web.HTMLElement?)?.focus();
 

@@ -326,7 +326,7 @@ extension LiveChanges on LiveSession {
         }
         final ErrorCopy problem = _problemOf(response);
         await _dropPending(pending.idempotencyKey);
-        _notice(NoticeLevel.error, 'The server refused the change set. ${problem.text}');
+        _notice(NoticeLevel.error, 'The server refused the change set. ${problem.text}', copy: problem.command);
         _lastApply = _ApplyRecord(store.editCount, failure: problem.cause, retry: response.errorCode != 'scope-missing');
     }
     return false;

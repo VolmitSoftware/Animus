@@ -135,7 +135,7 @@ List<String> advancedInUse(NpcTab tab, JsonMap doc, {required bool group, Set<St
     NpcTab.movement => <String>[
         if (asMap(modules[navigationModule])['enabled'] == false) 'Movement off',
         ..._each(doc['movement'], 'Walking'),
-        if (modules.containsKey(mountModuleKey)) 'Riding',
+        if (modules.containsKey(mountModuleKey)) 'Rides on',
         if (modules.containsKey(seatModuleKey)) 'Seat',
       ],
     NpcTab.talk => <String>[if (!group && _set(doc['inventory'])) 'Inventory'],

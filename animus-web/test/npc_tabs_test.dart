@@ -103,7 +103,7 @@ void main() {
           'animus:seat': <String, Object?>{'click': 'sneak-right'},
         },
       });
-      expect(advancedInUse(NpcTab.movement, doc, group: false), <String>['Walking', 'Riding', 'Seat']);
+      expect(advancedInUse(NpcTab.movement, doc, group: false), <String>['Walking', 'Rides on', 'Seat']);
       expect(advancedInUse(NpcTab.modules, doc, group: false), isEmpty);
     });
 

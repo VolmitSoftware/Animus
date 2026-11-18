@@ -15,6 +15,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -74,7 +76,7 @@ class PlayerAccessOwnerTest {
                 "test", "", Map::of, () -> EditorHost.Lookups.NONE, (ViewerWatchRaceTest.Player player, String node) -> false, new EditorNoticeChannel() {
                     @Override public Optional<String> name(UUID player) { return Optional.empty(); }
                     @Override public void deliver(EditorNotice notice) {}
-                }, (String line) -> {}, null, (UUID offline, String node) -> EditorHost.Admin.UNKNOWN));
+                }, (String line) -> {}, null, (UUID offline, String node) -> EditorHost.Admin.UNKNOWN, (ViewerWatchRaceTest.Player player) -> Optional.empty()));
         harness.ownerThread = false;
         List<EditorHost.Admin> answers = new ArrayList<>();
 
@@ -92,11 +94,42 @@ class PlayerAccessOwnerTest {
                 "test", "", Map::of, () -> EditorHost.Lookups.NONE, (ViewerWatchRaceTest.Player player, String node) -> true, new EditorNoticeChannel() {
                     @Override public Optional<String> name(UUID player) { return Optional.empty(); }
                     @Override public void deliver(EditorNotice notice) {}
-                }, (String line) -> {}, null, (UUID offline, String node) -> { asked.add(offline); return EditorHost.Admin.NOT_ADMIN; }));
+                }, (String line) -> {}, null, (UUID offline, String node) -> { asked.add(offline); return EditorHost.Admin.NOT_ADMIN; },
+                (ViewerWatchRaceTest.Player player) -> Optional.empty()));
         List<EditorHost.Admin> answers = new ArrayList<>();
         host.permission(away, "animus.admin", answers::add);
         assertEquals(List.of(EditorHost.Admin.NOT_ADMIN), answers, "a de-opped admin is caught while offline");
         assertEquals(List.of(away), asked);
+    }
+
+    @Test
+    void theEditorReadsWhereThePairingPlayerStandsOnTheOwner() throws IOException {
+        ViewerWatchRaceTest.Harness harness = harness();
+        EditorHost.Standing spot = new EditorHost.Standing("world", 4.5, 65, -2.5, 180f, 10f);
+        RuntimeEditorHost<ViewerWatchRaceTest.Player> host = standingHost(harness, (ViewerWatchRaceTest.Player player) -> Optional.of(spot));
+        harness.ownerThread = false;
+
+        CompletableFuture<Optional<EditorHost.Standing>> asked = host.standing(harness.player.id()).toCompletableFuture();
+        assertFalse(asked.isDone(), "the position is read on the owner, not the asking thread");
+        harness.runScheduled();
+        assertEquals(Optional.of(spot), asked.getNow(null));
+        assertEquals(Optional.empty(), host.standing(UUID.randomUUID()).toCompletableFuture().getNow(null), "an offline player stands nowhere");
+    }
+
+    @Test
+    void aPositionThePlatformCannotReadIsNoStanding() throws IOException {
+        ViewerWatchRaceTest.Harness harness = harness();
+        RuntimeEditorHost<ViewerWatchRaceTest.Player> host = standingHost(harness, (ViewerWatchRaceTest.Player player) -> { throw new IllegalStateException("not in a loaded world"); });
+        assertEquals(Optional.empty(), host.standing(harness.player.id()).toCompletableFuture().getNow(null));
+    }
+
+    private static RuntimeEditorHost<ViewerWatchRaceTest.Player> standingHost(ViewerWatchRaceTest.Harness harness,
+                                                                               Function<ViewerWatchRaceTest.Player, Optional<EditorHost.Standing>> standing) {
+        return new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(harness.runtime, Runnable::run, harness.service, null,
+                "test", "", Map::of, () -> EditorHost.Lookups.NONE, (ViewerWatchRaceTest.Player player, String node) -> false, new EditorNoticeChannel() {
+                    @Override public Optional<String> name(UUID player) { return Optional.empty(); }
+                    @Override public void deliver(EditorNotice notice) {}
+                }, (String line) -> {}, null, (UUID offline, String node) -> EditorHost.Admin.UNKNOWN, standing));
     }
 
     private ViewerWatchRaceTest.Harness harness() throws IOException {

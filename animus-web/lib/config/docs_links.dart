@@ -26,13 +26,15 @@ abstract final class Docs {
   static const DocLink editorCommands = DocLink('02-commands-permissions', 'web-editor');
   static const DocLink editorConfig = DocLink('03-configuration', 'editor');
 
-  static const DocLink npc = DocLink('04-npc-definitions', 'definition-file');
+  static const DocLink npc = DocLink('04-npc-definitions', 'npc-file');
   static const DocLink npcActivation = DocLink('04-npc-definitions', 'activation-and-editing');
   static const DocLink npcAppearance = DocLink('04-npc-definitions', 'appearance-text-and-inventory');
   static const DocLink npcSkins = DocLink('04-npc-definitions', 'skins');
   static const DocLink npcText = DocLink('04-npc-definitions', 'names-and-text-lines');
   static const DocLink npcFlags = DocLink('04-npc-definitions', 'other-presentation-flags');
   static const DocLink npcPoses = DocLink('04-npc-definitions', 'poses');
+  static const DocLink npcAnchors = DocLink('04-npc-definitions', 'anchors');
+  static const DocLink namedFacings = DocLink('05-movement-mounts-riding', 'named-poses');
   static const DocLink npcInventory = DocLink('04-npc-definitions', 'inventory');
   static const DocLink npcOwner = DocLink('04-npc-definitions', 'owner');
   static const DocLink npcInteractions = DocLink('04-npc-definitions', 'interactions');
@@ -42,16 +44,16 @@ abstract final class Docs {
   static const DocLink routes = DocLink('05-movement-mounts-riding', 'routes');
   static const DocLink lookClose = DocLink('05-movement-mounts-riding', 'looking-at-nearby-players');
   static const DocLink mounts = DocLink('05-movement-mounts-riding', 'mounted-npcs');
-  static const DocLink mountEntities = DocLink('05-movement-mounts-riding', 'riding-real-entities');
-  static const DocLink riding = DocLink('05-movement-mounts-riding', 'riding-an-npc');
+  static const DocLink mountEntities = DocLink('05-movement-mounts-riding', 'npcs-on-real-entities');
+  static const DocLink riding = DocLink('05-movement-mounts-riding', 'players-can-ride-it');
   static const DocLink seats = DocLink('05-movement-mounts-riding', 'sitting-on-an-npc');
 
-  static const DocLink rigs = DocLink('06-rigs-animations', 'rig-documents');
-  static const DocLink animations = DocLink('06-rigs-animations', 'animation-documents');
+  static const DocLink rigs = DocLink('06-rigs-animations', 'rig-files');
+  static const DocLink animations = DocLink('06-rigs-animations', 'animation-files');
   static const DocLink animationEvents = DocLink('06-rigs-animations', 'animation-events');
   static const DocLink blockbench = DocLink('06-rigs-animations', 'blockbench-models-on-the-server');
 
-  static const DocLink behaviors = DocLink('07-behaviors', 'documents');
+  static const DocLink behaviors = DocLink('07-behaviors', 'behavior-files');
   static const DocLink behaviorNodes = DocLink('07-behaviors', 'nodes');
   static const DocLink behaviorVariables = DocLink('07-behaviors', 'variables');
   static const DocLink behaviorOperands = DocLink('07-behaviors', 'operands');

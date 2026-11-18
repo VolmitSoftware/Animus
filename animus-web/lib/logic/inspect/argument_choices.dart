@@ -66,6 +66,13 @@ List<ArgumentChoice> argumentChoices(CapabilitySpec spec) {
   ];
 }
 
+/// What a capability's (i) tip says of arguments that may be combined but
+/// need one: "Give at least one of: Title, or Subtitle."; empty when it has
+/// none. Exclusive groups are the step's choice above its fields instead.
+String argumentGroupsTip(CapabilitySpec spec) => spec.anyOfRequired.isEmpty
+    ? ''
+    : 'Give at least one of: ${spec.anyOfRequired.map((List<String> group) => group.map(argumentLabel).join(' + ')).join(', or ')}.';
+
 /// The label of the choice's row.
 String argumentChoiceField(CapabilitySpec spec) => _choiceFields[spec.id] ?? 'Uses';
 

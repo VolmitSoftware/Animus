@@ -12,7 +12,7 @@ import 'dart:typed_data';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
+import 'package:jaspr/jaspr.dart' show Builder, Component;
 import 'package:web/web.dart' as web;
 
 import '../config/docs_links.dart';
@@ -29,6 +29,8 @@ import '../logic/inspect/schema_fields.dart';
 import '../logic/inspect/server_behaviors.dart';
 import '../logic/npc/group_model.dart';
 import '../logic/npc/npc_catalog.dart';
+import '../logic/npc/npc_lookups.dart';
+import '../logic/npc/npc_paths.dart';
 import '../logic/npc/route_model.dart';
 import '../logic/npc/route_usage.dart';
 import '../logic/npc/skin_edits.dart';
@@ -70,6 +72,7 @@ import 'gui/gui_data_editors.dart';
 import 'gui/gui_fields.dart';
 import 'gui/gui_targets.dart';
 import 'gui/hologram_editor.dart';
+import 'npc/npc_list_rows.dart' show newNpcId;
 import 'gui/inventory_editor.dart';
 import 'gui/menu_editor.dart';
 import 'gui/shop_editor.dart' show ShopEditor, shopItemList;
@@ -90,6 +93,7 @@ import 'pending_field.dart';
 import 'quest/quest_editor.dart';
 import 'recording/recording_view.dart';
 import 'shell_sidebar.dart' show jobOfKind, jobRoute, kindCrumb;
+import 'suggest/suggest_scope.dart';
 import 'suggest/suggest_sources.dart';
 
 /// Kinds whose title is a `name` field the header renames in place.
@@ -214,8 +218,9 @@ class DocumentPane extends StatefulWidget {
   /// Deletes the document after the user confirmed it.
   final Future<void> Function()? onDelete;
 
-  /// Copies the document to a new id; returns a problem to show, or null.
-  final Future<String?> Function(String id)? onDuplicate;
+  /// Copies the document to a new id, an NPC also under a new [name];
+  /// returns a problem to show, or null.
+  final Future<String?> Function(String id, {String? name})? onDuplicate;
 
   /// Workspace resources: rig textures and the PNGs of local skins.
   final Map<String, Uint8List> resources;
@@ -246,6 +251,10 @@ class _DocumentPaneState extends State<DocumentPane> {
   bool? _idCopy;
   String _idValue = '';
   String? _idProblem;
+
+  /// The name an NPC's copy takes; its id follows it until the id is typed.
+  String _copyName = '';
+  bool _copyIdTyped = false;
   bool _problemsOpen = false;
   bool _previewShown = false;
   PreviewPlace _place = PreviewPlace.side;
@@ -254,6 +263,7 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   static const String _problemsId = 'ui-doc-problems';
   static const String _idInputId = 'ui-doc-id-input';
+  static const String _copyNameId = 'ui-doc-copy-name';
 
   @override
   void initState() {
@@ -302,8 +312,26 @@ class _DocumentPaneState extends State<DocumentPane> {
     if (mounted) setState(() {});
   }
 
-  /// The document's diagnostics less those of a field the user is filling.
-  List<Diagnostic> _shown(AnimusDocument document) => pendingProblems.visible(document.diagnostics);
+  /// The document's diagnostics less those of a field the user is filling,
+  /// with the ids the paired server's complete lists lack.
+  List<Diagnostic> _shown(AnimusDocument document) => <Diagnostic>[...pendingProblems.visible(document.diagnostics), ..._lookupProblems(document)];
+
+  /// The lists the page reads ids against; set each time the page builds.
+  CompletionSources _sources = CompletionSources.empty;
+  AnimusDocument? _lookupsOf;
+  CompletionSources? _lookupsFrom;
+  List<Diagnostic> _lookups = const <Diagnostic>[];
+
+  /// [lookupDiagnostics] of [document], worked out again only when the
+  /// document or the lists change.
+  List<Diagnostic> _lookupProblems(AnimusDocument document) {
+    if (!identical(document, _lookupsOf) || !identical(_sources, _lookupsFrom)) {
+      _lookupsOf = document;
+      _lookupsFrom = _sources;
+      _lookups = lookupDiagnostics(document, _sources);
+    }
+    return _lookups;
+  }
 
   void _edit(String value) {
     setState(() => _check(value));
@@ -379,19 +407,42 @@ class _DocumentPaneState extends State<DocumentPane> {
     return null;
   }
 
+  /// Whether Duplicate asks for a name: an NPC is told apart by it, and
+  /// its id follows the name.
+  bool get _copiesByName => component.document.kind == DocumentKind.npc;
+
+  /// The NPC id a copy named [name] takes in the same folder.
+  String _copyId(String name) {
+    final String folder = npcFolderOf(component.document.id);
+    final Set<String> taken = <String>{
+      for (final AnimusDocument other in component.workspaceDocuments)
+        if (other.kind == DocumentKind.npc) other.id,
+    };
+    return npcIdIn(folder, newNpcId(name, folder, taken));
+  }
+
   void _startId({required bool copy}) {
     setState(() {
       _idCopy = copy;
-      _idValue = copy ? '${component.document.id}-copy' : component.document.id;
+      // The NPC's name as the file has it, colour codes included.
+      _copyName = copy && _copiesByName ? asString(asMap(component.document.json)['name']) ?? _displayName : '';
+      _copyIdTyped = false;
+      _idValue = copy ? (_copiesByName ? _copyId(_copyName) : '${component.document.id}-copy') : component.document.id;
       _idProblem = null;
     });
-    focusWhenShown(_idInputId);
+    focusWhenShown(copy && _copiesByName ? _copyNameId : _idInputId);
   }
 
   Future<void> _submitId() async {
     final bool? copy = _idCopy;
     if (copy == null) return;
-    final String? problem = await (copy ? component.onDuplicate! : component.onRename!)(_idValue.trim());
+    if (copy && _copiesByName && _copyName.trim().isEmpty) {
+      setState(() => _idProblem = 'Give the copy a name.');
+      return;
+    }
+    final String? problem = copy
+        ? await component.onDuplicate!(_idValue.trim(), name: _copiesByName ? _copyName.trim() : null)
+        : await component.onRename!(_idValue.trim());
     if (!mounted) return;
     setState(() {
       _idProblem = problem;
@@ -428,7 +479,17 @@ class _DocumentPaneState extends State<DocumentPane> {
       const <DocumentKind>{DocumentKind.shop, DocumentKind.quest, DocumentKind.textAnimation, DocumentKind.hologram, DocumentKind.menu}.contains(document.kind);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => SuggestSources(
+        documents: component.workspaceDocuments,
+        catalog: _schemas.catalog,
+        lookups: component.liveLookups,
+        child: Builder(builder: _page),
+      );
+
+  /// The page under [SuggestSources], so the header's badge reads the same
+  /// lists as the fields.
+  Widget _page(BuildContext context) {
+    _sources = SuggestScope.sourcesOf(context);
     final AnimusDocument document = component.document;
     final bool advanced = ModeScope.advanced(context);
     final ViewMode view = _viewFor(document, advanced);
@@ -440,7 +501,7 @@ class _DocumentPaneState extends State<DocumentPane> {
       // Items a complete item list lacks: the server takes the file, but the offer cannot trade.
       if (document.kind == DocumentKind.shop) ...shopUnknownItems(asMap(document.json), shopItemList(component.liveLookups)),
     ]));
-    final DocumentCheck check = documentCheck(all: document.diagnostics, shown: shown, problems: problems);
+    final DocumentCheck check = documentCheck(all: <Diagnostic>[...document.diagnostics, ..._lookupProblems(document)], shown: shown, problems: problems);
     final int errors = problems.where((Diagnostic d) => d.severity == DiagnosticSeverity.error).length;
     final bool preview = _hasPreview(document) && (view == ViewMode.visual || view == ViewMode.conversation);
     final String? nameField = nameFields[document.kind];
@@ -508,14 +569,7 @@ class _DocumentPaneState extends State<DocumentPane> {
         ]),
       // Keyed, so a note appearing above it never rebuilds the form and
       // takes the focus from the field being filled.
-      SuggestSources(
-        key: const ValueKey<String>('doc-body'),
-        documents: component.workspaceDocuments,
-        catalog: _schemas.catalog,
-        lookups: component.liveLookups,
-        npcLibrary: component.library?.call(DocumentKind.npc) ?? const <LibraryEntry>[],
-        child: PreviewToggle(shown: _previewShown, child: _body(document, view, preview)),
-      ),
+      PreviewToggle(key: const ValueKey<String>('doc-body'), shown: _previewShown, child: _body(document, view, preview)),
       if (_idCopy != null) _idDialog(document),
     ]);
   }
@@ -568,6 +622,8 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   Widget _idDialog(AnimusDocument document) {
     final bool copy = _idCopy!;
+    final bool named = copy && _copiesByName;
+    final bool advanced = ModeScope.advanced(context);
     return AppDialog(
       open: true,
       title: copy ? 'Duplicate $_displayName' : 'Change id',
@@ -577,21 +633,41 @@ class _DocumentPaneState extends State<DocumentPane> {
         primary: RowAction(copy ? 'Duplicate' : 'Change id', _submitId),
       ),
       children: <Widget>[
-        Field(
-          label: copy ? 'Id of the copy' : 'New id',
-          forId: _idInputId,
-          tip: 'Use ${idHint(document.kind)}. References move with it.',
-          error: _idProblem,
-          child: TextInput(
-            id: _idInputId,
-            value: _idValue,
-            onChanged: (String value) => setState(() {
-              _idValue = value;
-              _idProblem = null;
-            }),
-            onSubmitted: (String _) => _submitId(),
+        if (named)
+          Field(
+            label: 'Name',
+            forId: _copyNameId,
+            tip: 'The copy is saved despawned, so it does not stand on top of this NPC. Spawn it once it is moved.',
+            docs: Docs.npcActivation,
+            error: advanced ? null : _idProblem,
+            child: TextInput(
+              id: _copyNameId,
+              value: _copyName,
+              onChanged: (String value) => setState(() {
+                _copyName = value;
+                if (!_copyIdTyped) _idValue = _copyId(value);
+                _idProblem = null;
+              }),
+              onSubmitted: (String _) => _submitId(),
+            ),
           ),
-        ),
+        if (!named || advanced)
+          Field(
+            label: named ? 'Id' : copy ? 'Id of the copy' : 'New id',
+            forId: _idInputId,
+            tip: 'Use ${idHint(document.kind)}. References move with it.',
+            error: _idProblem,
+            child: TextInput(
+              id: _idInputId,
+              value: _idValue,
+              onChanged: (String value) => setState(() {
+                _idValue = value;
+                _copyIdTyped = true;
+                _idProblem = null;
+              }),
+              onSubmitted: (String _) => _submitId(),
+            ),
+          ),
       ],
     );
   }

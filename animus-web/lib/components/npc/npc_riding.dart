@@ -1,4 +1,4 @@
-/// The Movement tab's Riding and Seat sections: what the NPC rides
+/// The Movement tab's Rides on and Seat sections: what the NPC rides
 /// (`animus:mount`: another NPC, or a real entity near it) and whether
 /// players sit on top of it (`animus:seat`). Simple picks NPCs and vehicles
 /// by name; Advanced takes any entity type or a UUID, and the seat's
@@ -49,8 +49,10 @@ List<Diagnostic> _elsewhere(List<Diagnostic> all, String key, Set<String> shown)
 }
 
 /// `animus:mount`: nothing, another NPC, or a real entity: the nearest of a
-/// type within range, or one entity by UUID.
-class MountEditor extends StatelessWidget {
+/// type within range, or one entity by UUID. Picking Another NPC or Real
+/// entity writes nothing until the NPC or entity is picked, so the NPC
+/// never starts riding something the user did not choose.
+class MountEditor extends StatefulWidget {
   const MountEditor({required this.value, required this.npcs, required this.onChanged, this.self, this.diagnostics = const <Diagnostic>[], super.key});
 
   /// The module object, or null.
@@ -65,21 +67,48 @@ class MountEditor extends StatelessWidget {
   final List<Diagnostic> diagnostics;
 
   @override
+  State<MountEditor> createState() => _MountEditorState();
+}
+
+class _MountEditorState extends State<MountEditor> {
+  /// What Rides on shows while its target is not picked yet.
+  MountKind? _pending;
+
+  @override
+  void didUpdateWidget(MountEditor oldComponent) {
+    super.didUpdateWidget(oldComponent);
+    // Undo, or a pick elsewhere, settles what it rides.
+    if (!identical(oldComponent.value, component.value)) _pending = null;
+  }
+
+  void _write(Object? next) {
+    setState(() => _pending = null);
+    component.onChanged(next);
+  }
+
+  void _pick(MountKind next) {
+    if (next == MountKind.none) return _write(null);
+    setState(() => _pending = next == mountKindOf(component.value) ? null : next);
+  }
+
+  @override
   Widget build(BuildContext context) {
     const String vehicleId = 'animus-npc-vehicle', entityId = 'animus-npc-mount-entity', rangeId = 'animus-npc-mount-range';
     final bool advanced = ModeScope.advanced(context);
+    final Object? value = component.value;
+    final List<Diagnostic> diagnostics = component.diagnostics;
     final JsonMap module = asMap(value);
-    final MountKind kind = mountKindOf(value);
-    final String? vehicle = asString(module['vehicle']);
-    final String entity = asString(module['entity']) ?? '';
-    final String first = npcs.ids.firstWhere((String id) => id != self, orElse: () => '');
+    final MountKind written = mountKindOf(value);
+    final MountKind kind = _pending ?? written;
+    final String? vehicle = kind == written ? asString(module['vehicle']) : null;
+    final String entity = kind == written ? asString(module['entity']) ?? '' : '';
     List<Diagnostic> at(String? field) => _at(diagnostics, mountModuleKey, field);
     return dom.div(classes: 'animus-npc-mount', <Widget>[
       Field(
-        label: 'Rides',
+        label: 'Rides on',
         problems: <Diagnostic>[...at(null), ..._elsewhere(diagnostics, mountModuleKey, const <String>{'vehicle', 'entity', 'range'})],
         child: ToggleChoice<MountKind>(
-          label: 'Rides',
+          label: 'Rides on',
           options: const <ChoiceOption<MountKind>>[
             ChoiceOption<MountKind>(MountKind.none, 'Nothing'),
             ChoiceOption<MountKind>(MountKind.npc, 'Another NPC'),
@@ -87,7 +116,7 @@ class MountEditor extends StatelessWidget {
           ],
           value: kind,
           onChanged: (MountKind next) {
-            if (next != kind) onChanged(withMountKind(value, next, vehicle: first));
+            if (next != kind) _pick(next);
           },
         ),
       ),
@@ -99,17 +128,20 @@ class MountEditor extends StatelessWidget {
           docs: Docs.mounts,
           problems: <Diagnostic>[
             ...at('vehicle'),
-            if (vehicle != null && vehicle.isNotEmpty && !npcs.idSet.contains(vehicle))
+            if (vehicle != null && vehicle.isNotEmpty && !component.npcs.idSet.contains(vehicle))
               Diagnostic(DiagnosticSeverity.warning, childPath(childPath(r'$.modules', mountModuleKey), 'vehicle'), 'Not an NPC in this workspace; the server may have it.'),
           ],
           child: npcPicker(
             id: vehicleId,
             label: 'NPC it rides',
             value: vehicle == null || vehicle.isEmpty ? null : vehicle,
-            npcs: npcs,
+            npcs: component.npcs,
             advanced: advanced,
-            exclude: <String>{?self},
-            onChanged: (String? id) => onChanged(<String, Object?>{...module, 'vehicle': id ?? ''}),
+            noneLabel: 'Pick an NPC',
+            exclude: <String>{?component.self},
+            onChanged: (String? id) {
+              if (id != null) _write(withMountVehicle(value, id));
+            },
           ),
         ),
       if (kind == MountKind.entity) ...<Widget>[
@@ -128,19 +160,24 @@ class MountEditor extends StatelessWidget {
                   label: 'Entity type or UUID',
                   placeholder: 'minecraft:horse',
                   profile: idProfile(const ValueRef.registry(RegistryKind.entity)),
-                  onChanged: (String text) => onChanged(withMountEntity(module, text.trim())),
+                  onChanged: (String text) {
+                    if (text.trim().isNotEmpty) _write(withMountEntity(value, text.trim()));
+                  },
                 )
               : AnimusSelect.values(
                   id: entityId,
                   value: entity.isEmpty ? null : entity,
                   values: commonVehicles,
+                  noneLabel: 'Pick a vehicle',
                   labels: <String, String>{
                     for (final String type in <String>[...commonVehicles, if (entity.isNotEmpty) entity]) type: isEntityUuid(type) ? 'One exact entity' : bodyLabel(type),
                   },
-                  onChanged: (String? type) => onChanged(withMountEntity(module, type ?? commonVehicles.first)),
+                  onChanged: (String? type) {
+                    if (type != null) _write(withMountEntity(value, type));
+                  },
                 ),
         ),
-        if (!isEntityUuid(entity))
+        if (entity.isNotEmpty && !isEntityUuid(entity))
           Field(
             label: 'Range',
             forId: rangeId,
@@ -154,7 +191,7 @@ class MountEditor extends StatelessWidget {
               integer: false,
               label: 'Range',
               placeholder: '8',
-              onChanged: (num? range) => onChanged(<String, Object?>{
+              onChanged: (num? range) => _write(<String, Object?>{
                 for (final MapEntry<String, Object?> entry in module.entries)
                   if (entry.key != 'range') entry.key: entry.value,
                 'range': ?range,
@@ -162,11 +199,11 @@ class MountEditor extends StatelessWidget {
             ),
           ),
       ],
-      if (value != null)
+      if (value != null && kind == written)
         Field(
-          label: 'Riding now',
+          label: 'Rides now',
           tip: 'Off keeps the setting but the NPC walks on its own.',
-          child: ArcaneToggleSwitch(value: module['enabled'] != false, ariaLabel: 'Riding now', onChanged: (bool on) => onChanged(<String, Object?>{...module, 'enabled': on}), size: ComponentSize.sm),
+          child: ArcaneToggleSwitch(value: module['enabled'] != false, ariaLabel: 'Rides now', onChanged: (bool on) => _write(<String, Object?>{...module, 'enabled': on}), size: ComponentSize.sm),
         ),
     ]);
   }

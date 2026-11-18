@@ -39,29 +39,19 @@ MountKind mountKindOf(Object? module) => switch (module) {
       _ => MountKind.npc,
     };
 
-/// [module] riding [kind] instead: the other target's fields go, `enabled`
-/// stays; null rides nothing. [vehicle] is the NPC an NPC mount starts on.
-JsonMap? withMountKind(Object? module, MountKind kind, {String vehicle = ''}) {
-  if (kind == MountKind.none) return null;
-  final JsonMap current = asMap(module);
-  if (mountKindOf(module) == kind) return current;
-  final JsonMap next = <String, Object?>{
-    for (final MapEntry<String, Object?> entry in current.entries)
-      if (entry.key != 'vehicle' && entry.key != 'entity' && entry.key != 'range') entry.key: entry.value,
-  };
-  next['enabled'] ??= true;
-  if (kind == MountKind.npc) {
-    next['vehicle'] = vehicle;
-  } else {
-    next['entity'] = commonVehicles.first;
-  }
-  return next;
-}
+/// [module] riding the NPC [vehicle]: an entity target and its range go,
+/// `enabled` stays. Picking the NPC is what makes a new mount ride.
+JsonMap withMountVehicle(Object? module, String vehicle) => <String, Object?>{
+      for (final MapEntry<String, Object?> entry in asMap(module).entries)
+        if (entry.key != 'entity' && entry.key != 'range') entry.key: entry.value,
+      'vehicle': vehicle,
+    };
 
-/// [module] riding [entity]; a UUID is never searched within a range.
-JsonMap withMountEntity(JsonMap module, String entity) => <String, Object?>{
-      for (final MapEntry<String, Object?> entry in module.entries)
-        if (entry.key != 'range' || !isEntityUuid(entity)) entry.key: entry.value,
+/// [module] riding [entity]: an NPC target goes, and a UUID is never
+/// searched within a range.
+JsonMap withMountEntity(Object? module, String entity) => <String, Object?>{
+      for (final MapEntry<String, Object?> entry in asMap(module).entries)
+        if (entry.key != 'vehicle' && (entry.key != 'range' || !isEntityUuid(entity))) entry.key: entry.value,
       'entity': entity,
     };
 
@@ -72,11 +62,21 @@ bool seatOn(Object? module) => module is Map<String, Object?> && module['enabled
 /// Whether `animus:riding` lets players ride the NPC (`RideSettings.parse`).
 bool ridingOn(JsonMap modules) => asMap(modules[ridingModuleKey])['enabled'] == true;
 
+/// The seat keys the switch itself writes: turned off with nothing else
+/// set, the seat goes, so the server's `[seats] defaultEnabled` decides
+/// again rather than an `enabled: false` that overrides it.
+const Set<String> _switchKeys = <String>{'enabled', 'click'};
+
 /// [module] turned [on] or off, its other settings kept. Turned on beside
 /// [riding], a seat without a click of its own takes sneak-right, since a
-/// plain right-click mounts the NPC.
-JsonMap seatSwitched(Object? module, {required bool on, required bool riding}) => <String, Object?>{
-      ...asMap(module),
-      'enabled': on,
-      if (on && riding && !asMap(module).containsKey('click')) 'click': 'sneak-right',
-    };
+/// plain right-click mounts the NPC. Turned off with no setting but the
+/// switch's own, null removes it.
+JsonMap? seatSwitched(Object? module, {required bool on, required bool riding}) {
+  final JsonMap seat = asMap(module);
+  if (!on && seat.keys.every(_switchKeys.contains)) return null;
+  return <String, Object?>{
+    ...seat,
+    'enabled': on,
+    if (on && riding && !seat.containsKey('click')) 'click': 'sneak-right',
+  };
+}

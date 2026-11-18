@@ -300,6 +300,11 @@ void main() {
     expect(lookups.commands, contains('spawn'));
     expect(lookups.papi, contains('player'));
     expect(lookups.players, <String, String>{fixtureSettings.viewer: 'Alex', fakeShopOwner: 'Steve'}, reason: 'the players the server has seen');
+    // With the Minecraft pack extracted, it lists every vanilla entity type, so a body or mob type the server lacks reads as an error.
+    if (File('web/assets/mc/26.3/registries.json').existsSync()) {
+      expect(lookups.registries[RegistryKind.entity], containsAll(<String>['llama', 'player', 'zombie', 'mannequin']));
+      expect(lookups.registries[RegistryKind.entity], isNot(contains('lama')));
+    }
   });
 
   test('should name the players it knows who own an NPC or a shop, as EditorApi does', () async {
@@ -348,6 +353,30 @@ void main() {
     await control('POST', '/live', <String, Object?>{'npc': 'examples/greeter'});
     expect(await chunk(), 'forbidden');
     expect((await call('GET', '/animus/v1/terrain/position?npc=examples/nobody', token: token)).errorCode, 'not-found');
+  });
+
+  test('should answer where the pairing player stands, offline until the admin-position control puts them somewhere', () async {
+    final String token = await pairToken();
+    Future<Reply> asked() async {
+      final Reply reply = await call('GET', '/animus/v1/admin/position', token: token);
+      expect(reply.status, 200);
+      expectMessage('admin-position-response', reply.body);
+      return reply;
+    }
+
+    expect((await asked()).json, <String, Object?>{'online': false}, reason: 'offline by default, so new NPCs keep the usual spot in the other checks');
+    await control('POST', '/admin-position', <String, Object?>{'world': 'world_nether', 'x': 12.5, 'y': 70, 'z': -3.5, 'yaw': 90});
+    expect((await asked()).json, <String, Object?>{'online': true, 'world': 'world_nether', 'x': 12.5, 'y': 70.0, 'z': -3.5, 'yaw': 90.0, 'pitch': 0.0});
+    expect((await control('GET', '/state'))['controls'], containsPair('adminPosition', <String, Object?>{'world': 'world_nether', 'x': 12.5, 'y': 70.0, 'z': -3.5, 'yaw': 90.0, 'pitch': 0.0}));
+    await control('POST', '/admin-position', <String, Object?>{'online': false});
+    expect((await asked()).json, <String, Object?>{'online': false});
+    await control('POST', '/admin-position', <String, Object?>{'world': 'world', 'x': 0.5, 'y': 64, 'z': 0.5, 'yaw': 0, 'pitch': 10});
+    await control('POST', '/admin-position', <String, Object?>{});
+    expect((await asked()).json, <String, Object?>{'online': false}, reason: 'an empty body takes the admin offline too');
+    await control('POST', '/admin-position', <String, Object?>{'world': 'world', 'x': 0.5, 'y': 64, 'z': 0.5, 'yaw': 0});
+    await control('POST', '/reset');
+    expect((await call('GET', '/animus/v1/admin/position', token: await pairToken())).json, <String, Object?>{'online': false});
+    expect((await call('POST', '/__fake/admin-position', body: <String, Object?>{'world': 'world', 'x': 'east'}, withOrigin: null)).status, 400);
   });
 
   test('schemas are keyed by kind', () async {

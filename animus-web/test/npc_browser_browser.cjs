@@ -388,7 +388,7 @@ async function advanced(page, workspace, tag) {
   await box.getByRole('button', {name: 'Off', exact: true}).click();
   await box.getByRole('button', {name: 'Turn off', exact: true}).click();
   await closed(page, 'npc-module-dialog');
-  await page.getByText('Turned off animus:combat for 2 NPCs.').first().waitFor();
+  await page.getByText('Turned off Combat for 2 NPCs.').first().waitFor();
   await apply(page);
   assert.equal((await source('town/guard-north')).modules['animus:combat'].enabled, false);
   await bulk(page, 'Module');
@@ -408,8 +408,9 @@ async function advanced(page, workspace, tag) {
   assert.equal((await source('town/guard-north')).modules['animus:combat'], undefined);
   await clearPicks(page);
 
-  // Trait group: add two NPCs to "watch", then take them out.
-  await pick(page, ['harbor/dockhand', 'harbor/ferryman']);
+  // Trait group: add two NPCs to "watch", then take them out. Harbor NPCs
+  // stand in a world the fake server has not loaded, which holds Apply.
+  await pick(page, ['town/baker', 'wild/golem-keeper']);
   await bulk(page, 'Trait group');
   box = await dialog(page, 'npc-group-dialog');
   await choose(box.locator('#npc-group'), 'watch');
@@ -417,7 +418,7 @@ async function advanced(page, workspace, tag) {
   await closed(page, 'npc-group-dialog');
   await page.getByText('Assigned watch: 2 changed, 0 unchanged.').first().waitFor();
   await apply(page);
-  assert.deepEqual((await source('harbor/dockhand')).groups, ['watch']);
+  assert.deepEqual((await source('town/baker')).groups, ['watch']);
   await bulk(page, 'Trait group');
   box = await dialog(page, 'npc-group-dialog');
   await box.getByRole('button', {name: 'Remove', exact: true}).click();
@@ -425,7 +426,7 @@ async function advanced(page, workspace, tag) {
   await box.getByRole('button', {name: 'Remove from group', exact: true}).click();
   await closed(page, 'npc-group-dialog');
   await apply(page);
-  assert.equal((await source('harbor/ferryman')).groups, undefined);
+  assert.equal((await source('wild/golem-keeper')).groups, undefined);
   await clearPicks(page);
 
   // Delete asks first; Escape keeps the NPC, Delete removes it, Undo brings it back.
@@ -519,18 +520,19 @@ async function withoutSpawn(browser, viewport, tag) {
   const {context, page, errors} = await pair(browser, viewport, {scopes: noSpawn});
   await setMode(page, 'advanced');
   await waitKeys(page, all, `${tag} no spawn scope`);
-  await pick(page, ['harbor/dockhand']);
+  // A despawned NPC in a loaded world, so Apply can send it.
+  await pick(page, ['town/market/stalls/cartwright']);
   await bulk(page, 'Spawn');
   await page.getByText('Spawned 1 NPC.').first().waitFor();
   await changes(page, '1 change not applied');
-  await row(page, 'harbor/dockhand').getByText('Despawned', {exact: true}).waitFor({state: 'detached'});
+  await row(page, 'town/market/stalls/cartwright').getByText('Despawned', {exact: true}).waitFor({state: 'detached'});
   await bulk(page, 'Despawn');
-  await row(page, 'harbor/dockhand').getByText('Despawned', {exact: true}).waitFor({state: 'attached'});
+  await row(page, 'town/market/stalls/cartwright').getByText('Despawned', {exact: true}).waitFor({state: 'attached'});
   assert.equal(await page.getByRole('alertdialog').count(), 0, 'a definition despawn does not ask');
   await changes(page, 'Up to date');
   await bulk(page, 'Spawn');
   await apply(page);
-  assert.equal((await source('harbor/dockhand')).spawned, true);
+  assert.equal((await source('town/market/stalls/cartwright')).spawned, true);
   await setMode(page, 'simple');
   assert.deepEqual(errors, [], `${tag}: console errors without the spawn scope`);
   await context.close();

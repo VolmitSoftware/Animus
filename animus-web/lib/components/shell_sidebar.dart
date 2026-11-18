@@ -252,14 +252,9 @@ class ShellNav extends StatefulWidget {
 
 /// How many things a job holds: its kinds' documents (Simple leaves the
 /// server behaviors list out) and, for Movement, the NPCs with a route of
-/// their own, as the Movement page lists them. Rigs without a rig counts
-/// the tab it opens on ([jobRoute]), so the number matches the page.
-int jobCount(NavJob job, Map<DocumentKind, int> counts, EditorMode mode, {int ownRoutes = 0}) {
-  final int total = kindTotal(counts, job.kinds.where((DocumentKind kind) => _counted(kind, mode))) + (job.kinds.contains(DocumentKind.route) ? ownRoutes : 0);
-  if (total > 0 || job.kinds.isEmpty) return total;
-  final EditorRoute landing = jobRoute(job, '', counts: counts);
-  return landing is KindListRoute && kindShown(landing.kind, mode) ? counts[landing.kind] ?? 0 : 0;
-}
+/// their own, as the Movement page lists them. Rigs counts rigs only.
+int jobCount(NavJob job, Map<DocumentKind, int> counts, EditorMode mode, {int ownRoutes = 0}) =>
+    kindTotal(counts, job.kinds.where((DocumentKind kind) => _counted(kind, mode))) + (job.kinds.contains(DocumentKind.route) ? ownRoutes : 0);
 
 /// [jobCount] for the nav, or null while the count is not [known] yet.
 String? jobBadge(NavJob job, Map<DocumentKind, int> counts, EditorMode mode, {int ownRoutes = 0, bool known = true}) =>

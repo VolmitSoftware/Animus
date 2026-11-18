@@ -12,7 +12,7 @@ extension _NewDocumentFields on _NewDocumentPageState {
       if (advanced && !fixedIdKinds.contains(kind)) _idField(kind),
     ];
     final List<Widget> fields = switch (kind) {
-      DocumentKind.npc => _npcFields(advanced),
+      DocumentKind.npc => const <Widget>[],
       DocumentKind.behavior => _behaviorFields(advanced),
       DocumentKind.pack => <Widget>[
           _text('Name', 'new-pack-name', _title, (String value) => _title = value, kind: kind),
@@ -30,7 +30,7 @@ extension _NewDocumentFields on _NewDocumentPageState {
               onChanged: (String value) => _set(() => _mode = value),
             ),
           ),
-          MoreFields(label: 'Start point', children: _position(npc: false)),
+          MoreFields(label: 'Start point', children: _position()),
         ],
       DocumentKind.recording => <Widget>[
           const AppAlert(tone: AlertTone.info, title: 'Recorded in game', message: 'Run /animus record start <name> in game, move, then stop it. It shows up under Movement.'),
@@ -236,13 +236,12 @@ extension _NewDocumentFields on _NewDocumentPageState {
     );
   }
 
-  List<Widget> _position({required bool npc}) => <Widget>[
+  List<Widget> _position() => <Widget>[
         Field(label: 'World', forId: 'new-world', child: TextInput(id: 'new-world', value: _world, onChanged: (String value) => _set(() => _world = value))),
         for (final (String axis, num value, void Function(num) set) in <(String, num, void Function(num))>[
           ('X', _x, (num value) => _x = value),
           ('Y', _y, (num value) => _y = value),
           ('Z', _z, (num value) => _z = value),
-          if (npc) ('Yaw', _yaw, (num value) => _yaw = value),
         ])
           Field(
             label: axis,
@@ -251,80 +250,7 @@ extension _NewDocumentFields on _NewDocumentPageState {
           ),
       ];
 
-  List<Widget> _npcFields(bool advanced) {
-    final List<AnimusDocument> behaviors = _of(DocumentKind.behavior);
-    return <Widget>[
-      _text('Name', 'new-npc-name', _name, (String value) => _name = value, kind: DocumentKind.npc),
-      Field(
-        label: 'Body',
-        forId: 'new-npc-body',
-        child: AnimusSelect.values(
-          id: 'new-npc-body',
-          value: _type,
-          values: mcPresentedBodyTypes,
-          labels: _bodyLabels,
-          onChanged: (String? value) => _set(() => _type = value ?? 'minecraft:player'),
-        ),
-      ),
-      if (_type == 'minecraft:player') ..._skinFields(withDefault: true),
-      Field(
-        label: 'Behavior',
-        forId: 'new-npc-behavior',
-        child: AnimusSelect.values(
-          id: 'new-npc-behavior',
-          value: _behavior.isEmpty ? null : _behavior,
-          allowNone: true,
-          noneLabel: 'None yet',
-          values: <String>[
-            for (final BehaviorTemplate template in npcTemplates) 'new:${template.name}',
-            for (final AnimusDocument behavior in behaviors) behavior.id,
-          ],
-          labels: <String, String>{
-            for (final BehaviorTemplate template in npcTemplates) 'new:${template.name}': 'New: ${template.label}',
-            for (final AnimusDocument behavior in behaviors) behavior.id: guiPlainText(behavior.title),
-          },
-          groups: <String, String>{
-            for (final BehaviorTemplate template in npcTemplates) 'new:${template.name}': 'New',
-            for (final AnimusDocument behavior in behaviors) behavior.id: 'In this workspace',
-          },
-          onChanged: (String? value) => _set(() => _behavior = value ?? ''),
-        ),
-      ),
-      MoreFields(
-        open: advanced,
-        children: <Widget>[
-          Field(
-            label: 'Folder',
-            forId: 'new-npc-folder',
-            hint: 'Such as town',
-            child: TextInput(id: 'new-npc-folder', value: _group, onChanged: (String value) => _set(() => _group = value)),
-          ),
-          ..._position(npc: true),
-        ],
-      ),
-    ];
-  }
-
-  /// The workspace skins' names and faces, worked out once per skin list
-  /// rather than at every build.
-  ({Map<String, String> labels, Map<String, String> details, Map<String, String> faces}) _skinOptionsFor(List<AnimusDocument> skins) {
-    final List<AnimusDocument>? before = _skinsFor;
-    final bool same = before != null && before.length == skins.length && <int>[for (int index = 0; index < skins.length; index++) index].every((int index) => identical(before[index], skins[index]));
-    if (same && _skinOptions != null) return _skinOptions!;
-    final Map<String, String> labels = <String, String>{};
-    final Map<String, String> details = <String, String>{};
-    for (final AnimusDocument skin in skins) {
-      final ({String label, String detail}) listing = skinListing(skin);
-      labels[skin.id] = listing.label;
-      details[skin.id] = listing.detail;
-    }
-    _skinsFor = skins;
-    return _skinOptions = (labels: labels, details: details, faces: skinFacesOf(<String>[for (final AnimusDocument skin in skins) skin.id]));
-  }
-
-  List<Widget> _skinFields({bool withDefault = false}) {
-    final List<AnimusDocument> skins = _of(DocumentKind.skin);
-    if (!withDefault && (_skinSource == _SkinSource.none || _skinSource == _SkinSource.existing)) _skinSource = _SkinSource.file;
+  List<Widget> _skinFields() {
     final bool fromPng = _skinSource == _SkinSource.file || _skinSource == _SkinSource.url;
     return <Widget>[
       Field(
@@ -333,15 +259,12 @@ extension _NewDocumentFields on _NewDocumentPageState {
           label: 'Skin',
           value: _skinSource,
           options: <ChoiceOption<_SkinSource>>[
-            if (withDefault) const ChoiceOption<_SkinSource>(_SkinSource.none, 'Default'),
             const ChoiceOption<_SkinSource>(_SkinSource.file, 'PNG file'),
             const ChoiceOption<_SkinSource>(_SkinSource.url, 'Address'),
-            if (withDefault && skins.isNotEmpty) const ChoiceOption<_SkinSource>(_SkinSource.existing, 'Saved'),
           ],
           onChanged: (_SkinSource value) => _set(() => _skinSource = value),
         ),
       ),
-      if (_skinSource == _SkinSource.existing) _savedSkin(skins),
       if (_skinSource == _SkinSource.file)
         Field(
           label: 'PNG',
@@ -381,24 +304,6 @@ extension _NewDocumentFields on _NewDocumentPageState {
           element: 'p',
         ),
     ];
-  }
-
-  Widget _savedSkin(List<AnimusDocument> skins) {
-    final ({Map<String, String> labels, Map<String, String> details, Map<String, String> faces}) options = _skinOptionsFor(skins);
-    return Field(
-      label: 'Saved skin',
-      forId: 'new-npc-skin',
-      child: AnimusSelect.values(
-        id: 'new-npc-skin',
-        references: DocumentKind.skin,
-        value: _existingSkin,
-        values: <String>[for (final AnimusDocument skin in skins) skin.id],
-        skinFaces: options.faces,
-        labels: options.labels,
-        details: options.details,
-        onChanged: (String? value) => _set(() => _existingSkin = value),
-      ),
-    );
   }
 
   Widget _face(LoadedSkin skin) => dom.span(
@@ -531,8 +436,3 @@ extension _NewDocumentFields on _NewDocumentPageState {
     ];
   }
 }
-
-/// The body choices' names: `minecraft:polar_bear` reads Polar bear.
-final Map<String, String> _bodyLabels = <String, String>{
-  for (final String type in mcPresentedBodyTypes) type: bodyLabel(type),
-};

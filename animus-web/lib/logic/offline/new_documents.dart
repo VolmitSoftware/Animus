@@ -166,6 +166,26 @@ String idHint(DocumentKind kind) => switch (kind) {
 // --- NPCs --------------------------------------------------------------------
 
 /// The guided first step of a new NPC.
+/// A spot in a world, facing [yaw] degrees.
+typedef NpcSpot = ({String world, double x, double y, double z, double yaw});
+
+/// Where a new NPC stands when nothing better is known.
+const double _spawnX = 0.5, _spawnZ = 0.5, _spawnY = 64;
+
+double _round(double value, int digits) {
+  final double scale = math.pow(10, digits).toDouble();
+  return (value * scale).roundToDouble() / scale;
+}
+
+/// Where a new NPC starts: where the player who paired the editor stands
+/// ([admin]) when they are online, as /animus create puts it; else at
+/// 0.5, 0.5 in [world] with its feet on [ground] when the preview terrain
+/// knows the ground there; else at Y 64.
+NpcSpot newNpcPlace({required String world, NpcSpot? admin, int? ground}) {
+  if (admin != null) return (world: admin.world, x: _round(admin.x, 2), y: _round(admin.y, 2), z: _round(admin.z, 2), yaw: _round(admin.yaw, 1));
+  return (world: world, x: _spawnX, y: ground?.toDouble() ?? _spawnY, z: _spawnZ, yaw: 0.0);
+}
+
 class NpcSeed {
   const NpcSeed({
     required this.name,
@@ -684,6 +704,14 @@ String copyId(DocumentKind kind, String id, Set<String> taken) {
   if (kind == DocumentKind.presets || kind == DocumentKind.skin || kind == DocumentKind.serverBehaviors) return id;
   return freeId('$id-copy', taken);
 }
+
+/// A copy of NPC [json] named [name] at NPC id [id]: its own UUID and
+/// revision, saved despawned as the in-game Copy saves one.
+JsonMap npcCopy(JsonMap json, {required String name, required String id, math.Random? random}) => <String, Object?>{
+      ...asMap(rewriteIdentity(DocumentKind.npc, json, id, fresh: true, random: random)),
+      'name': name,
+      'spawned': false,
+    };
 
 /// [json] moved to [id]: the id fields the server checks against the file
 /// location follow. A copy ([fresh]) gets a new NPC UUID and starts at

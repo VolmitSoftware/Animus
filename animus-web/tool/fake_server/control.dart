@@ -225,6 +225,20 @@ class ControlPath {
           server.api.live[npc] = (world: world, x: x.toDouble(), y: y.toDouble(), z: z.toDouble());
         }
         return FakeResponse(200, body: <String, Object?>{'npc': npc, 'live': x != null});
+      case 'POST /admin-position':
+        final Map<String, Object?> spot = _object(body);
+        fields(spot, r'$', <String>{'online', 'world', 'x', 'y', 'z', 'yaw', 'pitch'});
+        if (spot['online'] == false || !spot.containsKey('world')) {
+          server.api.adminPosition = null;
+          return const FakeResponse(200, body: <String, Object?>{'online': false});
+        }
+        final Object? world = spot['world'], x = spot['x'], y = spot['y'], z = spot['z'];
+        final Object yaw = spot['yaw'] ?? 0, pitch = spot['pitch'] ?? 0;
+        if (world is! String || world.isEmpty || x is! num || y is! num || z is! num || yaw is! num || pitch is! num) {
+          throw invalid('world, x, y, z and optional yaw and pitch: where the paired player stands; {} or {"online": false} takes them offline');
+        }
+        server.api.adminPosition = (world: world, x: x.toDouble(), y: y.toDouble(), z: z.toDouble(), yaw: yaw.toDouble(), pitch: pitch.toDouble());
+        return const FakeResponse(200, body: <String, Object?>{'online': true});
       case 'POST /skin-sign':
         final String? fail = uri.queryParameters['fail'];
         if (fail != 'true' && fail != 'false') throw invalid('fail: true or false');

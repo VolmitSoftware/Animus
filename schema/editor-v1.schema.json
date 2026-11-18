@@ -251,6 +251,25 @@
         {"properties": {"active": {"const": false}}, "not": {"anyOf": [{"required": ["world"]}, {"required": ["x"]}, {"required": ["y"]}, {"required": ["z"]}]}}
       ]
     },
+    "admin-position-response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["online"],
+      "description": "GET /v1/admin/position: where the player who issued the pairing stands now, so a new NPC can start there. online is false, without a position, for a console pairing, a player who is offline, or a position the server could not read in time.",
+      "properties": {
+        "online": {"type": "boolean"},
+        "world": {"type": "string", "minLength": 1, "maxLength": 256, "description": "The world by the name an NPC definition's position.world uses, as /animus create writes it."},
+        "x": {"type": "number"},
+        "y": {"type": "number"},
+        "z": {"type": "number"},
+        "yaw": {"type": "number", "description": "Degrees, as position.yaw."},
+        "pitch": {"type": "number", "description": "Degrees, as position.pitch."}
+      },
+      "oneOf": [
+        {"properties": {"online": {"const": true}}, "required": ["world", "x", "y", "z", "yaw"]},
+        {"properties": {"online": {"const": false}}, "not": {"anyOf": [{"required": ["world"]}, {"required": ["x"]}, {"required": ["y"]}, {"required": ["z"]}, {"required": ["yaw"]}, {"required": ["pitch"]}]}}
+      ]
+    },
     "lookups-response": {
       "type": "object",
       "additionalProperties": false,

@@ -159,12 +159,12 @@ async function run(browser, {viewport, theme}) {
   const workspace = await page.evaluate(() => location.hash.split('/')[2]);
 
   // Number boxes: the wheel scrolls the page, a spin press steps once.
-  await page.goto(`${url}/#/workspace/${workspace}/new/npc`);
-  await page.getByRole('heading', {name: 'New NPC'}).waitFor();
-  // The place is a rarer field: it sits under More.
-  const more = page.locator('details', {has: page.locator(':scope > summary', {hasText: 'More'})}).first();
+  await page.goto(`${url}/#/workspace/${workspace}/new/route`);
+  await page.getByRole('heading', {name: 'New route'}).waitFor();
+  // The start point is a rarer field: it sits under its own section.
+  const more = page.locator('details', {has: page.locator(':scope > summary', {hasText: 'Start point'})}).first();
   if (!(await more.evaluate((details) => details.open))) await more.locator(':scope > summary').click();
-  const yaw = page.getByLabel('Yaw', {exact: true});
+  const yaw = page.getByLabel('Z', {exact: true});
   // A short window, so the form has room to scroll under the wheel.
   const size = page.viewportSize();
   await page.setViewportSize({width: size.width, height: 480});
@@ -181,7 +181,7 @@ async function run(browser, {viewport, theme}) {
   const delta = before > 0 ? -120 : 120;
   for (let i = 0; i < 4; i++) await page.mouse.wheel(0, delta);
   await page.waitForTimeout(400);
-  assert.equal(await yaw.inputValue(), '90', `${label}: the wheel leaves Yaw alone`);
+  assert.equal(await yaw.inputValue(), '90', `${label}: the wheel leaves Z alone`);
   assert.notEqual(await pageScroll(), before, `${label}: the wheel scrolls the page from ${before}`);
   await page.setViewportSize(size);
   if (!compact) {
@@ -250,8 +250,9 @@ async function run(browser, {viewport, theme}) {
 
   // Popups open opaque.
   await page.goto(`${url}/#/workspace/${workspace}/new/npc`);
-  await page.getByRole('heading', {name: 'New NPC'}).waitFor();
-  const body = page.getByRole('combobox', {name: 'Body'});
+  const dialog = page.getByRole('dialog', {name: 'New NPC'});
+  await dialog.waitFor();
+  const body = dialog.getByRole('combobox', {name: 'Body'});
   assert.deepEqual(await fadeOf(page, `[id="${await body.getAttribute('aria-controls')}"]`, () => body.click()), [], `${label}: the dropdown does not fade in`);
   await page.keyboard.press('Escape');
   if (!compact) {

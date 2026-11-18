@@ -306,6 +306,7 @@ void main() {
       expect(state.reason, 'This pairing lacks the Run commands permission.');
       expect(state.retry, isFalse);
       expect(session.log.last.message, contains('/animus editor pair scopes=read,apply:commands'));
+      expect(session.log.last.copy, '/animus editor pair scopes=read,apply:commands', reason: 'the toast copies the long command');
       expect(store.workspace!.server!.pending, isEmpty, reason: 'a refused set is dropped');
       expect(session.drafts.single.key, 'npc:town/guard', reason: 'the change stays');
     });
@@ -316,6 +317,7 @@ void main() {
       expect(await session.apply(), isFalse);
       expect(session.saveState.retry, isFalse);
       expect(session.log.last.message, isNot(contains('scopes=')));
+      expect(session.log.last.copy, isNull);
     });
 
     test('should still offer Retry after a refusal a retry can fix', () async {

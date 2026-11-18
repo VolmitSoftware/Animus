@@ -17,9 +17,11 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -34,16 +36,20 @@ public final class RuntimeEditorHost<P> implements EditorHost {
      * What the platform passes in. Applied changes reload through the runtime's {@link AnimusRuntime#catalogs()}; {@code terrain}
      * may be null. {@code permitted} checks a node for an online player on their owner. {@code offlinePermission} answers for a
      * player who is not online, from the server's operator list and permission plugin where it can; it runs on the asking
-     * thread, never the server thread, and answers {@code UNKNOWN} when it cannot tell.
+     * thread, never the server thread, and answers {@code UNKNOWN} when it cannot tell. {@code standing} reads where an online player
+     * stands; it runs on that player's owner and may throw when the position cannot be read.
      */
     public record Parts<P>(AnimusRuntime runtime, Executor files, NpcRuntime<P, ?> living, ExtensionRuntime extensions, String platform, String serverName, Supplier<Map<String, Feature>> features,
                            Supplier<Lookups> lookups, BiPredicate<P, String> permitted, EditorNoticeChannel notices, Consumer<String> log, EditorTerrain terrain,
-                           BiFunction<UUID, String, Admin> offlinePermission) {
+                           BiFunction<UUID, String, Admin> offlinePermission, Function<P, Optional<Standing>> standing) {
         public Parts {
             Objects.requireNonNull(runtime); Objects.requireNonNull(files); Objects.requireNonNull(living); Objects.requireNonNull(lookups); Objects.requireNonNull(notices); Objects.requireNonNull(log);
-            Objects.requireNonNull(permitted); Objects.requireNonNull(offlinePermission);
+            Objects.requireNonNull(permitted); Objects.requireNonNull(offlinePermission); Objects.requireNonNull(standing);
         }
     }
+
+    /** How long a standing read may wait for the player's owner; a Folia task that never runs answers empty after this. */
+    private static final long STANDING_SECONDS = 2;
 
     private final Parts<P> parts;
 
@@ -92,6 +98,18 @@ public final class RuntimeEditorHost<P> implements EditorHost {
         try { offline = parts.offlinePermission().apply(player, node); }
         catch (RuntimeException failure) { offline = Admin.UNKNOWN; }
         result.accept(offline == null ? Admin.UNKNOWN : offline);
+    }
+
+    @Override public CompletionStage<Optional<Standing>> standing(UUID player) {
+        CompletableFuture<Optional<Standing>> result = new CompletableFuture<>();
+        boolean delivered = parts.living().players().deliver(player, (P online) -> {
+            Optional<Standing> read;
+            try { read = parts.standing().apply(online); }
+            catch (RuntimeException unreadable) { read = Optional.empty(); }
+            result.complete(read == null ? Optional.empty() : read);
+        });
+        if (!delivered) result.complete(Optional.empty());
+        return result.completeOnTimeout(Optional.empty(), STANDING_SECONDS, TimeUnit.SECONDS);
     }
 
     @Override public CompletionStage<List<String>> activationProblems(NpcDefinition definition) {

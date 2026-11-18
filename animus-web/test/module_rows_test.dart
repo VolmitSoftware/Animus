@@ -18,4 +18,24 @@ void main() {
     expect(moduleSettingCount('text'), 1);
     expect(moduleSettingCount(null), 0);
   });
+
+  test('everyday modules read by what they do, with a line each, never by their key', () {
+    expect(moduleName('animus:look-close'), 'Looks at players');
+    expect(moduleName('animus:home'), 'Returns home');
+    expect(moduleName('animus:riding'), 'Players can ride it');
+    expect(moduleName('animus:mount'), 'Rides on');
+    expect(moduleName('animus:schedule'), 'Schedule');
+    expect(moduleName('animus:mirror'), 'Mirrors the viewer');
+    for (final String key in const <String>['animus:look-close', 'animus:home', 'animus:riding', 'animus:schedule', 'animus:mirror', 'animus:gui', 'animus:hire']) {
+      expect(moduleName(key), isNot(contains(':')), reason: key);
+      expect(moduleDescription(key), isNotNull, reason: key);
+      expect(moduleDescription(key), endsWith('.'), reason: key);
+    }
+  });
+
+  test('a module with no name keeps the title it had', () {
+    expect(moduleName('acme:tracker'), 'acme:tracker');
+    expect(moduleName('citizens:review'), 'Imported from Citizens');
+    expect(moduleDescription('acme:tracker'), isNull);
+  });
 }

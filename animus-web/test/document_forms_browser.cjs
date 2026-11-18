@@ -83,7 +83,8 @@ async function run(browser, viewport, theme) {
   await duration.fill('12');
   await duration.blur();
   const loop = form.locator('#animus-field--loop');
-  await chooseText(loop, 'loop');
+  // Simple names the choice; the file keeps its value.
+  await chooseText(loop, 'Loop');
   await waitForValue(loop, 'loop');
 
   // A track edits as a nested form: its bone is a text field.

@@ -146,3 +146,38 @@ TerrainIssue? terrainCheckPoint(TerrainLookup terrain, int x, int y, int z) {
   }
   return null;
 }
+
+/// What is wrong where an NPC's feet are ([x], [y], [z] as its position
+/// stores them) and the standable feet y nearest there, or null when it
+/// stands well or the terrain there is unknown.
+({TerrainIssue issue, int? ground})? terrainStand(TerrainLookup terrain, double x, double y, double z) {
+  final int bx = x.floor(), by = y.floor(), bz = z.floor();
+  final TerrainIssue? issue = terrainCheckPoint(terrain, bx, by, bz);
+  if (issue == null) return null;
+  return (issue: issue, ground: terrainSnapY(terrain, bx, bz, by));
+}
+
+/// One surface tile and one slice of block rows, as a lookup that knows
+/// only the chunks the server read: a forbidden or unloaded chunk answers
+/// nothing, so nothing is judged on blocks the editor never saw.
+final class TerrainSpot implements TerrainLookup {
+  const TerrainSpot(this.tile, this.slice);
+
+  final TerrainSurfaceTile? tile;
+  final TerrainSlice? slice;
+
+  @override
+  TerrainColumn? column(int x, int z) {
+    final TerrainSurfaceTile? surface = tile;
+    if (surface == null) return null;
+    final int lx = x - surface.minX, lz = z - surface.minZ;
+    if (lx < 0 || lz < 0 || lx >= terrainTileSize || lz >= terrainTileSize) return null;
+    return surface.chunkAt(lx, lz) == TerrainChunkState.ok ? surface.local(lx, lz) : null;
+  }
+
+  @override
+  String? state(int x, int y, int z) {
+    final TerrainSlice? read = slice;
+    return read != null && read.state == TerrainChunkState.ok ? read.stateAt(x, y, z) : null;
+  }
+}

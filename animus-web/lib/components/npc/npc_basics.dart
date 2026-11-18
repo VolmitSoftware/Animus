@@ -13,12 +13,14 @@ import '../../logic/gui/gui_text.dart' show guiPlainText;
 import '../../logic/npc/default_skins.dart';
 import '../../logic/suggest/person_names.dart';
 import '../select/person_picker.dart';
+import '../suggest/suggest_scope.dart';
 import '../../logic/npc/group_create.dart';
 import '../../logic/npc/group_model.dart';
 import '../../logic/npc/npc_appearance.dart';
 import '../../logic/npc/npc_catalog.dart';
 import '../../logic/npc/npc_display.dart';
 import '../../logic/npc/skin_edits.dart';
+import '../../logic/suggest/completion_sources.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
@@ -33,11 +35,14 @@ import 'body_type_parts.dart';
 import 'group_parts.dart';
 import 'npc_form.dart';
 import 'npc_parts.dart';
+import 'named_places_editor.dart';
+import 'npc_stand_check.dart';
 import 'skin_field.dart';
 import 'npc_layout.dart';
 import '../suggest/autocomplete_input.dart';
 import '../../ui/number_input.dart';
 import '../gui/gui_stack.dart';
+import '../select/animus_select.dart';
 
 class NpcBasicsTab extends StatelessWidget {
   const NpcBasicsTab({required this.form, required this.extras, required this.onReveal, this.inUse = 0, super.key});
@@ -121,8 +126,23 @@ class NpcBasicsTab extends StatelessWidget {
         tip: 'Named directions the face action turns to, and named spots behaviors use.',
         docs: Docs.npcPoses,
         children: <Widget>[
-          form.field('poses', label: 'Named facings'),
-          form.field('anchors', label: 'Anchors'),
+          for (final NamedPlaces places in NamedPlaces.values)
+            Field(
+              label: places == NamedPlaces.anchors ? 'Anchors' : 'Named facings',
+              tip: places == NamedPlaces.anchors
+                  ? 'Named spots the navigate and teleport actions take the NPC to. A world left empty is the NPC\'s own.'
+                  : 'Named directions the face action turns the NPC to. Only where it looks changes, never its pose.',
+              docs: places == NamedPlaces.anchors ? Docs.npcAnchors : Docs.namedFacings,
+              problems: diagnosticsAt(form.diagnostics, '\$.${places.field}'),
+              child: NamedPlacesEditor(
+                places: places,
+                value: doc[places.field],
+                at: (x: asDouble(asMap(doc['position'])['x']) ?? 0.5, y: asDouble(asMap(doc['position'])['y']) ?? 64, z: asDouble(asMap(doc['position'])['z']) ?? 0.5),
+                yaw: asDouble(asMap(doc['position'])['yaw']) ?? 0,
+                diagnostics: form.diagnostics,
+                onChanged: (Object? value) => form.write(<JsonStep>[places.field], value),
+              ),
+            ),
         ],
       ),
     ];
@@ -155,9 +175,10 @@ class _Name extends StatelessWidget {
       );
 }
 
-/// Where the NPC stands: its world, the block it stands on and the way it
-/// faces, rounded for reading (an untouched field keeps its stored value).
-/// Keys of `position` this does not show are kept as written.
+/// Where the NPC stands: its world (a dropdown of the loaded worlds when the
+/// paired server lists them), where its feet are and the way it faces,
+/// rounded for reading (an untouched field keeps its stored value). Keys of
+/// `position` this does not show are kept as written.
 class NpcWhere extends StatelessWidget {
   const NpcWhere({required this.form, super.key});
 
@@ -183,34 +204,67 @@ class NpcWhere extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final List<Diagnostic> problems = form.diagnostics;
+    final CompletionSources sources = SuggestScope.sourcesOf(context);
+    final String world = asString(_position['world']) ?? '';
+    final bool listed = sources.complete.contains(RegistryKind.world);
+    final List<String> worlds = sources.registry(RegistryKind.world);
     return Component.fragment(<Widget>[
       Field(
         label: 'World',
         forId: 'animus-npc-world',
-        tip: 'The world the NPC stands in. Position is the block it stands on.',
+        tip: 'The world the NPC stands in.',
         docs: Docs.npcPoses,
-        problems: diagnosticsAt(problems, r'$.position.world'),
-        child: AutocompleteInput(
-          id: 'animus-npc-world',
-          value: asString(_position['world']) ?? '',
-          label: 'World',
-          placeholder: 'world',
-          onChanged: (String text) => form.write(const <JsonStep>['position', 'world'], text.trim()),
-          profile: FieldProfile.none,
-        ),
+        problems: <Diagnostic>[
+          ...diagnosticsAt(problems, r'$.position.world'),
+          if (!listed)
+            Diagnostic(
+              DiagnosticSeverity.warning,
+              r'$.position.world',
+              sources.paired ? 'Not checked: the server did not list its worlds.' : 'Not checked until a server is paired.',
+            ),
+        ],
+        child: listed
+            ? AnimusSelect.values(
+                id: 'animus-npc-world',
+                value: world.isEmpty ? null : world,
+                values: worlds,
+                noneLabel: 'Pick a world',
+                onChanged: (String? picked) {
+                  if (picked != null) form.write(const <JsonStep>['position', 'world'], picked);
+                },
+              )
+            : AutocompleteInput(
+                id: 'animus-npc-world',
+                value: world,
+                label: 'World',
+                placeholder: 'world',
+                onChanged: (String text) => form.write(const <JsonStep>['position', 'world'], text.trim()),
+                profile: FieldProfile.none,
+              ),
       ),
       Field(
         label: 'Position',
-        tip: 'The block the NPC stands on. Y is the height.',
+        tip: "Where the NPC's feet are. Y is the height of the feet, one above the block it stands on.",
+        docs: Docs.npcPoses,
         problems: <Diagnostic>[
           for (final String key in const <String>['x', 'y', 'z']) ...diagnosticsAt(problems, '\$.position.$key'),
         ],
-        child: equalLine(<Widget>[_axis('x', 'X'), _axis('y', 'Y'), _axis('z', 'Z')]),
+        child: dom.div(styles: stackStyles(gap: Gap.xs), <Widget>[
+          equalLine(<Widget>[_axis('x', 'X'), _axis('y', 'Y'), _axis('z', 'Z')]),
+          NpcStandCheck(
+            world: world,
+            x: asDouble(_position['x']),
+            y: asDouble(_position['y']),
+            z: asDouble(_position['z']),
+            onStand: (int ground) => form.write(const <JsonStep>['position', 'y'], ground),
+          ),
+        ]),
       ),
       Field(
         label: 'Facing',
         forId: 'animus-npc-yaw',
-        hint: 'Degrees: 0 south, 90 west, 180 north, -90 east.',
+        tip: 'Degrees the body faces: 0 south, 90 west, 180 north, -90 east.',
+        docs: Docs.npcPoses,
         problems: diagnosticsAt(problems, r'$.position.yaw'),
         child: NumberInput(digits: 7, id: 'animus-npc-yaw', value: roundedForField(asDouble(_position['yaw']), 1), integer: false, label: 'Facing', onChanged: (num? value) => form.write(const <JsonStep>['position', 'yaw'], value)),
       ),
@@ -228,7 +282,8 @@ class _HeadTilt extends StatelessWidget {
   Widget build(BuildContext context) => Field(
         label: 'Head tilt',
         forId: 'animus-npc-pitch',
-        hint: 'Degrees: -90 looks up, 90 looks down.',
+        tip: 'Degrees the head tilts: -90 looks up, 90 looks down.',
+        docs: Docs.npcPoses,
         problems: diagnosticsAt(form.diagnostics, r'$.position.pitch'),
         child: NumberInput(digits: 5, 
           id: 'animus-npc-pitch',

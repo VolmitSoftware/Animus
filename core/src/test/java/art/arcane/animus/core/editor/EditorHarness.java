@@ -152,6 +152,16 @@ final class EditorHarness implements AutoCloseable {
         @Override public Optional<EditorTerrain> terrain() { return Optional.ofNullable(terrain); }
 
         @Override public Optional<art.arcane.animus.core.virtual.WorldPosition> located(UUID npc) { return Optional.ofNullable(live.get(npc)); }
+
+        /** Where every online player stands; empty reads as offline. */
+        volatile Optional<Standing> standing = Optional.empty();
+        /** The players whose standing the API asked for. */
+        final List<UUID> stood = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+        @Override public CompletionStage<Optional<Standing>> standing(UUID player) {
+            stood.add(player);
+            return CompletableFuture.completedFuture(standing);
+        }
     }
 
     final Path root;

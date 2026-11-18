@@ -154,7 +154,9 @@ async function run(browser, viewport, label) {
   assert.ok(tiles >= 1, `${tiles} tiles`);
 
   // 3. Flags: point 1 is inside the hill, point 2 hangs over the pond.
+  // Each point is judged once the tile under it arrives; tiles load in parallel with the stage's.
   await page.locator('[data-node="points:1"][data-issue]').waitFor();
+  await page.locator('[data-node="points:2"][data-issue]').waitFor();
   assert.equal(await page.locator('[data-node="points:1"]').getAttribute('data-issue'), 'below');
   assert.equal(await page.locator('[data-node="points:2"]').getAttribute('data-issue'), 'floating');
   assert.equal(await page.locator('[data-node="points:0"][data-issue]').count(), 0);

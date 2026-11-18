@@ -112,11 +112,24 @@ class _AnimusAppState extends State<AnimusApp> {
     if (!notice.toast) return;
     final String? shown = _noticeToast;
     if (shown != null) ArcaneSonner.dismiss(shown);
+    final String? command = notice.copy;
+    final ToastAction? copy = command == null
+        ? null
+        : ToastAction(
+            label: 'Copy command',
+            onPressed: () async {
+              if (await copyText(command)) {
+                ArcaneSonner.success('Copied $command');
+              } else {
+                ArcaneSonner.error('The browser blocked the copy. Select the command in the message instead.');
+              }
+            },
+          );
     _noticeToast = switch (notice.level) {
-      NoticeLevel.success => ArcaneSonner.success(notice.message),
-      NoticeLevel.warning => ArcaneSonner.warning(notice.message),
-      NoticeLevel.error => ArcaneSonner.error(notice.message),
-      NoticeLevel.info => ArcaneSonner.info(notice.message),
+      NoticeLevel.success => ArcaneSonner.success(notice.message, action: copy),
+      NoticeLevel.warning => ArcaneSonner.warning(notice.message, action: copy),
+      NoticeLevel.error => ArcaneSonner.error(notice.message, action: copy, duration: copy == null ? 6000 : 20000),
+      NoticeLevel.info => ArcaneSonner.info(notice.message, action: copy),
     };
   }
 

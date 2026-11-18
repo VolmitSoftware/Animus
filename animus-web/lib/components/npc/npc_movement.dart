@@ -107,7 +107,7 @@ class NpcMovementTab extends StatelessWidget {
           ],
         ),
         AppSection(
-          title: 'Riding',
+          title: 'Rides on',
           open: modules.containsKey(mountModuleKey),
           tip: 'What this NPC rides: another NPC, or a real horse, boat or minecart near it.',
           docs: Docs.mounts,

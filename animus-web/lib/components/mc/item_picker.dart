@@ -22,7 +22,9 @@ import 'package:web/web.dart' as web;
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/item_ids.dart';
 import '../../mc/assets/mc_pack_manifest.dart';
+import '../../model/animus_document.dart' show DiagnosticSeverity;
 import '../../ui/density.dart';
+import '../../ui/problem_text.dart';
 import '../../ui/mode.dart';
 import '../../ui/stack.dart';
 import '../gui/gui_stack.dart' show blockTruncated;
@@ -100,6 +102,10 @@ class _ItemPickerState extends State<ItemPicker> {
   int _active = -1;
   int _first = 0;
   String? _typed;
+
+  /// Words typed in Simple that name no item, kept in the field with an
+  /// error rather than cleared when focus leaves; nothing is written.
+  String? _unmatched;
   PopupPlacement _placement = const PopupPlacement(sheet: false);
   void Function()? _stopWatching;
 
@@ -133,6 +139,13 @@ class _ItemPickerState extends State<ItemPicker> {
 
   void _refresh() {
     if (mounted) setState(() {});
+  }
+
+  @override
+  void didUpdateWidget(ItemPicker oldComponent) {
+    super.didUpdateWidget(oldComponent);
+    // A pick, Undo or another slot puts a real item in the field.
+    if (oldComponent.value != component.value) _unmatched = null;
   }
 
   /// Every matching id: the typed search narrows it; an id taken from the
@@ -196,6 +209,7 @@ class _ItemPickerState extends State<ItemPicker> {
 
   void _take(String id) {
     _typed = null;
+    _unmatched = null;
     _show(false);
     component.onChanged(id);
   }
@@ -250,7 +264,7 @@ class _ItemPickerState extends State<ItemPicker> {
         id: _baseId,
         classes: 'arcane-text-input',
         styles: rowControlHeight,
-        value: _typed ?? itemFieldText(value, advanced: advanced),
+        value: _typed ?? _unmatched ?? itemFieldText(value, advanced: advanced),
         attributes: <String, String>{
           'type': 'text',
           'autocomplete': 'off',
@@ -267,6 +281,7 @@ class _ItemPickerState extends State<ItemPicker> {
           'input': (web.Event event) {
             final String text = (event.target! as web.HTMLInputElement).value;
             _typed = text;
+            _unmatched = null;
             if (advanced || !itemSearchOnly(text)) component.onChanged(text);
             _show(true, active: text.isEmpty ? -1 : 0);
           },
@@ -283,17 +298,25 @@ class _ItemPickerState extends State<ItemPicker> {
             if (!mounted) return;
             final String? typed = _typed;
             if (_open) _show(false);
+            String? unmatched;
             if (!advanced && typed != null && itemSearchOnly(typed)) {
               final String? named = itemNamed(typed, <String>[...component.preferred, ...ItemRegistry.ids]);
               if (named != null && named != value) component.onChanged(named);
+              if (named == null && ItemRegistry.ids.isNotEmpty) unmatched = typed.trim();
             }
-            setState(() => _typed = null);
+            setState(() {
+              _unmatched = unmatched;
+              _typed = null;
+            });
           },
         },
           ),
         ),
       ]),
-      if (unknown) mutedText('Not a 26.3 item.', small: true),
+      if (_unmatched case final String typed)
+        problemLine(DiagnosticSeverity.error, 'No item is called $typed. Pick one from the list.', attributes: const <String, String>{'data-testid': 'item-unmatched'})
+      else if (unknown)
+        mutedText('Not a 26.3 item.', small: true),
       if (listed) _popup(rows),
     ]);
   }

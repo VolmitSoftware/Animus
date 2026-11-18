@@ -85,7 +85,7 @@ class CapabilityFields extends StatelessWidget {
       Field(
         label: action ? 'What it does' : 'What it checks',
         tip: spec?.description.isNotEmpty == true
-            ? '${spec!.description} Written as the capability ${spec.id}.'
+            ? '${<String>[spec!.description, argumentGroupsTip(spec)].where((String part) => part.isNotEmpty).join(' ')} Written as the capability ${spec.id}.'
             : 'A capability: built in, or one a module adds, written namespace:name such as animus:say.',
         help: spec == null
             ? (id == null || id.isEmpty ? null : 'From a module. The server checks it when you apply.')
@@ -143,8 +143,6 @@ class CapabilityFields extends StatelessWidget {
             ),
         ]),
       ),
-      if (spec != null && spec.anyOfRequired.isNotEmpty)
-        noteLine('Give at least one of: ${spec.anyOfRequired.map((List<String> group) => group.map(argumentLabel).join(' + ')).join(', or ')}.'),
       if (spec != null && groups.isNotEmpty) _choice(spec, groups, chosen),
       if (spec != null)
         for (final FieldSpec argument in spec.arguments)
@@ -427,3 +425,4 @@ DocumentKind? argumentReference(String? capability, String key, JsonMap argument
   ('animus:open-shop', 'shop') => DocumentKind.shop,
   _ => null,
 };
+

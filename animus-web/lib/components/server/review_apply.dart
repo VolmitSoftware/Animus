@@ -10,6 +10,9 @@ import '../../logic/inspect/command_scope.dart';
 import '../../logic/inspect/inspect_schemas.dart';
 import '../../model/document_kind.dart';
 import '../../services/server/server_profiles.dart';
+import '../../logic/npc/npc_lookups.dart';
+import '../../logic/suggest/completion_sources.dart';
+import '../../model/animus_document.dart';
 import '../../state/editor_store.dart';
 import '../../state/live_session.dart';
 import '../../ui/save_state.dart' show applyBlockedReason;
@@ -31,15 +34,17 @@ enum ApplyOutcome {
 }
 
 /// The changes that stop Apply: a source that is not JSON, problems found
-/// here or by the server, a file changed on the server too, or a
-/// behavior that needs Run commands when the pairing does not have it.
+/// here or by the server, an id the server's lists lack, a file changed
+/// on the server too, or a behavior that needs Run commands when the
+/// pairing does not have it.
 List<DraftChange> applyBlockers(LiveSession session) => <DraftChange>[
       for (final DraftChange draft in session.drafts)
         if (draft.problem != null ||
             session.stale.contains(draft.key) ||
             session.conflicts.containsKey(draft.key) ||
             (session.store.libraryEntry(draft.kind, draft.id)?.problems ?? 0) > 0 ||
-            commandsBlock(session, draft) != null)
+            commandsBlock(session, draft) != null ||
+            lookupProblems(session, draft) > 0)
           draft,
     ];
 
@@ -61,7 +66,7 @@ String? commandsBlock(LiveSession session, DraftChange draft) {
   int problems = 0, commands = 0;
   for (final DraftChange draft in applyBlockers(session)) {
     if (serverChanged.contains(draft.key)) continue;
-    final bool broken = draft.problem != null || (session.store.libraryEntry(draft.kind, draft.id)?.problems ?? 0) > 0;
+    final bool broken = draft.problem != null || (session.store.libraryEntry(draft.kind, draft.id)?.problems ?? 0) > 0 || lookupProblems(session, draft) > 0;
     if (broken) {
       problems++;
     } else {
@@ -76,6 +81,15 @@ String? commandsBlock(LiveSession session, DraftChange draft) {
 String? applyBlockedOf(LiveSession session) {
   final ({int problems, int serverChanged, int commands}) blocks = applyBlocks(session);
   return applyBlockedReason(problems: blocks.problems, serverChanged: blocks.serverChanged, commands: blocks.commands);
+}
+
+/// How many ids in [draft] the paired server's lists lack: a body, world or
+/// mob type the server does not have.
+int lookupProblems(LiveSession session, DraftChange draft) {
+  final ServerLookups? lookups = session.lookups;
+  final AnimusDocument? document = session.store.document(draft.kind, draft.id);
+  if (lookups == null || document == null) return 0;
+  return lookupDiagnostics(document, lookups.over(CompletionSources.empty)).length;
 }
 
 Future<ApplyOutcome> applyChecked(LiveSession session, {String? message}) async {

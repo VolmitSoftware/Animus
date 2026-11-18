@@ -29,7 +29,6 @@ import '../../ui/icon_button.dart';
 import 'npc_layout.dart';
 import '../../ui/action_row.dart';
 import '../../ui/mode.dart';
-import '../../ui/stack.dart';
 import '../../ui/problem_text.dart';
 import '../../model/animus_document.dart';
 
@@ -390,9 +389,9 @@ class _ItemSlotsState extends State<ItemSlots> {
       styles: stackStyles(),
       attributes: <String, String>{'role': 'group', 'aria-label': cell.name, 'data-editing': cell.key},
       <Widget>[
-        Wrap(spacing: Gap.sm.value, runSpacing: Gap.xs.value, crossAxisAlignment: WrapCrossAlignment.center, children: <Widget>[
-          dom.strong(<Widget>[withTip(Component.text(cell.name), component.tip, docs: Docs.npcAppearance)]),
-          if (cell.help != null) mutedText(cell.help!),
+        // What the slot does goes in its (i) tip, so the editor reads as one label.
+        dom.strong(<Widget>[
+          withTip(Component.text(cell.name), cell.help == null && component.tip == null ? null : <String>[?cell.help, ?component.tip].join(' '), docs: Docs.npcAppearance),
         ]),
         ItemPicker(
           id: _pickerId,

@@ -17,12 +17,8 @@ import '../../logic/gui/gui_text.dart';
 import '../../logic/gui/shop_entries.dart' show shopKinds;
 import '../../logic/gui/shop_templates.dart';
 import '../../logic/gui/shop_words.dart';
-import '../../logic/npc/npc_paths.dart';
-import '../../logic/npc/skin_edits.dart' show skinListing;
 import '../../logic/offline/new_documents.dart';
 import '../../logic/quest/quest_model.dart';
-import '../../logic/npc/npc_appearance.dart' show bodyLabel;
-import '../../mc/rigs/mc_rigs.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../../services/browser.dart';
@@ -43,9 +39,10 @@ import '../../ui/toggle_choice.dart';
 import '../gui/gui_fields.dart';
 import '../gui/shop_settings.dart' show chestLine;
 import '../list_page.dart' show listNoun;
+import '../npc/new_npc_dialog.dart';
+import '../npc/npc_list_rows.dart';
 import '../shell_sidebar.dart' show kindTitle;
 import '../quest/quest_fields.dart';
-import '../select/skin_faces.dart';
 import '../select/suggest_input.dart';
 import '../../logic/inspect/schema_fields.dart' show FieldOption;
 import 'new_document_kinds.dart';
@@ -62,10 +59,10 @@ import '../../mc/npc/npc_skin_failure.dart';
 
 part 'new_document_fields.dart';
 
-enum _SkinSource { none, file, url, existing }
+enum _SkinSource { file, url }
 
 class NewDocumentPage extends StatefulWidget {
-  const NewDocumentPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, this.folder, this.name, this.conversation = false, this.owner, this.players = const <String, String>{}, this.sign, this.onClose, super.key});
+  const NewDocumentPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, this.folder, this.name, this.conversation = false, this.owner, this.players = const <String, String>{}, this.adminSpot, this.sign, this.onClose, super.key});
 
   /// Signs a new skin through the paired server; null makes an unsigned skin
   /// that keeps its PNG for the server it is applied on.
@@ -84,6 +81,8 @@ class NewDocumentPage extends StatefulWidget {
   /// Names of the players the paired server knows, by UUID: who a chest
   /// shop can belong to.
   final Map<String, String> players;
+  /// Where the paired player stands now, where a new NPC starts.
+  final Future<NpcSpot?> Function()? adminSpot;
 
   final EditorStore store;
   final WorkspaceSnapshot workspace;
@@ -114,21 +113,11 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
   /// The namespace a namespaced kind goes in, once the user picks one.
   String? _folder;
 
-  // NPC.
-  String _type = 'minecraft:player';
-  late String _group = component.folder ?? 'local';
-  String _world = 'world';
-  num _x = 0.5, _y = 64, _z = 0.5, _yaw = 0;
-  String _behavior = '';
-  _SkinSource _skinSource = _SkinSource.none;
+  // Skin.
+  _SkinSource _skinSource = _SkinSource.file;
   String _skinUrl = '';
-  String? _existingSkin;
   bool _slim = false;
   LoadedSkin? _skin;
-
-  /// The workspace skins' names and faces, worked out once per skin list.
-  List<AnimusDocument>? _skinsFor;
-  ({Map<String, String> labels, Map<String, String> details, Map<String, String> faces})? _skinOptions;
 
   // Behavior.
   late BehaviorTemplate _template = component.conversation ? BehaviorTemplate.conversation : BehaviorTemplate.greeter;
@@ -144,6 +133,8 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
 
   // Route.
   String _mode = 'walk';
+  String _world = 'world';
+  num _x = 0.5, _y = 64, _z = 0.5;
 
   // Rig and animation.
   RigStarter _rigStarter = RigStarter.figure;
@@ -230,7 +221,6 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
       _ => kind.wireName,
     });
     final String candidate = switch (kind) {
-      DocumentKind.npc => npcIdIn(npcFolderSlug(_group), base),
       DocumentKind.route || DocumentKind.pack || DocumentKind.group => base,
       DocumentKind.animation => '${_rig ?? '$_namespace:rig'}/$base',
       _ => '${slug(_shownFolder, fallback: 'local')}:$base',
@@ -350,7 +340,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
       final String id = _idFor(kind);
       switch (kind) {
         case DocumentKind.npc:
-          await _createNpc(id);
+          return;
         case DocumentKind.behavior:
           final JsonMap behavior = behaviorFromTemplate(_template, id, shop: _shop, origin: _postOf(_attachTo));
           final List<DocumentChange> changes = <DocumentChange>[_change(kind, id, behavior)];
@@ -462,51 +452,6 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
     return (asDouble(position['x']) ?? 0, asDouble(position['y']) ?? 64, asDouble(position['z']) ?? 0);
   }
 
-  Future<void> _createNpc(String id) async {
-    final List<DocumentChange> changes = <DocumentChange>[];
-    final Map<String, Uint8List?> resources = <String, Uint8List?>{};
-    String? skin;
-    if (_type == 'minecraft:player') {
-      if (_skinSource == _SkinSource.existing) skin = _existingSkin;
-      if (_skinSource == _SkinSource.file || _skinSource == _SkinSource.url) {
-        if (_skin == null) {
-          setState(() => _problem = 'Load the skin PNG, or pick Default.');
-          return;
-        }
-        final (DocumentChange, String, Map<String, Uint8List?>)? made = await _signedOrRefused();
-        if (made == null) return;
-        skin = made.$2;
-        if (component.store.document(DocumentKind.skin, made.$2) == null) changes.add(made.$1);
-        resources.addAll(made.$3);
-      }
-    }
-    final List<String> behaviors = <String>[];
-    if (_behavior.startsWith('new:')) {
-      final BehaviorTemplate template = BehaviorTemplate.values.byName(_behavior.substring(4));
-      final String behaviorId = freeId('$_namespace:${id.split('/').last}-${template.name}', _taken(DocumentKind.behavior));
-      changes.add(_change(DocumentKind.behavior, behaviorId, behaviorFromTemplate(template, behaviorId, origin: (_x.toDouble(), _y.toDouble(), _z.toDouble()))));
-      behaviors.add(behaviorId);
-    } else if (_behavior.isNotEmpty) {
-      behaviors.add(_behavior);
-    }
-    final NpcSeed seed = NpcSeed(
-      name: _name.trim().isEmpty ? npcLocalIdOf(id) : _name.trim(),
-      type: _type,
-      group: npcFolderOf(id),
-      id: npcLocalIdOf(id),
-      skin: skin,
-      world: _world,
-      x: _x.toDouble(),
-      y: _y.toDouble(),
-      z: _z.toDouble(),
-      yaw: _yaw.toDouble(),
-      behaviors: behaviors,
-      owner: component.owner,
-    );
-    changes.add(_change(DocumentKind.npc, id, newNpc(seed, uuid: newUuid())));
-    await _write(changes, DocumentKind.npc, id, resources: resources);
-  }
-
   /// Who a new chest shop can belong to, by UUID: the paired player first,
   /// then the players the server knows. Labels are names; the paired
   /// player without a known name is "You".
@@ -567,6 +512,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
     final EditorMode mode = ModeScope.of(context);
     final WorkspaceSnapshot workspace = component.workspace;
     final List<Widget> fields = kind == null ? const <Widget>[] : _fields(kind, mode);
+    if (kind == DocumentKind.npc) return _npcDialog(workspace);
     final Widget? problem = _problem == null ? null : AppAlert(key: const ValueKey<String>('new-problem'), tone: AlertTone.error, message: _problem!, live: true);
     if (component.onClose != null && kind != null) {
       return AppDialog(
@@ -598,6 +544,29 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
           FormFooter(cancel: RowAction('Back', _cancel)),
       ]),
     ]);
+  }
+
+  /// New NPC has one form, the NPC list's dialog, wherever it starts; a
+  /// dropdown's "+ New NPC" goes back and picks the new NPC there.
+  Widget _npcDialog(WorkspaceSnapshot workspace) {
+    final List<NpcListItem> items = npcListItems(workspace.id, component.store.library(DocumentKind.npc));
+    return NewNpcDialog(
+      store: component.store,
+      workspaceId: workspace.id,
+      folders: <String>[for (final (String folder, int _) in npcFolderCounts(items)) folder],
+      folder: npcFolderSlug(component.folder ?? 'local'),
+      taken: <String>{for (final NpcListItem item in items) item.id},
+      world: mostUsedWorld(items),
+      advanced: ModeScope.advanced(context),
+      owner: component.owner,
+      adminSpot: component.adminSpot,
+      name: component.name?.trim() ?? '',
+      onClose: _cancel,
+      onCreated: (String id) {
+        component.onNavigate(documentReturn.complete(workspace.id, DocumentKind.npc, id) ?? DocumentRoute(workspace.id, DocumentKind.npc, id));
+        focusMainHeading();
+      },
+    );
   }
 
   Widget _kindField(DocumentKind? kind, EditorMode mode) {

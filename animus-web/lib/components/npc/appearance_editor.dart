@@ -13,6 +13,7 @@ import '../../logic/gui/gui_text.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/npc/npc_appearance.dart';
 import '../../logic/suggest/field_profile.dart';
+import '../../services/browser.dart' show focusWhenShown;
 import '../../mc/npc/mc_text.dart';
 import '../../mc/npc/npc_look.dart';
 import '../../model/animus_document.dart';
@@ -55,6 +56,10 @@ class _HologramLinesEditorState extends State<HologramLinesEditor> {
   /// The lines open as text in Simple.
   final Set<int> _editing = <int>{};
 
+  /// A line's text field, which a new line takes focus in, so typing goes
+  /// into it rather than to the page's shortcuts.
+  static String _lineId(int index) => 'animus-hologram-line-$index';
+
   /// One line's rows as the game draws them, on its own plate.
   static Widget _plate(List<List<McTextRun>> rows, int index) => dom.div(
         classes: 'animus-hologram-preview',
@@ -73,7 +78,14 @@ class _HologramLinesEditorState extends State<HologramLinesEditor> {
       return ActionRow(
         label: 'Hologram',
         leading: <Widget>[mutedText('No lines.')],
-        secondary: <RowAction>[RowAction('Add text', () => onChanged(<String, Object?>{'lines': <Object?>['']}), icon: ArcaneIcon.plus())],
+        secondary: <RowAction>[
+          RowAction('Add text', () {
+            // Open as text in Simple too, so the first letter typed does not turn it into its preview.
+            setState(() => _editing.add(0));
+            onChanged(<String, Object?>{'lines': <Object?>['']});
+            focusWhenShown(_lineId(0));
+          }, icon: ArcaneIcon.plus()),
+        ],
       );
     }
     final JsonMap hologram = asMap(value);
@@ -112,6 +124,7 @@ class _HologramLinesEditorState extends State<HologramLinesEditor> {
                 leading: <Widget>[
                   Expanded(
                     child: AutocompleteInput(
+                      id: _lineId(index),
                       value: text,
                       profile: FieldProfile.richText,
                       label: 'Hologram line ${index + 1}',
@@ -132,7 +145,10 @@ class _HologramLinesEditorState extends State<HologramLinesEditor> {
                 label: 'Hologram line ${index + 1}',
                 leading: <Widget>[_plate(rows[index], index)],
                 secondary: <RowAction>[
-                  RowAction('Edit', () => setState(() => _editing.add(index)), attributes: <String, String>{'aria-label': 'Edit line ${index + 1}'}),
+                  RowAction('Edit', () {
+                    setState(() => _editing.add(index));
+                    focusWhenShown(_lineId(index));
+                  }, attributes: <String, String>{'aria-label': 'Edit line ${index + 1}'}),
                   RowAction('Move line ${index + 1} up', index == 0 ? null : () => reorder(moveItem(lines, index, index - 1)), icon: ArcaneIcon.arrowUp(), iconOnly: true),
                   RowAction('Remove line ${index + 1}', () => reorder(<Object?>[...lines]..removeAt(index)), icon: ArcaneIcon.x(), iconOnly: true),
                 ],
@@ -146,7 +162,15 @@ class _HologramLinesEditorState extends State<HologramLinesEditor> {
               if (await askToConfirm(title: 'Remove the hologram?', message: 'Undo brings it back.', confirmLabel: 'Remove', destructive: true)) onChanged(null);
             }, destructive: true),
           ],
-          secondary: <RowAction>[RowAction(full ? 'At most $hologramMaxLines lines' : 'Add line', full ? null : () => putLines(<Object?>[...lines, '']), icon: ArcaneIcon.plus())],
+          secondary: <RowAction>[
+            RowAction(full ? 'At most $hologramMaxLines lines' : 'Add line', full
+                ? null
+                : () {
+                    setState(() => _editing.add(lines.length));
+                    putLines(<Object?>[...lines, '']);
+                    focusWhenShown(_lineId(lines.length));
+                  }, icon: ArcaneIcon.plus()),
+          ],
         ),
         if (node.isNotEmpty)
           MoreFields(label: 'Text style', children: <Widget>[

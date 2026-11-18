@@ -166,13 +166,16 @@ mixin WorkspaceActions on State<EditorShell> {
   /// move takes the references along: NPCs listing a renamed behavior or
   /// group, the animations and NPCs of a renamed rig, and the NPCs and routes
   /// that play a renamed recording.
-  Future<String?> relocate(WorkspaceSnapshot workspace, AnimusDocument document, String id, {required bool copy}) async {
+  Future<String?> relocate(WorkspaceSnapshot workspace, AnimusDocument document, String id, {required bool copy, String? copyName}) async {
     final DocumentKind kind = document.kind;
     if (id == document.id) return copy ? 'Pick an id that is not taken.' : null;
     if (!validDocumentId(kind, id)) return 'Use ${idHint(kind)}.';
     if (store.document(kind, id) != null) return '${kind.label}: $id already exists.';
     final Object? json = document.json;
-    final String source = json is Map<String, Object?> ? prettyJson(rewriteIdentity(kind, json, id, fresh: copy)) : document.source;
+    // A copied NPC takes the name asked for and is saved despawned, as the in-game Copy saves one.
+    final String source = json is! Map<String, Object?>
+        ? document.source
+        : prettyJson(copy && kind == DocumentKind.npc && copyName != null ? npcCopy(json, name: copyName, id: id) : rewriteIdentity(kind, json, id, fresh: copy));
     final List<DocumentChange> changes = <DocumentChange>[
       if (!copy) DocumentChange(kind, document.id, null),
       DocumentChange(kind, id, source, path: _pathFor(document, id)),
@@ -200,7 +203,7 @@ mixin WorkspaceActions on State<EditorShell> {
     await store.commit(documents: changes, label: copy ? 'duplicate $name' : 'rename $name');
     final int references = changes.length - (copy ? 1 : 2);
     ArcaneSonner.success(copy
-        ? 'Copied $name.'
+        ? (kind == DocumentKind.npc ? 'Copied $name. The copy is despawned.' : 'Copied $name.')
         : 'Renamed $name${references > 0 ? ' and updated $references reference${references == 1 ? '' : 's'}' : ''}.');
     component.onNavigate(DocumentRoute(workspace.id, kind, id));
     focusMainHeading();

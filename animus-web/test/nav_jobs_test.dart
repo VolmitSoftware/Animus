@@ -9,8 +9,9 @@ void main() {
   final NavJob guis = navJobs.firstWhere((NavJob job) => job.id == 'guis');
   const Map<DocumentKind, int> counts = <DocumentKind, int>{DocumentKind.skin: 402, DocumentKind.menu: 1, DocumentKind.textAnimation: 12};
 
-  test('should count rigs on the Rigs entry, or the tab it opens on when there are none', () {
-    expect(jobCount(rigs, counts, EditorMode.advanced), 402, reason: 'Rigs opens on Skins (402)');
+  test('should count rigs only on the Rigs entry, never its skins or animations', () {
+    expect(jobCount(rigs, counts, EditorMode.advanced), 0, reason: '402 skins and no rig');
+    expect(jobCount(rigs, const <DocumentKind, int>{DocumentKind.animation: 3, DocumentKind.skin: 1}, EditorMode.advanced), 0);
     expect(jobCount(rigs, const <DocumentKind, int>{}, EditorMode.advanced), 0);
     expect(jobCount(rigs, const <DocumentKind, int>{DocumentKind.rig: 2, DocumentKind.skin: 402}, EditorMode.advanced), 2);
   });

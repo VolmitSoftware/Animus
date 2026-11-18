@@ -35,7 +35,10 @@ import 'inspect_lines.dart';
 import '../../ui/problem_text.dart';
 
 /// A label with a required marker; keys read as words (`waitTicks` is "Wait ticks").
-String fieldLabel(FieldSpec field, {String? label}) => '${label ?? humanizeKey(field.key)}${field.required ? ' *' : ''}';
+/// Keys every form names by the word the NPC's Basics uses.
+const Map<String, String> _keyWords = <String, String>{'yaw': 'Facing', 'pitch': 'Head tilt'};
+
+String fieldLabel(FieldSpec field, {String? label}) => '${label ?? _keyWords[field.key] ?? humanizeKey(field.key)}${field.required ? ' *' : ''}';
 
 /// An element id for the control at [path], so a row label can name it.
 String controlId(String path) => 'animus-field-${path.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '-')}';
@@ -195,7 +198,8 @@ class InspectControl extends StatelessWidget {
           values: options,
           allowNone: !field.required,
           noneLabel: field.required ? 'Pick ${humanizeKey(field.key).toLowerCase()}' : 'Not set',
-          labels: <String, String>{for (final FieldOption option in field.options) option.label: option.label},
+          // Simple names a choice ("Leatherworker"); Advanced shows it as the file has it.
+          labels: <String, String>{for (final FieldOption option in field.options) option.label: ModeScope.advanced(context) ? option.label : idName(option.label)},
           onChanged: onChanged,
         );
       case FieldKind.boolean:

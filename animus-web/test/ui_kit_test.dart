@@ -165,11 +165,11 @@ void main() {
       expect(undone.secondary, isEmpty);
     });
 
-    test('should offer no Retry for a refusal a retry cannot fix', () {
+    test('should keep Apply in reach after a refusal a retry cannot fix', () {
       final SaveBarState refused = serverSaveState(link: ServerLink.online, changes: 1, failure: 'This pairing lacks the Run commands permission.', retry: false);
       expect(refused.message, 'Apply failed: This pairing lacks the Run commands permission.');
       expect(refused.tone, SaveTone.failed);
-      expect(refused.primary, isNull);
+      expect(refused.primary, SaveAction.apply, reason: 'after pairing again with the permission, Apply goes through');
       expect(refused.secondary, <SaveAction>[SaveAction.review]);
     });
 

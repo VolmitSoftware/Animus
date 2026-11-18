@@ -368,7 +368,9 @@ public final class AnimusModRuntime {
                 next.extensions, platform.name().toLowerCase(java.util.Locale.ROOT), EditorServerName.fallback(server.getMotd(), server.getServerDirectory()),
                 features, new ModLookups(server)::read,
                 (ServerPlayer player, String node) -> VanillaRuntimeHost.permitted(player.permissions(), node), new ModEditorNotices(server), LOGGER::info,
-                new ModEditorTerrain(server), (java.util.UUID player, String node) -> ModOfflineAdmin.check(server, player, node))), LOGGER::info, LOGGER::warn);
+                new ModEditorTerrain(server), (java.util.UUID player, String node) -> ModOfflineAdmin.check(server, player, node),
+                (ServerPlayer player) -> Optional.of(new EditorHost.Standing(ModWorldKeys.key(player.level()), player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot())))),
+                LOGGER::info, LOGGER::warn);
         try {
             service.start();
             next.editor = service;

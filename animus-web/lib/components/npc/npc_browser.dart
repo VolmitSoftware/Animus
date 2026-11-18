@@ -13,6 +13,7 @@ import 'package:jaspr/dom.dart' as dom;
 import '../../logic/npc/npc_appearance.dart' show bodyLabel;
 import '../../logic/npc/npc_faces.dart';
 import '../../logic/npc/group_model.dart';
+import '../../logic/npc/module_rows.dart' show moduleName;
 import '../../logic/npc/npc_bulk.dart';
 import '../../logic/npc/npc_catalog.dart';
 import '../../logic/npc/npc_paths.dart';
@@ -320,6 +321,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
           world: mostUsedWorld(_items),
           advanced: advanced,
           owner: _session?.connection.token?.admin,
+          adminSpot: _session?.adminSpot,
           onClose: _close,
         ),
       _Open.tags => NpcTagsDialog(
@@ -340,9 +342,9 @@ class _NpcBrowserState extends State<NpcBrowser> {
           count: count,
           modules: selectionModules(_picked),
           onSubmit: (String module, ModuleChange change) => switch (change) {
-            ModuleChange.on => _bulk((List<NpcEntry> entries) => setModuleEnabled(entries, module, true), 'Turned on $module for'),
-            ModuleChange.off => _bulk((List<NpcEntry> entries) => setModuleEnabled(entries, module, false), 'Turned off $module for'),
-            ModuleChange.remove => _bulk((List<NpcEntry> entries) => removeModule(entries, module), 'Removed $module from'),
+            ModuleChange.on => _bulk((List<NpcEntry> entries) => setModuleEnabled(entries, module, true), 'Turned on ${moduleName(module)} for'),
+            ModuleChange.off => _bulk((List<NpcEntry> entries) => setModuleEnabled(entries, module, false), 'Turned off ${moduleName(module)} for'),
+            ModuleChange.remove => _bulk((List<NpcEntry> entries) => removeModule(entries, module), 'Removed ${moduleName(module)} from'),
           },
           onClose: _close,
         ),

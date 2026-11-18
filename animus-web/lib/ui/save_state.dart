@@ -96,7 +96,8 @@ enum ServerLink { online, connecting, reconnecting, offline, needsPairing, other
 /// the background read of documents ([loadDone] of [loadTotal]) and the
 /// documents the last read could not get ([loadFailed]). [linkMessage] says
 /// why the link is down ("Server restarting. Reconnecting."). Without
-/// [retry] a failure is one a retry cannot fix, so only Review is offered.
+/// [retry] a failure is one a retry cannot fix as it stands (a missing
+/// permission), so Apply stays for after the fix, not Retry.
 SaveBarState serverSaveState({
   required ServerLink link,
   required int changes,
@@ -139,7 +140,7 @@ SaveBarState serverSaveState({
   final String? blocked = changes > 0 || stale > 0 ? applyBlockedReason(problems: changes > 0 ? problems : 0, serverChanged: stale, commands: changes > 0 ? commands : 0) : null;
   if (blocked != null) return SaveBarState(blocked, SaveTone.attention, primary: SaveAction.review);
   if (failure != null && changes > 0) {
-    return SaveBarState('Apply failed: $failure', SaveTone.failed, primary: retry ? SaveAction.retry : null, secondary: review);
+    return SaveBarState('Apply failed: $failure', SaveTone.failed, primary: retry ? SaveAction.retry : SaveAction.apply, secondary: review);
   }
   final bool loading = loadTotal > 0 && loadDone < loadTotal;
   final String progress = 'Loading $loadDone of $loadTotal';

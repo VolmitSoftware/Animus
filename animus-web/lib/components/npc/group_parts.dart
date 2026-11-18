@@ -256,8 +256,7 @@ class _GroupSkinPoolState extends State<GroupSkinPool> {
         skinDocumentLabel(byId[hash]?.json) ?? (advanced ? hash.substring(0, hash.length.clamp(0, 12)) : 'Skin ${pool.indexOf(hash) + 1}');
     return Field(
       label: 'Skin pool',
-      hint: 'Each member keeps one, picked by its UUID.',
-      tip: "Skins the members share. A member's own skin wins.",
+      tip: "Skins the members share: each member keeps one, picked by its UUID. A member's own skin wins.",
       docs: Docs.groups,
       problems: diagnosticsAt(component.diagnostics, r'$.skins', nested: true),
       child: dom.div(styles: stackStyles(), attributes: const <String, String>{'data-group': 'skin-pool'}, <Widget>[

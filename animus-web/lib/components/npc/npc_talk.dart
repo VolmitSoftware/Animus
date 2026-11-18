@@ -5,9 +5,13 @@ library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
+import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
+import '../../logic/npc/click_answers.dart';
+import '../../logic/npc/group_model.dart';
+import '../../logic/npc/npc_paths.dart';
 import '../../logic/npc/npc_tabs.dart';
 import '../../logic/npc/reference_options.dart';
 import '../../model/animus_document.dart';
@@ -16,6 +20,7 @@ import '../../state/workspace_route.dart';
 import '../../ui/advanced_in_use.dart';
 import '../../ui/action_row.dart';
 import '../../ui/field.dart';
+import '../../ui/problem_text.dart';
 import '../../ui/section.dart';
 import '../../ui/toggle_choice.dart';
 import '../gui/gui_fields.dart';
@@ -59,6 +64,7 @@ class NpcTalkTab extends StatelessWidget {
         onOpen: form.onOpen,
         onChanged: (Object? value) => form.putModule(shopModuleKey, value),
       ),
+      if (!form.group) NpcClickAnswers(form: form),
       if (!extras) AdvancedInUse(count: inUse, onShow: onReveal),
       if (extras && !form.group)
         AppSection(
@@ -162,3 +168,56 @@ class ShopBindingEditor extends StatelessWidget {
     ]);
   }
 }
+
+/// Who answers a right-click and a left-click on the NPC when more than one
+/// thing does: every behavior that starts, and which of hiring, a quest,
+/// the shop, the GUI, riding and the seat gets the click.
+class NpcClickAnswers extends StatelessWidget {
+  const NpcClickAnswers({required this.form, super.key});
+
+  final NpcForm form;
+
+  /// Built again only when the NPC or another document changed, not on
+  /// every keystroke elsewhere in the tab.
+  @override
+  bool shouldRebuild(NpcClickAnswers newComponent) =>
+      !identical(newComponent.form.doc, form.doc) || !identical(newComponent.form.workspaceDocuments, form.workspaceDocuments);
+
+  @override
+  Widget build(BuildContext context) {
+    final JsonMap doc = form.doc;
+    final JsonMap npc = npcGroups(doc).isEmpty ? doc : effectiveNpc(doc, form.groups)?.json ?? doc;
+    final String self = npcLocalIdOf(form.document.id);
+    final Map<String, JsonMap> behaviors = <String, JsonMap>{
+      for (final AnimusDocument document in form.documents(DocumentKind.behavior))
+        if (document.json is Map<String, Object?>) document.id: asMap(document.json),
+    };
+    final Set<String> quests = <String>{
+      for (final AnimusDocument quest in form.documents(DocumentKind.quest))
+        if (questAsks(asMap(quest.json), self)) PickerScope.nameIn(context, DocumentKind.quest, quest.id),
+    };
+    final List<ClickAnswers> clicks = <ClickAnswers>[
+      for (final NpcClick click in NpcClick.values)
+        clickAnswers(
+          npc,
+          click,
+          behaviors: behaviors,
+          behaviorName: (String id) => PickerScope.nameIn(context, DocumentKind.behavior, id),
+          shopName: (String id) => PickerScope.nameIn(context, DocumentKind.shop, id),
+          questNames: quests,
+        ),
+    ];
+    final List<ClickAnswers> shown = <ClickAnswers>[for (final ClickAnswers click in clicks) if (click.line != null) click];
+    if (shown.isEmpty) return const Component.fragment(<Widget>[]);
+    return Field(
+      label: 'On click',
+      tip: 'Behaviors start first. Then the first of hiring, a quest with something for the player, the shop and the GUI opens. A ride and the seat get only a right-click nothing else took.',
+      docs: Docs.npcInteractions,
+      child: dom.div(attributes: const <String, String>{'data-npc': 'click-answers'}, <Widget>[
+        for (final ClickAnswers click in shown)
+          click.conflict ? problemLine(DiagnosticSeverity.warning, click.line!) : noteLine(click.line!),
+      ]),
+    );
+  }
+}
+

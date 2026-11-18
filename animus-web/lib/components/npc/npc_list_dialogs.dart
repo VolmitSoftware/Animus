@@ -8,6 +8,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/inspect/schema_fields.dart';
+import '../../logic/npc/module_rows.dart' show moduleName;
 import '../../logic/npc/npc_catalog.dart';
 import '../../logic/npc/npc_paths.dart';
 import '../../ui/action_row.dart';
@@ -252,7 +253,13 @@ class _NpcModuleDialogState extends State<NpcModuleDialog> {
             Field(
               label: 'Module',
               forId: 'npc-module',
-              child: AnimusSelect.values(id: 'npc-module', value: module, values: component.modules, onChanged: (String? value) => setState(() => _module = value)),
+              child: AnimusSelect.values(
+                id: 'npc-module',
+                value: module,
+                values: component.modules,
+                labels: <String, String>{for (final String key in component.modules) key: moduleName(key)},
+                onChanged: (String? value) => setState(() => _module = value),
+              ),
             ),
             if (_switchable)
               ToggleChoice<ModuleChange>(

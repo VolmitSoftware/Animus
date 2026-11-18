@@ -768,7 +768,7 @@ class _EditorShellState extends State<EditorShell> with WorkspaceActions {
                   label: label,
                 ),
             onRename: movable(document.kind) ? (String id) => relocate(workspace, document, id, copy: false) : null,
-            onDuplicate: movable(document.kind) && document.kind != DocumentKind.recording ? (String id) => relocate(workspace, document, id, copy: true) : null,
+            onDuplicate: movable(document.kind) && document.kind != DocumentKind.recording ? (String id, {String? name}) => relocate(workspace, document, id, copy: true, copyName: name) : null,
             onDelete: () => deleteDocument(workspace, document),
             skinDocument: skinOf(document),
             resources: workspace.resources,
@@ -830,6 +830,7 @@ class _EditorShellState extends State<EditorShell> with WorkspaceActions {
             conversation: route.conversation,
             owner: session?.connection.token?.admin,
             players: session?.lookups?.players ?? const <String, String>{},
+            adminSpot: session?.adminSpot,
             sign: serverSigner(session),
             onNavigate: component.onNavigate,
           )

@@ -232,6 +232,7 @@ public final class EditorApi implements EditorRequestHandler {
                 case "capabilities" -> n == 1 ? new Route(EditorScope.READ, this::capabilities) : null;
                 case "schemas" -> n == 1 ? new Route(EditorScope.READ, this::schemas) : null;
                 case "lookups" -> n == 1 ? new Route(EditorScope.READ, this::lookups) : null;
+                case "admin" -> n == 2 && s[1].equals("position") ? new Route(EditorScope.READ, this::adminPosition) : null;
                 case "catalog" -> n == 1 ? new Route(EditorScope.READ, documents::catalog) : null;
                 case "documents" -> n >= 3 ? new Route(EditorScope.READ, documents::document) : null;
                 case "skins" -> n == 3 && s[1].equals("sign") ? new Route(EditorScope.APPLY_NPCS, skins::status)
@@ -355,6 +356,30 @@ public final class EditorApi implements EditorRequestHandler {
         }
         body.add("modules", modules);
         return done(EditorResponse.json(200, body));
+    }
+
+    /**
+     * {@code GET /v1/admin/position}: where the player who issued the pairing stands now, so a new NPC can start there. A console
+     * pairing, an offline player and a position the platform could not read answer {@code online: false}.
+     */
+    private CompletionStage<EditorResponse> adminPosition(EditorRequest request, EditorTokens.Token token, String[] segments) {
+        Optional<UUID> admin = token.admin();
+        if (admin.isEmpty()) return done(EditorResponse.json(200, standingBody(Optional.empty())));
+        return parts.host().standing(admin.get()).thenApply((Optional<EditorHost.Standing> standing) -> EditorResponse.json(200, standingBody(standing)));
+    }
+
+    private static JsonObject standingBody(Optional<EditorHost.Standing> standing) {
+        JsonObject body = new JsonObject();
+        body.addProperty("online", standing.isPresent());
+        standing.ifPresent((EditorHost.Standing at) -> {
+            body.addProperty("world", at.world());
+            body.addProperty("x", at.x());
+            body.addProperty("y", at.y());
+            body.addProperty("z", at.z());
+            body.addProperty("yaw", at.yaw());
+            body.addProperty("pitch", at.pitch());
+        });
+        return body;
     }
 
     /** Reads the shop files for their owners, so it runs on the file lane. */

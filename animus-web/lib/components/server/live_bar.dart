@@ -365,7 +365,7 @@ class _LiveBarState extends State<LiveBar> {
 
   String _problemLabel(DraftChange draft) {
     if (draft.problem != null) return 'Not valid JSON';
-    final int count = _store.libraryEntry(draft.kind, draft.id)?.problems ?? 0;
+    final int count = (_store.libraryEntry(draft.kind, draft.id)?.problems ?? 0) + lookupProblems(_session, draft);
     if (count == 0 && commandsBlock(_session, draft) != null) return 'Needs Run commands';
     return count == 1 ? '1 problem' : '$count problems';
   }

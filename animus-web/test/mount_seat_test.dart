@@ -14,16 +14,15 @@ void main() {
       expect(mountKindOf(<String, Object?>{'entity': uuid, 'vehicle': 'horse'}), MountKind.entity);
     });
 
-    test('should switch what it rides, dropping the old target and keeping enabled', () {
-      expect(withMountKind(<String, Object?>{'vehicle': 'horse'}, MountKind.none), isNull);
-      expect(withMountKind(<String, Object?>{'vehicle': 'horse', 'enabled': false}, MountKind.entity), <String, Object?>{'enabled': false, 'entity': 'minecraft:horse'});
-      expect(withMountKind(<String, Object?>{'entity': 'minecraft:pig', 'range': 4}, MountKind.npc, vehicle: 'cart'), <String, Object?>{'enabled': true, 'vehicle': 'cart'});
-      expect(withMountKind(null, MountKind.npc), <String, Object?>{'enabled': true, 'vehicle': ''});
-      final Map<String, Object?> same = <String, Object?>{'entity': 'minecraft:pig', 'range': 4};
-      expect(withMountKind(same, MountKind.entity), same);
+    test('should ride a picked NPC, dropping an entity target and keeping enabled', () {
+      expect(withMountVehicle(null, 'cart'), <String, Object?>{'vehicle': 'cart'}, reason: 'picking the NPC is what turns riding on');
+      expect(withMountVehicle(<String, Object?>{'entity': 'minecraft:pig', 'range': 4}, 'cart'), <String, Object?>{'vehicle': 'cart'});
+      expect(withMountVehicle(<String, Object?>{'vehicle': 'horse', 'enabled': false}, 'cart'), <String, Object?>{'vehicle': 'cart', 'enabled': false});
     });
 
-    test('should keep the range only for an entity type', () {
+    test('should ride an entity, dropping an NPC target and keeping the range only for a type', () {
+      expect(withMountEntity(null, 'minecraft:horse'), <String, Object?>{'entity': 'minecraft:horse'});
+      expect(withMountEntity(<String, Object?>{'vehicle': 'cart', 'enabled': false}, 'minecraft:pig'), <String, Object?>{'enabled': false, 'entity': 'minecraft:pig'});
       expect(withMountEntity(<String, Object?>{'entity': 'minecraft:horse', 'range': 4}, 'minecraft:pig'), <String, Object?>{'entity': 'minecraft:pig', 'range': 4});
       expect(withMountEntity(<String, Object?>{'entity': 'minecraft:horse', 'range': 4, 'enabled': true}, uuid), <String, Object?>{'entity': uuid, 'enabled': true});
       expect(isEntityUuid(uuid), isTrue);
@@ -48,6 +47,11 @@ void main() {
     test('should turn the seat on and off and keep its settings', () {
       expect(seatSwitched(null, on: true, riding: false), <String, Object?>{'enabled': true});
       expect(seatSwitched(<String, Object?>{'stack': 2}, on: false, riding: false), <String, Object?>{'stack': 2, 'enabled': false});
+    });
+
+    test('should give the NPC back to the server setting when a plain seat goes off', () {
+      expect(seatSwitched(seatSwitched(null, on: true, riding: false), on: false, riding: false), isNull);
+      expect(seatSwitched(seatSwitched(null, on: true, riding: true), on: false, riding: true), isNull, reason: 'the click the switch chose goes with it');
       expect(toggleableModules, contains(seatModuleKey), reason: 'the NPC list turns seats on and off in bulk');
     });
 

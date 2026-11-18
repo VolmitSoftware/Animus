@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:animus_editor/config/shared_schemas.g.dart';
@@ -161,6 +162,10 @@ class FakeApi {
   /// `/__fake/plugins`: integration plugins the capabilities answer reports running.
   Set<String> runningPlugins = <String>{};
 
+  /// `/__fake/admin-position`: where the paired player stands for
+  /// `GET /v1/admin/position`; null while they are offline, as by default.
+  ({String world, double x, double y, double z, double yaw, double pitch})? adminPosition;
+
   /// Makes the next [times] requests answer [code], saying [message] when
   /// given. `rate-limited` and `busy` carry [retryAfterMillis], by default
   /// what Java sends most: the longest token bucket wait, or a full file lane.
@@ -182,6 +187,8 @@ class FakeApi {
         'playerOnline': playerOnline,
         'runningPlugins': runningPlugins.toList()..sort(),
         'slowMillis': slowMillis,
+        if (adminPosition case final ({String world, double x, double y, double z, double yaw, double pitch}) at)
+          'adminPosition': <String, Object?>{'world': at.world, 'x': at.x, 'y': at.y, 'z': at.z, 'yaw': at.yaw, 'pitch': at.pitch},
       };
 
   /// Back to the data folder as loaded, with no tokens, previews or records.
@@ -197,6 +204,7 @@ class FakeApi {
     dropNextApply = false;
     playerOnline = true;
     runningPlugins = <String>{};
+    adminPosition = null;
     live.clear();
     rates.clear();
     skinJobs.failing = false;
@@ -311,6 +319,7 @@ class FakeApi {
           'capabilities' when n == 1 => _Route('read', false, _capabilities),
           'schemas' when n == 1 => _Route('read', false, _schemasEndpoint),
           'lookups' when n == 1 => _Route('read', false, _lookups),
+          'admin' when n == 2 && s[1] == 'position' => _Route('read', false, _adminPosition),
           'catalog' when n == 1 => _Route('read', false, (FakeRequest request, FakeToken token, List<String> _) => reads.catalog(request, token)),
           'documents' when n >= 3 => _Route('read', false, (FakeRequest request, FakeToken token, List<String> s) => reads.document(s, token)),
           'skins' when n == 3 && s[1] == 'sign' => _Route('apply:npcs', false, (FakeRequest request, FakeToken token, List<String> s) => skinJobs.status(s[2], token.id)),
@@ -378,6 +387,16 @@ class FakeApi {
     });
   }
 
+  /// `GET /v1/admin/position`: where the paired player stands, from
+  /// `/__fake/admin-position`; `online: false` until that puts them somewhere.
+  FakeResponse _adminPosition(FakeRequest request, FakeToken token, List<String> _) {
+    final ({String world, double x, double y, double z, double yaw, double pitch})? at = adminPosition;
+    return FakeResponse(200, body: <String, Object?>{
+      'online': at != null,
+      if (at != null) ...<String, Object?>{'world': at.world, 'x': at.x, 'y': at.y, 'z': at.z, 'yaw': at.yaw, 'pitch': at.pitch},
+    });
+  }
+
   static String _bearer(FakeRequest request) {
     final String? header = request.header('authorization');
     if (header == null || header.length < 7 || header.substring(0, 7).toLowerCase() != 'bearer ') {
@@ -442,7 +461,8 @@ class FakeApi {
   }
 
   /// A small Paper server with PlaceholderAPI: a few ids of each registry,
-  /// and the names of the players it knows who own an NPC or a shop.
+  /// every vanilla entity type, and the names of the players it knows who
+  /// own an NPC or a shop.
   FakeResponse _lookups(FakeRequest request, FakeToken token, List<String> segments) => FakeResponse(200, body: <String, Object?>{
         'registries': <String, Object?>{
           // The whole item list of this small server: what its shops and the browser checks trade, so an item outside it is unknown.
@@ -454,6 +474,7 @@ class FakeApi {
           ],
           'sounds': <String>['minecraft:entity.villager.ambient', 'minecraft:entity.villager.yes'],
           'particles': <String>['minecraft:happy_villager', 'minecraft:heart'],
+          'entityTypes': ?_entityTypes,
           'worlds': <String>['world', 'world_nether'],
         },
         'commands': <String>['animus', 'give', 'spawn', 'tp'],
@@ -461,6 +482,18 @@ class FakeApi {
         'owners': _owners(),
         'players': _players,
       });
+
+  /// Every 26.3 entity type, from the Minecraft pack the editor's preview
+  /// reads (`web/assets/mc/26.3/registries.json`); null without the pack,
+  /// as a server that does not list them.
+  static final List<String>? _entityTypes = () {
+    final File pack = File('web/assets/mc/26.3/registries.json');
+    if (!pack.existsSync()) return null;
+    final Object? json = jsonDecode(pack.readAsStringSync());
+    final Object? lists = json is Map<String, Object?> ? (json['registries'] ?? json) : null;
+    final Object? types = lists is Map<String, Object?> ? lists['entityTypes'] : null;
+    return types is List<Object?> ? <String>[for (final Object? type in types) if (type is String) type.contains(':') ? type : 'minecraft:$type'] : null;
+  }();
 
   FakeResponse _capabilities(FakeRequest request, FakeToken token, List<String> segments) {
     Map<String, Object?> no(String reason) => <String, Object?>{'available': false, 'reason': reason};

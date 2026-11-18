@@ -68,6 +68,10 @@ class MiniServer {
   /// Documents the batch read refuses with this error code instead of reading.
   final Map<String, String> refused = <String, String>{};
 
+  /// What `GET /v1/admin/position` answers; null answers 404, as a server
+  /// from before the endpoint does.
+  Map<String, Object?>? adminPosition = <String, Object?>{'online': false};
+
   ApiResponse handle(ApiRequest request) {
     before?.call(request);
     final Uri uri = Uri.parse(request.path);
@@ -119,6 +123,10 @@ class MiniServer {
       final Map<String, Object?> source = documents['npc:$id']!['source']! as Map<String, Object?>;
       put(DocumentKind.npc, id, <String, Object?>{...source, 'spawned': segments[3] == 'spawn'});
       return ApiResponse(200, <String, Object?>{'id': id, 'spawned': segments[3] == 'spawn'});
+    }
+    if (request.method == 'GET' && uri.path == '/v1/admin/position') {
+      final Map<String, Object?>? position = adminPosition;
+      return position == null ? const ApiResponse(404, <String, Object?>{'error': <String, Object?>{'code': 'not-found', 'message': 'No endpoint'}}) : ApiResponse(200, position);
     }
     if (request.method == 'POST' && uri.path == '/v1/validate') {
       final List<Object?> changes = (request.body! as Map<String, Object?>)['documents']! as List<Object?>;
@@ -289,6 +297,15 @@ void main() {
     expect(store.workspace!.server!.bases['npc:town/guard']!.revision, 1);
     expect(session.stateOf(DocumentKind.npc, 'town/guard'), DraftState.clean);
     expect(store.document(DocumentKind.npc, 'town/guard')!.path, 'npcs/town/guard.json');
+  });
+
+  test('should read where the paired player stands, and nothing when they are offline or the server cannot say', () async {
+    server.adminPosition = <String, Object?>{'online': true, 'world': 'world_nether', 'x': 12.5, 'y': 70, 'z': -3.5, 'yaw': 90, 'pitch': 10};
+    expect(await session.adminSpot(), (world: 'world_nether', x: 12.5, y: 70.0, z: -3.5, yaw: 90.0));
+    server.adminPosition = <String, Object?>{'online': false};
+    expect(await session.adminSpot(), isNull);
+    server.adminPosition = null;
+    expect(await session.adminSpot(), isNull, reason: 'an older server has no such endpoint');
   });
 
   test('should show the newest notice as fresh until the user moves on', () async {

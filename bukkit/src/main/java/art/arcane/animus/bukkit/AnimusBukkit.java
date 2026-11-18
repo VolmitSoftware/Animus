@@ -629,7 +629,8 @@ final class AnimusBukkit {
                 modulePlatform.name().toLowerCase(Locale.ROOT), art.arcane.animus.core.editor.EditorServerName.fallback(host.getServer().getMotd(), host.getServer().getWorldContainer().toPath()),
                 features, new BukkitLookups(host.getServer())::read,
                 (Player player, String node) -> player.hasPermission(node), new BukkitEditorNotices(host, replies), (String message) -> host.getLogger().info(message),
-                new BukkitEditorTerrain(host, regions), (java.util.UUID player, String node) -> BukkitOfflinePermission.check(host.getServer(), player, node))), (String message) -> host.getLogger().info(message),
+                new BukkitEditorTerrain(host, regions), (java.util.UUID player, String node) -> BukkitOfflinePermission.check(host.getServer(), player, node),
+                AnimusBukkit::standing)), (String message) -> host.getLogger().info(message),
                 (String message) -> host.getLogger().warning(message));
         try {
             service.start();
@@ -704,6 +705,13 @@ final class AnimusBukkit {
             Class.forName("io.papermc.paper.ServerBuildInfo", false, host.getServer().getClass().getClassLoader());
             return Platform.PAPER;
         } catch (ClassNotFoundException absent) { return Platform.SPIGOT; }
+    }
+
+    /** Where the player stands for the editor, as {@link BukkitActor#position()} and {@link BukkitActor#facing()} read it; on the player's owner. */
+    private static Optional<EditorHost.Standing> standing(Player player) {
+        org.bukkit.Location at = player.getLocation();
+        if (at.getWorld() == null) return Optional.empty();
+        return Optional.of(new EditorHost.Standing(at.getWorld().getName(), at.getX(), at.getY(), at.getZ(), at.getYaw(), at.getPitch()));
     }
 
     /** The packet previews: {@code /animus proof} reaches persisted NPCs never, {@code proof folia} runs on Folia only. */

@@ -52,6 +52,11 @@ void main() {
       expect(argumentChoices(catalog.capability('animus:title')!), isEmpty, reason: 'title and subtitle are not a choice');
     });
 
+    test('the capability tip names only the arguments that may be combined', () {
+      expect(argumentGroupsTip(catalog.capability('animus:title')!), 'Give at least one of: Title, or Subtitle.');
+      expect(argumentGroupsTip(catalog.capability('animus:look')!), '', reason: 'Look at is a choice above the fields, not a tip');
+    });
+
     test('a location joins x, y and z as one Coordinates choice', () {
       final CapabilitySpec look = catalog.capability('animus:look')!;
       final List<ArgumentChoice> choices = argumentChoices(look);

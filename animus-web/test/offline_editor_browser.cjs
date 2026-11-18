@@ -76,7 +76,8 @@ async function go(page, hash) {
 /** Opens a kind's form, runs [fill], creates it and waits for its page. */
 async function create(page, workspace, kind, noun, fill) {
   await go(page, `#/workspace/${encodeURIComponent(workspace)}/new/${kind}`);
-  await page.getByRole('heading', {name: `New ${noun}`}).waitFor();
+  // New NPC is the NPC list's dialog wherever it opens; every other kind is a page.
+  await page.getByRole('heading', {name: `New ${noun}`}).or(page.getByRole('dialog', {name: `New ${noun}`})).first().waitFor();
   if (fill) await fill();
   // Every New ends in the same Create, as the lists' New dialogs do.
   await page.getByRole('button', {name: 'Create', exact: true}).click();
@@ -135,22 +136,20 @@ async function run(browser, viewport, label, skinFile) {
   await page.getByRole('heading', {name: 'New file', exact: true}).waitFor();
   await shot(page, label, '01-new-kind');
   await pickLead(page, page.getByRole('combobox', {name: 'Kind'}), 'NPC');
-  await page.getByRole('heading', {name: 'New NPC'}).waitFor();
+  await page.getByRole('dialog', {name: 'New NPC'}).waitFor();
 
-  // NPC: name, folder, a skin PNG, position and a behavior from a template.
+  // NPC: the New NPC dialog, the same one the NPC list opens: a name and a body.
   await create(page, workspace, 'npc', 'NPC', async () => {
     await page.getByLabel('Name', {exact: true}).fill('&6Old Tom');
-    await page.getByRole('group', {name: 'Skin'}).getByRole('button', {name: 'PNG file'}).click();
-    await loadSkin(page, skinFile);
-    await pickLead(page, page.getByRole('combobox', {name: 'Behavior'}), 'New: Question');
-    await more(page);
-    await page.getByLabel('Folder', {exact: true}).fill('town');
-    await page.getByLabel('X', {exact: true}).fill('12');
     await shot(page, label, '02-new-npc');
   });
-  assert.match(decodeURIComponent(page.url()), /\/npc\/town\/old-tom/);
+  assert.match(decodeURIComponent(page.url()), /\/npc\/local\/old-tom/);
 
-  // Every other kind from its form.
+  // Every other kind from its form. Ids take the namespace the workspace uses most: the new NPC's folder, local.
+  await create(page, workspace, 'behavior', 'behavior', async () => {
+    await pickLead(page, page.getByRole('combobox', {name: 'Start from'}), 'Question');
+    await pickLead(page, page.getByRole('combobox', {name: 'Give to NPC'}), 'Old Tom');
+  });
   await create(page, workspace, 'behavior', 'behavior', async () => {
     await pickLead(page, page.getByRole('combobox', {name: 'Start from'}), 'Shop');
     await pickLead(page, page.getByRole('combobox', {name: 'Give to NPC'}), 'Old Tom');
@@ -181,10 +180,10 @@ async function run(browser, viewport, label, skinFile) {
   await create(page, workspace, 'group', 'trait group', async () => page.getByLabel('Id', {exact: true}).fill('guards'));
 
   const hrefs = (await documentHrefs(page)).map((href) => decodeURIComponent(href));
-  for (const expected of ['/npc/town/old-tom', '/behavior/sketchbook:old-tom-question', '/behavior/sketchbook:shop', '/pack/town-pack', '/route/market-loop', '/shop/sketchbook:market',
-    '/quest/sketchbook:bread-run', '/inventory/sketchbook:board', '/menu/sketchbook:hub', '/hologram/sketchbook:welcome', '/rig/sketchbook:golem', '/animation/sketchbook:golem/wave',
-    '/text-animation/sketchbook:blink', '/presets/presets', '/group/guards']) {
-    assert.ok(hrefs.some((href) => href.endsWith(expected)), `${label}: ${expected} is listed`);
+  for (const expected of ['/npc/local/old-tom', '/behavior/local:question', '/behavior/local:shop', '/pack/town-pack', '/route/market-loop', '/shop/local:market',
+    '/quest/local:bread-run', '/inventory/local:board', '/menu/local:hub', '/hologram/local:welcome', '/rig/local:golem', '/animation/local:golem/wave',
+    '/text-animation/local:blink', '/presets/presets', '/group/guards']) {
+    assert.ok(hrefs.some((href) => href.endsWith(expected)), `${label}: ${expected} is listed among ${hrefs.filter((href) => href.includes(expected.split('/')[1])).join(', ')}`);
   }
   // Colour codes are stripped in the list: "&6Old Tom" reads "Old Tom".
   await go(page, `${base}/list/npc`);
@@ -234,12 +233,12 @@ async function run(browser, viewport, label, skinFile) {
     await pickStart(page, pane, 'On click');
     return pane;
   };
-  const question = await test('sketchbook:old-tom-question');
+  const question = await test('local:question');
   await question.getByRole('button', {name: 'Any news?'}).click();
   await question.locator('.animus-conv-chat').getByText('The harvest festival starts at', {exact: false}).waitFor();
   await question.locator('.animus-mc-text-line', {hasText: 'harvest festival'}).first().waitFor();
   await shot(page, label, '03b-test-dialogue');
-  const shop = await test('sketchbook:shop');
+  const shop = await test('local:shop');
   await shop.locator('[data-outcome="serverOnly"]', {hasText: 'open shop'}).first().waitFor();
   await shop.getByText('1 step runs on the server only.').waitFor();
   await shot(page, label, '03c-test-server-only');
@@ -250,7 +249,7 @@ async function run(browser, viewport, label, skinFile) {
   const zip = await download;
   assert.equal(zip.suggestedFilename(), 'sketchbook.zip');
   const bytes = fs.readFileSync(await zip.path());
-  for (const entry of ['npcs/town/old-tom.json', 'packs/town-pack/pack.json', 'gui/presets.json', 'editor/skins/']) {
+  for (const entry of ['npcs/local/old-tom.json', 'packs/town-pack/pack.json', 'gui/presets.json', 'editor/skins/']) {
     assert.ok(bytes.includes(Buffer.from(entry)), `zip holds ${entry}`);
   }
 
@@ -326,7 +325,7 @@ async function run(browser, viewport, label, skinFile) {
   const baker = await control(`document?kind=npc&id=${encodeURIComponent('town/baker')}`);
   assert.equal(baker.source.name, 'Baker Bea', 'the chosen replace reached the server');
   const state = await control('state');
-  assert.ok(state.documents.some((document) => document.kind === 'npc' && document.id === 'town/old-tom'), 'the new NPC reached the server');
+  assert.ok(state.documents.some((document) => document.kind === 'npc' && document.id === 'local/old-tom'), 'the new NPC reached the server');
   await summary.filter({hasText: 'Everything here matches the server.'}).waitFor();
   assert.equal(await saveState(page).count(), 1, 'the save bar stays');
   await shot(page, label, '08-sent');

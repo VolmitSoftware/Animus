@@ -1,6 +1,9 @@
-/// New NPC, from the NPC page's primary button and its empty state: a name
-/// and a body (Advanced adds the folder and the file name). Create writes
-/// the NPC, then opens it.
+/// New NPC, the one way to make an NPC: from the NPC page's primary button
+/// and its empty state, and from the New page and a dropdown's "+ New NPC".
+/// A name and a body from the full list (Advanced adds the folder and the
+/// file name). The NPC starts where the player who paired the editor
+/// stands, else on the ground of the server's terrain. Create writes it,
+/// then opens it.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -10,19 +13,38 @@ import '../../logic/npc/npc_appearance.dart' show bodyLabel;
 import '../../logic/gui/gui_json.dart';
 import '../../logic/npc/npc_paths.dart';
 import '../../logic/offline/new_documents.dart';
+import '../../logic/terrain/terrain_data.dart';
+import '../../logic/terrain/terrain_snap.dart';
 import '../../model/document_kind.dart';
 import '../../services/browser.dart';
+import '../../services/terrain/terrain_client.dart';
+import '../../services/terrain/terrain_link.dart';
 import '../../state/editor_store.dart';
 import '../../state/workspace_route.dart';
 import '../../ui/action_row.dart';
 import '../../ui/dialog.dart';
+import 'body_type_field.dart' show bodyGroups, bodyOptions;
 import 'npc_list_dialogs.dart';
 import 'npc_list_rows.dart';
 import '../select/animus_select.dart';
 import '../../ui/field.dart';
 
-/// The Body select's value for a body typed by id.
-const String _otherBody = 'other';
+/// The Body select's labels, worked out once.
+final Map<String, String> _bodyLabels = <String, String>{for (final String body in bodyOptions) body: bodyLabel(body)};
+
+/// The feet height on the ground at the spawn spot of [world], when the
+/// paired server's terrain shows it there.
+Future<int?> _ground(String world) async {
+  final TerrainClient? client = TerrainLink.client;
+  if (client == null) return null;
+  try {
+    final TerrainSurfaceTile? tile = await client.surface(world, 0, 0).timeout(const Duration(seconds: 3));
+    final TerrainColumn? column = TerrainSpot(tile, null).column(0, 0);
+    return column == null ? null : terrainSurfaceStand(column);
+  } on Object {
+    return null;
+  }
+}
 
 class NewNpcDialog extends StatefulWidget {
   const NewNpcDialog({
@@ -35,6 +57,9 @@ class NewNpcDialog extends StatefulWidget {
     required this.advanced,
     required this.onClose,
     this.owner,
+    this.adminSpot,
+    this.name = '',
+    this.onCreated,
     super.key,
   });
 
@@ -58,20 +83,28 @@ class NewNpcDialog extends StatefulWidget {
   /// The paired player's UUID, which the NPC takes as its owner.
   final String? owner;
 
+  /// Where the paired player stands now, when the workspace is paired.
+  final Future<NpcSpot?> Function()? adminSpot;
+
+  /// The name the dialog starts with, typed into a dropdown's search.
+  final String name;
+
+  /// Goes on after the NPC [id] is made, in place of closing the dialog
+  /// and opening it.
+  final void Function(String id)? onCreated;
+
   @override
   State<NewNpcDialog> createState() => _NewNpcDialogState();
 }
 
 class _NewNpcDialogState extends State<NewNpcDialog> {
-  String _name = '';
-  String _body = commonBodies.first;
-  String _other = '';
+  late String _name = component.name;
+  String _body = bodyOptions.first;
   late String _folder = component.folder;
 
   /// The file name as typed in Advanced; null follows the name.
   String? _id;
   String? _nameProblem;
-  String? _bodyProblem;
 
   /// Why the id cannot be used, or why the workspace refused the NPC.
   String? _problem;
@@ -79,7 +112,13 @@ class _NewNpcDialogState extends State<NewNpcDialog> {
 
   String get _proposed => newNpcId(_name, _folder, component.taken);
 
-  String get _type => _body == _otherBody ? _other.trim() : _body;
+  /// Where the NPC starts: see [newNpcPlace].
+  Future<NpcSpot> _place() async {
+    // A server that is slow to say only delays Create a little; the NPC then starts on the ground.
+    final NpcSpot? admin = await component.adminSpot?.call().timeout(const Duration(seconds: 4), onTimeout: () => null);
+    if (admin != null) return newNpcPlace(world: component.world, admin: admin);
+    return newNpcPlace(world: component.world, ground: await _ground(component.world));
+  }
 
   Future<void> _create() async {
     if (_busy) return;
@@ -88,16 +127,17 @@ class _NewNpcDialogState extends State<NewNpcDialog> {
     final String? problem = newNpcProblem(id, _folder, component.taken);
     setState(() {
       _nameProblem = name.isEmpty ? 'Give the NPC a name.' : null;
-      _bodyProblem = _type.isEmpty ? 'Type the body id.' : null;
       _problem = problem;
     });
-    if (_nameProblem != null || _bodyProblem != null || _problem != null) return;
+    if (_nameProblem != null || _problem != null) return;
     final String documentId = npcIdIn(_folder, id);
+    setState(() => _busy = true);
+    final NpcSpot place = await _place();
+    if (!mounted) return;
     final JsonMap json = newNpc(
-      NpcSeed(name: name, type: _type, group: _folder, id: id, world: component.world, owner: component.owner),
+      NpcSeed(name: name, type: _body, group: _folder, id: id, world: place.world, x: place.x, y: place.y, z: place.z, yaw: place.yaw, owner: component.owner),
       uuid: newUuid(),
     );
-    setState(() => _busy = true);
     await component.store.commit(
       documents: <DocumentChange>[DocumentChange(DocumentKind.npc, documentId, prettyJson(json), path: newDocumentPath(DocumentKind.npc, documentId))],
       label: 'create $name',
@@ -113,6 +153,11 @@ class _NewNpcDialogState extends State<NewNpcDialog> {
           _nameProblem = failed;
         }
       });
+      return;
+    }
+    final void Function(String id)? created = component.onCreated;
+    if (created != null) {
+      created(documentId);
       return;
     }
     component.onClose();
@@ -149,29 +194,17 @@ class _NewNpcDialogState extends State<NewNpcDialog> {
             Field(
               label: 'Body',
               forId: 'npc-new-body',
+              tip: 'What the NPC looks like: a player, a villager, a zombie. Type to search every body.',
+              docs: Docs.npcAppearance,
               child: AnimusSelect.values(
                 id: 'npc-new-body',
                 value: _body,
-                values: const <String>[...commonBodies, _otherBody],
-                labels: <String, String>{for (final String body in commonBodies) body: bodyLabel(body), _otherBody: 'Other'},
-                onChanged: (String? value) => setState(() => _body = value ?? commonBodies.first),
+                values: bodyOptions,
+                labels: _bodyLabels,
+                groups: bodyGroups,
+                onChanged: (String? value) => setState(() => _body = value ?? bodyOptions.first),
               ),
             ),
-            if (_body == _otherBody)
-              Field(
-                label: 'Body id',
-                forId: 'npc-new-body-id',
-                error: _bodyProblem,
-                child: TextInput(
-                  id: 'npc-new-body-id',
-                  value: _other,
-                  placeholder: 'minecraft:fox',
-                  onChanged: (String value) => setState(() {
-                    _other = value;
-                    _bodyProblem = null;
-                  }),
-                ),
-              ),
             if (component.advanced) ...<Widget>[
               Field(
                 label: 'Folder',

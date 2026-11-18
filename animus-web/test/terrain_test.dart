@@ -214,6 +214,27 @@ void main() {
       expect(terrainCheckPoint(surface, 200, 70, 0), isNull);
     });
 
+    test('an NPC standing in the ground is flagged with the ground to stand on', () {
+      expect(terrainStand(terrain, 0.5, 64, -1.5), (issue: TerrainIssue.inside, ground: 65));
+      expect(terrainStand(terrain, 0.5, 65, -1.5), isNull);
+      expect(terrainStand(terrain, 0.5, 64.6, -1.5), (issue: TerrainIssue.inside, ground: 65), reason: 'the feet block is the one Y falls in');
+      expect(terrainStand(surface, 0.5, 62, -1.5), (issue: TerrainIssue.below, ground: 65));
+      expect(terrainStand(terrain, 0.5, 70, -1.5), (issue: TerrainIssue.floating, ground: 65));
+      expect(terrainStand(surface, 200.5, 70, 0.5), isNull, reason: 'unknown terrain says nothing');
+    });
+
+    test('an NPC far from every NPC the token reaches is not judged on forbidden chunks', () {
+      final TerrainSlice far = _slice(40, 40, 58, 12);
+      final TerrainSurfaceTile tile = _tile(10, 10);
+      expect(far.state, TerrainChunkState.forbidden);
+      final TerrainSpot spot = TerrainSpot(tile, far);
+      expect(spot.state(640, 61, 640), isNull, reason: 'a forbidden slice holds no blocks');
+      expect(spot.column(640, 640), isNull, reason: 'a forbidden chunk has no surface');
+      expect(terrainStand(spot, 640.5, 61, 640.5), isNull);
+      final TerrainSpot near = TerrainSpot(_tile(0, -1), _slice(0, -1, 58, 12));
+      expect(terrainStand(near, 0.5, 64, -1.5), (issue: TerrainIssue.inside, ground: 65));
+    });
+
     test('a straight leg up a wall is steep, along the plaza is not', () {
       expect(terrainSteepStep(surface, -4, 0, 4, 0), isNull);
       final _Wall wall = _Wall();

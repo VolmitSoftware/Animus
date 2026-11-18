@@ -106,7 +106,7 @@ async function run(browser, viewport, theme, tag) {
       // Hologram lines share one display: a plain line takes the style of the line above.
       await panel.getByRole('button', {name: 'Add text', exact: true}).click();
       await panel.locator('input[aria-label="Hologram line 1"]').fill('&cA&lB');
-      // From the keyboard: the pointer rests on a row's tooltip once line 1 turns into its plate.
+      // From the keyboard, as a user who just typed line 1 would.
       await panel.getByRole('button', {name: 'Add line', exact: true}).focus();
       await page.keyboard.press('Enter');
       // A line's box fills its row, up to the Move and Remove buttons.
@@ -116,6 +116,10 @@ async function run(browser, viewport, theme, tag) {
       });
       assert.ok(fill > 0.6, `${tag}: a hologram line's box takes ${Math.round(fill * 100)}% of its row`);
       await panel.locator('input[aria-label="Hologram line 2"]').fill('C');
+      // A new line stays open while it is typed in, so focus never leaves it; Done shows it as in game.
+      // From the keyboard too: a row's tooltip can sit over the button.
+      await panel.getByRole('button', {name: 'Done editing line 2'}).focus();
+      await page.keyboard.press('Enter');
       const carried = panel.locator('[data-hologram-line="2"] span[style]').first();
       await carried.waitFor();
       assert.deepEqual(await carried.evaluate(span => [span.textContent, span.style.color, span.style.fontWeight]), ['C', 'rgb(255, 85, 85)', '700'],

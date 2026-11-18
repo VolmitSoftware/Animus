@@ -4,6 +4,7 @@ import '../logic/change_sets.dart';
 import '../logic/gui/gui_json.dart';
 import '../logic/inspect/json_outline.dart' show parseJsonPath;
 import '../logic/json_merge.dart';
+import '../logic/offline/new_documents.dart' show NpcSpot;
 import '../logic/plural.dart';
 import '../logic/suggest/completion_sources.dart';
 import '../model/animus_document.dart';
@@ -89,7 +90,7 @@ class PreviewState {
 enum NoticeLevel { info, success, warning, error }
 
 class LiveNotice {
-  const LiveNotice(this.level, this.message, this.at, {this.connection = false, this.toast = true});
+  const LiveNotice(this.level, this.message, this.at, {this.connection = false, this.toast = true, this.copy});
 
   final NoticeLevel level;
   final String message;
@@ -101,6 +102,9 @@ class LiveNotice {
   /// Also shown as a toast; false for what the save bar already says
   /// (applied, undone, a check that passed on the way to an apply).
   final bool toast;
+
+  /// A command the message asks the user to run, which the toast copies.
+  final String? copy;
 }
 
 /// The end of a load of many documents, kept until the next one or until
@@ -230,9 +234,9 @@ class LiveSession implements ServerLibrary {
     _changed();
   }
 
-  void _notice(NoticeLevel level, String message, {bool connection = false, bool toast = true}) {
+  void _notice(NoticeLevel level, String message, {bool connection = false, bool toast = true, String? copy}) {
     if (_disposed) return;
-    final LiveNotice notice = LiveNotice(level, message, _now(), connection: connection, toast: toast);
+    final LiveNotice notice = LiveNotice(level, message, _now(), connection: connection, toast: toast, copy: copy);
     log.add(notice);
     if (log.length > 30) log.removeAt(0);
     _notices.add(notice);
@@ -598,6 +602,22 @@ class LiveSession implements ServerLibrary {
         busy = null;
         _changed();
       }
+    }
+  }
+
+  /// Where the player who paired this editor stands now (`GET
+  /// /v1/admin/position`), for a new NPC to start there; null when they are
+  /// offline, the pairing came from the console, or the server cannot say.
+  Future<NpcSpot?> adminSpot() async {
+    try {
+      final ApiResponse response = await connection.request(const ApiRequest('GET', '/v1/admin/position'));
+      final Object? body = response.body;
+      if (!response.ok || body is! Map<String, Object?> || body['online'] != true) return null;
+      final Object? world = body['world'], x = body['x'], y = body['y'], z = body['z'], yaw = body['yaw'];
+      if (world is! String || x is! num || y is! num || z is! num) return null;
+      return (world: world, x: x.toDouble(), y: y.toDouble(), z: z.toDouble(), yaw: yaw is num ? yaw.toDouble() : 0.0);
+    } on Object {
+      return null;
     }
   }
 

@@ -69,6 +69,7 @@ void main() {
     final ErrorCopy copy = scopeMissingCopy('apply:commands', held: const <String>['read', 'apply:gui', 'spawn']);
     expect(copy.cause, 'This pairing lacks the Run commands permission.');
     expect(copy.next, 'Run /animus editor pair scopes=read,apply:gui,spawn,apply:commands and open the new link.');
+    expect(copy.command, '/animus editor pair scopes=read,apply:gui,spawn,apply:commands', reason: 'the toast offers it to copy');
     _sound('scope-missing', copy);
   });
 
@@ -77,6 +78,7 @@ void main() {
     expect(copy.text, serverErrorCopy['scope-missing']!.text);
     expect(copy.text, isNot(contains('scopes=')));
     expect(copy.text, isNot(contains('import')));
+    expect(copy.command, isNull);
   });
 
   test('should name the scope without a command when the token\'s scopes are not known', () {

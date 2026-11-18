@@ -200,10 +200,6 @@ void main() {
       expect(mostUsedWorld(const <NpcListItem>[]), 'world');
     });
 
-    test('New NPC offers a player body first', () {
-      expect(commonBodies.first, 'minecraft:player');
-    });
-
     test('filtering 1500 NPCs stays well under a frame', () {
       final List<LibraryEntry> entries = <LibraryEntry>[
         for (int index = 0; index < 1500; index++)

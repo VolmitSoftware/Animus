@@ -404,6 +404,24 @@ class EditorApiTest {
     }
 
     @Test
+    void adminPosition_answersWhereThePairingPlayerStands() throws Exception {
+        harness.host.standing = Optional.of(new EditorHost.Standing("world_nether", 12.5, 70, -3.25, 90f, -15f));
+        JsonObject body = valid("admin-position-response", harness.send("GET", "/v1/admin/position", harness.token(), null));
+        assertEquals("{\"online\":true,\"world\":\"world_nether\",\"x\":12.5,\"y\":70.0,\"z\":-3.25,\"yaw\":90.0,\"pitch\":-15.0}", body.toString());
+        assertEquals(List.of(EditorHarness.ADMIN), harness.host.stood);
+    }
+
+    @Test
+    void adminPosition_isOfflineForAConsolePairingOrAPlayerTheServerCannotRead() throws Exception {
+        harness.host.standing = Optional.of(new EditorHost.Standing("world", 0.5, 64, 0.5, 0f, 0f));
+        String console = harness.token(new EditorTokens.Grant("console", Optional.empty(), EditorScope.DEFAULT_PAIRING, List.of(), Duration.ofDays(7)));
+        assertEquals("{\"online\":false}", valid("admin-position-response", harness.send("GET", "/v1/admin/position", console, null)).toString());
+        assertTrue(harness.host.stood.isEmpty(), "a console pairing has no player to ask about");
+        harness.host.standing = Optional.empty();
+        assertEquals("{\"online\":false}", valid("admin-position-response", harness.send("GET", "/v1/admin/position", harness.token(), null)).toString());
+    }
+
+    @Test
     void catalog_exportFixture_listsExpectedDocuments() throws Exception {
         JsonObject body = valid("catalog-response", harness.send("GET", "/v1/catalog", harness.token(), null));
         Set<String> listed = new HashSet<>();

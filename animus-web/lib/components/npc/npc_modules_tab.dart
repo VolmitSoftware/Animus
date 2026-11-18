@@ -89,7 +89,7 @@ class _NpcModulesTabState extends State<NpcModulesTab> {
     return Field(
       label: 'Add module',
       forId: addable.isNotEmpty ? addId : keyId,
-      tip: 'A module is one feature\'s settings, under a namespace:name key. Pick one the server knows, or type a key.',
+      tip: 'A module is one feature of the NPC, such as Looks at players or Returns home. Pick one, or type the key of another plugin\'s module.',
       docs: Docs.npc,
       child: dom.div(classes: 'animus-npc-add-module', <Widget>[
         if (addable.isNotEmpty)
@@ -97,6 +97,11 @@ class _NpcModulesTabState extends State<NpcModulesTab> {
             id: addId,
             value: null,
             values: addable,
+            labels: <String, String>{for (final String key in addable) key: moduleName(key)},
+            details: <String, String>{
+              for (final String key in addable)
+                if (moduleDescription(key) case final String line) key: line,
+            },
             noneLabel: 'Pick a module',
             onChanged: (String? key) {
               if (key != null) _form.putModule(key, key == scheduleModule ? scheduleStarter(_form.origin) : <String, Object?>{'enabled': true});
@@ -133,15 +138,18 @@ class _NpcModulesTabState extends State<NpcModulesTab> {
       attributes: <String, String>{'data-module': key},
       <Widget>[
         ActionRow(
-          label: 'Module $key',
+          label: moduleName(key),
           leading: <Widget>[
             dom.span(classes: 'animus-npc-module-key', <Widget>[
-              TipLabel(label: dom.code(<Widget>[Component.text(key)]), tip: field.description ?? 'No schema for this module; its value is kept as written.'),
+              TipLabel(
+                label: dom.strong(<Widget>[Component.text(moduleName(key))]),
+                tip: '${moduleDescription(key) ?? field.description ?? 'No schema for this module; its value is kept as written.'} Key: $key',
+              ),
             ]),
           ],
           secondary: <RowAction>[
             if (canType) RowAction(typed ? 'Edit as JSON' : 'Edit as fields', () => setState(() => typed ? _asJson.add(key) : _asJson.remove(key))),
-            RowAction('Remove module $key', () => form.putModule(key, null), icon: ArcaneIcon.x(), iconOnly: true),
+            RowAction('Remove ${moduleName(key)}', () => form.putModule(key, null), icon: ArcaneIcon.x(), iconOnly: true),
           ],
         ),
         if (typed && key == hireModule)

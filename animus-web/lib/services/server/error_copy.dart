@@ -8,10 +8,14 @@ import 'scope_words.dart';
 
 /// What happened and the next action, each one sentence.
 class ErrorCopy {
-  const ErrorCopy(this.cause, this.next);
+  const ErrorCopy(this.cause, this.next, {this.command});
 
   final String cause;
   final String next;
+
+  /// The command [next] asks for, when it is long enough to copy rather
+  /// than retype.
+  final String? command;
 
   /// Both sentences, for a toast, an alert or the live log.
   String get text => '$cause $next';
@@ -175,7 +179,8 @@ ErrorCopy scopeMissingCopy(String? scope, {Iterable<String>? held}) {
   final String cause = 'This pairing lacks the ${scopeWord(scope)} permission.';
   if (held == null) return ErrorCopy(cause, _pairWithScope);
   final List<String> scopes = <String>[...held.where((String kept) => kept != scope), scope];
-  return ErrorCopy(cause, 'Run /animus editor pair scopes=${scopes.join(',')} and open the new link.');
+  final String command = '/animus editor pair scopes=${scopes.join(',')}';
+  return ErrorCopy(cause, 'Run $command and open the new link.', command: command);
 }
 
 /// Copy for a server `error-code`, or for [status] when the answer had none.

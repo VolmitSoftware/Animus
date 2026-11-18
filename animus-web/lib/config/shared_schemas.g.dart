@@ -94,6 +94,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {"method": "GET", "path": "/v1/capabilities", "scope": "read", "request": null, "responses": {"200": "capabilities-response"}},
     {"method": "GET", "path": "/v1/schemas", "scope": "read", "request": null, "responses": {"200": "schemas-response"}},
     {"method": "GET", "path": "/v1/lookups", "scope": "read", "request": null, "responses": {"200": "lookups-response"}},
+    {"method": "GET", "path": "/v1/admin/position", "scope": "read", "description": "Where the player who issued the pairing stands now, for a new NPC's starting position.", "request": null, "responses": {"200": "admin-position-response"}},
     {"method": "GET", "path": "/v1/catalog", "scope": "read", "query": {"kind": "kind", "after": "string"}, "request": null, "responses": {"200": "catalog-response"}},
     {"method": "GET", "path": "/v1/documents/{kind}/{id}", "scope": "read", "request": null, "responses": {"200": "document-response", "404": "error-response"}},
     {"method": "POST", "path": "/v1/documents/read", "scope": "read", "counter": false, "request": "documents-read-request", "responses": {"200": "documents-read-response", "400": "error-response"}},
@@ -447,6 +448,25 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "oneOf": [
         {"properties": {"active": {"const": true}}, "required": ["world", "x", "y", "z"]},
         {"properties": {"active": {"const": false}}, "not": {"anyOf": [{"required": ["world"]}, {"required": ["x"]}, {"required": ["y"]}, {"required": ["z"]}]}}
+      ]
+    },
+    "admin-position-response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["online"],
+      "description": "GET /v1/admin/position: where the player who issued the pairing stands now, so a new NPC can start there. online is false, without a position, for a console pairing, a player who is offline, or a position the server could not read in time.",
+      "properties": {
+        "online": {"type": "boolean"},
+        "world": {"type": "string", "minLength": 1, "maxLength": 256, "description": "The world by the name an NPC definition's position.world uses, as /animus create writes it."},
+        "x": {"type": "number"},
+        "y": {"type": "number"},
+        "z": {"type": "number"},
+        "yaw": {"type": "number", "description": "Degrees, as position.yaw."},
+        "pitch": {"type": "number", "description": "Degrees, as position.pitch."}
+      },
+      "oneOf": [
+        {"properties": {"online": {"const": true}}, "required": ["world", "x", "y", "z", "yaw"]},
+        {"properties": {"online": {"const": false}}, "not": {"anyOf": [{"required": ["world"]}, {"required": ["x"]}, {"required": ["y"]}, {"required": ["z"]}, {"required": ["yaw"]}, {"required": ["pitch"]}]}}
       ]
     },
     "lookups-response": {

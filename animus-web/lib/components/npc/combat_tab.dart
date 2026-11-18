@@ -176,7 +176,7 @@ class _CombatTabBodyState extends State<_CombatTabBody> {
       Field(
         key: const ValueKey<String>('combat:fights'),
         label: words.label,
-        tip: full ? _tip(words, 'enabled') : null,
+        tip: _tip(words, 'enabled'),
         docs: Docs.combat,
         problems: combat.problems(const <JsonStep>['enabled']),
         child: combatSwitch(value: fights, label: words.label, onChanged: (bool on) => combat.onChanged(withFights(combat.value, on))),
@@ -242,7 +242,7 @@ class _CombatTabBodyState extends State<_CombatTabBody> {
             key: const ValueKey<String>('health:max'),
             label: maximum.label,
             forId: id,
-            tip: full ? _tip(maximum, 'maximumHealth', extra: '1 to 2048. Empty takes the max health attribute, else 20.') : null,
+            tip: _tip(maximum, 'maximumHealth', extra: '1 to 2048. Empty takes the max health attribute, else 20.'),
             hint: '${plainNumber(((value as num?) ?? fallback) / 2)} hearts',
             problems: health.problems(at),
             child: NumberInput(digits: 6, 
