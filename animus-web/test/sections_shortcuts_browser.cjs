@@ -141,7 +141,7 @@ async function run(browser, {viewport, theme}) {
   const sheet = page.getByRole('dialog', {name: 'Keyboard shortcuts'});
   await sheet.waitFor();
   const text = await sheet.textContent();
-  for (const expected of [`${mod}+K`, `${mod}+Shift+Z`, `${mod}+S`, 'Search', 'New document', 'NPCs', 'Also while typing', 'Behavior steps', '3D preview', 'Conversation']) {
+  for (const expected of [`${mod}+K`, `${mod}+Shift+Z`, `${mod}+S`, 'Search', 'New file', 'NPCs', 'Also while typing', 'Behavior steps', '3D preview', 'Conversation']) {
     assert.ok(text.includes(expected), `${label}: the sheet lists ${expected}`);
   }
   assert.ok(!text.includes(`${mod}+B`), `${label}: no sidebar key any more`);
@@ -173,10 +173,10 @@ async function run(browser, {viewport, theme}) {
   // A blank workspace says what to do first.
   await page.goto(url);
   await blankWorkspace(page, `Blank ${label}`);
-  await page.getByText('No documents yet.', {exact: true}).waitFor();
+  await page.getByText('No files yet.', {exact: true}).waitFor();
   const empty = page.locator('.ui-home');
-  // Import is an Advanced start; Simple offers the first NPC.
-  assert.deepEqual((await empty.locator('.arcane-button').allInnerTexts()).map(text => text.trim()), ['New NPC']);
+  // A blank Home offers Import and the first NPC, in Simple as in Advanced.
+  assert.deepEqual((await empty.locator('.arcane-button').allInnerTexts()).map(text => text.trim()), ['Import', 'New NPC']);
   assert.equal(await empty.locator(".arcane-button[data-variant='primary']").count(), 1, `${label}: one primary`);
   await noSideways(page, `${label} blank overview`);
 

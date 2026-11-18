@@ -13,31 +13,52 @@ import 'package:web/web.dart' as web;
 
 import '../config/brand.dart';
 import '../logic/data_folder.dart';
+import '../logic/theme_choice.dart';
 import '../state/workspace_coordination.dart';
 
 const String themeKey = 'animus.theme';
 
-/// The stored theme, or the system's when nothing is stored (bootstrap.js
-/// makes the same choice before paint).
-Brightness loadBrightness() {
+const String _systemLight = '(prefers-color-scheme: light)';
+
+/// The theme picked in the overflow menu, or null while none was picked.
+String? _storedTheme() {
   try {
-    final String? stored = web.window.localStorage.getItem(themeKey);
-    if (stored == 'light') return Brightness.light;
-    if (stored == 'dark') return Brightness.dark;
+    return web.window.localStorage.getItem(themeKey);
   } on Object {
-    // Private mode: the default.
+    // Private mode: nothing picked.
+    return null;
   }
-  // Midnight (dark) until the light theme is picked.
-  return Brightness.dark;
 }
 
+/// The picked theme, or the system's until one is picked (bootstrap.js makes
+/// the same choice before paint).
+Brightness loadBrightness() =>
+    opensLight(stored: _storedTheme(), systemLight: web.window.matchMedia(_systemLight).matches) ? Brightness.light : Brightness.dark;
+
+/// Calls [onChange] when the system theme changes while no theme is
+/// picked; returns a function that stops it.
+void Function() watchSystemTheme(void Function(Brightness brightness) onChange) {
+  final (bool _, void Function() stop) = watchMedia(_systemLight, (bool light) {
+    final bool shown = opensLight(stored: _storedTheme(), systemLight: light);
+    // A picked theme stays whatever the system does.
+    if (shown == light) onChange(shown ? Brightness.light : Brightness.dark);
+  });
+  return stop;
+}
+
+/// Stores [brightness] as the picked theme and shows it.
 void saveBrightness(Brightness brightness) {
-  final bool light = brightness == Brightness.light;
   try {
-    web.window.localStorage.setItem(themeKey, light ? 'light' : 'dark');
+    web.window.localStorage.setItem(themeKey, brightness == Brightness.light ? 'light' : 'dark');
   } on Object {
     // Private mode: the choice lasts for this page only.
   }
+  showBrightness(brightness);
+}
+
+/// Shows [brightness] without storing it.
+void showBrightness(Brightness brightness) {
+  final bool light = brightness == Brightness.light;
   // bootstrap.js stamps this class before paint, and the theme tokens key off it, so the toggle moves it too.
   final web.DOMTokenList classes = web.document.documentElement!.classList;
   classes.remove(light ? 'dark' : 'light');
@@ -90,10 +111,12 @@ Future<PickedFiles?> pickZip() async {
   return PickedFiles(name, filesFromZip(bytes));
 }
 
-/// Lets the user pick a data folder. Null when the dialog is cancelled.
+/// Lets the user pick a data folder. Null when the dialog is cancelled; an
+/// empty folder gives no files and no name.
 Future<PickedFiles?> pickDirectory() async {
   final List<web.File>? files = await _pick(accept: null, directory: true);
-  if (files == null || files.isEmpty) return null;
+  if (files == null) return null;
+  if (files.isEmpty) return const PickedFiles('', <String, Uint8List>{});
   final Map<String, Uint8List> contents = <String, Uint8List>{};
   String name = 'Animus';
   for (final web.File file in files) {

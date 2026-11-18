@@ -112,7 +112,7 @@ void main() {
 
     test('should name a missing preset, a missing base and a loop', () {
       expect(resolvePreset(presets, 'holograms', 'nope').problem, "presets.holograms has no preset 'nope'");
-      expect(resolvePreset(null, 'holograms', 'sign').problem, contains('no presets document'));
+      expect(resolvePreset(null, 'holograms', 'sign').problem, contains('no presets file'));
       expect(resolvePreset(presets, 'holograms', 'loop').problem, contains('extends itself'));
     });
 

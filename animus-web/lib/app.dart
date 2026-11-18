@@ -28,6 +28,7 @@ class _AnimusAppState extends State<AnimusApp> {
   Brightness _brightness = loadBrightness();
   EditorRoute _route = EditorRoute.parse(currentHash());
   void Function()? _stopHash;
+  void Function()? _stopTheme;
   LiveSession? _session;
 
   @override
@@ -36,6 +37,10 @@ class _AnimusAppState extends State<AnimusApp> {
     component.store.addListener(_storeChanged);
     component.hub.addListener(_storeChanged);
     _stopHash = onHashChange((String hash) => _routeTo(EditorRoute.parse(hash)));
+    _stopTheme = watchSystemTheme((Brightness brightness) {
+      showBrightness(brightness);
+      if (mounted) setState(() => _brightness = brightness);
+    });
     toast.addListener(_dropRepeatedToasts);
     _routeTo(_route);
   }
@@ -54,6 +59,7 @@ class _AnimusAppState extends State<AnimusApp> {
     component.hub.removeListener(_storeChanged);
     toast.removeListener(_dropRepeatedToasts);
     _stopHash?.call();
+    _stopTheme?.call();
     _session?.dispose();
     super.dispose();
   }

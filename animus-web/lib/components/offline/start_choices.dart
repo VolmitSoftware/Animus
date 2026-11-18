@@ -1,7 +1,7 @@
 /// The ways to start: pair a server (first, with the field for its link),
 /// try the examples, open a copy of the data folder. On a first visit they
 /// are three cards with Blank workspace and Import under them; once there is
-/// something to continue they fold into one row of buttons.
+/// something to continue every way in is a row with its line.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -14,11 +14,11 @@ import '../../ui/action_row.dart';
 import '../../ui/dialog.dart';
 import '../../ui/field.dart';
 import '../../ui/info_tip.dart';
-import '../../ui/menu.dart';
-import '../../ui/mode.dart';
+import '../../services/browser.dart';
 import '../server/pair_copy.dart';
 import '../server/pair_link_form.dart';
 import 'page_parts.dart';
+import 'start_rows.dart';
 import '../../ui/stack.dart';
 
 /// What the start choices do; the start page owns the work.
@@ -38,8 +38,6 @@ class StartActions {
   void import() => onNavigate(const CitizensRoute());
 }
 
-/// The in-game step, one line, with the menu button in its tip.
-const String pairStep = 'Run $pairCommand in game, then open the link or paste it here.';
 const String _pairTip = 'The Web editor button in the /animus menu does the same. A link works once, for 10 minutes.';
 
 /// First visit: three cards, the pairing one first.
@@ -82,28 +80,43 @@ class StartCards extends StatelessWidget {
   ]);
 }
 
-/// The other ways in, under the cards: a blank workspace and Import.
-class StartMore extends StatefulWidget {
-  const StartMore({required this.actions, this.compact = false, this.heading, super.key});
+/// The ways in as rows ([startWays]): under the first visit's cards a blank
+/// workspace and Import; on a returning visit every way in, each with its
+/// line and labelled buttons. On a phone a row's buttons go under its text.
+class StartList extends StatefulWidget {
+  const StartList({required this.actions, this.returning = false, super.key});
 
   final StartActions actions;
-
-  /// One row for every way in, for a returning visit.
-  final bool compact;
-
-  /// The section heading at the start of that row.
-  final Widget? heading;
+  final bool returning;
 
   @override
-  State<StartMore> createState() => _StartMoreState();
+  State<StartList> createState() => _StartListState();
 }
 
-class _StartMoreState extends State<StartMore> {
+class _StartListState extends State<StartList> {
   static const String _nameId = 'start-workspace-name';
 
   bool _blankOpen = false;
   bool _pairOpen = false;
   String _name = '';
+  bool _phone = false;
+  void Function()? _stopPhone;
+
+  @override
+  void initState() {
+    super.initState();
+    final (bool phone, void Function() stop) = watchMedia('(max-width: 760px)', (bool phone) {
+      if (mounted) setState(() => _phone = phone);
+    });
+    _phone = phone;
+    _stopPhone = stop;
+  }
+
+  @override
+  void dispose() {
+    _stopPhone?.call();
+    super.dispose();
+  }
 
   void _create() {
     final String name = _name.trim().isEmpty ? 'My workspace' : _name.trim();
@@ -111,44 +124,46 @@ class _StartMoreState extends State<StartMore> {
     component.actions.onBlank(name);
   }
 
+  void Function()? _run(String button) {
+    final StartActions actions = component.actions;
+    if (actions.busy && button != 'Pair a server') return null;
+    return switch (button) {
+      'Pair a server' => () => setState(() => _pairOpen = true),
+      'Open examples' => actions.onExamples,
+      'Open folder' => actions.onOpenFolder,
+      'Open zip' => actions.onOpenZip,
+      'Blank workspace' => () => setState(() => _blankOpen = true),
+      _ => actions.import,
+    };
+  }
+
+  Widget _row(StartWay way) {
+    final Widget text = stack(spacing: 2, <Widget>[
+      Text(way.title, weight: FontWeight.w500),
+      mutedText(way.line),
+    ]);
+    final Widget buttons = ActionRow.footer(secondary: <RowAction>[for (final String button in way.buttons) RowAction(button, _run(button))]);
+    return listItem(
+      attributes: <String, String>{'data-way': way.action.name},
+      Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: _phone ? stack(spacing: 8, <Widget>[text, buttons]) : splitRow(text, buttons)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final StartActions actions = component.actions;
-    final bool busy = actions.busy;
-    final bool advanced = ModeScope.advanced(context);
-    final RowAction blank = RowAction('Blank workspace', busy ? null : () => setState(() => _blankOpen = true));
-    final RowAction import = RowAction('Import', busy ? null : actions.import);
     return dom.div(<Widget>[
-      if (component.compact)
-        // The heading and every way in on one line; what does not fit folds
-        // into the "..." menu.
-        ActionRow(
-          label: 'Start',
-          moreId: 'start-more',
-          leading: <Widget>[?component.heading],
-          more: <AppMenuEntry>[
-            AppMenuEntry('Open zip', busy ? null : actions.onOpenZip),
-            if (advanced) ...<AppMenuEntry>[
-              const AppMenuEntry.separator(),
-              AppMenuEntry('Blank workspace', blank.onPressed),
-              AppMenuEntry('Import', import.onPressed),
-            ],
-          ],
-          secondary: <RowAction>[
-            RowAction('Open examples', busy ? null : actions.onExamples),
-            RowAction('Open folder', busy ? null : actions.onOpenFolder),
-            RowAction('Pair a server', () => setState(() => _pairOpen = true)),
-          ],
-        )
-      // Importing and blank workspaces are Advanced; Simple starts from files, examples or a server.
-      else if (advanced)
-        ActionRow(label: 'Other ways to start', secondary: <RowAction>[import, blank]),
+      Card(
+        variant: CardVariant.outlined,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: rowList(label: component.returning ? 'Start' : 'More ways to start', separated: true, <Widget>[for (final StartWay way in startWays(returning: component.returning)) _row(way)]),
+      ),
       AppDialog(
         id: 'start-blank',
         open: _blankOpen,
         title: 'Blank workspace',
         onClose: () => setState(() => _blankOpen = false),
-        footer: DialogFooter(cancel: RowAction('Cancel', () => setState(() => _blankOpen = false)), primary: RowAction('Create', busy ? null : _create)),
+        footer: DialogFooter(cancel: RowAction('Cancel', () => setState(() => _blankOpen = false)), primary: RowAction('Create', actions.busy ? null : _create)),
         children: <Widget>[
           Field(
             label: 'Name',

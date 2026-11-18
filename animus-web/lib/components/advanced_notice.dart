@@ -1,5 +1,5 @@
-/// What Simple says when documents arrive that only Advanced lists: an
-/// opened folder or zip, an import, or a document the paired server gained.
+/// What Simple says when files arrive that only Advanced lists: an opened
+/// folder or zip, an import, or a file the paired server gained.
 /// One sentence with the count, beside one Switch to Advanced action that
 /// lands on them. Home and lists that show nothing only because of those
 /// kinds say how many there are instead of a plain empty state.
@@ -58,18 +58,18 @@ AdvancedNotice? advancedNotice(Arrival arrival, List<ArrivedDocument> documents)
   if (hidden.isEmpty) return null;
   final int count = hidden.length;
   final String message = switch (arrival) {
-    Arrival.imported when count == documents.length => '${countOf(count, 'imported document')} ${_isAre(count)} in Advanced.',
-    Arrival.imported => '$count of ${countOf(documents.length, 'imported document')} ${_isAre(count)} in Advanced.',
-    Arrival.server => '${countOf(count, 'new document')} ${_isAre(count)} in Advanced.',
+    Arrival.imported when count == documents.length => '${countOf(count, 'imported file')} ${_isAre(count)} in Advanced.',
+    Arrival.imported => '$count of ${countOf(documents.length, 'imported file')} ${_isAre(count)} in Advanced.',
+    Arrival.server => '${countOf(count, 'new file')} ${_isAre(count)} in Advanced.',
   };
   return AdvancedNotice(message, hidden);
 }
 
 /// What Home or a list says when everything it would show is in Advanced.
-String hiddenDocumentsText(int count) => '${countOf(count, 'document')} ${_isAre(count)} in Advanced.';
+String hiddenDocumentsText(int count) => '${countOf(count, 'file')} ${_isAre(count)} in Advanced.';
 
-/// What Search says when only documents Advanced lists match.
-String hiddenMatchesText(int count) => '${countOf(count, 'match', plural: 'matches')} ${_isAre(count)} in Advanced.';
+/// Search's row for the matches only Advanced lists; it switches the mode.
+String hiddenMatchesLabel(int count) => 'Show ${countOf(count, 'match', plural: 'matches')} in Advanced';
 
 /// How many documents [counts] holds when Simple lists none of them; 0 when
 /// Simple lists one or there are none.
@@ -121,5 +121,12 @@ final class ArrivalNotices {
       _documents['${document.kind.wireName}:${document.id}'] = document;
     }
     return advancedNotice(arrival, _documents.values.toList());
+  }
+
+  /// Forgets the batch: its notice was acted on, so what comes next is new.
+  void clear() {
+    _documents.clear();
+    _source = null;
+    _at = null;
   }
 }

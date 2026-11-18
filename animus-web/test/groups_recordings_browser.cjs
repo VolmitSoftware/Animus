@@ -104,6 +104,9 @@ async function run(browser, viewport, theme, tag) {
   await openJob(page, 'NPCs');
   const npcRows = page.locator('#npc-list .ui-library-rows');
   await npcRows.locator('.ui-library-row').first().waitFor();
+  // A phone keeps the list's tools behind Filters.
+  const folded = page.locator('#npc-list').getByRole('button', {name: /^Filters/});
+  if (await folded.count()) await folded.first().click();
   await chooseAndWait(page.locator('#npc-filter-folder'), 'town');
   await npcRows.focus();
   await page.keyboard.press('Control+a');

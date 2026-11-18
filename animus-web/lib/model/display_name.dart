@@ -43,3 +43,12 @@ bool needsPath(DocumentKind kind, String name) => kind == DocumentKind.npc && na
 /// [name] closing a sentence with [mark], unless the name already ends in
 /// one ("Welcome!"), which then closes it alone: no "!." or "!?".
 String closing(String name, [String mark = '.']) => RegExp(r'[.!?]$').hasMatch(name.trimRight()) ? name : '$name$mark';
+
+/// The line under a file's heading in Advanced: its id when the heading is
+/// not the id, and its revision, which the server raises on every apply.
+String? advancedDetail({required String title, required String id, required Object? json}) {
+  final Object? revision = json is Map<String, Object?> ? json['revision'] : null;
+  final String? revised = revision is int ? 'revision $revision' : null;
+  if (title == id) return revised == null ? null : 'R${revised.substring(1)}';
+  return revised == null ? id : '$id, $revised';
+}

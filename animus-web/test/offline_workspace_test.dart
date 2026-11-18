@@ -38,9 +38,9 @@ void main() {
     final WorkspaceSnapshot blank = await store.createWorkspace('Sketches');
     expect(blank.documents, isEmpty);
     expect(store.workspace?.name, 'Sketches');
-    final WorkspaceSnapshot starter = await store.openFiles('Example packs', starterWorkspaceFiles());
+    final WorkspaceSnapshot starter = await store.openFiles('Examples', starterWorkspaceFiles());
     expect(starter.documents.where((AnimusDocument document) => !document.valid), isEmpty);
-    expect(store.workspaces.map((WorkspaceSummary summary) => summary.name), <String>['Example packs', 'Sketches']);
+    expect(store.workspaces.map((WorkspaceSummary summary) => summary.name), <String>['Examples', 'Sketches']);
   });
 
   test('should rename, duplicate and delete a workspace, and restore the deleted one', () async {

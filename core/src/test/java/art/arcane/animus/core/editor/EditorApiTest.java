@@ -106,6 +106,9 @@ class EditorApiTest {
         JsonObject paired = valid("pair-response", harness.send("POST", "/v1/pair", null, body, false));
         assertEquals(pairing.tokenId(), paired.get("tokenId").getAsString());
         assertEquals(EditorHarness.ADMIN.toString(), paired.get("admin").getAsString(), "the pairing player, so new NPCs default their owner to it");
+        error("pairing-used", 401, harness.send("POST", "/v1/pair", null, body, false));
+        body.addProperty("secret", "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM");
+        // A wrong secret learns nothing about the link.
         error("pairing-invalid", 401, harness.send("POST", "/v1/pair", null, body, false));
         String tokens = harness.read(EditorTokens.PATH);
         assertFalse(tokens.contains(paired.get("token").getAsString().substring(20)), "the token secret is never stored");

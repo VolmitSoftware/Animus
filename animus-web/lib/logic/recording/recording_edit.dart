@@ -226,7 +226,7 @@ List<String> recordingProblems(Object? json, {String? id}) {
   } else if (!recordingIdPattern.hasMatch(recordingId)) {
     errors.add(r'$.id: expected 1-64 lowercase letters, digits, _ or -');
   } else if (id != null && recordingId != id) {
-    errors.add('\$.id: the recording id is $recordingId but the document is $id; use Rename to move it');
+    errors.add('\$.id: the recording id is $recordingId but the file is $id; use Rename to move it');
   }
   final Object? recorder = json['recordedBy'];
   if (recorder is! String || !_uuid.hasMatch(recorder)) errors.add(r'$.recordedBy: expected canonical player UUID');

@@ -29,7 +29,7 @@ const ApiResponse _tokenAnswer = ApiResponse(200, <String, Object?>{
 ApiResponse _refuse(String code) => ApiResponse(errorStatusFor(code), <String, Object?>{'error': <String, Object?>{'code': code, 'message': 'server words'}});
 
 int errorStatusFor(String code) => switch (code) {
-      'pairing-invalid' => 401,
+      'pairing-invalid' || 'pairing-used' || 'pairing-revoked' => 401,
       'origin-not-allowed' => 403,
       'pairing-expired' => 410,
       _ => 500,
@@ -185,13 +185,17 @@ void main() {
     });
 
     test('should put the server refusal ahead of a blocked direct path', () async {
-      final FakeNetwork network = FakeNetwork(serverHandler(rest: (ApiRequest request) => _refuse('pairing-invalid')))..down.add(ConnectionPath.direct);
+      final FakeNetwork network = FakeNetwork(serverHandler(rest: (ApiRequest request) => _refuse('pairing-used')))..down.add(ConnectionPath.direct);
       await expectLater(pairServer(both, network.open, pageOrigin: securePage), fails(PairingFailure.used));
     });
 
-    test('should word a used or revoked link, an expired link and a refused page address apart', () async {
-      final FakeNetwork used = FakeNetwork(serverHandler(rest: (ApiRequest request) => _refuse('pairing-invalid')));
+    test('should word a used, a revoked, an unknown and an expired link and a refused page address apart', () async {
+      final FakeNetwork used = FakeNetwork(serverHandler(rest: (ApiRequest request) => _refuse('pairing-used')));
       await expectLater(pairServer(both, used.open), fails(PairingFailure.used));
+      final FakeNetwork revoked = FakeNetwork(serverHandler(rest: (ApiRequest request) => _refuse('pairing-revoked')));
+      await expectLater(pairServer(both, revoked.open), fails(PairingFailure.revoked));
+      final FakeNetwork unknown = FakeNetwork(serverHandler(rest: (ApiRequest request) => _refuse('pairing-invalid')));
+      await expectLater(pairServer(both, unknown.open), fails(PairingFailure.unknown));
       final FakeNetwork expired = FakeNetwork(serverHandler(rest: (ApiRequest request) => _refuse('pairing-expired')));
       await expectLater(pairServer(both, expired.open), fails(PairingFailure.expired));
       // The server checks the origin of every direct request, hello included.

@@ -46,7 +46,7 @@ String describeChanges(List<DocumentChange> changes, Iterable<String> resources,
     return name != null ? 'edit $name' : 'create ${_newName(change)}';
   }
   if (documents.isEmpty) return resources.length == 1 ? 'change ${resources.single}' : 'change ${countOf(resources.length, 'file')}';
-  return 'change ${countOf(documents.length, 'document')}';
+  return 'change ${countOf(documents.length, 'file')}';
 }
 
 /// A new document's name, as the library will show it.

@@ -124,6 +124,11 @@ void main() {
   });
 
   group('save bar, server workspace', () {
+    test('should say a behavior that needs Run commands needs it, not that its file has problems', () {
+      expect(applyBlockedReason(problems: 0, serverChanged: 0, commands: 1), '1 file needs Run commands, which this pairing lacks.');
+      expect(applyBlockedReason(problems: 1, serverChanged: 0, commands: 2), 'Fix 1 file before Apply. 2 files need Run commands, which this pairing lacks.');
+      expect(serverSaveState(link: ServerLink.online, changes: 1, commands: 1).message, '1 file needs Run commands, which this pairing lacks.');
+    });
     test('should offer Apply for changes and say when it is up to date', () {
       expect(serverSaveState(link: ServerLink.online, changes: 0).message, 'Up to date');
       final SaveBarState three = serverSaveState(link: ServerLink.online, changes: 3);
@@ -193,8 +198,27 @@ void main() {
       final SaveBarState otherTab = serverSaveState(link: ServerLink.otherTab, changes: 4);
       expect(otherTab.message, 'Open in another tab.');
       expect(otherTab.primary, SaveAction.takeOver);
-      expect(serverSaveState(link: ServerLink.online, changes: 1, stale: 1).message, '1 change conflicts with the server');
-      expect(serverSaveState(link: ServerLink.online, changes: 3, stale: 2).message, '2 changes conflict with the server');
+      final SaveBarState stale = serverSaveState(link: ServerLink.online, changes: 1, stale: 1);
+      expect(stale.message, '1 file changed on the server. Compare it before Apply.');
+      expect(stale.primary, SaveAction.review);
+      expect(serverSaveState(link: ServerLink.online, changes: 3, stale: 2).message, '2 files changed on the server. Compare them before Apply.');
+    });
+
+    test('should name what stops Apply and offer Review instead of an Apply that fails', () {
+      expect(applyBlockedReason(problems: 0, serverChanged: 0), isNull);
+      expect(applyBlockedReason(problems: 1, serverChanged: 0), 'Fix 1 file before Apply.');
+      expect(applyBlockedReason(problems: 2, serverChanged: 0), 'Fix 2 files before Apply.');
+      expect(applyBlockedReason(problems: 0, serverChanged: 1), '1 file changed on the server. Compare it before Apply.');
+      expect(applyBlockedReason(problems: 2, serverChanged: 1), 'Fix 2 files and compare 1 file before Apply.');
+      final SaveBarState blocked = serverSaveState(link: ServerLink.online, changes: 3, problems: 2);
+      expect(blocked.message, 'Fix 2 files before Apply.');
+      expect(blocked.tone, SaveTone.attention);
+      expect(blocked.primary, SaveAction.review);
+      expect(blocked.secondary, isEmpty, reason: 'Review is the one button');
+      expect(serverSaveState(link: ServerLink.online, changes: 3, problems: 1, failure: 'The server refused the change set.').message, 'Fix 1 file before Apply.',
+          reason: 'the bar and Review say the same reason');
+      expect(serverSaveState(link: ServerLink.online, changes: 2, problems: 1, applying: true).message, 'Applying...');
+      expect(serverSaveState(link: ServerLink.online, changes: 0, problems: 1).message, 'Up to date', reason: 'nothing waits to be applied');
     });
 
     test('should compare equal when it would show the same bar', () {
@@ -209,7 +233,7 @@ void main() {
       expect(serverSaveState(link: ServerLink.online, changes: 2, loadDone: 3, loadTotal: 9).message, '2 changes not applied. Loading 3 of 9');
       expect(serverSaveState(link: ServerLink.online, changes: 0, loadDone: 9, loadTotal: 9).message, 'Up to date');
       final SaveBarState failed = serverSaveState(link: ServerLink.online, changes: 0, loadFailed: 2);
-      expect(failed.message, '2 documents could not load');
+      expect(failed.message, '2 files could not load');
       expect(failed.primary, SaveAction.retryLoads);
       expect(serverSaveState(link: ServerLink.online, changes: 1, loadFailed: 2).primary, SaveAction.apply);
     });

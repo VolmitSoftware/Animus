@@ -59,7 +59,7 @@ class PresetFix extends StatelessWidget {
         AppAlert(
           tone: AlertTone.error,
           title: 'Uses preset ${doc['preset']}',
-          message: inlined != null ? 'Animus does not read presets. Copy its fields into this document to keep the look.' : 'Animus does not read presets, and this one cannot be copied in: $problem.',
+          message: inlined != null ? 'Animus does not read presets. Copy its fields into this file to keep the look.' : 'Animus does not read presets, and this one cannot be copied in: $problem.',
           action: inlined != null
               ? Button.outline(label: 'Copy fields in', size: ButtonSize.sm, onPressed: () => onJson(writeAt(doc, const <JsonStep>[], inlined)))
               : Button.outline(label: 'Remove preset', size: ButtonSize.sm, onPressed: () => onJson(writeAt(doc, const <JsonStep>['preset'], null))),
@@ -106,11 +106,11 @@ class _PresetsEditorState extends State<PresetsEditor> {
       classes: 'ui-doc-form',
       attributes: const <String, String>{'role': 'region', 'aria-label': 'Presets'},
       <Widget>[stack(spacing: 16, <Widget>[
-        const AppAlert(message: 'Only Gloss reads presets. Animus refuses a document that names one; its page offers to copy the fields in.'),
+        const AppAlert(message: 'Only Gloss reads presets. Animus refuses a file that names one; its page offers to copy the fields in.'),
         Field(
           label: 'For',
           forId: 'animus-presets-kind',
-          tip: 'The kind of document these defaults and presets fill.',
+          tip: 'The kind of file these defaults and presets fill.',
           child: AnimusSelect.values(
             id: 'animus-presets-kind',
             value: _kind,
@@ -130,7 +130,7 @@ class _PresetsEditorState extends State<PresetsEditor> {
         AppSection(
           title: 'Defaults',
           open: asMap(doc['defaults']).containsKey(_kind),
-          tip: 'Fields every $kind document starts from before its own.',
+          tip: 'Fields every $kind file starts from before its own.',
           docs: Docs.gloss,
           children: <Widget>[
             _values(
@@ -145,7 +145,7 @@ class _PresetsEditorState extends State<PresetsEditor> {
         AppSection(
           title: 'Presets',
           count: named.length,
-          tip: 'Named field sets a $kind document takes by naming one.',
+          tip: 'Named field sets a $kind file takes by naming one.',
           docs: Docs.gloss,
           children: <Widget>[
             stack(<Widget>[

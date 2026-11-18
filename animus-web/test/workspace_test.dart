@@ -88,7 +88,7 @@ void main() {
       expect(snapshot.generation, 1);
       expect(await repository.load(snapshot.id), isNotNull);
       expect(store.workspaces.single.documentCount, 10);
-      expect(store.ignored, contains('config.toml'));
+      expect(store.ignored, isNot(contains('config.toml')), reason: 'the server reads it');
     });
 
     test('should revalidate an edited document and undo the edit', () async {
@@ -199,7 +199,7 @@ void main() {
       expect(describeChanges(const <DocumentChange>[], const <String>['pack/assets/x.png'], none), 'change pack/assets/x.png');
       expect(
         describeChanges(const <DocumentChange>[DocumentChange(DocumentKind.npc, 'a/b', '{}'), DocumentChange(DocumentKind.npc, 'a/c', '{}')], const <String>[], all),
-        'change 2 documents',
+        'change 2 files',
       );
     });
 

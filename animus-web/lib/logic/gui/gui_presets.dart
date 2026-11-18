@@ -108,7 +108,7 @@ final class PresetValues {
 /// The values preset [name] of [kind] applies: `defaults.<kind>`, then the
 /// `extends` chain from its base down to [name], later ones winning.
 PresetValues resolvePreset(JsonMap? presets, String kind, String name) {
-  if (presets == null) return const PresetValues(null, 'this workspace has no presets document (gui/presets.json)');
+  if (presets == null) return const PresetValues(null, 'this workspace has no presets file (gui/presets.json)');
   final JsonMap named = asMap(asMap(presets['presets'])[kind]);
   final List<JsonMap> chain = <JsonMap>[];
   final Set<String> seen = <String>{};
@@ -153,7 +153,7 @@ JsonMap mergeUnder(JsonMap top, JsonMap base) {
 (JsonMap?, String?) inlinePreset(JsonMap document, DocumentKind kind, JsonMap? presets) {
   final String? presetKind = presetKindFor(kind);
   final Object? reference = document['preset'];
-  if (presetKind == null) return (null, '${kind.label} documents have no presets');
+  if (presetKind == null) return (null, '${kind.label} files have no presets');
   if (reference is! String) return (null, 'preset is not a preset name');
   final PresetValues resolved = resolvePreset(presets, presetKind, reference);
   if (resolved.values == null) return (null, resolved.problem);

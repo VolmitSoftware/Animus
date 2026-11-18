@@ -126,6 +126,11 @@ class _LibraryListState extends State<LibraryList> {
   web.ResizeObserver? _observer;
   web.Element? _observed;
 
+  /// Phone widths keep the toolbar and the chips behind Filters.
+  bool _phone = false;
+  bool _filtersOpen = false;
+  void Function()? _stopPhone;
+
   List<LibraryRow>? _cachedFrom;
   String _cachedKey = '';
   List<LibraryRow> _cached = const <LibraryRow>[];
@@ -133,8 +138,19 @@ class _LibraryListState extends State<LibraryList> {
   String get _viewportId => '$_id-rows';
 
   @override
+  void initState() {
+    super.initState();
+    final (bool phone, void Function() stop) = watchMedia('(max-width: 760px)', (bool phone) {
+      if (mounted) setState(() => _phone = phone);
+    });
+    _phone = phone;
+    _stopPhone = stop;
+  }
+
+  @override
   void dispose() {
     _observer?.disconnect();
+    _stopPhone?.call();
     super.dispose();
   }
 
@@ -241,9 +257,11 @@ class _LibraryListState extends State<LibraryList> {
   /// on a narrow one search and sort share a line above the filters.
   Widget _bar(List<LibraryRow> rows) {
     final LibrarySort sort = component.sorts.firstWhere((LibrarySort each) => each.id == _sort, orElse: () => LibrarySort.name);
+    final bool foldable = _phone && (component.toolbar.isNotEmpty || component.filters.isNotEmpty);
+    final bool showFilters = !foldable || _filtersOpen;
     return DenseBox(classes: 'ui-library-bar', children: <Widget>[
       // One line each, the full width of a narrow list, so no filter is cut off.
-      if (component.toolbar.isNotEmpty)
+      if (showFilters && component.toolbar.isNotEmpty)
         dom.div(classes: 'ui-library-tools', <Widget>[
           Column(spacing: 8, crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: component.toolbar),
         ]),
@@ -261,7 +279,7 @@ class _LibraryListState extends State<LibraryList> {
           }),
         ),
       ]),
-      if (component.filters.isNotEmpty)
+      if (showFilters && component.filters.isNotEmpty)
         ToggleChips<String>(
           label: 'Filters',
           options: <ChoiceOption<String>>[for (final LibraryFilter filter in component.filters) ChoiceOption<String>(filter.id, filter.label)],
@@ -275,6 +293,13 @@ class _LibraryListState extends State<LibraryList> {
         dom.span(classes: 'ui-library-count', attributes: const <String, String>{'role': 'status'}, <Widget>[
           Component.text(_count(rows.length, component.rows.length)),
         ]),
+        if (foldable)
+          Button.outline(
+            label: _filters.isEmpty ? 'Filters' : 'Filters (${_filters.length})',
+            size: buttonSize(Density.dense),
+            attributes: <String, String>{'aria-expanded': '$_filtersOpen'},
+            onPressed: () => setState(() => _filtersOpen = !_filtersOpen),
+          ),
         if (component.sorts.length > 1)
           AppMenu(
             id: '$_id-sort',

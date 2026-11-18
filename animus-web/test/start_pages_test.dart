@@ -25,11 +25,11 @@ void main() {
       final ServerProfile hub = server('Hub', 'b');
       final List<WorkspaceSummary> workspaces = <WorkspaceSummary>[
         WorkspaceSummary('server-${town.id}', 'Town', 3, 1169, serverId: town.id),
-        const WorkspaceSummary('local-1', 'Example packs', 1, 25),
+        const WorkspaceSummary('local-1', 'Examples', 1, 25),
         const WorkspaceSummary('server-gone', 'Old server', 1, 4, serverId: 'gone'),
       ];
       final List<ContinueRow> rows = continueRows(<ServerProfile>[town, hub], workspaces);
-      expect(rows.map((ContinueRow row) => row.name), <String>['Town', 'Hub', 'Example packs', 'Old server']);
+      expect(rows.map((ContinueRow row) => row.name), <String>['Town', 'Hub', 'Examples', 'Old server']);
       expect(rows[0].workspace?.documentCount, 1169);
       expect(rows[1].workspace, isNull, reason: 'a server paired but never opened still shows');
       expect(rows.where((ContinueRow row) => row.name == 'Town'), hasLength(1), reason: 'a server is never listed twice');
@@ -37,9 +37,29 @@ void main() {
       expect(rows[2].orphan, isFalse);
     });
 
-    test('should count documents in words', () {
-      expect(documentsLine(1), '1 document');
-      expect(documentsLine(496), '496 documents');
+    test('should count files in words', () {
+      expect(documentsLine(1), '1 file');
+      expect(documentsLine(496), '496 files');
+    });
+  });
+
+  group('startWays', () {
+    test('should offer a blank workspace and Import on every start page, whatever the mode', () {
+      for (final bool returning in <bool>[false, true]) {
+        final List<StartWay> ways = startWays(returning: returning);
+        expect(ways.map((StartWay way) => way.action), containsAll(<StartAction>[StartAction.blank, StartAction.import]), reason: 'returning: $returning');
+      }
+    });
+
+    test('should keep a short explanation for every way in on a returning visit', () {
+      final List<StartWay> ways = startWays(returning: true);
+      expect(ways.map((StartWay way) => way.action), <StartAction>[StartAction.pair, StartAction.examples, StartAction.files, StartAction.blank, StartAction.import]);
+      for (final StartWay way in ways) {
+        expect(way.line, isNotEmpty, reason: way.title);
+        expect(way.title.split(' ').length, lessThanOrEqualTo(3), reason: 'a label of 1 to 3 words: ${way.title}');
+        expect(way.buttons, isNotEmpty);
+      }
+      expect(startWays(returning: false).map((StartWay way) => way.action), <StartAction>[StartAction.blank, StartAction.import], reason: 'the cards hold the other three');
     });
   });
 
@@ -59,8 +79,6 @@ void main() {
       expect(pairProblemOf('pairing-invalid', pageOrigin: 'http://127.0.0.1:8870').newLink, isTrue);
       expect(pairProblemOf('pairing-expired', pageOrigin: 'http://127.0.0.1:8870').title, 'This link expired.');
       expect(notALink.newLink, isTrue);
-      expect(noLink.newLink, isTrue);
-      expect(noLink.title, isNot(notALink.title), reason: 'a page opened without a link is not told its link is wrong');
     });
 
     test('should name the page address when the server refuses it', () {
@@ -84,7 +102,19 @@ void main() {
       expect(blocked.title, contains('browser blocked'));
       expect(blocked.newLink, isFalse);
       expect(pairProblemOf('relay-unavailable', pageOrigin: 'https://animus.example').title, 'The server did not answer.');
-      expect(pairProblemOf('pairing-invalid', pageOrigin: 'https://animus.example').title, 'This link was already used.');
+      expect(pairProblemOf('pairing-used', pageOrigin: 'https://animus.example').title, 'This link was already used.');
+    });
+
+    test('should tell a used link from a revoked or unknown one', () {
+      final PairProblem used = pairProblemOf('pairing-used', pageOrigin: 'https://animus.example');
+      final PairProblem revoked = pairProblemOf('pairing-revoked', pageOrigin: 'https://animus.example');
+      final PairProblem unknown = pairProblemOf('pairing-invalid', pageOrigin: 'https://animus.example');
+      expect(revoked.title, 'This link was revoked.');
+      expect(unknown.title, 'The server does not know this link.');
+      expect(<String>{used.title, revoked.title, unknown.title}, hasLength(3));
+      expect(<bool>[used.newLink, revoked.newLink, unknown.newLink], everyElement(isTrue));
+      expect(PairingFailure.of('pairing-revoked'), PairingFailure.revoked);
+      expect(pairingFailureCopy(PairingFailure.revoked).cause, isNot(pairingFailureCopy(PairingFailure.used).cause));
     });
 
     test('should read a refusal through one adapter', () {

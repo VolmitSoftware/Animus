@@ -69,12 +69,14 @@ async function icons(page) {
 }
 
 async function run(browser, viewport, label) {
-  const fresh = await browser.newPage({viewport, colorScheme: 'light'});
-  await fresh.goto(url);
-  await fresh.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
-  assert.equal(await fresh.evaluate(() => document.documentElement.className), 'dark', `${label}: Midnight on a first visit, whatever the system theme`);
-  await icons(fresh);
-  await fresh.close();
+  for (const system of ['light', 'dark']) {
+    const fresh = await browser.newPage({viewport, colorScheme: system});
+    await fresh.goto(url);
+    await fresh.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
+    assert.equal(await fresh.evaluate(() => document.documentElement.className), system, `${label}: a first visit follows the system theme (${system})`);
+    if (system === 'dark') await icons(fresh);
+    await fresh.close();
+  }
 
   const page = await browser.newPage({viewport});
   page.setDefaultTimeout(10000);
@@ -109,7 +111,7 @@ async function run(browser, viewport, label) {
     // A returning start page has no primary; the pair page's field always does.
     if (!(await page.locator(".arcane-button[data-variant='primary']:visible").count())) {
       await page.goto(`${url}/#/pair`);
-      await page.getByRole('textbox', {name: 'New link'}).waitFor();
+      await page.getByRole('textbox', {name: 'Pairing link'}).waitFor();
     }
     const primary = page.locator(".arcane-button[data-variant='primary']:visible").first();
     await primary.waitFor();
@@ -148,7 +150,7 @@ async function run(browser, viewport, label) {
       await page.goto(url);
       await page.getByRole('heading', {level: 1, name: 'Animus web editor'}).waitFor();
     }
-    // A returning visit keeps Open examples in the start row's "..." menu.
+    // A returning visit lists Open examples in its Start rows.
     await startAction(page, 'Open examples');
     await page.waitForFunction(() => /#\/workspace\//.test(location.hash));
     await page.locator('.ui-save-bar').waitFor();

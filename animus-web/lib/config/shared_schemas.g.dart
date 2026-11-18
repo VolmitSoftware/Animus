@@ -120,7 +120,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {"method": "WS", "path": "/v1/events", "scope": "read", "request": "event-auth", "responses": {"frame": "event"}}
   ],
   "errorStatus": {
-    "unauthorized": 401, "token-expired": 401, "token-revoked": 401, "pairing-invalid": 401, "pairing-expired": 410,
+    "unauthorized": 401, "token-expired": 401, "token-revoked": 401, "pairing-invalid": 401, "pairing-used": 401, "pairing-revoked": 401, "pairing-expired": 410,
     "scope-missing": 403, "group-denied": 403, "origin-not-allowed": 403, "counter-replayed": 409,
     "not-found": 404, "invalid-request": 400, "too-large": 413, "rate-limited": 429, "busy": 503,
     "conflict": 409, "preview-refused": 422, "player-offline": 409, "gloss-unavailable": 422,
@@ -293,7 +293,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     },
     "error-code": {
-      "enum": ["unauthorized", "token-expired", "token-revoked", "scope-missing", "group-denied", "origin-not-allowed", "counter-replayed", "pairing-invalid", "pairing-expired", "not-found", "invalid-request", "too-large", "rate-limited", "busy", "conflict", "preview-refused", "player-offline", "gloss-unavailable", "unsupported-protocol", "server-offline", "timeout", "internal", "world-unloaded"]
+      "enum": ["unauthorized", "token-expired", "token-revoked", "scope-missing", "group-denied", "origin-not-allowed", "counter-replayed", "pairing-invalid", "pairing-used", "pairing-revoked", "pairing-expired", "not-found", "invalid-request", "too-large", "rate-limited", "busy", "conflict", "preview-refused", "player-offline", "gloss-unavailable", "unsupported-protocol", "server-offline", "timeout", "internal", "world-unloaded"]
     },
     "error-response": {
       "type": "object",

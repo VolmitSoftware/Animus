@@ -302,7 +302,7 @@ class _JsonCodeEditorState extends State<JsonCodeEditor> {
               'spellcheck': 'false',
               'autocomplete': 'off',
               'wrap': 'off',
-              'aria-label': 'Document JSON',
+              'aria-label': 'File JSON',
               if (component.readOnly) 'readonly': '',
               'role': 'combobox',
               'aria-multiline': 'true',

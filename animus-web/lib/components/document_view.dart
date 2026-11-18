@@ -54,6 +54,7 @@ import '../ui/badge.dart';
 import '../ui/library_rows.dart' show npcLine;
 import '../ui/confirm_dialog.dart';
 import '../ui/dialog.dart';
+import '../ui/editor_mode.dart';
 import '../ui/field.dart';
 import '../ui/info_tip.dart';
 import '../ui/menu.dart';
@@ -365,8 +366,18 @@ class _DocumentPaneState extends State<DocumentPane> {
     return view;
   }
 
-  /// Renames the title: the `name` of an NPC or pack, otherwise the id.
+  /// Renames the title of a kind named by its id: moves the id.
   Future<String?> _rename(String value) => component.onRename!(value);
+
+  /// The name field's text as stored, codes and all.
+  static String _nameValue(AnimusDocument document, String field) => asString(asMap(document.json)[field]) ?? '';
+
+  /// Renames a kind named by a field (an NPC's Name, a shop's Title): writes
+  /// the field, as the form does.
+  Future<String?> _renameField(AnimusDocument document, String field, String value) async {
+    component.onJson(writeAt(document.json, <JsonStep>[field], value));
+    return null;
+  }
 
   void _startId({required bool copy}) {
     setState(() {
@@ -433,8 +444,8 @@ class _DocumentPaneState extends State<DocumentPane> {
     final int errors = problems.where((Diagnostic d) => d.severity == DiagnosticSeverity.error).length;
     final bool preview = _hasPreview(document) && (view == ViewMode.visual || view == ViewMode.conversation);
     final String? nameField = nameFields[document.kind];
-    // A kind named by a form field (an NPC's Name) is renamed there only;
-    // the header's Rename moves the id of the others.
+    // Rename writes the field a kind is named by (an NPC's Name), and moves
+    // the id of the others.
     final bool canRename = nameField == null && component.onRename != null;
     final String title = _displayName;
     return dom.div(classes: 'ui-doc', <Widget>[
@@ -442,13 +453,13 @@ class _DocumentPaneState extends State<DocumentPane> {
         title: title,
         // Advanced names the file; Simple tells an unnamed NPC apart by where it stands.
         detail: advanced
-            ? (title != document.id ? document.id : null)
+            ? advancedDetail(title: title, id: document.id, json: document.json)
             : needsPath(document.kind, title)
                 ? npcLine(summarizeDocument(document.kind, document.id, document.json), place: true)
                 : null,
-        renameValue: document.id,
-        renameLabel: 'Id',
-        onRename: canRename ? _rename : null,
+        renameValue: nameField == null ? document.id : _nameValue(document, nameField),
+        renameLabel: nameField == null ? 'Id' : humanizeKey(nameField),
+        onRename: canRename ? _rename : (nameField != null && document.json is Map<String, Object?> ? (String value) => _renameField(document, nameField, value) : null),
         crumbs: <Crumb>[
           Crumb(component.workspaceName, href: WorkspaceRoute(component.workspaceId).format()),
           Crumb(jobOfKind(document.kind).label, href: jobRoute(jobOfKind(document.kind), component.workspaceId).format()),
@@ -488,13 +499,17 @@ class _DocumentPaneState extends State<DocumentPane> {
             ),
         ],
       ),
-      if (_problemsOpen && problems.isNotEmpty) dom.div(id: _problemsId, classes: 'ui-doc-problems', <Widget>[_diagnostics(document, problems)]),
+      if (_problemsOpen && problems.isNotEmpty) dom.div(id: _problemsId, classes: 'ui-doc-problems', <Widget>[_diagnostics(document, problems, advanced)]),
+      if (!_problemsOpen && errors > 0 && document.json is Map<String, Object?>) _firstProblem(document, problems, advanced),
       if (_draft != null && view != ViewMode.code && view != ViewMode.split)
         dom.div(classes: 'ui-doc-note', attributes: const <String, String>{'role': 'status', 'data-testid': 'code-draft-note'}, <Widget>[
-          const dom.span(<Widget>[Component.text('Code not used yet. This view shows the document without it.')]),
+          const dom.span(<Widget>[Component.text('Code not used yet. This view shows the file without it.')]),
           Button.outline(label: 'Open Code', size: ButtonSize.sm, onPressed: () => component.onView(ViewMode.code)),
         ]),
+      // Keyed, so a note appearing above it never rebuilds the form and
+      // takes the focus from the field being filled.
       SuggestSources(
+        key: const ValueKey<String>('doc-body'),
         documents: component.workspaceDocuments,
         catalog: _schemas.catalog,
         lookups: component.liveLookups,
@@ -583,25 +598,75 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   /// The problem list the status badge opens, with the fixes the editor
   /// knows.
-  Widget _diagnostics(AnimusDocument document, List<Diagnostic> problems) {
+  Widget _diagnostics(AnimusDocument document, List<Diagnostic> problems, bool advanced) {
     final List<DocumentFix> fixes = fixesFor(document);
     Future<void> apply(Object? json) => component.onSource(prettyJson(json));
     return dom.div(classes: 'ui-problem-list', <Widget>[
-      _diagnosticList(problems),
+      _diagnosticList(document.kind, problems, advanced),
       if (fixes.isNotEmpty)
         ActionRow(
           dense: true,
           label: 'Fixes',
-          secondary: <RowAction>[for (final DocumentFix fix in fixes.take(8)) RowAction(fix.label, () => apply(fix.apply(document.json)))],
+          secondary: <RowAction>[
+            for (final DocumentFix fix in fixes.take(8)) RowAction(_fixLabel(document.kind, fix, advanced), () => apply(fix.apply(document.json))),
+          ],
           primary: fixes.length > 1 ? RowAction('Fix all ${fixes.length}', () => apply(applyFixes(document.json, fixes))) : null,
         ),
     ]);
   }
 
-  Widget _diagnosticList(List<Diagnostic> problems) => dom.ul(classes: 'ui-problems', <Widget>[
+  Widget _diagnosticList(DocumentKind kind, List<Diagnostic> problems, bool advanced) => dom.ul(classes: 'ui-problems', <Widget>[
         for (final Diagnostic diagnostic in problems.take(50))
-          dom.li(classes: 'is-${diagnostic.severity.name}', <Widget>[Component.text(diagnosticSentence(diagnostic))]),
+          dom.li(classes: 'is-${diagnostic.severity.name}', <Widget>[Component.text(problemSentence(diagnostic, kind, advanced: advanced))]),
       ]);
+
+  /// A fix's label; in Simple a fix of a field Simple does not show is just Fix.
+  static String _fixLabel(DocumentKind kind, DocumentFix fix, bool advanced) => advanced || !simpleHides(kind, fix.path) ? fix.label : 'Fix';
+
+  /// The first problem in words, shown without opening the list: its fix
+  /// when the editor knows one, and in Simple, for a field only Advanced
+  /// shows, Fix in Advanced.
+  Widget _firstProblem(AnimusDocument document, List<Diagnostic> problems, bool advanced) {
+    final List<Diagnostic> errors = <Diagnostic>[for (final Diagnostic d in problems) if (d.severity == DiagnosticSeverity.error) d];
+    final Diagnostic first = errors.first;
+    final DocumentFix? fix = fixesFor(document).where((DocumentFix each) => each.path == first.path).firstOrNull;
+    final bool hidden = !advanced && simpleHides(document.kind, first.path);
+    return dom.div(classes: 'ui-doc-note', attributes: const <String, String>{'role': 'status', 'data-testid': 'doc-first-problem'}, <Widget>[
+      ActionRow(
+        dense: true,
+        label: 'Problem',
+        leading: <Widget>[dom.span(<Widget>[Component.text(problemSentence(first, document.kind, advanced: advanced))])],
+        secondary: <RowAction>[
+          if (fix != null) RowAction(_fixLabel(document.kind, fix, advanced), () => component.onSource(prettyJson(fix.apply(document.json)))),
+          if (hidden) RowAction('Fix in Advanced', () => _toAdvanced(openProblems: true)),
+          if (errors.length > 1) RowAction('All ${errors.length} problems', () => setState(() => _problemsOpen = true), expanded: false, attributes: const <String, String>{'aria-controls': _problemsId}),
+        ],
+      ),
+    ]);
+  }
+
+  /// Switches the editor to Advanced, then shows the problem list or Code.
+  void _toAdvanced({bool openProblems = false, bool code = false}) {
+    ModeScope.maybeOf(context)?.onChanged(EditorMode.advanced);
+    if (openProblems) setState(() => _problemsOpen = true);
+    if (code) component.onView(ViewMode.code);
+  }
+
+  /// A file that is not a JSON object: its path, where it stops being one,
+  /// and the way to its Code (in Advanced).
+  Widget _unreadable(AnimusDocument document) {
+    final bool advanced = ModeScope.advanced(context);
+    return AppAlert(
+      tone: AlertTone.error,
+      title: document.path,
+      message: unreadableLine(document.source),
+      action: Button.outline(
+        label: advanced ? 'Open Code' : 'Fix in Advanced',
+        size: ButtonSize.md,
+        onPressed: () => advanced ? component.onView(ViewMode.code) : _toAdvanced(code: true),
+      ),
+    );
+  }
 
   InspectSchemas get _schemas => InspectSchemas.from(component.liveSchemas);
 
@@ -651,9 +716,7 @@ class _DocumentPaneState extends State<DocumentPane> {
   Widget _visual(AnimusDocument document) {
     final Object? json = document.json;
     final JsonEdit onJson = component.onJson;
-    if (json is! Map<String, Object?>) {
-      return const AppAlert(tone: AlertTone.warning, message: 'Not a JSON object. Fix it in Code.');
-    }
+    if (json is! Map<String, Object?>) return _unreadable(document);
     if (document.kind == DocumentKind.recording) {
       return RecordingView(
         key: ValueKey<String>('recording:${document.id}'),
@@ -727,9 +790,7 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   Widget _conversation(AnimusDocument document) {
     final JsonEdit onJson = component.onJson;
-    if (document.json is! Map<String, Object?>) {
-      return const AppAlert(tone: AlertTone.warning, message: 'Not a JSON object. Fix it in Code.');
-    }
+    if (document.json is! Map<String, Object?>) return _unreadable(document);
     return ConversationView(
       key: ValueKey<String>('conversation:${document.id}'),
       document: document,

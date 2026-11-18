@@ -253,7 +253,18 @@ void main() {
     final Reply second = await call('POST', '/animus/v1/pair', body: request);
     expect(second.status, 401);
     expectMessage('error-response', second.body);
-    expect(second.errorCode, 'pairing-invalid');
+    expect(second.errorCode, 'pairing-used');
+    final Reply guessed = await call('POST', '/animus/v1/pair', body: <String, Object?>{...request, 'secret': 'A' * 43});
+    expect(guessed.errorCode, 'pairing-invalid', reason: 'a wrong secret learns nothing about the link');
+  });
+
+  test('a revoked pairing link says so', () async {
+    final Map<String, Object?> payload = payloadOf((await control('POST', '/pair'))['code']! as String);
+    expect((await control('POST', '/revoke', <String, Object?>{'tokenId': payload['tokenId']}))['revoked'], <Object?>[payload['tokenId']]);
+    final Reply refused = await call('POST', '/animus/v1/pair', body: <String, Object?>{'tokenId': payload['tokenId'], 'secret': payload['secret']});
+    expect(refused.status, 401);
+    expectMessage('error-response', refused.body);
+    expect(refused.errorCode, 'pairing-revoked');
   });
 
   test('requests need a valid token', () async {
@@ -1207,6 +1218,8 @@ void main() {
       final Frames frames = await relay();
       await Future<void>.delayed(const Duration(milliseconds: 100));
       await control('POST', '/offline', <String, Object?>{'seconds': 1});
+      // As the Java server does on its way down, the direct stream hears why.
+      expect((await events.nextOf('closing'))['reason'], 'server-stopping');
       await events.closed;
       await expectLater(call('GET', '/animus/v1/hello'), throwsA(anyOf(isA<HttpException>(), isA<SocketException>())));
       expect((await frames.nextOf('status'))['online'], isFalse);

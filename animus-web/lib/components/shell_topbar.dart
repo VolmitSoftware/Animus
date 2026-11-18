@@ -296,6 +296,9 @@ class _ShellTopbarState extends State<ShellTopbar> {
   }
 }
 
+/// What the Mode switch changes, in its tooltip.
+const String modeTip = 'Simple shows the everyday settings. Advanced adds every field, the Code view and more lists, such as GUIs and rigs.';
+
 /// Mode: Simple or Advanced.
 class ModeSwitch extends StatelessWidget {
   const ModeSwitch({required this.mode, required this.onChanged, super.key});
@@ -307,6 +310,7 @@ class ModeSwitch extends StatelessWidget {
   Widget build(BuildContext context) => dom.div(classes: 'ui-mode-switch', <Widget>[
         ToggleChoice<EditorMode>(
           label: 'Mode',
+          tip: modeTip,
           options: <ChoiceOption<EditorMode>>[for (final EditorMode each in EditorMode.values) ChoiceOption<EditorMode>(each, each.label)],
           value: mode,
           onChanged: onChanged,

@@ -61,7 +61,7 @@ int errorCount(Map<String, List<Diagnostic>> diagnostics) => diagnostics.values.
     );
 
 /// "1 document", "3 documents".
-String documentCount(int count) => count == 1 ? '1 document' : '$count documents';
+String documentCount(int count) => count == 1 ? '1 file' : '$count files';
 
 /// The sync layer's failure sentences in the page's words (Apply, not push;
 /// the server's documents, not its catalog).
@@ -71,12 +71,12 @@ String plainSyncProblem(String message) {
     ('Press Check the earlier push once connected.', 'Check it once connected.'),
     ('Press Check the earlier push soon.', 'Check it soon.'),
     ('Press Check the earlier push.', 'Check it first.'),
-    ('Tick documents to push.', 'Pick documents to apply.'),
+    ('Tick files to send.', 'Pick files to apply.'),
     ('The push went out but its answer', 'The changes went out but the answer'),
     ('refused the push', 'refused the changes'),
     ('earlier push', 'earlier apply'),
     ('push again', 'apply again'),
-    ('load the server catalog', "read the server's documents"),
+    ('load the server catalog', "read the server's files"),
   ];
   for (final (String from, String to) in words) {
     text = text.replaceAll(from, to);

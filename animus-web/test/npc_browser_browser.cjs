@@ -2,7 +2,8 @@
 // at 1600, 768 and 390 px (dark, dark, light): every NPC is listed with its
 // name right after pairing (no click), the NPC named only `&f` opens by its
 // row, the Folder, Body and World filters and search narrow the list, Simple
-// shows no checkboxes or file paths, and New NPC makes an NPC and opens it.
+// shows no checkboxes or file paths, a phone keeps the filters behind
+// Filters, and New NPC makes an NPC and opens it.
 // In Advanced: tag chips, then bulk tags add and remove, a move to a new
 // folder, a module turned off, on and removed, a trait group added and
 // removed (each one undo step, sent at Apply and checked on the server),
@@ -107,6 +108,12 @@ async function pair(browser, viewport, {scopes, base = fake} = {}) {
 }
 
 const list = (page) => page.locator('#npc-list');
+
+/** On a phone, opens the list's Filters when they are folded. */
+async function showFilters(page) {
+  const button = list(page).getByRole('button', {name: /^Filters/});
+  if (await button.count() && (await button.getAttribute('aria-expanded')) === 'false') await button.click();
+}
 const row = (page, id) => page.locator(`.ui-library-row[data-key="npc:${id}"]`);
 
 /** Every row key of the list, scrolling through it (rows are windowed). */
@@ -150,6 +157,7 @@ async function search(page, text) {
 
 /** Picks the filter select [id] value ('' for its "All"/"Any" entry). */
 async function filter(page, id, value) {
+  await showFilters(page);
   await choose(page.locator(`#${id}`), value);
 }
 
@@ -243,6 +251,18 @@ async function simple(page, workspace, tag) {
   await shot(page, `list-${tag}-simple`);
   await noSidewaysScroll(page, `${tag} list`);
 
+  // On a phone the filters wait behind Filters, so the list comes first.
+  const filtersButton = list(page).getByRole('button', {name: /^Filters/});
+  if ((page.viewportSize()?.width ?? 1600) <= 760) {
+    assert.equal(await filtersButton.getAttribute('aria-expanded'), 'false', `${tag}: Filters starts folded`);
+    assert.equal(await page.locator('#npc-list .ui-library-tools').count(), 0, `${tag}: no filter selects above a phone's list`);
+    await filtersButton.click();
+    await page.locator('#npc-list .ui-library-tools').waitFor();
+    assert.equal(await filtersButton.getAttribute('aria-expanded'), 'true');
+  } else {
+    assert.equal(await filtersButton.count(), 0, `${tag}: Filters is a phone's`);
+  }
+
   // Folder, Body and World: one row of selects inside the list's own bar,
   // with its search and chips; nothing filters the list from outside it.
   const boxes = await page.locator('#npc-list .ui-library-tools .animus-select').evaluateAll((found) => found.map((element) => element.getBoundingClientRect().top));
@@ -309,6 +329,7 @@ async function advanced(page, workspace, tag) {
   await noSidewaysScroll(page, `${tag} advanced`);
 
   // Tag chips narrow the list (any picked tag).
+  await showFilters(page);
   const tags = page.getByRole('group', {name: 'Tags', exact: true});
   await tags.getByRole('button', {name: 'guard', exact: true}).click();
   await waitKeys(page, ['town/guard-north', 'town/guard-south'], `${tag} tag chip`);

@@ -60,6 +60,15 @@ void main() {
     expect(result.documents, hasLength(10));
   });
 
+  test('should not count config.toml as a file it did not read, since the server reads it', () {
+    final DataFolderResult opened = openDataFolder(<String, Uint8List>{
+      'Animus/npcs/guard.json': Uint8List.fromList(utf8.encode('{"name": "Guard"}')),
+      'Animus/config.toml': Uint8List.fromList(utf8.encode('[npcs]')),
+      'Animus/notes.txt': Uint8List(0),
+    }, SharedSchemas.embedded);
+    expect(opened.ignored, <String>['notes.txt']);
+  });
+
   test('should read nested NPC folders and write them back at the same paths', () {
     final Directory directory = Directory('test/fixtures/npc_browser');
     final Map<String, Uint8List> files = <String, Uint8List>{
@@ -100,6 +109,8 @@ void main() {
     Uint8List none() => Uint8List(0);
     expect(emptyPickProblem('bad', const <String, Uint8List>{}, zip: true), 'bad.zip is not a zip, or it is empty. Pick a zip of plugins/Animus.');
     expect(emptyPickProblem('stuff', const <String, Uint8List>{}, zip: false), 'stuff is empty. Pick plugins/Animus, or config/animus on a mod server.');
+    expect(emptyPickProblem('', const <String, Uint8List>{}, zip: false), 'The folder you picked is empty. Pick plugins/Animus, or config/animus on a mod server.',
+        reason: 'an empty folder gives the browser no file to name it by');
     expect(emptyPickProblem('server', <String, Uint8List>{'server/server.properties': none(), 'server/plugins/Other/a.yml': none()}, zip: false),
         'server looks like the server root. Pick plugins/Animus inside it, or config/animus on a mod server.');
     expect(emptyPickProblem('plugins', <String, Uint8List>{'plugins/Other/a.yml': none(), 'plugins/Animus/config.toml': none()}, zip: false),

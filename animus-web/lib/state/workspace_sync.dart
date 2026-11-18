@@ -169,7 +169,7 @@ class WorkspaceSync {
     );
     final LoadResult result = await loader.load(<String>[for (final String key in keys) if (parseDocumentKey(key) != null) key]);
     if (!result.complete) {
-      throw SyncFailure('Could not read ${result.failed.length} of the documents from the server. ${result.reason?.text ?? ''}'.trim());
+      throw SyncFailure('Could not read ${result.failed.length} of the files from the server. ${result.reason?.text ?? ''}'.trim());
     }
     return copies;
   }
@@ -205,7 +205,7 @@ class WorkspaceSync {
   /// would read as a conflict. When it applies, the local documents take the
   /// revision the server stored, so the next compare finds them the same.
   Future<PushResult> push(List<PushEntry> selection, {String? message}) async {
-    if (selection.isEmpty) throw const SyncFailure('Nothing selected. Tick documents to push.');
+    if (selection.isEmpty) throw const SyncFailure('Nothing selected. Tick files to send.');
     final WorkspaceSnapshot? workspace = store.workspace;
     if (workspace == null) throw const SyncFailure('Open a workspace first.');
     if (pending != null) {

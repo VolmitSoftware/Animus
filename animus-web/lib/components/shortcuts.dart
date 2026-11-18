@@ -36,7 +36,7 @@ const List<ShortcutGroup> shortcutGroups = <ShortcutGroup>[
     Shortcut(<String>['?'], 'Show these shortcuts', action: ShortcutAction.sheet),
     Shortcut(<String>['Mod+Z'], 'Undo', action: ShortcutAction.undo),
     Shortcut(<String>['Mod+Shift+Z', 'Mod+Y'], 'Redo', action: ShortcutAction.redo),
-    Shortcut(<String>['N'], 'New document', action: ShortcutAction.newDocument),
+    Shortcut(<String>['N'], 'New file', action: ShortcutAction.newDocument),
     Shortcut(<String>['B'], 'NPCs', action: ShortcutAction.browseNpcs),
   ]),
   ShortcutGroup('Saving', 'Also while typing', <Shortcut>[

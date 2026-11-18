@@ -54,4 +54,9 @@ void main() {
       expect(group.shortcuts.every((Shortcut shortcut) => shortcut.keys.isNotEmpty && shortcut.label.isNotEmpty), isTrue);
     }
   });
+
+  test('N opens a new file, in the glossary word', () {
+    final Shortcut newFile = <Shortcut>[for (final ShortcutGroup group in pageGroups) ...group.shortcuts].firstWhere((Shortcut shortcut) => shortcut.action == ShortcutAction.newDocument);
+    expect(newFile.label, 'New file');
+  });
 }

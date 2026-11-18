@@ -281,7 +281,7 @@ extension LiveChanges on LiveSession {
       ChangeInvalid(:final Map<String, List<Diagnostic>> diagnostics) => diagnostics.length,
       _ => 0,
     };
-    final String documents = countOf(count, 'document');
+    final String documents = countOf(count, 'file');
     switch (outcome) {
       case final ChangeApplied applied:
         await _applied(applied, pending, sent);

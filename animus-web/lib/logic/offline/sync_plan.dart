@@ -68,7 +68,7 @@ PushPlan planPush(List<AnimusDocument> local, Map<String, ServerBase> server) =>
         () {
           final ServerBase? copy = server[documentKey(document.kind, document.id)];
           final SyncState state = copy == null ? SyncState.added : (jsonEquals(document.json, copy.source) ? SyncState.same : SyncState.conflict);
-          return PushEntry(document, state, copy, problem: document.json is Map<String, Object?> ? null : 'The document is not a JSON object.');
+          return PushEntry(document, state, copy, problem: document.json is Map<String, Object?> ? null : 'The file is not a JSON object.');
         }(),
     ]);
 

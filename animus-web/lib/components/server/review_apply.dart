@@ -1,7 +1,8 @@
 /// Apply with its checks first: nothing goes while a change has problems or
 /// was also changed on the server, the server validates the rest, then one
 /// change set is sent. The Review sheet's Apply runs it; the save bar's
-/// Apply should too, opening Review when it answers [ApplyOutcome.blocked].
+/// Apply in Simple too, opening Review when it answers
+/// [ApplyOutcome.blocked].
 library;
 
 import '../../logic/change_sets.dart';
@@ -11,13 +12,14 @@ import '../../model/document_kind.dart';
 import '../../services/server/server_profiles.dart';
 import '../../state/editor_store.dart';
 import '../../state/live_session.dart';
+import '../../ui/save_state.dart' show applyBlockedReason;
 
 enum ApplyOutcome {
   /// The server wrote every change.
   applied,
 
-  /// Something in Review needs a decision first: a problem, a document
-  /// changed on the server, a merge.
+  /// Something in Review needs a decision first: a problem, a file changed
+  /// on the server, a merge.
   blocked,
 
   /// Nothing reached the server (not connected, refused, no answer); the
@@ -29,7 +31,7 @@ enum ApplyOutcome {
 }
 
 /// The changes that stop Apply: a source that is not JSON, problems found
-/// here or by the server, a document changed on the server too, or a
+/// here or by the server, a file changed on the server too, or a
 /// behavior that needs Run commands when the pairing does not have it.
 List<DraftChange> applyBlockers(LiveSession session) => <DraftChange>[
       for (final DraftChange draft in session.drafts)
@@ -49,6 +51,31 @@ String? commandsBlock(LiveSession session, DraftChange draft) {
   if (draft.kind != DocumentKind.behavior || token == null || token.has('apply:commands')) return null;
   final String? why = behaviorNeedsCommands(session.store.document(draft.kind, draft.id)?.json, privilegedCapabilities(InspectSchemas.from(session.schemas).catalog));
   return why == null ? null : 'It $why; applying it needs Run commands (apply:commands).';
+}
+
+/// What stops Apply, counted as Review lists it: files also changed on the
+/// server, the other changed files with problems, and behaviors whose only
+/// block is the Run commands the pairing lacks.
+({int problems, int serverChanged, int commands}) applyBlocks(LiveSession session) {
+  final Set<String> serverChanged = <String>{...session.stale, ...session.conflicts.keys};
+  int problems = 0, commands = 0;
+  for (final DraftChange draft in applyBlockers(session)) {
+    if (serverChanged.contains(draft.key)) continue;
+    final bool broken = draft.problem != null || (session.store.libraryEntry(draft.kind, draft.id)?.problems ?? 0) > 0;
+    if (broken) {
+      problems++;
+    } else {
+      commands++;
+    }
+  }
+  return (problems: problems, serverChanged: serverChanged.length, commands: commands);
+}
+
+/// Why Apply cannot go yet, in the words the save bar and Review share;
+/// null when it can.
+String? applyBlockedOf(LiveSession session) {
+  final ({int problems, int serverChanged, int commands}) blocks = applyBlocks(session);
+  return applyBlockedReason(problems: blocks.problems, serverChanged: blocks.serverChanged, commands: blocks.commands);
 }
 
 Future<ApplyOutcome> applyChecked(LiveSession session, {String? message}) async {

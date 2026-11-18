@@ -1,19 +1,20 @@
 import '../logic/change_sets.dart';
 import '../logic/plural.dart';
 import '../services/server/error_copy.dart';
+import '../ui/save_state.dart' show applyBlockedReason;
 
 /// The live log line after an apply or undo, naming the moves in it. The
 /// change id stays in Review's history.
 String appliedLine(ChangeApplied applied, {required bool undo}) {
   final int count = applied.documents.length;
   final int moved = applied.documents.where((AppliedDocument document) => document.from != null).length;
-  final String what = '${countOf(count, 'document')}${moved == 0 ? '' : ', $moved moved'}';
+  final String what = '${countOf(count, 'file')}${moved == 0 ? '' : ', $moved moved'}';
   return '${undo ? 'Undid' : 'Applied'} $what.';
 }
 
 /// The live log line after a server validation.
 String validationLine(bool valid, int documents, int errors) {
-  if (valid) return 'The server accepts ${countOf(documents, 'document')}.';
+  if (valid) return 'The server accepts ${countOf(documents, 'file')}.';
   if (errors == 0) return 'The server refused the drafts but named no error. Check its console.';
   return 'The server found ${countOf(errors, 'error')}. Fix the marked fields.';
 }
@@ -35,13 +36,13 @@ String spawnLine({required bool spawn, required int total, required int sent, re
 String resyncLine({required int refreshed, required int stale}) {
   if (refreshed == 0 && stale == 0) return 'Resynced with the server; nothing changed while disconnected.';
   final List<String> parts = <String>[
-    if (refreshed > 0) 'Resynced with the server: ${countOf(refreshed, 'document')} refreshed.' else 'Resynced with the server.',
-    if (stale > 0) '${countOf(stale, 'change')} ${stale == 1 ? 'conflicts' : 'conflict'} with the server; review before applying.',
+    if (refreshed > 0) 'Resynced with the server: ${countOf(refreshed, 'file')} refreshed.' else 'Resynced with the server.',
+    ?applyBlockedReason(problems: 0, serverChanged: stale),
   ];
   return parts.join(' ');
 }
 
-/// The live log line after Reload read the catalog again: documents new on
+/// The live log line after Reload read the catalog again: files new on
 /// the server, gone from it, and clean copies read again; drafts the server
 /// changed too need a merge.
 String reloadLine({required int added, required int removed, required int refreshed, required int stale}) {
@@ -52,6 +53,6 @@ String reloadLine({required int added, required int removed, required int refres
   ];
   return <String>[
     if (found.isEmpty) 'Reloaded the catalog; nothing changed.' else 'Reloaded the catalog: ${found.join(', ')}.',
-    if (stale > 0) '${countOf(stale, 'change')} ${stale == 1 ? 'conflicts' : 'conflict'} with the server; review before applying.',
+    ?applyBlockedReason(problems: 0, serverChanged: stale),
   ].join(' ');
 }

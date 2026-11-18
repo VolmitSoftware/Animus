@@ -22,6 +22,7 @@ import 'editor_store.dart';
 import 'library.dart';
 import 'live_lines.dart';
 import 'save_state.dart';
+import '../ui/save_state.dart' show applyBlockedReason;
 import 'server_catalog.dart';
 import 'session_owner.dart';
 import 'workspace_repository.dart';

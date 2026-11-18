@@ -1,9 +1,9 @@
 // The start page and a workspace's Home, at desktop and phone widths: a
 // first visit's three ways in (pairing first, the only primary), the skip
-// link, Blank workspace and Open examples, then the returning visit's
-// Continue list (each workspace once, Open, Rename with Enter and Escape,
-// Duplicate, Delete with Escape and confirm, Restore) with the ways in folded
-// into one row. Routes to a missing workspace or document name the cause and
+// link, Blank workspace and Import in Simple and Advanced, then the returning
+// visit's Continue list (each workspace once, Open, Rename with Enter and
+// Escape, Duplicate, Delete with Escape and confirm, Restore) with every way
+// in as a row with its line. Routes to a missing workspace or file name the cause and
 // a way back. ../schema/fixtures/export opened as a data folder shows Home
 // with the job cards and the document that needs attention, and
 // ../schema/fixtures/upgrades/before (schemaVersion 1) lists the upgraded
@@ -64,9 +64,9 @@ async function run(browser, viewport, label) {
   assert.equal(await page.locator('.ui-start-card').first().getAttribute('data-testid'), 'start-pair');
   assert.equal(await page.locator(".ui-start .arcane-button[data-variant='primary']:visible").count(), 1, 'one primary action on the start page');
   await page.getByText('Run /animus editor pair in game, then open the link or paste it here.', {exact: true}).waitFor();
-  // Simple starts from a server, the examples or files; Import and a blank workspace are Advanced.
-  assert.equal(await page.getByRole('button', {name: 'Import', exact: true}).count(), 0, 'no Import in Simple');
-  assert.equal(await page.getByRole('button', {name: 'Blank workspace', exact: true}).count(), 0, 'no blank workspace in Simple');
+  // Import and a blank workspace sit under the cards in Simple as in Advanced.
+  await page.getByRole('button', {name: 'Import', exact: true}).waitFor();
+  await page.getByRole('button', {name: 'Blank workspace', exact: true}).waitFor();
   assert.equal(await page.getByRole('heading', {name: 'Continue'}).count(), 0, 'nothing to continue yet');
   // A link that is not a pairing link says so beside the field.
   await page.getByLabel('Pairing link').fill('hello');
@@ -84,15 +84,19 @@ async function run(browser, viewport, label) {
   await blank.locator('#start-workspace-name').fill('First');
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => /#\/workspace\/[^/]+$/.test(location.hash));
-  await page.getByText('No documents yet.', {exact: true}).waitFor();
+  await page.getByText('No files yet.', {exact: true}).waitFor();
   // Back to Simple, where an owner starts.
   await page.evaluate(() => window.localStorage.setItem('animus.mode', 'simple'));
   await page.goto(url);
   await page.getByRole('heading', {name: 'Continue'}).waitFor();
-  // Returning, the start row keeps Open examples beside its heading (in its
-  await startAction(page, 'Open examples');
+  // Returning, every way in is a row with its line and labelled buttons.
+  const ways = page.locator('[data-way]');
+  assert.deepEqual(await ways.evaluateAll(rows => rows.map(row => row.getAttribute('data-way'))), ['pair', 'examples', 'files', 'blank', 'import']);
+  for (const way of await ways.all()) assert.ok((await way.innerText()).split('\n').length >= 3, 'a label, a line and a button');
+  assert.equal(await page.locator('#start-more-button').count(), 0, 'no unlabelled menu of ways in');
+  await page.getByRole('button', {name: 'Open examples', exact: true}).click();
   await page.waitForFunction(() => /#\/workspace\/[^/]+$/.test(location.hash));
-  await page.getByRole('heading', {level: 1, name: 'Example packs'}).waitFor();
+  await page.getByRole('heading', {level: 1, name: 'Examples'}).waitFor();
   await page.locator('[data-testid="home-count"]').first().waitFor();
   const firstSteps = page.getByTestId('first-steps');
   await firstSteps.waitFor();
@@ -102,7 +106,7 @@ async function run(browser, viewport, label) {
   // Returning: Continue first, each workspace once, the ways in as one row.
   await page.goto(url);
   await page.getByRole('heading', {name: 'Continue'}).waitFor();
-  assert.deepEqual(await page.locator('.ui-continue-name').allInnerTexts(), ['Example packs', 'First'], 'the last opened first');
+  assert.deepEqual(await page.locator('.ui-continue-name').allInnerTexts(), ['Examples', 'First'], 'the last opened first');
   assert.equal(await page.locator('.ui-start-card').count(), 0, 'the cards fold away');
   await page.getByRole('button', {name: 'Open First'}).click();
   await page.waitForFunction(() => /#\/workspace\/[^/]+$/.test(location.hash));
@@ -143,13 +147,13 @@ async function run(browser, viewport, label) {
   await page.goto(`${url}/#/workspace/nope`);
   await page.getByText('There is no workspace "nope" in this browser.', {exact: false}).waitFor();
   await page.goto(url);
-  await page.getByRole('button', {name: 'Open Example packs'}).click();
+  await page.getByRole('button', {name: 'Open Examples', exact: true}).click();
   await page.waitForFunction(() => /#\/workspace\/[^/]+$/.test(location.hash));
   const workspace = /#\/workspace\/([^/?]+)/.exec(page.url())[1];
   await page.goto(`${url}/#/workspace/${workspace}/npc/${encodeURIComponent('no/such')}`);
   await page.getByText('NPC not in this workspace', {exact: true}).waitFor();
   await page.getByRole('button', {name: 'Home', exact: true}).click();
-  await page.getByRole('heading', {level: 1, name: 'Example packs'}).waitFor();
+  await page.getByRole('heading', {level: 1, name: 'Examples'}).waitFor();
 
   // The first steps hide for good.
   await page.getByRole('button', {name: 'Hide first steps'}).click();

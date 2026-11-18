@@ -39,7 +39,7 @@ void main() {
         documents: const [],
         resources: <String, Uint8List>{'pack/assets/animus/items/a.json': bytes(), 'pack/assets/animus/models/item/a.json': bytes()},
       );
-      expect(exportSummary('w.zip', workspace), 'Saved w.zip: 0 documents, 2 pack files. Unzip over plugins/Animus.');
+      expect(exportSummary('w.zip', workspace), 'Saved w.zip: 0 files, 2 pack files. Unzip over plugins/Animus.');
     });
 
     test('should say pack file for one and leave it out for none', () {

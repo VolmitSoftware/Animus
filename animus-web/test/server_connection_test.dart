@@ -557,13 +557,26 @@ void main() {
     expect(network.lastStream.isOpen, isTrue);
   });
 
-  test('should say the server is restarting when both paths go quiet after being online', () async {
+  test('should say the connection was lost, not a restart, when both paths go quiet without a stop notice', () async {
     await connection.connect();
     network.down.addAll(ConnectionPath.values);
     await network.lastStream.end();
     await settle();
     expect(connection.status.phase, ConnectionPhase.reconnecting);
+    expect(connection.status.message, 'Lost the connection to the server. Reconnecting.');
+  });
+
+  test('should keep saying the server is restarting while it is quiet after it said it stops', () async {
+    await connection.connect();
+    network.down.addAll(ConnectionPath.values);
+    network.lastStream.emit(<String, Object?>{'type': 'closing', 'reason': 'server-stopping'});
+    await network.lastStream.end('server-stopping');
+    await settle();
+    expect(connection.status.phase, ConnectionPhase.reconnecting);
     expect(connection.status.message, 'Server restarting. Reconnecting.');
+    waits.releaseAll();
+    await settle();
+    expect(connection.status.message, 'Server restarting. Reconnecting.', reason: 'the retries that find nothing keep the known cause');
   });
 
   test('should send no counter on a read-only batch read', () async {

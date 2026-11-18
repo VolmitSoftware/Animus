@@ -66,7 +66,14 @@ final class EditorPairingRoutes {
             if (refused.code() == EditorError.Code.PAIRING_EXPIRED) {
                 parts.warnings().once("pair " + tokenId, Duration.ofHours(1), "Editor pairing " + tokenId + " failed: the link expired before it was opened; run /animus editor pair again");
                 waiting.ifPresent((EditorTokens.Open open) -> refused(open, "the link expired; make a new one"));
-            } else parts.warnings().once("pair unknown " + address, Duration.ofMinutes(1), "Editor pairing from " + address + " failed: the link is unknown, used or revoked");
+            } else {
+                String why = switch (refused.code()) {
+                    case PAIRING_USED -> "the link was already used";
+                    case PAIRING_REVOKED -> "the link was revoked";
+                    default -> "the link is unknown";
+                };
+                parts.warnings().once("pair unknown " + address, Duration.ofMinutes(1), "Editor pairing from " + address + " failed: " + why);
+            }
             throw refused;
         }
         EditorTokens.Token token = issued.getValue();

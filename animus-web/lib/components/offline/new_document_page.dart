@@ -563,7 +563,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
     }
     return stack(spacing: 16, <Widget>[
       PageHeader(
-        title: kind == null ? 'New document' : 'New ${listNoun(kind)}',
+        title: kind == null ? 'New file' : 'New ${listNoun(kind)}',
         crumbs: <Crumb>[
           Crumb(workspace.name, href: WorkspaceRoute(workspace.id).format()),
           if (kind != null && kind != DocumentKind.presets && kind != DocumentKind.serverBehaviors) Crumb(kindTitle(kind), href: KindListRoute(workspace.id, kind).format()),

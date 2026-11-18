@@ -4,8 +4,8 @@
 // on them, and Home says the same instead of empty job cards. Pairing the
 // fake server loaded with the same folder shows that Home too; a chest GUI
 // the server gains while Simple is open is announced with a switch that
-// opens it; Search for an Advanced document says it matches in Advanced.
-// Nothing is dropped: Advanced lists every document. 1440 px, no console
+// opens it, and goes once the mode switches by the top bar; Search for an
+// Advanced file offers one row that shows it in Advanced. Nothing is dropped: Advanced lists every document. 1440 px, no console
 // errors.
 //
 //   python3 tool/serve_site.py --port <web port>
@@ -36,7 +36,7 @@ const mode = page => page.evaluate(() => localStorage.getItem('animus.mode'));
 
 async function simpleHome(page, count) {
   const home = page.locator('#animus-main .ui-home');
-  await home.getByText(`${count} documents are in Advanced.`, {exact: true}).waitFor();
+  await home.getByText(`${count} files are in Advanced.`, {exact: true}).waitFor();
   assert.equal(await home.locator('.ui-home-card').count(), 0, 'no empty job cards');
   assert.equal(await home.getByTestId('switch-to-advanced').count(), 1);
 }
@@ -58,7 +58,7 @@ async function simpleHome(page, count) {
     await page.getByRole('button', {name: 'Open folder', exact: true}).first().click();
     await (await chooser).setFiles(folder);
     await page.waitForFunction(() => /#\/workspace\/[^/]+$/.test(location.hash));
-    const opened = toast(page, '2 imported documents are in Advanced.');
+    const opened = toast(page, '2 imported files are in Advanced.');
     await opened.waitFor();
     await simpleHome(page, 2);
     await opened.getByRole('button', {name: 'Switch to Advanced'}).click();
@@ -90,21 +90,36 @@ async function simpleHome(page, count) {
     // A chest GUI the server gains while Simple is open.
     const board = await control(`document?kind=inventory&id=${encodeURIComponent('town:board')}`);
     await control('edit', {kind: 'inventory', id: 'town:counter', source: {...board.source, title: '&6Counter'}});
-    const gained = toast(page, '1 new document is in Advanced.');
+    const gained = toast(page, '1 new file is in Advanced.');
     await gained.waitFor();
     await gained.getByRole('button', {name: 'Switch to Advanced'}).click();
     await page.waitForFunction(w => location.hash === `#/workspace/${w}/inventory/town%3Acounter`, workspace);
     assert.equal(await mode(page), 'advanced');
     await page.getByRole('heading', {level: 1, name: 'Counter'}).waitFor();
-    console.log('ok server event: 1 new document in Advanced, Switch opens it');
+    console.log('ok server event: 1 new file in Advanced, Switch opens it');
 
-    // Search in Simple for a document only Advanced lists.
+    // The notice goes when the top bar's switch, not its own, goes to Advanced.
+    await setMode(page, 'simple');
+    await control('edit', {kind: 'inventory', id: 'town:stall', source: {...board.source, title: '&6Stall'}});
+    const again = toast(page, '1 new file is in Advanced.');
+    await again.waitFor();
+    await setMode(page, 'advanced');
+    await again.waitFor({state: 'detached'});
+    console.log('ok the notice goes when the mode switches by the top bar');
+
+    // Search in Simple for a file only Advanced lists: one row shows it there.
     await setMode(page, 'simple');
     await openSearch(page);
     await searchBox(page).fill('Town board');
-    await page.getByText('1 match is in Advanced.', {exact: true}).waitFor();
+    const show = page.locator('[data-arcane-command="ui-search"] [data-arcane-command-item]', {hasText: 'Show 1 match in Advanced'});
+    await show.waitFor();
+    await show.click();
+    await page.waitForFunction(() => localStorage.getItem('animus.mode') === 'advanced');
+    await searchBox(page).waitFor({state: 'visible'});
+    await page.waitForFunction(() => document.querySelector('[data-arcane-command-input="ui-search"]')?.value === 'Town board');
+    await page.locator('[data-arcane-command="ui-search"] [data-arcane-command-item]', {hasText: 'Town board'}).first().waitFor();
     await page.keyboard.press('Escape');
-    console.log('ok search: 1 match is in Advanced');
+    console.log('ok search: Show 1 match in Advanced switches and searches again');
 
     // Nothing was dropped.
     await setMode(page, 'advanced');

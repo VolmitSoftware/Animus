@@ -45,7 +45,7 @@
     {"method": "WS", "path": "/v1/events", "scope": "read", "request": "event-auth", "responses": {"frame": "event"}}
   ],
   "errorStatus": {
-    "unauthorized": 401, "token-expired": 401, "token-revoked": 401, "pairing-invalid": 401, "pairing-expired": 410,
+    "unauthorized": 401, "token-expired": 401, "token-revoked": 401, "pairing-invalid": 401, "pairing-used": 401, "pairing-revoked": 401, "pairing-expired": 410,
     "scope-missing": 403, "group-denied": 403, "origin-not-allowed": 403, "counter-replayed": 409,
     "not-found": 404, "invalid-request": 400, "too-large": 413, "rate-limited": 429, "busy": 503,
     "conflict": 409, "preview-refused": 422, "player-offline": 409, "gloss-unavailable": 422,

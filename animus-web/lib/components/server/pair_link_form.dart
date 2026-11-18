@@ -12,7 +12,7 @@ import '../../ui/field.dart';
 import 'pair_copy.dart';
 
 class PairLinkForm extends StatefulWidget {
-  const PairLinkForm({required this.onCode, this.id = 'pair-link', this.label = 'Pairing link', this.hint, super.key});
+  const PairLinkForm({required this.onCode, this.id = 'pair-link', this.label = 'Pairing link', this.hint, this.primary = true, super.key});
 
   /// Called with the `ANM1.` code from what was pasted.
   final void Function(String code) onCode;
@@ -21,6 +21,10 @@ class PairLinkForm extends StatefulWidget {
   final String id;
   final String label;
   final String? hint;
+
+  /// Open link as the page's primary action; off where a spent link leaves
+  /// nothing to go on with until a new one is pasted.
+  final bool primary;
 
   @override
   State<PairLinkForm> createState() => _PairLinkFormState();
@@ -38,6 +42,8 @@ class _PairLinkFormState extends State<PairLinkForm> {
     }
     component.onCode(code);
   }
+
+  RowAction get _open => RowAction('Open link', _submit, attributes: <String, String>{'data-testid': '${component.id}-submit'});
 
   @override
   Widget build(BuildContext context) => dom.div(<Widget>[
@@ -60,6 +66,6 @@ class _PairLinkFormState extends State<PairLinkForm> {
           ),
         ),
         // It opens the pair page, whose Pair is the one that pairs.
-        FormFooter(primary: RowAction('Open link', _submit, attributes: <String, String>{'data-testid': '${component.id}-submit'})),
+        if (component.primary) FormFooter(primary: _open) else FormFooter(secondary: <RowAction>[_open]),
       ]);
 }

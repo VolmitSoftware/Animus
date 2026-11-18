@@ -394,10 +394,10 @@ class _SyncPageState extends State<SyncPage> {
       if (plan != null && changed > 0)
         Field(
           label: 'Changed',
-          tip: 'Documents that differ here and on the server. Keep server leaves its copy; Use mine replaces it when you apply.',
+          tip: 'Files that differ here and on the server. Keep server leaves its copy; Use mine replaces it when you apply.',
           docs: Docs.sending,
           child: ToggleChoice<bool>(
-            label: 'Changed documents',
+            label: 'Changed files',
             value: _replaceChanged,
             options: const <ChoiceOption<bool>>[ChoiceOption<bool>(false, 'Keep server'), ChoiceOption<bool>(true, 'Use mine')],
             onChanged: (bool value) => setState(() {
@@ -419,7 +419,7 @@ class _SyncPageState extends State<SyncPage> {
           key: ValueKey<String>('send-list:${server.id}'),
           id: 'send-list',
           label: 'Differences',
-          noun: 'document',
+          noun: 'file',
           rows: rows,
           fill: false,
           loading: plan == null && _failure == null,
@@ -432,7 +432,7 @@ class _SyncPageState extends State<SyncPage> {
             LibraryFilter('problems', 'Has problems'),
           ],
           sorts: const <LibrarySort>[LibrarySort('status', 'Status'), LibrarySort.name],
-          emptyMessage: 'This workspace has no documents yet.',
+          emptyMessage: 'This workspace has no files yet.',
         ),
     ];
   }
@@ -552,7 +552,7 @@ class _SyncPageState extends State<SyncPage> {
       if (_failure != null) AppAlert(key: const ValueKey<String>('pull-failure'), tone: AlertTone.error, message: _failure!, live: true),
       Field(
         label: 'When different',
-        tip: 'For documents this workspace also has. Keep mine leaves them; Take server writes the server copy here. Undo takes a pull back.',
+        tip: 'For files this workspace also has. Keep mine leaves them; Take server writes the server copy here. Undo takes a pull back.',
         docs: Docs.sending,
         child: ToggleChoice<bool>(
           label: 'When different',
@@ -568,7 +568,7 @@ class _SyncPageState extends State<SyncPage> {
           key: ValueKey<String>('pull-list:${server.id}'),
           id: 'pull-list',
           label: 'On the server',
-          noun: 'document',
+          noun: 'file',
           fill: false,
           selectable: true,
           loading: listed == null,
@@ -587,7 +587,7 @@ class _SyncPageState extends State<SyncPage> {
           filters: const <LibraryFilter>[LibraryFilter('missing', 'Not here'), LibraryFilter('here', 'Also here')],
           bulkActions: <LibraryBulkAction>[LibraryBulkAction('Pull', (List<LibraryRow> rows) => _pull(server, rows))],
           onOpen: (LibraryRow _) {},
-          emptyMessage: 'The server has no documents yet.',
+          emptyMessage: 'The server has no files yet.',
         ),
     ];
   }

@@ -21,6 +21,15 @@ void main() {
     test('should count digits as readable', () => expect(readableName('42'), isTrue));
   });
 
+  group('advancedDetail', () {
+    test('should give the id when the title is not it, and the revision the server keeps', () {
+      expect(advancedDetail(title: 'Baker', id: 'town/baker', json: <String, Object?>{'revision': 4}), 'town/baker, revision 4');
+      expect(advancedDetail(title: 'town:greeter', id: 'town:greeter', json: <String, Object?>{'revision': 2}), 'Revision 2');
+      expect(advancedDetail(title: 'Baker', id: 'town/baker', json: <String, Object?>{}), 'town/baker');
+      expect(advancedDetail(title: 'x', id: 'x', json: null), isNull);
+    });
+  });
+
   group('closing', () {
     test('should end a sentence after a name, unless the name ends one itself', () {
       expect(closing('Survival'), 'Survival.');

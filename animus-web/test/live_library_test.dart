@@ -297,7 +297,7 @@ void main() {
     server.put(DocumentKind.npc, 'town/citizen-1', npc('town/citizen-1', 'Moved on'));
     expect(await session.apply(), isFalse);
     expect(saveStateOf(store, session).phase, SavePhase.failed);
-    expect(saveStateOf(store, session).reason, '1 document changed on the server');
+    expect(saveStateOf(store, session).reason, '1 file changed on the server');
     expect(session.drafts.single.state, DraftState.modified);
   });
 

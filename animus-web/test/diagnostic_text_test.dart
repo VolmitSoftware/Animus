@@ -1,5 +1,6 @@
 import 'package:animus_editor/logic/diagnostic_text.dart';
 import 'package:animus_editor/model/animus_document.dart';
+import 'package:animus_editor/model/document_kind.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -11,6 +12,26 @@ void main() {
     expect(diagnosticSentence(error(r'$.lines[2]', 'expected a string')), 'Lines item 3: expected a string');
     expect(diagnosticSentence(error(r'$', 'Not a JSON object.')), 'Not a JSON object.');
     expect(diagnosticSentence(error(r'$.owner', 'Expected a lowercase UUID.')), 'Owner: Expected a lowercase UUID.');
+  });
+
+  test('should never name in Simple a field Simple does not show', () {
+    final Diagnostic uuid = error(r'$.uuid', 'is required');
+    expect(problemSentence(uuid, DocumentKind.npc, advanced: true), 'UUID is required');
+    expect(problemSentence(uuid, DocumentKind.npc, advanced: false), 'A setting Simple does not show needs a fix.');
+    expect(problemSentence(error(r'$.owner', 'Expected a lowercase UUID.'), DocumentKind.npc, advanced: false), isNot(contains('Owner')));
+    expect(problemSentence(error(r'$.position.pitch', 'expected at most 90'), DocumentKind.npc, advanced: false), isNot(contains('Pitch')));
+    expect(problemSentence(error(r'$.name', 'is required'), DocumentKind.npc, advanced: false), 'Name is required', reason: 'Simple shows the name');
+    expect(problemSentence(error(r'$.position.world', 'is required'), DocumentKind.npc, advanced: false), 'World is required');
+    expect(simpleHides(DocumentKind.npc, r'$.modules["animus:navigation"].speed'), isFalse, reason: 'Movement shows it');
+    expect(simpleHides(DocumentKind.npc, r'$.modules["town:custom"].x'), isTrue, reason: 'a module without a tab is on Modules, in Advanced');
+    expect(simpleHides(DocumentKind.shop, r'$.title'), isFalse);
+    expect(simpleHides(DocumentKind.shop, r'$.schemaVersion'), isTrue);
+  });
+
+  test('should say where a file that is not a JSON object stops being one', () {
+    expect(unreadableLine('{ "name": "oops", '), startsWith('Line 1, column 19: the file ends early'));
+    expect(unreadableLine('[1, 2]'), 'The file holds JSON, but not an object.');
+    expect(unreadableLine(''), 'Line 1, column 1: the file is empty; it needs a JSON object');
   });
 
   test('should show a server diagnostic only when the browser does not already say it', () {

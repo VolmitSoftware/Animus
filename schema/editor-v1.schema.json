@@ -95,7 +95,7 @@
       }
     },
     "error-code": {
-      "enum": ["unauthorized", "token-expired", "token-revoked", "scope-missing", "group-denied", "origin-not-allowed", "counter-replayed", "pairing-invalid", "pairing-expired", "not-found", "invalid-request", "too-large", "rate-limited", "busy", "conflict", "preview-refused", "player-offline", "gloss-unavailable", "unsupported-protocol", "server-offline", "timeout", "internal", "world-unloaded"]
+      "enum": ["unauthorized", "token-expired", "token-revoked", "scope-missing", "group-denied", "origin-not-allowed", "counter-replayed", "pairing-invalid", "pairing-used", "pairing-revoked", "pairing-expired", "not-found", "invalid-request", "too-large", "rate-limited", "busy", "conflict", "preview-refused", "player-offline", "gloss-unavailable", "unsupported-protocol", "server-offline", "timeout", "internal", "world-unloaded"]
     },
     "error-response": {
       "type": "object",

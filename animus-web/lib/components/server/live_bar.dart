@@ -1,8 +1,10 @@
-/// Review: what goes to the server when you press Apply. The documents also
+/// Review: what goes to the server when you press Apply. The files also
 /// changed on the server (Keep mine, Take server, Compare), the changes that
-/// stop Apply (with Fix), every changed document (what changed, Discard),
-/// and Apply last in the footer. Advanced adds Validate, Preview in game,
-/// a change note, the history of applies with Undo, and the last notices.
+/// stop Apply (with Fix), every changed file (what changed, its fields old
+/// to new, Discard), and Apply last in the footer, held back with the reason
+/// the save bar gives while anything above stops it. Advanced adds Validate,
+/// Preview in game, a change note, the history of applies with Undo, and the
+/// last notices.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -77,6 +79,8 @@ class _LiveBarState extends State<LiveBar> {
 
   LiveSession get _session => component.session;
 
+  static const String _blockedId = 'review-apply-reason';
+
   static String _slug(String key) => key.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
   EditorStore get _store => component.session.store;
 
@@ -148,7 +152,7 @@ class _LiveBarState extends State<LiveBar> {
   Future<void> _undo(AppliedChange change) async {
     final bool yes = await askToConfirm(
       title: 'Undo this apply on the server?',
-      message: 'Puts ${change.documents.length == 1 ? '1 document' : '${change.documents.length} documents'} back as they were before it. Fails if they were changed since.',
+      message: 'Puts ${change.documents.length == 1 ? '1 file' : '${change.documents.length} files'} back as they were before it. Fails if they were changed since.',
       confirmLabel: 'Undo on the server',
       destructive: true,
     );
@@ -173,6 +177,7 @@ class _LiveBarState extends State<LiveBar> {
     final String? focus = component.focus;
     final bool focusIsNpc = focus != null && focus.startsWith('npc:');
     final ConflictView? comparing = _comparing == null ? null : session.conflicts[_comparing];
+    final String? blocked = drafts.isEmpty ? null : applyBlockedOf(session);
     return dom.div(
       classes: 'ui-review',
       attributes: const <String, String>{'data-testid': 'review'},
@@ -191,6 +196,9 @@ class _LiveBarState extends State<LiveBar> {
             dom.div(classes: 'ui-review-footer', <Widget>[
               stack(spacing: 12, <Widget>[
                 const ArcaneSeparator(),
+                // The save bar says the same: Apply waits until nothing stops it.
+                if (blocked != null)
+                  dom.p(id: _blockedId, attributes: const <String, String>{'role': 'status', 'data-testid': 'review-apply-blocked'}, <Widget>[mutedText(blocked)]),
                 DialogFooter(
                   secondary: <RowAction>[
                     if (advanced) ...<RowAction>[
@@ -203,7 +211,15 @@ class _LiveBarState extends State<LiveBar> {
                     ],
                   ],
                   // Nothing to apply: no Apply at all, rather than a disabled one.
-                  primary: drafts.isEmpty ? null : RowAction('Apply ${drafts.length}', online && idle ? _apply : null, loading: session.busy == 'Applying', id: 'review-apply'),
+                  primary: drafts.isEmpty
+                      ? null
+                      : RowAction(
+                          'Apply ${drafts.length}',
+                          online && idle && blocked == null ? _apply : null,
+                          loading: session.busy == 'Applying',
+                          id: 'review-apply',
+                          attributes: <String, String>{if (blocked != null) 'aria-describedby': _blockedId},
+                        ),
                 ),
               ]),
             ]),
@@ -275,14 +291,15 @@ class _LiveBarState extends State<LiveBar> {
     ],
   );
 
-  /// A row of a Review list: the name (a link to the document when it is
-  /// here), a meta line, the row's actions beside it or, when [stacked],
-  /// under it so a narrow sheet keeps the name readable.
-  Widget _row({required String key, required String name, String? href, required List<Widget> meta, ActionRow? actions, bool stacked = false}) {
+  /// A row of a Review list: the name (a link to the file when it is here),
+  /// a meta line, any [details] under it, the row's actions beside it or,
+  /// when [stacked], under it so a narrow sheet keeps the name readable.
+  Widget _row({required String key, required String name, String? href, required List<Widget> meta, Widget? details, ActionRow? actions, bool stacked = false}) {
     final Widget title = Text.truncated(name, weight: FontWeight.w500, color: TextColor.primary);
     final Widget main = stack(spacing: 2, <Widget>[
       if (href == null) dom.span(attributes: <String, String>{'title': name}, <Widget>[title]) else dom.a(href: href, attributes: <String, String>{'title': name}, <Widget>[title]),
       Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: meta),
+      ?details,
     ]);
     return listItem(
       attributes: <String, String>{'data-key': key},
@@ -369,6 +386,7 @@ class _LiveBarState extends State<LiveBar> {
                 _meta('${listNoun(draft.kind)}, ${changeLine(draft, base: binding?.bases[draft.key]?.source, mine: _store.document(draft.kind, draft.id)?.json)}'),
                 if (advanced) dom.code(<Widget>[Component.text(draft.id)]),
               ],
+              details: _fields(draft, binding, advanced),
               actions: ActionRow(
                 dense: true,
                 label: _nameOf(draft.key),
@@ -379,6 +397,16 @@ class _LiveBarState extends State<LiveBar> {
         ],
       ),
     ]);
+  }
+
+  /// A changed file's fields, old to new, as many as [reviewFieldLimit];
+  /// none for a deletion or when the server's copy is not stored here.
+  Widget? _fields(DraftChange draft, ServerBinding? binding, bool advanced) {
+    if (binding == null || draft.state == DraftState.deleted || draft.state == DraftState.clean) return null;
+    final Object? base = reviewBase(draft, binding);
+    final Object? mine = _store.document(draft.kind, draft.id)?.json;
+    if (base == null || mine == null) return null;
+    return fieldList(fieldChanges(base, mine), advanced: advanced, label: 'Fields of ${_nameOf(draft.key)}', testId: 'review-fields');
   }
 
   /// Advanced's part of Review; the change note only while [changes] wait.

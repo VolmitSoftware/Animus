@@ -1,5 +1,5 @@
 {
-  "description": "What the editor lists after opening schema/fixtures/export as a data folder. Paths not listed are ignored.",
+  "description": "What the editor lists after opening schema/fixtures/export as a data folder. Paths not listed are ignored; config.toml, which the server reads, is not listed as a file the editor did not read.",
   "documents": [
     {
       "kind": "behavior",
@@ -63,7 +63,6 @@
     }
   ],
   "ignored": [
-    "config.toml",
     "npcs/examples/notes.txt",
     "state/behavior-state/global/greeter/greeter.json"
   ]

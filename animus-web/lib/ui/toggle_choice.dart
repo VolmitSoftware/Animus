@@ -27,10 +27,13 @@ int _nextChoiceId = 0;
 
 /// Exactly one of [options]. Pressing the chosen one again keeps it.
 class ToggleChoice<T> extends StatefulWidget {
-  const ToggleChoice({required this.label, required this.options, required this.value, required this.onChanged, super.key});
+  const ToggleChoice({required this.label, required this.options, required this.value, required this.onChanged, this.tip, super.key});
 
   /// The group's accessible name.
   final String label;
+
+  /// What the choice changes, shown as a tooltip on hover or focus.
+  final String? tip;
   final List<ChoiceOption<T>> options;
   final T value;
   final void Function(T value) onChanged;
@@ -51,6 +54,12 @@ class _ToggleChoiceState<T> extends State<ToggleChoice<T>> with SqueezeFold<Togg
 
   @override
   Widget build(BuildContext context) {
+    final Widget choice = _choice(context);
+    final String? tip = component.tip;
+    return tip == null ? choice : ArcaneTooltip(text: tip, position: FloatingPosition.bottom, child: choice);
+  }
+
+  Widget _choice(BuildContext context) {
     measureSqueeze();
     final int at = options.indexWhere((ChoiceOption<T> option) => option.value == component.value);
     if (folded) {

@@ -104,6 +104,9 @@ class ServerConnection {
   /// When the connection was last online; null before it ever was.
   DateTime? _lastOnline;
 
+  /// Why the connection was last lost.
+  ErrorCopy? _loss;
+
   /// Paces authorized requests to the server's per-token rate.
   final RequestPacer _pacer = RequestPacer();
 
@@ -213,6 +216,7 @@ class ServerConnection {
   Future<void> disconnect() async {
     _running = false;
     _lastOnline = null;
+    _loss = null;
     retryNow();
     final Completer<void>? lost = _lost;
     if (lost != null && !lost.isCompleted) lost.complete();
@@ -256,12 +260,15 @@ class ServerConnection {
     return parked;
   }
 
-  /// The words for a path no server answered on: once the connection has
-  /// been online, the first minute of silence is a restart.
+  /// The words for a path no server answered on: in the first minute after
+  /// a loss, the loss's own cause when the server said it stops, else that
+  /// the connection was lost.
   ErrorCopy _silence(ErrorCopy problem) {
     final DateTime? online = _lastOnline;
     if (online == null || _now().difference(online) >= const Duration(minutes: 1)) return problem;
-    return transportCopy('restarting');
+    final ErrorCopy? loss = _loss;
+    if (loss != null && (identical(loss, closingCopy['server-stopping']) || identical(loss, transportCopy('server-left')))) return loss;
+    return transportCopy('lost');
   }
 
   Future<void> _loop(Completer<void> firstRound) async {
@@ -318,7 +325,7 @@ class ServerConnection {
   }
 
   /// Path failures that mean nothing answered at all.
-  static const List<String> _noAnswer = <String>['unreachable', 'timeout', 'relay-unreachable', 'server-offline', 'server-left', 'restarting'];
+  static const List<String> _noAnswer = <String>['unreachable', 'timeout', 'relay-unreachable', 'server-offline', 'server-left', 'lost'];
 
   /// Paths to try: after a loss, the other path first.
   List<(ConnectionPath, String)> _order() {
@@ -592,6 +599,7 @@ class ServerConnection {
   void _connectionLost(ConnectionPath path, ErrorCopy problem) {
     if (_transport == null || _transport!.path != path) return;
     _lostPath = path;
+    _loss = problem;
     _lastOnline = _now();
     unawaited(_drop());
     _emit(ConnectionStatus(ConnectionPhase.reconnecting, path: path, problem: problem, hello: _hello));

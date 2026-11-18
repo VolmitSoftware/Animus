@@ -246,7 +246,7 @@ async function run(browser, width, height, label, theme) {
 
   // Apply.
   const before = await serverDocument('npc', npc);
-  await expectNotice(page, 'Applied 1 document', () => click(page, 'Apply 1'));
+  await expectNotice(page, 'Applied 1 file', () => click(page, 'Apply 1'));
   await saveLine(page, /Applied 1 change|Up to date/);
   const applied = await serverDocument('npc', npc);
   assert.equal(applied.revision, before.revision + 1, 'the server raised the revision');
@@ -273,7 +273,7 @@ async function run(browser, width, height, label, theme) {
   await compare.waitFor({state: 'hidden'});
   conflictExpected = false;
   await serverChanged.waitFor({state: 'detached'});
-  await expectNotice(page, 'Applied 1 document', () => click(page, 'Apply 1'));
+  await expectNotice(page, 'Applied 1 file', () => click(page, 'Apply 1'));
   const merged = await fetchSource(npc);
   assert.equal(merged.name, 'Greeter Second');
   assert.equal(merged.spawned, edited.spawned, 'the server side of the merge survived');
@@ -281,7 +281,7 @@ async function run(browser, width, height, label, theme) {
   assert.equal(await page.getByRole('textbox', {name: 'Change note'}).count(), 0, 'no change note while nothing waits');
   const history = reviewBody(page).getByTestId('review-history');
   await history.getByText('Applied Greeter Second', {exact: true}).first().waitFor();
-  assert.equal(await history.getByText(/^Applied \d+ documents?$/).count(), 0, 'each apply names its documents');
+  assert.equal(await history.getByText(/^Applied \d+ files?$/).count(), 0, 'each apply names its files');
 
   // Drop the direct path: the editor fails over to the relay.
   networkDown = true;
@@ -289,7 +289,7 @@ async function run(browser, width, height, label, theme) {
   await review(page);
   await pill(page).filter({hasText: 'Online (relay)'}).waitFor({timeout: 20000});
   await editDraft(page, (json) => { json.name = 'Over The Relay'; });
-  await expectNotice(page, 'Applied 1 document', () => click(page, 'Apply 1'));
+  await expectNotice(page, 'Applied 1 file', () => click(page, 'Apply 1'));
   assert.equal((await fetchSource(npc)).name, 'Over The Relay');
   await shot(page, `${label}-05-relay`);
 
@@ -309,7 +309,7 @@ async function run(browser, width, height, label, theme) {
   assert.ok(phases.every((phase) => phase === 'online'), `${label}: the switch back stays online: ${JSON.stringify([...new Set(phases)])}`);
   await waitForStreams({direct: 1, relay: 0}, `${label}: one direct event stream after the switch`);
   await editDraft(page, (json) => { json.name = 'Direct Again'; });
-  await expectNotice(page, 'Applied 1 document', () => click(page, 'Apply 1'));
+  await expectNotice(page, 'Applied 1 file', () => click(page, 'Apply 1'));
   assert.equal((await fetchSource(npc)).name, 'Direct Again');
   await shot(page, `${label}-05b-direct-again`);
 
@@ -324,7 +324,7 @@ async function run(browser, width, height, label, theme) {
     await (await scope(page)).getByRole('button', {name: 'Retry now'}).first().click().catch(() => {});
   });
   await status(page, 'online');
-  await expectNotice(page, 'Applied 1 document', () => click(page, 'Apply 1'));
+  await expectNotice(page, 'Applied 1 file', () => click(page, 'Apply 1'));
   assert.equal((await fetchSource(npc)).name, 'After Recovery');
   // Sockets the browser pooled before the cut may still reset once.
   networkDown = false;
@@ -343,7 +343,7 @@ async function run(browser, width, height, label, theme) {
   assert.equal((await fetchSource(npc)).name, 'After Recovery', 'cancel wrote nothing');
   await undo.click();
   const undoneAt = await newestAt(page);
-  await expectNotice(page, 'Undid 1 document', () => page.getByRole('alertdialog').getByRole('button', {name: 'Undo on the server'}).click());
+  await expectNotice(page, 'Undid 1 file', () => page.getByRole('alertdialog').getByRole('button', {name: 'Undo on the server'}).click());
   assert.equal((await fetchSource(npc)).name, 'Direct Again');
   // The undo's own catalog event follows within moments; it is not news.
   await page.waitForTimeout(1000);
@@ -358,7 +358,7 @@ async function run(browser, width, height, label, theme) {
   await control('drop', {path: 'all', seconds: 15});
   await status(page, 'reconnecting');
   await control('edit', {kind: 'npc', id: npc, source: await sourceWith((json) => { json.name = 'Changed While Away'; })});
-  await expectNotice(page, 'Resynced with the server: 1 document refreshed.', async () => {
+  await expectNotice(page, 'Resynced with the server: 1 file refreshed.', async () => {
     await control('restore', {});
     await (await scope(page)).getByRole('button', {name: 'Retry now'}).first().click().catch(() => {});
   });
@@ -421,16 +421,19 @@ async function failures(browser, width, height, label, theme) {
   await page.goBack();
   await page.waitForFunction(() => !location.hash.startsWith('#/pair'));
   await page.goForward();
-  await problem.getByText('No pairing link here.').waitFor();
+  await page.getByRole('textbox', {name: 'Pairing link'}).waitFor();
+  assert.equal(await problem.count(), 0, 'a pair page without a link asks for one and reports no problem');
+  assert.equal(await page.getByTestId('pair-new-link-submit').getAttribute('data-variant'), 'primary', 'Open link is the page\'s action');
   assert.ok(!(await page.evaluate(() => location.href)).includes('ANM1.'), 'history keeps no pairing code');
 
   // An expired link: no Pair, the next step and the paste field.
   const {code: fresh} = await control('pair?paths=both', {});
-  await page.getByRole('textbox', {name: 'New link'}).fill(expiredCode(fresh));
+  await page.getByRole('textbox', {name: 'Pairing link'}).fill(expiredCode(fresh));
   await page.getByTestId('pair-new-link-submit').click();
   await problem.getByText('This link expired.').waitFor();
   assert.equal(await page.evaluate(() => location.hash), '#/pair', 'a pasted link keeps the code out of the address');
   assert.equal(await page.getByTestId('pair-submit').count(), 0, 'an expired link offers no Pair');
+  assert.equal(await page.locator(".ui-start .arcane-button[data-variant='primary']").count(), 0, 'a spent link leaves no primary action');
   await shot(page, `${label}-f02-expired-code`);
 
   // A token with a day left: Review says so.
@@ -455,7 +458,7 @@ async function failures(browser, width, height, label, theme) {
 
   // A lost apply answer: the editor reconnects and asks by the key.
   await control('drop-answer', {});
-  await expectNotice(page, 'Applied 1 document', () => click(page, 'Apply 1'));
+  await expectNotice(page, 'Applied 1 file', () => click(page, 'Apply 1'));
   assert.equal((await fetchSource(npc)).name, 'Scoped');
   await status(page, 'online');
 

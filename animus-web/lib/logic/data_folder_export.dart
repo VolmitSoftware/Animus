@@ -38,7 +38,7 @@ Uint8List zipFiles(Map<String, Uint8List> files, {String prefix = '', DateTime? 
 String exportSummary(String name, WorkspaceSnapshot workspace) {
   final int packFiles = workspace.resources.keys.where((String path) => path.startsWith('pack/')).length;
   final String packs = packFiles == 0 ? '' : ', ${countOf(packFiles, 'pack file')}';
-  return 'Saved $name: ${countOf(workspace.documents.length, 'document')}$packs. Unzip over plugins/Animus.';
+  return 'Saved $name: ${countOf(workspace.documents.length, 'file')}$packs. Unzip over plugins/Animus.';
 }
 
 final RegExp _itemModel = RegExp(r'item_model\s*=\s*"([a-z0-9_.-]+:[a-z0-9_./-]+)"');

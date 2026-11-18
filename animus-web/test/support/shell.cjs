@@ -252,17 +252,10 @@ async function waitOnline(page, timeout = 20000) {
 
 /**
  * Clicks the start page's [name] ("Open examples", "Open folder", "Open
- * zip"): the start row's own button, or its "..." menu entry where the row
- * is too narrow and folded it away. Waits for the page to draw first.
+ * zip"), on its card or its row.
  */
 async function startAction(page, name) {
-  const button = page.getByRole('button', {name, exact: true});
-  await button.or(page.locator('#start-more-button')).first().waitFor();
-  // The row folds what does not fit a frame after it is drawn.
-  await page.waitForTimeout(200);
-  if (await button.isVisible()) return button.click();
-  await page.locator('#start-more-button').click();
-  await page.getByRole('menuitem', {name}).click();
+  await page.getByRole('button', {name, exact: true}).click();
 }
 
 /**

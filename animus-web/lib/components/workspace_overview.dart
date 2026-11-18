@@ -1,7 +1,7 @@
 /// Home of a workspace kept in this browser: a card per job with its count,
-/// the documents that need attention and the first steps. A blank workspace
-/// says what to make first. Advanced adds the files that were upgraded or
-/// are not editor documents.
+/// the files that need attention, the first steps and the files it did not
+/// read. A blank workspace says what to make first. Advanced adds the files
+/// that were upgraded.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -56,16 +56,18 @@ class WorkspaceOverview extends StatelessWidget {
       }
     }
     final bool blank = workspace.documents.isEmpty;
-    final int hidden = ModeScope.advanced(context) ? 0 : hiddenOnly(counts);
+    final bool advanced = ModeScope.advanced(context);
+    final int hidden = advanced ? 0 : hiddenOnly(counts);
+    final List<String> shownUpgrades = advanced ? upgraded : const <String>[];
     return dom.div(classes: 'ui-home', <Widget>[
       stack(spacing: 24, <Widget>[
         PageHeader(title: workspace.name),
         if (blank)
           EmptyState(
-            message: 'No documents yet.',
+            message: 'No files yet.',
             action: ActionRow(
-              label: 'First document',
-              secondary: <RowAction>[if (ModeScope.advanced(context)) RowAction('Import', () => onNavigate(CitizensRoute(workspaceId: workspace.id)))],
+              label: 'First file',
+              secondary: <RowAction>[RowAction('Import', () => onNavigate(CitizensRoute(workspaceId: workspace.id)))],
               primary: RowAction('New NPC', () => onNavigate(NewDocumentRoute(workspace.id, DocumentKind.npc))),
             ),
           )
@@ -78,23 +80,24 @@ class WorkspaceOverview extends StatelessWidget {
           HomeCards(workspaceId: workspace.id, counts: counts, ownRoutes: ownRoutes, server: false),
           NeedsAttention(workspaceId: workspace.id, rows: attention),
         ],
-        if (ModeScope.advanced(context) && (upgraded.isNotEmpty || ignored.isNotEmpty))
+        if (shownUpgrades.isNotEmpty || ignored.isNotEmpty)
           dom.section(
             attributes: const <String, String>{'aria-label': 'Files'},
             <Widget>[
-              if (upgraded.isNotEmpty)
+              if (shownUpgrades.isNotEmpty)
                 AppSection(
-                  title: '${countOf(upgraded.length, 'file')} upgraded to schemaVersion 2',
+                  title: '${countOf(shownUpgrades.length, 'file')} upgraded to schemaVersion 2',
                   tip: 'NPCs and trait groups from an older Animus move to the current schema as they open. Export and Send write the upgraded files.',
                   open: false,
                   attributes: const <String, String>{'data-testid': 'upgraded-files'},
-                  children: <Widget>[_paths(upgraded)],
+                  children: <Widget>[_paths(shownUpgrades)],
                 ),
               if (ignored.isNotEmpty)
                 AppSection(
                   title: '${countOf(ignored.length, 'file')} not read',
-                  tip: 'Files in the folder or zip that are not editor documents. Export leaves them out.',
+                  tip: 'Files in the folder or zip that the editor does not edit, such as other plugins\' files. Export leaves them out.',
                   open: false,
+                  attributes: const <String, String>{'data-testid': 'unread-files'},
                   children: <Widget>[_paths(ignored)],
                 ),
             ],

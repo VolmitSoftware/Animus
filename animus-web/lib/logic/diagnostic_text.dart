@@ -3,7 +3,13 @@
 library;
 
 import '../model/animus_document.dart';
+import '../model/document_kind.dart';
 import 'gui/gui_json.dart';
+import 'inspect/json_syntax.dart';
+import 'npc/npc_appearance.dart' show clickRedirectField;
+import 'npc/npc_attributes.dart' show attributesField;
+import 'npc/npc_integrations.dart' show integrationFields;
+import 'npc/npc_tabs.dart' show npcLaidOut, tabModules;
 import 'offline/document_fixes.dart' show parseJsonPath;
 
 /// The field a diagnostic path names, as a label: `$.uuid` reads "UUID",
@@ -38,6 +44,37 @@ String diagnosticSentenceIn(Diagnostic diagnostic, {required bool advanced}) {
   final int fix = sentence.lastIndexOf(': ');
   return fix < 0 ? sentence : '${sentence.substring(0, fix)}. Edit in Advanced to see how.';
 }
+
+/// Root keys of every kind that only Advanced shows.
+const Set<String> _bookkeeping = <String>{'uuid', 'id', 'schemaVersion', 'revision'};
+
+/// Root keys of an NPC or trait group that only Advanced shows.
+final Set<String> _npcAdvanced = <String>{
+  'group', 'owner', 'tags', 'groups', 'poses', 'anchors', 'rig', 'player', 'bossBar', 'viewers', 'inventory', 'movement',
+  clickRedirectField, attributesField, ...integrationFields.keys,
+};
+
+/// Whether the field at [path] of a [kind] file is one Simple does not show.
+bool simpleHides(DocumentKind kind, String path) {
+  final List<JsonStep>? steps = parseJsonPath(path);
+  if (steps == null || steps.isEmpty || steps.first is! String) return false;
+  final String root = steps.first as String;
+  if (_bookkeeping.contains(root)) return true;
+  if (kind != DocumentKind.npc && kind != DocumentKind.group) return false;
+  if (root == 'position') return steps.length > 1 && steps[1] == 'pitch';
+  if (root == 'modules') return steps.length > 1 && steps[1] is String && !tabModules.contains(steps[1]);
+  return _npcAdvanced.contains(root) || !npcLaidOut.contains(root);
+}
+
+/// [diagnostic] as the mode shows it, without naming a field Simple does
+/// not show.
+String problemSentence(Diagnostic diagnostic, DocumentKind kind, {required bool advanced}) {
+  if (!advanced && simpleHides(kind, diagnostic.path)) return 'A setting Simple does not show needs a fix.';
+  return diagnosticSentenceIn(diagnostic, advanced: advanced);
+}
+
+/// Where a file that is not a JSON object stops being one, for its page.
+String unreadableLine(String source) => jsonSyntaxProblem(source)?.text ?? 'The file holds JSON, but not an object.';
 
 bool _same(Diagnostic a, Diagnostic b) => a.path == b.path && a.message == b.message;
 

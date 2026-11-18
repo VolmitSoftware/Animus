@@ -7,8 +7,12 @@
     var stored = window.localStorage.getItem('animus.theme');
     if (stored === 'light' || stored === 'dark') { mode = stored; }
   } catch (e) { /* private mode */ }
-  // Midnight (dark) until the light theme is picked in the overflow menu.
-  if (mode === null) { mode = 'dark'; }
+  // Until a theme is picked in the overflow menu, the system's.
+  if (mode === null) {
+    var light = false;
+    try { light = window.matchMedia('(prefers-color-scheme: light)').matches; } catch (e) { /* no matchMedia */ }
+    mode = light ? 'light' : 'dark';
+  }
   var root = document.documentElement;
   root.classList.remove('light', 'dark');
   root.classList.add(mode);

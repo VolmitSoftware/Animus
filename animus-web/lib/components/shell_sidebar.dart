@@ -180,7 +180,8 @@ class ShellNav extends StatefulWidget {
         current = currentJob(route),
         recent = _recent(store, workspace, route, recent, mode, session?.drafts ?? const <DraftChange>[]),
         changed = _changed(store, workspace, route, session?.drafts ?? const <DraftChange>[]),
-        moreChanged = ((session?.drafts.length ?? 0) - 12).clamp(0, 1 << 30);
+        moreChanged = ((session?.drafts.length ?? 0) - 12).clamp(0, 1 << 30),
+        catalogLoaded = session?.catalogLoaded ?? false;
 
   final EditorStore store;
   final String workspaceId;
@@ -195,6 +196,9 @@ class ShellNav extends StatefulWidget {
 
   /// Changed documents beyond the twelve listed.
   final int moreChanged;
+
+  /// The server's list has been read in this session.
+  final bool catalogLoaded;
 
   /// Shown above the jobs (the Mode switch in the phone drawer).
   final Widget? header;
@@ -257,6 +261,16 @@ int jobCount(NavJob job, Map<DocumentKind, int> counts, EditorMode mode, {int ow
   return landing is KindListRoute && kindShown(landing.kind, mode) ? counts[landing.kind] ?? 0 : 0;
 }
 
+/// [jobCount] for the nav, or null while the count is not [known] yet.
+String? jobBadge(NavJob job, Map<DocumentKind, int> counts, EditorMode mode, {int ownRoutes = 0, bool known = true}) =>
+    known ? '${jobCount(job, counts, mode, ownRoutes: ownRoutes)}' : null;
+
+/// Whether the nav's counts mean anything: a server workspace that has
+/// neither read the server's list nor kept files from a last visit is still
+/// connecting, not empty.
+bool countsKnown({required bool server, required bool catalogLoaded, required Map<DocumentKind, int> counts}) =>
+    !server || catalogLoaded || counts.values.any((int count) => count > 0);
+
 /// Simple leaves the server behaviors list out; Rigs counts rigs, not the
 /// animations and skins on its other tabs.
 bool _counted(DocumentKind kind, EditorMode mode) =>
@@ -296,6 +310,7 @@ class _ShellNavState extends State<ShellNav> with LibraryWatch<ShellNav> {
         newComponent.layout != old.layout ||
         newComponent.mode != old.mode ||
         newComponent.moreChanged != old.moreChanged ||
+        newComponent.catalogLoaded != old.catalogLoaded ||
         newComponent.recent.join('\n') != old.recent.join('\n') ||
         newComponent.changed.join('\n') != old.changed.join('\n');
   }
@@ -306,6 +321,7 @@ class _ShellNavState extends State<ShellNav> with LibraryWatch<ShellNav> {
     final ShellNav nav = component;
     final Map<DocumentKind, int> counts = nav.store.libraryCounts();
     final int ownRoutes = nav.store.libraryOwnRoutes();
+    final bool known = countsKnown(server: nav.server, catalogLoaded: nav.catalogLoaded, counts: counts);
     return <NavLink>[
       for (final NavJob each in visibleJobs(nav.mode, server: nav.server))
         NavLink(
@@ -313,7 +329,7 @@ class _ShellNavState extends State<ShellNav> with LibraryWatch<ShellNav> {
           jobRoute(each, nav.workspaceId, counts: counts).format(),
           current: each.id == nav.current,
           job: each,
-          badge: each.kinds.isEmpty ? null : '${jobCount(each, counts, nav.mode, ownRoutes: ownRoutes)}',
+          badge: each.kinds.isEmpty ? null : jobBadge(each, counts, nav.mode, ownRoutes: ownRoutes, known: known),
         ),
     ];
   }

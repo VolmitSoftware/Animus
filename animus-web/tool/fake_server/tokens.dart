@@ -104,9 +104,19 @@ class _Pending {
   final List<String> groups;
 }
 
+/// A link that was opened or revoked, kept until it would have expired.
+class _Closed {
+  const _Closed(this.secretHash, this.expires, {required this.revoked});
+
+  final String secretHash;
+  final DateTime expires;
+  final bool revoked;
+}
+
 /// Pairings, tokens and counters, as EditorTokens without the file.
 class FakeTokens {
   final Map<String, _Pending> _pairings = <String, _Pending>{};
+  final Map<String, _Closed> _closed = <String, _Closed>{};
   final Map<String, FakeToken> _tokens = <String, FakeToken>{};
   final Map<String, DateTime> _revoked = <String, DateTime>{};
 
@@ -121,6 +131,7 @@ class FakeTokens {
 
   void clear() {
     _pairings.clear();
+    _closed.clear();
     _tokens.clear();
     _revoked.clear();
   }
@@ -139,11 +150,18 @@ class FakeTokens {
   /// Exchanges a pairing secret once. Returns the token text and the token.
   (String, FakeToken) exchange(String tokenId, String secret, String? client) {
     final _Pending? pending = _pairings[tokenId];
-    if (pending == null || !sameText(pending.secretHash, sha256Text(secret))) {
-      throw ApiError('pairing-invalid', 'This pairing code is not known to the server.');
-    }
-    _pairings.remove(tokenId);
     final DateTime time = now();
+    if (pending == null) {
+      final _Closed? done = _closed[tokenId];
+      // Only the browser holding the secret learns that the link was used or revoked.
+      if (done == null || !sameText(done.secretHash, sha256Text(secret))) throw ApiError('pairing-invalid', 'This pairing code is not known to the server.');
+      if (!time.isBefore(done.expires)) throw ApiError('pairing-expired', 'This pairing code expired; mint another with POST /__fake/pair.');
+      if (done.revoked) throw ApiError('pairing-revoked', 'This pairing code was revoked; mint another with POST /__fake/pair.');
+      throw ApiError('pairing-used', 'This pairing code was already used; mint another with POST /__fake/pair.');
+    }
+    if (!sameText(pending.secretHash, sha256Text(secret))) throw ApiError('pairing-invalid', 'This pairing code is not known to the server.');
+    _pairings.remove(tokenId);
+    _closed[tokenId] = _Closed(pending.secretHash, pending.expires, revoked: false);
     if (!time.isBefore(pending.expires)) {
       throw ApiError('pairing-expired', 'This pairing code expired; mint another with POST /__fake/pair.');
     }
@@ -181,13 +199,21 @@ class FakeTokens {
     token.counter = counter;
   }
 
-  /// Revokes one token, or every token for `all`. Returns the revoked ids.
+  /// Revokes one token, or every token for `all`; a pairing link not opened
+  /// yet is cancelled the same way. Returns the revoked ids.
   List<String> revoke(String idOrAll) {
     final List<String> ids = idOrAll == 'all'
         ? _tokens.keys.toList()
         : (_tokens.containsKey(idOrAll) ? <String>[idOrAll] : <String>[]);
     for (final String id in ids) {
       _revoked[id] = _tokens.remove(id)!.expires;
+    }
+    final DateTime time = now();
+    for (final String id in _pairings.keys.toList()) {
+      if (idOrAll != 'all' && id != idOrAll) continue;
+      final _Pending pending = _pairings.remove(id)!;
+      _closed[id] = _Closed(pending.secretHash, pending.expires, revoked: true);
+      if (time.isBefore(pending.expires)) ids.add(id);
     }
     return ids;
   }
@@ -216,6 +242,7 @@ class FakeTokens {
       _revoked[id] = _tokens.remove(id)!.expires;
     }
     _pairings.removeWhere((String id, _Pending pending) => time.isAfter(pending.expires.add(const Duration(hours: 1))));
+    _closed.removeWhere((String id, _Closed done) => time.isAfter(done.expires.add(const Duration(hours: 1))));
     return expired;
   }
 }

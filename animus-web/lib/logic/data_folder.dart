@@ -129,11 +129,12 @@ String dataFolderPrefix(Iterable<String> paths) {
   return best;
 }
 
-/// Why a picked folder or zip ([name], path to bytes) holds no Animus
-/// documents, and what to pick instead.
+/// Why a picked folder or zip ([name], path to bytes; an empty folder has
+/// no name to give) holds no Animus files, and what to pick instead.
 String emptyPickProblem(String name, Map<String, Uint8List> files, {required bool zip}) {
   const String modServers = 'or config/animus on a mod server.';
-  if (files.isEmpty) return zip ? '$name.zip is not a zip, or it is empty. Pick a zip of plugins/Animus.' : '$name is empty. Pick plugins/Animus, $modServers';
+  if (files.isEmpty && !zip) return '${name.isEmpty ? 'The folder you picked' : name} is empty. Pick plugins/Animus, $modServers';
+  if (files.isEmpty) return '$name.zip is not a zip, or it is empty. Pick a zip of plugins/Animus.';
   final List<List<String>> folders = <List<String>>[for (final String path in files.keys) path.split('/')..removeLast()];
   final bool serverRoot = files.keys.any((String path) => path.split('/').last == 'server.properties') ||
       folders.any((List<String> parts) => parts.indexOf('plugins') > 0);
@@ -170,7 +171,8 @@ class DataFolderResult {
   /// Sorted by path.
   final List<AnimusDocument> documents;
 
-  /// Paths under the data folder that are not documents.
+  /// Paths under the data folder that are not editor files, less
+  /// config.toml, which the server reads.
   final List<String> ignored;
   final String prefix;
 
@@ -198,7 +200,8 @@ DataFolderResult openDataFolder(Map<String, Uint8List> files, SharedSchemas sche
       continue;
     }
     if (location == null) {
-      ignored.add(path);
+      // The server reads config.toml; the editor has nothing to do with it.
+      if (path != 'config.toml') ignored.add(path);
       continue;
     }
     final AnimusDocument document = parseDocument(location, path, files[fullPath]!, schemas);

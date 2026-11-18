@@ -261,7 +261,10 @@ class EditorProtocolTest {
         JsonObject body = new JsonObject();
         body.addProperty("tokenId", pairing.tokenId());
         body.addProperty("secret", pairing.secret());
-        error("pairing-invalid", 401, harness.send("POST", "/v1/pair", null, body, false));
+        error("pairing-revoked", 401, harness.send("POST", "/v1/pair", null, body, false));
+        harness.clock.advance(Duration.ofMinutes(11));
+        // Past its ten minutes a cancelled link reads as expired.
+        error("pairing-expired", 410, harness.send("POST", "/v1/pair", null, body, false));
     }
 
     @Test

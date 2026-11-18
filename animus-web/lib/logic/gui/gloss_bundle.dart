@@ -87,7 +87,7 @@ GlossImport readGlossBundle(String raw) {
       if (asString(asMap(folder)['id']) != null) asString(asMap(folder)['id'])!: asString(asMap(folder)['name']) ?? asString(asMap(folder)['id'])!,
   };
   if (folders.isNotEmpty) {
-    notes.add('Folders (${folders.values.join(', ')}) are not kept: Animus files GUI documents by id, so they open in their kind\'s list.');
+    notes.add('Folders (${folders.values.join(', ')}) are not kept: Animus keeps GUI files by id, so they open in their kind\'s list.');
   }
   final int images = asList(bundle['images']).length;
   if (images > 0) {
@@ -99,12 +99,12 @@ GlossImport readGlossBundle(String raw) {
     final String title = asString(doc['title']) ?? asString(doc['runtimeId']) ?? '?';
     final DocumentKind? kind = glossKinds[kindName];
     if (kind == null) {
-      skipped.add('$title: Gloss $kindName documents have no Animus equivalent');
+      skipped.add('$title: Gloss $kindName files have no Animus equivalent');
       continue;
     }
     final String? source = asString(doc['json']);
     if (source == null) {
-      skipped.add('$title: no document text');
+      skipped.add('$title: no file text');
       continue;
     }
     final String glossId = asString(doc['runtimeId']) ?? title;
@@ -116,13 +116,13 @@ GlossImport readGlossBundle(String raw) {
     }
     final DocumentLocation location = DocumentLocation(kind, id);
     if (!seen.add(location)) {
-      skipped.add('$title: a second ${kind.label.toLowerCase()} document maps to $id');
+      skipped.add('$title: a second ${kind.label.toLowerCase()} file maps to $id');
       continue;
     }
     documents.add(GlossImportedDocument(location, path, source.endsWith('\n') ? source : '$source\n', glossId));
     final String? glossTitle = asString(doc['title']);
     if (glossTitle != null && glossTitle != glossId && glossTitle != id) {
-      notes.add('$title: the Gloss title is not kept; the document is $id.');
+      notes.add('$title: the Gloss title is not kept; the file is $id.');
     }
   }
   return GlossImport(documents: documents, skipped: skipped, notes: notes);

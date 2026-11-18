@@ -1,6 +1,7 @@
-// The save bar's Apply in Simple checks first: a change with a problem
-// opens Review and sends nothing; a clean change applies without it. At 1440
-// px dark and 390 px light, against the fake server with its default data.
+// Apply waits while a change has a problem: the save bar names the reason
+// and offers Review, whose Apply is held back with the same words, and
+// nothing is sent; a clean change applies without Review. At 1440 px dark
+// and 390 px light, against the fake server with its default data.
 //
 //   python3 tool/serve_site.py --port <site port>
 //   dart run tool/fake_server.dart --port=<fake port> --origin=http://127.0.0.1:<site port>
@@ -28,15 +29,15 @@ async function control(route, body) {
 const serverCopy = () => control(`document?kind=npc&id=${encodeURIComponent(npc)}`);
 const reviewBody = (page) => page.locator('#ui-review [data-testid="review"]');
 
-/** Replaces the open NPC's draft through the Code view, then goes back to Simple. */
-async function edit(page, change) {
+/** Replaces the open NPC's draft through the Code view, waits for the save bar's [line], then goes back to Simple. */
+async function edit(page, change, line = /^1 change not applied/) {
   await showView(page, 'code');
   const area = page.locator('.animus-code textarea').first();
   const json = JSON.parse(await area.inputValue());
   change(json);
   await area.fill(JSON.stringify(json, null, 2));
   await page.getByRole('button', {name: 'Use this code'}).click();
-  await saveState(page).filter({hasText: /^1 change not applied/}).waitFor();
+  await saveState(page).filter({hasText: line}).waitFor();
   await setMode(page, 'simple');
   await page.evaluate(() => { location.hash = location.hash.split('?')[0]; });
 }
@@ -61,13 +62,18 @@ async function run(browser, viewport, label, theme) {
   await page.evaluate((id) => { location.hash = location.hash.replace(/^#\/server\/([^/]+).*$/, `#/workspace/server-$1/npc/${encodeURIComponent(id)}`); }, npc);
   await page.locator('.ui-page-header').waitFor();
 
-  // A change with a problem: Apply opens Review and the server keeps its copy.
+  // A change with a problem: the bar and Review give one reason, Apply
+  // waits, and the server keeps its copy.
   const before = await serverCopy();
-  await edit(page, (json) => { json.id = 'wrong'; });
-  await saveAction(page, 'apply').click();
+  const reason = 'Fix 1 file before Apply.';
+  await edit(page, (json) => { json.id = 'wrong'; }, reason);
+  assert.equal(await saveAction(page, 'apply').count(), 0, `${label}: no Apply that cannot go`);
+  await saveAction(page, 'review').click();
   await reviewBody(page).waitFor();
+  await reviewBody(page).getByTestId('review-apply-blocked').filter({hasText: reason}).waitFor();
+  assert.equal(await page.locator('#review-apply').isDisabled(), true, `${label}: Review's Apply waits too`);
   assert.equal((await serverCopy()).revision, before.revision, `${label}: nothing was sent`);
-  assert.match(await saveState(page).innerText(), /^1 change not applied/, `${label}: the change waits`);
+  assert.equal(await saveState(page).innerText(), reason, `${label}: the change waits`);
   await page.locator('#ui-review').getByRole('button', {name: 'Close'}).first().click();
   await reviewBody(page).waitFor({state: 'hidden'});
 

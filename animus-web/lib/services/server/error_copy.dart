@@ -33,12 +33,14 @@ const Map<String, ErrorCopy> serverErrorCopy = <String, ErrorCopy>{
   'origin-not-allowed': ErrorCopy('Server does not accept this page\'s address.',
       'Add it to allowedOrigins under [editor] in the Animus config, then reload the config.'),
   'counter-replayed': ErrorCopy('Out-of-order request, likely two tabs on one pairing.', 'Close the other tab and try again.'),
-  'pairing-invalid': ErrorCopy('Pairing code is unknown, used or revoked.', _pairAgain),
+  'pairing-invalid': ErrorCopy('Server does not know this pairing link.', _pairAgain),
+  'pairing-used': ErrorCopy('Pairing link already used.', _pairAgain),
+  'pairing-revoked': ErrorCopy('Pairing link revoked.', _pairAgain),
   'pairing-expired': ErrorCopy('Pairing code expired.', _pairAgain),
-  'not-found': ErrorCopy('No such document or request on the server.', 'Reload the catalog.'),
+  'not-found': ErrorCopy('No such file or request on the server.', 'Reload the catalog.'),
   'world-unloaded': ErrorCopy('The world is not loaded on the server.', 'Load the world on the server, then reload the view.'),
   'invalid-request': ErrorCopy('Server rejected the request.', 'Reload the editor and try again.'),
-  'too-large': ErrorCopy('Request too large.', 'Send fewer documents, or use the direct path.'),
+  'too-large': ErrorCopy('Request too large.', 'Send fewer files, or use the direct path.'),
   'rate-limited': ErrorCopy('Server is rate limiting this browser.', 'Wait a few seconds.'),
   'busy': ErrorCopy('Server is busy with another write.', 'Try again in a moment.'),
   'conflict': ErrorCopy('Changed on the server since you opened it.', 'Merge or take the server version, then apply again.'),
@@ -73,7 +75,7 @@ const Map<String, ErrorCopy> transportErrorCopy = <String, ErrorCopy>{
   'stream-closed': ErrorCopy('Live updates stopped.', _reconnecting),
   'server-offline': ErrorCopy('Server is not on the relay.', _checkServer),
   'server-left': ErrorCopy('Server restarting.', _reconnecting),
-  'restarting': ErrorCopy('Server restarting.', _reconnecting),
+  'lost': ErrorCopy('Lost the connection to the server.', _reconnecting),
   'relay-unreachable': ErrorCopy('Relay did not answer.', 'Check your network.'),
   'no-answer': ErrorCopy('Server did not answer on either path.', 'Check that it is running.'),
   'wrong-server': ErrorCopy('A different server answered, so nothing was sent.', 'Check the address, or pair again if the server was reinstalled.'),
@@ -95,8 +97,15 @@ enum PairingFailure {
   /// The link ran out before it was used.
   expired('pairing-expired'),
 
-  /// The server does not know the link: used, revoked or never made there.
-  used('pairing-invalid'),
+  /// The link was opened once already.
+  used('pairing-used'),
+
+  /// The link was revoked before it was opened.
+  revoked('pairing-revoked'),
+
+  /// The server does not know the link: never made there, or a server from
+  /// before used and revoked links were told apart.
+  unknown('pairing-invalid'),
 
   /// The server refuses requests from this page's address.
   originNotAllowed('origin-not-allowed'),
@@ -129,7 +138,9 @@ enum PairingFailure {
 /// The cause and next step shown for [failure].
 ErrorCopy pairingFailureCopy(PairingFailure failure) => switch (failure) {
       PairingFailure.expired => serverErrorCopy['pairing-expired']!,
-      PairingFailure.used => serverErrorCopy['pairing-invalid']!,
+      PairingFailure.used => serverErrorCopy['pairing-used']!,
+      PairingFailure.revoked => serverErrorCopy['pairing-revoked']!,
+      PairingFailure.unknown => serverErrorCopy['pairing-invalid']!,
       PairingFailure.originNotAllowed => serverErrorCopy['origin-not-allowed']!,
       PairingFailure.unreachable => transportErrorCopy['unreachable']!,
       PairingFailure.localNetworkBlocked => const ErrorCopy(

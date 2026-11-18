@@ -8,6 +8,9 @@ import '../../services/server/server_pairing.dart';
 /// The in-game command that makes a pairing link.
 const String pairCommand = '/animus editor pair';
 
+/// The in-game step, one line.
+const String pairStep = 'Run $pairCommand in game, then open the link or paste it here.';
+
 /// The next step whenever the link itself is spent.
 const String newLinkStep = 'Run $pairCommand in game, then open or paste the new link.';
 
@@ -29,10 +32,6 @@ class PairProblem {
 
 /// A pasted or opened link that is not a pairing link.
 const PairProblem notALink = PairProblem('This is not a pairing link.', 'Copy the whole link from the chat, or run $pairCommand for a new one.', newLink: true);
-
-/// The pair page with no link: reloaded after the link left the address,
-/// or opened from history.
-const PairProblem noLink = PairProblem('No pairing link here.', 'Open the link from the chat again, or paste it below.', newLink: true);
 
 /// A link whose ten minutes are up, found before anything is sent.
 const PairProblem expiredLink = PairProblem('This link expired.', newLinkStep, newLink: true);
@@ -92,6 +91,8 @@ PairProblem pairProblemOf(String code, {required String pageOrigin, String? dire
 
 PairProblem _problem(PairingFailure failure, String code, {required String pageOrigin, String? directUrl, ErrorCopy? copy}) => switch (failure) {
       PairingFailure.used => const PairProblem('This link was already used.', newLinkStep, newLink: true),
+      PairingFailure.revoked => const PairProblem('This link was revoked.', newLinkStep, newLink: true),
+      PairingFailure.unknown => const PairProblem('The server does not know this link.', newLinkStep, newLink: true),
       PairingFailure.expired => expiredLink,
       PairingFailure.originNotAllowed => PairProblem('The server does not accept this editor\'s address.',
           'Add $pageOrigin to allowedOrigins under [editor] in plugins/Animus/config.toml, then press Pair again.'),

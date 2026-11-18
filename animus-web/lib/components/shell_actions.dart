@@ -57,9 +57,9 @@ mixin WorkspaceActions on State<EditorShell> {
       final String upgrades = upgraded == 0 ? '' : ' Upgraded ${countOf(upgraded, 'file')} to schemaVersion 2.';
       final bool told = announce(Arrival.imported, arrivedOf(snapshot.documents), snapshot.id);
       if (invalid > 0) {
-        ArcaneSonner.warning('Opened ${countOf(snapshot.documents.length, 'document')}; $invalid ${invalid == 1 ? 'needs' : 'need'} repair.$upgrades');
+        ArcaneSonner.warning('Opened ${countOf(snapshot.documents.length, 'file')}; $invalid ${invalid == 1 ? 'needs' : 'need'} repair.$upgrades');
       } else if (!told || upgraded > 0) {
-        ArcaneSonner.success('Opened ${countOf(snapshot.documents.length, 'document')}.$upgrades');
+        ArcaneSonner.success('Opened ${countOf(snapshot.documents.length, 'file')}.$upgrades');
       }
       component.onNavigate(WorkspaceRoute(snapshot.id));
       focusMainHeading();
@@ -86,7 +86,7 @@ mixin WorkspaceActions on State<EditorShell> {
       return;
     }
     downloadBytes('${_fileStem(workspace)}.gloss-workspace.json', utf8.encode(exported.bundle), type: 'application/json');
-    ArcaneSonner.success('Exported ${countOf(exported.exported, 'document')} as a Gloss bundle.'
+    ArcaneSonner.success('Exported ${countOf(exported.exported, 'file')} as a Gloss bundle.'
         '${exported.skipped.isEmpty ? '' : ' Skipped ${exported.skipped.length}: ${exported.skipped.join('; ')}'}');
   }
 
@@ -103,7 +103,7 @@ mixin WorkspaceActions on State<EditorShell> {
       final String named = clashes.take(5).map((DocumentLocation l) => '${l.kind.label} ${l.id}').join(', ');
       final String more = clashes.length > 5 ? ' and ${clashes.length - 5} more' : '';
       final bool replace = await askToConfirm(
-        title: 'Replace ${countOf(clashes.length, 'document')}?',
+        title: 'Replace ${countOf(clashes.length, 'file')}?',
         message: '$named$more from ${picked.$1}. Undo brings them back.',
         confirmLabel: 'Replace and import',
         destructive: true,
@@ -124,9 +124,9 @@ mixin WorkspaceActions on State<EditorShell> {
     final String skipped = imported.skipped.isEmpty ? '' : ' Skipped: ${imported.skipped.join('; ')}.';
     final String notes = imported.notes.isEmpty ? '' : ' ${imported.notes.join(' ')}';
     if (invalid > 0) {
-      ArcaneSonner.warning('Imported ${countOf(imported.documents.length, 'document')} from $file; $invalid ${invalid == 1 ? 'uses' : 'use'} features Animus refuses.$skipped$notes');
+      ArcaneSonner.warning('Imported ${countOf(imported.documents.length, 'file')} from $file; $invalid ${invalid == 1 ? 'uses' : 'use'} features Animus refuses.$skipped$notes');
     } else {
-      ArcaneSonner.success('Imported ${countOf(imported.documents.length, 'document')} from $file.$skipped$notes');
+      ArcaneSonner.success('Imported ${countOf(imported.documents.length, 'file')} from $file.$skipped$notes');
     }
   }
 
@@ -213,7 +213,7 @@ mixin WorkspaceActions on State<EditorShell> {
     await store.commit(documents: <DocumentChange>[DocumentChange(document.kind, document.id, null)], label: 'delete $name');
     component.onNavigate(WorkspaceRoute(workspace.id));
     focusMainHeading();
-    ArcaneSonner.info('Deleted ${document.id}. Undo brings it back.');
+    ArcaneSonner.info('Deleted $name. Undo brings it back.');
   }
 
   /// The rig editor for a rig, or for an animation whose rig is here.

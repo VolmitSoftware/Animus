@@ -5,6 +5,7 @@
 library;
 
 import 'dart:async';
+import 'dart:js_interop';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
@@ -12,6 +13,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
 import '../logic/command_search.dart';
+import '../logic/palette_commands.dart';
 import '../logic/gui/gui_json.dart';
 import '../logic/npc/npc_integrations.dart';
 import '../logic/npc/skin_edits.dart';
@@ -172,9 +174,6 @@ class _EditorShellState extends State<EditorShell> with WorkspaceActions {
 
   /// Switch to Advanced from an arrival notice, landing on what arrived.
   void _showInAdvanced(EditorRoute landing) {
-    final String? shown = _arrivalToast;
-    if (shown != null) ArcaneSonner.dismiss(shown);
-    _arrivalToast = null;
     _setMode(EditorMode.advanced);
     component.onNavigate(landing);
   }
@@ -243,8 +242,16 @@ class _EditorShellState extends State<EditorShell> with WorkspaceActions {
     }
   }
 
+  /// Every way to Advanced (the top bar, the drawer, Search, a notice)
+  /// passes here, so a notice that asks to switch goes with it.
   void _setMode(EditorMode mode) {
     saveMode(mode);
+    if (mode == EditorMode.advanced) {
+      final String? shown = _arrivalToast;
+      if (shown != null) ArcaneSonner.dismiss(shown);
+      _arrivalToast = null;
+      _arrivals.clear();
+    }
     setState(() => _mode = mode);
   }
 
@@ -301,68 +308,129 @@ class _EditorShellState extends State<EditorShell> with WorkspaceActions {
     if (mounted) setState(() => _reviewOpen = true);
   }
 
-  void _setPalette(bool open) {
+  /// Search's id, which its text box carries.
+  static const String _searchId = 'ui-search';
+
+  /// Opens or closes Search. A new opening starts empty, or with [query].
+  void _setPalette(bool open, {String query = ''}) {
+    final String? reopen = _reopenQuery;
+    if (!open && reopen != null) {
+      // Show in Advanced: the palette closes on the pick and opens again on
+      // the same words once the click is done, so the library's own close
+      // of the old palette does not close the new one.
+      _reopenQuery = null;
+      Timer(Duration.zero, () {
+        if (mounted) _setPalette(true, query: reopen);
+      });
+    }
     setState(() {
       _paletteOpen = open;
       if (open) {
-        _paletteQuery = '';
+        _paletteQuery = query;
         _paletteOpens++;
       }
     });
     setScrollLocked(open);
+    if (open && query.isNotEmpty) _typeInSearch(query);
   }
 
-  static const Set<String> _libraryGroups = <String>{'Recent', 'Library'};
+  /// The words Search opens again with after Show in Advanced.
+  String? _reopenQuery;
 
-  /// Search on shadcn's command palette: documents first, then commands;
-  /// with nothing typed, the recent documents and the commands. The editor
+  /// Puts [query] in Search's text box as if typed, once the box is there.
+  void _typeInSearch(String query, [int frames = 6]) {
+    web.window.requestAnimationFrame(((JSNumber _) {
+      final web.Element? found = web.document.querySelector('[data-arcane-command-input="$_searchId"]');
+      if (found != null && found.isA<web.HTMLInputElement>()) {
+        final web.HTMLInputElement box = found as web.HTMLInputElement;
+        box.value = query;
+        box.dispatchEvent(web.Event('input', web.EventInit(bubbles: true)));
+        box.focus();
+      } else if (frames > 0) {
+        _typeInSearch(query, frames - 1);
+      }
+    }).toJS);
+  }
+
+  /// Switches to Advanced and searches the same words again there.
+  void _showMatchesInAdvanced(String query) {
+    _reopenQuery = query;
+    _setMode(EditorMode.advanced);
+  }
+
+  /// Search on shadcn's command palette: files first, then commands; with
+  /// nothing typed, the recent files and the commands. In Simple, matches
+  /// only Advanced lists add one row that shows them there. The editor
   /// ranks and caps the matches ([paletteLimit]) and hands over only those.
   Widget _palette(WorkspaceSnapshot? workspace) {
+    final String query = _paletteQuery;
     final List<PaletteCommand> all = _paletteOpen ? _commands(workspace) : const <PaletteCommand>[];
-    final List<PaletteCommand> pool = _paletteQuery.trim().isEmpty ? <PaletteCommand>[for (final PaletteCommand command in all) if (command.group != 'Library') command] : all;
+    final List<PaletteCommand> pool = query.trim().isEmpty ? <PaletteCommand>[for (final PaletteCommand command in all) if (command.group != 'Library') command] : all;
     final bool phone = web.window.matchMedia('(max-width: 760px)').matches;
-    final List<PaletteCommand> shown = filterCommands(pool, _paletteQuery).take(paletteLimit).toList();
-    final int hidden = shown.isEmpty && workspace != null && _mode == EditorMode.simple && _paletteQuery.trim().isNotEmpty ? _hiddenMatches(_paletteQuery) : 0;
-    // One group per heading, in the order of each group's best match.
+    final List<PaletteCommand> shown = filterCommands(pool, query).take(paletteLimit).toList();
+    final int hidden = _paletteOpen && workspace != null && _mode == EditorMode.simple && query.trim().isNotEmpty ? _hiddenMatches(query) : 0;
+    // One group per heading, files first, then in the order of each group's best match.
     final Map<String, List<CommandItem>> grouped = <String, List<CommandItem>>{};
     for (final PaletteCommand command in shown) {
+      final String? item = command.file ? contentMatch(command, query) : null;
+      final String? hint = item == null ? command.hint : '${command.hint ?? 'File'}, has $item';
       (grouped[command.group] ??= <CommandItem>[]).add(CommandItem(
         label: command.label,
         // Phones have no keys to press: a command's shortcut is left out.
-        shortcut: phone && !_libraryGroups.contains(command.group) ? null : command.hint,
+        shortcut: phone && !command.file ? null : hint,
         keywords: <String>[...command.keywords, ?command.hint],
         onSelect: command.run,
       ));
+    }
+    if (hidden > 0) {
+      grouped['In Advanced'] = <CommandItem>[CommandItem(label: hiddenMatchesLabel(hidden), keywords: const <String>['advanced'], onSelect: () => _showMatchesInAdvanced(query))];
     }
     final List<CommandGroup> groups = <CommandGroup>[
       for (final MapEntry<String, List<CommandItem>> group in grouped.entries) CommandGroup(heading: group.key, items: group.value),
     ];
     return ArcaneCommand(
       key: ValueKey<int>(_paletteOpens),
-      id: 'ui-search',
+      id: _searchId,
       isOpen: _paletteOpen,
       externalFilter: true,
       animate: false,
       // Phones have no keys: the key hints under the list go too.
       keyHints: !phone,
-      placeholder: 'Search NPCs, shops, commands',
-      emptyMessage: hidden > 0 ? hiddenMatchesText(hidden) : 'Nothing matches.',
+      placeholder: 'Search files, commands, settings',
+      emptyMessage: 'Nothing matches.',
       groups: groups,
       onSearch: (String query) => setState(() => _paletteQuery = query),
       onClose: () => _setPalette(false),
     );
   }
 
-  /// How many documents only Advanced lists match [query].
+  /// The items each file uses, read once per version of the file.
+  final Expando<List<String>> _itemTerms = Expando<List<String>>('palette items');
+
+  /// Words inside [kind] file [id] that Search also matches: the names of
+  /// the items it uses, once the file is here.
+  List<String> _contentOf(DocumentKind kind, String id) {
+    final AnimusDocument? document = component.store.document(kind, id);
+    if (document == null) return const <String>[];
+    return _itemTerms[document] ??= itemSearchTerms(itemMentions(document.json));
+  }
+
+  /// How many files only Advanced lists match [query].
   int _hiddenMatches(String query) => filterCommands(<PaletteCommand>[
         for (final DocumentKind kind in DocumentKind.values)
           if (!kindShown(kind, EditorMode.simple))
-            for (final LibraryEntry entry in component.store.library(kind)) PaletteCommand('Library', entry.name, () {}, hint: kindLabel(kind), keywords: <String>[entry.id, kind.wireName]),
+            for (final LibraryEntry entry in component.store.library(kind))
+              PaletteCommand('Library', entry.name, () {}, hint: kindLabel(kind), keywords: <String>[entry.id, kind.wireName], content: _contentOf(kind, entry.id), file: true),
       ], query).length;
 
   Future<void> _undo() async => _toldHistory(await component.store.undo(), 'Undid');
 
   Future<void> _redo() async => _toldHistory(await component.store.redo(), 'Redid');
+
+  /// Search's Undo and Redo show while there is nothing to revert, and say so.
+  void _undoFromSearch() => component.store.canUndo ? _undo() : ArcaneSonner.info('Nothing to undo.');
+
+  void _redoFromSearch() => component.store.canRedo ? _redo() : ArcaneSonner.info('Nothing to redo.');
 
   void _toldHistory(HistoryMove? move, String done) {
     if (move == null) return;
@@ -574,8 +642,28 @@ class _EditorShellState extends State<EditorShell> with WorkspaceActions {
 
   List<PaletteCommand> _commands(WorkspaceSnapshot? workspace) {
     final EditorStore store = component.store;
-    final bool dark = component.brightness == Brightness.dark;
     final bool advanced = _mode == EditorMode.advanced;
+    final LiveSession? session = workspace?.server == null ? null : component.session;
+    final PaletteRuns runs = PaletteRuns(
+      pair: () => component.onNavigate(const PairRoute()),
+      home: () => component.onNavigate(const HomeRoute()),
+      mode: () => _setMode(advanced ? EditorMode.simple : EditorMode.advanced),
+      shortcuts: () => setState(() => _sheetOpen = true),
+      theme: component.onToggleTheme,
+      openFolder: () => openFiles(pickDirectory, zip: false),
+      openZip: () => openFiles(pickZip, zip: true),
+      importer: () => component.onNavigate(CitizensRoute(workspaceId: workspace?.id)),
+      undo: workspace == null ? null : _undoFromSearch,
+      redo: workspace == null ? null : _redoFromSearch,
+      apply: session == null ? null : () => _flow.apply(session, simple: !advanced, onBlocked: _openReview),
+      review: session == null ? null : _openReview,
+      send: workspace == null || workspace.server != null ? null : () => component.onNavigate(SyncRoute(workspace.id)),
+      newFile: workspace == null ? null : () => component.onNavigate(NewDocumentRoute(workspace.id)),
+      exportZip: workspace == null ? null : () => exportWorkspace(workspace),
+      exportGloss: workspace == null ? null : () => exportGloss(workspace),
+      importBbmodel: workspace == null ? null : () => importBbmodel(workspace),
+      importGloss: workspace == null ? null : importGloss,
+    );
     return <PaletteCommand>[
       if (workspace != null) ...<PaletteCommand>[
         for (final String key in _recent)
@@ -584,31 +672,35 @@ class _EditorShellState extends State<EditorShell> with WorkspaceActions {
                 () => component.onNavigate(DocumentRoute(workspace.id, document.kind, document.id)),
                 hint: _hint(document.kind, store.libraryEntry(document.kind, document.id)?.name ?? document.id, document.id, advanced,
                     store.libraryEntry(document.kind, document.id)?.summary ?? DocumentSummary.empty),
-                keywords: <String>[document.id]),
-        // Every document the workspace lists in this mode, loaded or still on
+                keywords: <String>[document.id],
+                content: _contentOf(document.kind, document.id),
+                file: true),
+        // Every file the workspace lists in this mode, loaded or still on
         // the server.
         for (final DocumentKind kind in DocumentKind.values)
           if (kindShown(kind, _mode))
             for (final LibraryEntry entry in store.library(kind))
-            PaletteCommand(
-              'Library',
-              entry.name,
-              () => component.onNavigate(DocumentRoute(workspace.id, kind, entry.id)),
-              hint: _hint(kind, entry.name, entry.id, advanced, entry.summary),
-              keywords: <String>[entry.id, kind.wireName],
-            ),
+              PaletteCommand(
+                'Library',
+                entry.name,
+                () => component.onNavigate(DocumentRoute(workspace.id, kind, entry.id)),
+                hint: _hint(kind, entry.name, entry.id, advanced, entry.summary),
+                keywords: <String>[entry.id, kind.wireName],
+                content: _contentOf(kind, entry.id),
+                file: true,
+              ),
         for (final NavJob job in visibleJobs(_mode, server: workspace.server != null))
           PaletteCommand('Go to', job.label, () => component.onNavigate(jobRoute(job, workspace.id))),
-        if (store.canUndo) PaletteCommand('Edit', 'Undo ${store.undoLabel}', _undo, hint: platformKeys('Mod+Z'), keywords: const <String>['undo']),
-        if (store.canRedo) PaletteCommand('Edit', 'Redo ${store.redoLabel}', _redo, hint: platformKeys('Mod+Shift+Z'), keywords: const <String>['redo']),
-        PaletteCommand('Create', 'New document', () => component.onNavigate(NewDocumentRoute(workspace.id)), hint: 'N', keywords: const <String>['create', 'add']),
-        PaletteCommand('Files', 'Export zip', () => exportWorkspace(workspace), keywords: const <String>['download', 'save']),
-        if (advanced) ...<PaletteCommand>[
-          PaletteCommand('Files', 'Export Gloss bundle', () => exportGloss(workspace), keywords: const <String>['download']),
-          PaletteCommand('Files', 'Import Blockbench model', () => importBbmodel(workspace), keywords: const <String>['bbmodel', 'rig']),
-          PaletteCommand('Files', 'Import Gloss bundle', importGloss),
-        ],
       ],
+      ...actionCommands(
+        runs,
+        advanced: advanced,
+        dark: component.brightness == Brightness.dark,
+        keys: platformKeys,
+        importLabel: converterTitle,
+        undoLabel: store.canUndo ? store.undoLabel : null,
+        redoLabel: store.canRedo ? store.redoLabel : null,
+      ),
       for (final WorkspaceSummary summary in store.workspaces)
         if (summary.id != workspace?.id)
           PaletteCommand(
@@ -618,14 +710,6 @@ class _EditorShellState extends State<EditorShell> with WorkspaceActions {
                 ? ServerRoute(summary.serverId!, const <String>[])
                 : WorkspaceRoute(summary.id)),
           ),
-      PaletteCommand('Switch', 'All workspaces', () => component.onNavigate(const HomeRoute()), keywords: const <String>['home']),
-      PaletteCommand('App', 'Mode: ${_mode == EditorMode.simple ? 'Advanced' : 'Simple'}',
-          () => _setMode(_mode == EditorMode.simple ? EditorMode.advanced : EditorMode.simple), keywords: const <String>['mode', 'simple', 'advanced']),
-      PaletteCommand('App', 'Keyboard shortcuts', () => setState(() => _sheetOpen = true), hint: '?', keywords: const <String>['keys', 'help']),
-      PaletteCommand('App', dark ? 'Light theme' : 'Dark theme', component.onToggleTheme, keywords: const <String>['theme', 'dark', 'light']),
-      PaletteCommand('Files', 'Open folder', () => openFiles(pickDirectory, zip: false)),
-      PaletteCommand('Files', 'Open zip', () => openFiles(pickZip, zip: true)),
-      PaletteCommand('Files', converterTitle, () => component.onNavigate(CitizensRoute(workspaceId: workspace?.id)), keywords: const <String>['citizens', 'shopkeepers', 'denizen']),
     ];
   }
 

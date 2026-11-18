@@ -155,7 +155,7 @@ async function run(browser, {viewport, theme}) {
   await page.goto(url);
   await blankWorkspace(page, `Fields ${label}`);
   await page.evaluate(() => { location.hash = `${location.hash}/new`; });
-  await page.getByRole('heading', {name: 'New document'}).waitFor();
+  await page.getByRole('heading', {name: 'New file'}).waitFor();
   const workspace = await page.evaluate(() => location.hash.split('/')[2]);
 
   // Number boxes: the wheel scrolls the page, a spin press steps once.

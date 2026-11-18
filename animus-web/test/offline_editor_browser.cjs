@@ -132,7 +132,7 @@ async function run(browser, viewport, label, skinFile) {
 
   // With no kind in the address the page asks for one.
   await go(page, `${base}/new`);
-  await page.getByRole('heading', {name: 'New document', exact: true}).waitFor();
+  await page.getByRole('heading', {name: 'New file', exact: true}).waitFor();
   await shot(page, label, '01-new-kind');
   await pickLead(page, page.getByRole('combobox', {name: 'Kind'}), 'NPC');
   await page.getByRole('heading', {name: 'New NPC'}).waitFor();
@@ -296,7 +296,7 @@ async function run(browser, viewport, label, skinFile) {
   const bakerRow = pullList.locator('.ui-library-row[data-key="npc:town/baker"]');
   await bakerRow.locator('.ui-library-pick').click();
   await pullList.locator('.ui-library-bulk').getByRole('button', {name: 'Pull', exact: true}).click();
-  await page.locator('.arcane-toast', {hasText: /Pulled 1 document into Sketchbook\./}).waitFor();
+  await page.locator('.arcane-toast', {hasText: /Pulled 1 file into Sketchbook\./}).waitFor();
   await setMode(page, 'simple');
   await go(page, `${base}/npc/${encodeURIComponent('town/baker')}`);
   await code(page, (json) => ({...json, name: 'Baker Bea'}));
@@ -310,19 +310,19 @@ async function run(browser, viewport, label, skinFile) {
   const apply = page.locator('#send-apply');
   const sendsNew = Number((await apply.textContent()).match(/\d+/)[0]);
   assert.ok(sendsNew >= 15, `${label}: Apply sends the new documents: ${sendsNew}`);
-  await page.getByRole('group', {name: 'Changed documents'}).getByRole('button', {name: 'Use mine'}).click();
+  await page.getByRole('group', {name: 'Changed files'}).getByRole('button', {name: 'Use mine'}).click();
   await apply.filter({hasText: `Apply ${sendsNew + 1}`}).waitFor();
   await shot(page, label, '06-send');
   await apply.click();
   const confirm = page.getByRole('alertdialog');
-  await confirm.getByText('Replace 1 document on the server?').waitFor();
+  await confirm.getByText('Replace 1 file on the server?').waitFor();
   await shot(page, label, '07-send-replace');
   await page.keyboard.press('Escape');
   await confirm.waitFor({state: 'detached'});
   assert.notEqual((await control(`document?kind=npc&id=${encodeURIComponent('town/baker')}`)).source.name, 'Baker Bea', 'cancel sent nothing');
   await apply.click();
   await confirm.getByRole('button', {name: 'Replace and apply'}).click();
-  await page.locator('.ui-alert', {hasText: /Applied \d+ documents\./}).first().waitFor({timeout: 20000});
+  await page.locator('.ui-alert', {hasText: /Applied \d+ files\./}).first().waitFor({timeout: 20000});
   const baker = await control(`document?kind=npc&id=${encodeURIComponent('town/baker')}`);
   assert.equal(baker.source.name, 'Baker Bea', 'the chosen replace reached the server');
   const state = await control('state');

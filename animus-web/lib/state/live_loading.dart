@@ -36,7 +36,7 @@ extension LiveLoading on LiveSession {
     if (keys.length > 1) {
       loadReport = LoadReport(result.loaded.length, result.failed, result.reason);
       if (result.failed.isNotEmpty) {
-        _notice(NoticeLevel.warning, 'Loaded ${result.loaded.length} of ${countOf(keys.length, 'document')}; ${result.failed.length} failed. ${result.reason?.cause ?? ''}'.trim());
+        _notice(NoticeLevel.warning, 'Loaded ${result.loaded.length} of ${countOf(keys.length, 'file')}; ${result.failed.length} failed. ${result.reason?.cause ?? ''}'.trim());
       }
     }
     _libraryChanged();
@@ -313,7 +313,7 @@ extension LiveLoading on LiveSession {
     // Someone else wrote what was changed here: say so, the bar
     // keeps it until Review settles it.
     final int conflicts = stale.length - heard.staleBefore;
-    if (conflicts > 0) _notice(NoticeLevel.warning, '${countOf(conflicts, 'change')} ${conflicts == 1 ? 'conflicts' : 'conflict'} with the server. Review to keep yours or take theirs.');
+    if (conflicts > 0) _notice(NoticeLevel.warning, applyBlockedReason(problems: 0, serverChanged: conflicts)!);
     if (heard.added.isNotEmpty) {
       if (!_disposed) {
         _arrivals.add(<DocumentRef>[

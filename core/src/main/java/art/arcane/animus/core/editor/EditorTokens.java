@@ -90,12 +90,16 @@ public final class EditorTokens {
 
     private record Pending(String secretHash, Instant expires, Grant grant) {}
 
+    /** A link that was opened or revoked, kept until it would have expired so its browser learns which. */
+    private record Closed(String secretHash, Instant expires, boolean revoked) {}
+
     private final DocumentStore store;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
     private final Map<String, Token> tokens = new LinkedHashMap<>();
     private final Map<String, Instant> revoked = new LinkedHashMap<>();
     private final Map<String, Pending> pairings = new LinkedHashMap<>();
+    private final Map<String, Closed> closed = new LinkedHashMap<>();
 
     public EditorTokens(DocumentStore store, Clock clock) throws IOException {
         this.store = Objects.requireNonNull(store);
@@ -118,10 +122,17 @@ public final class EditorTokens {
     /** Exchanges a pairing secret for a token. Returns the token text, which is shown once and never stored. */
     public synchronized Map.Entry<String, Token> exchange(String tokenId, String secret, Optional<String> client) throws EditorError, IOException {
         Pending pending = pairings.get(tokenId);
-        if (pending == null) throw new EditorError(EditorError.Code.PAIRING_INVALID, "This pairing code is not known to the server.");
-        if (!MessageDigest.isEqual(pending.secretHash().getBytes(StandardCharsets.US_ASCII), sha256(secret).getBytes(StandardCharsets.US_ASCII)))
-            throw new EditorError(EditorError.Code.PAIRING_INVALID, "This pairing code is not known to the server.");
+        if (pending == null) {
+            Closed done = closed.get(tokenId);
+            // Only the browser holding the secret learns that the link was used or revoked.
+            if (done == null || !sameHash(done.secretHash(), secret)) throw new EditorError(EditorError.Code.PAIRING_INVALID, "This pairing code is not known to the server.");
+            if (!now().isBefore(done.expires())) throw new EditorError(EditorError.Code.PAIRING_EXPIRED, "This pairing code expired; run /animus editor pair again.");
+            if (done.revoked()) throw new EditorError(EditorError.Code.PAIRING_REVOKED, "This pairing code was revoked; run /animus editor pair again.");
+            throw new EditorError(EditorError.Code.PAIRING_USED, "This pairing code was already used; run /animus editor pair again.");
+        }
+        if (!sameHash(pending.secretHash(), secret)) throw new EditorError(EditorError.Code.PAIRING_INVALID, "This pairing code is not known to the server.");
         pairings.remove(tokenId);
+        close(tokenId, pending, false);
         if (!now().isBefore(pending.expires())) throw new EditorError(EditorError.Code.PAIRING_EXPIRED, "This pairing code expired; run /animus editor pair again.");
         String tokenSecret = randomText(32);
         String text = "anm_" + tokenId + "." + tokenSecret;
@@ -200,6 +211,7 @@ public final class EditorTokens {
             Map.Entry<String, Pending> pairing = open.next();
             if (!all && !pairing.getKey().equals(idOrAll)) continue;
             open.remove();
+            close(pairing.getKey(), pairing.getValue(), true);
             if (now.isBefore(pairing.getValue().expires())) ids.add(pairing.getKey());
         }
         boolean stored = false;
@@ -252,6 +264,20 @@ public final class EditorTokens {
         Instant now = now();
         // Expired pairings stay an hour so a late browser learns the code expired instead of that it never existed.
         pairings.values().removeIf((Pending pending) -> now.isAfter(pending.expires().plus(Duration.ofHours(1))));
+        closed.values().removeIf((Closed done) -> now.isAfter(done.expires().plus(Duration.ofHours(1))));
+    }
+
+    private void close(String tokenId, Pending pending, boolean revoked) {
+        closed.put(tokenId, new Closed(pending.secretHash(), pending.expires(), revoked));
+        Iterator<String> oldest = closed.keySet().iterator();
+        while (closed.size() > MAXIMUM_PAIRINGS * 4 && oldest.hasNext()) {
+            oldest.next();
+            oldest.remove();
+        }
+    }
+
+    private boolean sameHash(String secretHash, String secret) {
+        return MessageDigest.isEqual(secretHash.getBytes(StandardCharsets.US_ASCII), sha256(secret).getBytes(StandardCharsets.US_ASCII));
     }
 
     private Instant now() { return clock.instant().truncatedTo(ChronoUnit.SECONDS); }

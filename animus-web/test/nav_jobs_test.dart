@@ -15,6 +15,17 @@ void main() {
     expect(jobCount(rigs, const <DocumentKind, int>{DocumentKind.rig: 2, DocumentKind.skin: 402}, EditorMode.advanced), 2);
   });
 
+  test('should show no count while a server workspace has not listed its files yet', () {
+    final NavJob npcs = navJobs.firstWhere((NavJob job) => job.id == 'npcs');
+    expect(jobBadge(npcs, const <DocumentKind, int>{}, EditorMode.simple, known: false), isNull, reason: 'connecting is not 0 NPCs');
+    expect(jobBadge(npcs, const <DocumentKind, int>{}, EditorMode.simple), '0');
+    expect(jobBadge(npcs, const <DocumentKind, int>{DocumentKind.npc: 3}, EditorMode.simple), '3');
+    expect(countsKnown(server: true, catalogLoaded: false, counts: const <DocumentKind, int>{}), isFalse);
+    expect(countsKnown(server: true, catalogLoaded: false, counts: const <DocumentKind, int>{DocumentKind.npc: 3}), isTrue, reason: 'the files kept from the last visit');
+    expect(countsKnown(server: true, catalogLoaded: true, counts: const <DocumentKind, int>{}), isTrue);
+    expect(countsKnown(server: false, catalogLoaded: false, counts: const <DocumentKind, int>{}), isTrue);
+  });
+
   test('should land on the first sub-kind that has documents', () {
     expect(jobRoute(rigs, 'ws', counts: counts), const KindListRoute('ws', DocumentKind.skin));
     expect(jobRoute(guis, 'ws', counts: counts), const KindListRoute('ws', DocumentKind.menu));

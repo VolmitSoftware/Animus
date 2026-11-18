@@ -39,7 +39,7 @@ JObject parseCitizensYaml(String content) {
           'convert this file with the server converter, or write it as an escape in a double-quoted string');
     }
   }
-  if (points > maxDocumentBytes) throw const CitizensImportException('Invalid Citizens YAML: the document exceeds the code point limit');
+  if (points > maxDocumentBytes) throw const CitizensImportException('Invalid Citizens YAML: the file exceeds the code point limit');
   final YamlNode root;
   try {
     root = loadYamlNode(content);

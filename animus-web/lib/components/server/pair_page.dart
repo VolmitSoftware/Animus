@@ -2,7 +2,8 @@
 /// editor may do there, this browser's name and Pair. The code moves into
 /// memory and the address becomes `#/pair`, so the secret stays out of
 /// history. A link that cannot work says why in one sentence, gives the
-/// next step and, when a new link is needed, the field to paste it.
+/// next step and, when a new link is needed, the field to paste it. `#/pair`
+/// with no link (Pair a server, or a reload) asks for one.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -74,10 +75,7 @@ class _PairPageState extends State<PairPage> {
     _code = code;
     _payload = null;
     _problem = null;
-    if (code.isEmpty) {
-      _problem = noLink;
-      return;
-    }
+    if (code.isEmpty) return;
     try {
       final PairingPayload payload = decodePairingCode(code, component.hub.schemas);
       _payload = payload;
@@ -123,7 +121,9 @@ class _PairPageState extends State<PairPage> {
     final PairingPayload? payload = _payload;
     final PairProblem? problem = _problem;
     final bool spent = problem != null && problem.newLink;
+    final bool unread = payload == null && problem == null;
     final String title = payload?.serverName ?? payload?.label ?? (payload == null ? 'Pair a server' : 'Minecraft server');
+    final bool open = payload != null && payload.expiresAt.isAfter(_now);
     return dom.main_(
       classes: 'ui-start',
       attributes: const <String, String>{'aria-labelledby': mainHeadingId},
@@ -140,13 +140,15 @@ class _PairPageState extends State<PairPage> {
             stack(spacing: 12, <Widget>[
               stack(spacing: 4, <Widget>[
                 dom.h1(id: mainHeadingId, classes: 'ui-title', attributes: <String, String>{'tabindex': '-1', 'title': title}, <Widget>[Component.text(title)]),
-                if (payload != null)
+                // A used or revoked link has no time left to tell.
+                if (payload != null && !(spent && open))
                   dom.div(attributes: const <String, String>{'data-testid': 'pair-expiry'}, <Widget>[
-                    mutedText(payload.expiresAt.isAfter(_now) ? 'Link works until ${_time(payload.expiresAt)}, once.' : 'Link expired at ${_time(payload.expiresAt)}.'),
+                    mutedText(open ? 'Link works until ${_time(payload.expiresAt)}, once.' : 'Link expired at ${_time(payload.expiresAt)}.'),
                   ]),
+                if (unread) mutedText(pairStep),
               ]),
               if (spent || payload == null)
-                PairLinkForm(key: ValueKey<String>('new-link:$_code'), id: 'pair-new-link', label: 'New link', onCode: _newLink)
+                PairLinkForm(key: ValueKey<String>('new-link:$_code'), id: 'pair-new-link', label: unread ? 'Pairing link' : 'New link', primary: unread, onCode: _newLink)
               else ...<Widget>[
                 _abilities(),
                 Field(

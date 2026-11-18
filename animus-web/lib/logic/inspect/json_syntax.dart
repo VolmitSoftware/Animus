@@ -32,10 +32,10 @@ JsonSyntaxProblem? jsonSyntaxProblem(String text) {
   try {
     final _Reader reader = _Reader(text);
     reader.space();
-    if (reader.done) throw const _Stop(0, 'the document is empty; it needs a JSON object');
+    if (reader.done) throw const _Stop(0, 'the file is empty; it needs a JSON object');
     reader.value(0);
     reader.space();
-    if (!reader.done) throw _Stop(reader.at, 'unexpected text after the end of the document');
+    if (!reader.done) throw _Stop(reader.at, 'unexpected text after the end of the file');
     return null;
   } on _Stop catch (stop) {
     final int offset = stop.offset.clamp(0, text.length);
@@ -62,7 +62,7 @@ class _Reader {
     }
   }
 
-  Never _end(String what) => throw _Stop(at, 'the document ends early: $what');
+  Never _end(String what) => throw _Stop(at, 'the file ends early: $what');
 
   String _shown() {
     final String glyph = _here;

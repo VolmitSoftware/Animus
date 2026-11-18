@@ -379,7 +379,7 @@ void main() {
         'menu:gloss:lobby/main gui/menus/gloss/lobby/main.json',
         'hologram:gloss:spawn gui/holograms/gloss/spawn.json',
       ]);
-      expect(imported.skipped, <String>['Sidebar: Gloss scoreboard documents have no Animus equivalent']);
+      expect(imported.skipped, <String>['Sidebar: Gloss scoreboard files have no Animus equivalent']);
       final AnimusDocument hologram = validateSource(imported.documents[2].location, imported.documents[2].path, imported.documents[2].source, schemas);
       expect(errors(hologram).map((Diagnostic d) => d.path), <String>[r'$.actions[0].type']);
     });
@@ -429,7 +429,7 @@ void main() {
       final GlossImport imported = readGlossBundle(jsonEncode(bundle));
       expect(imported.notes, contains(startsWith('Folders (Lobby) are not kept')));
       expect(imported.notes, contains(startsWith('1 image is not imported')));
-      expect(imported.notes, contains('Lobby menu: the Gloss title is not kept; the document is gloss:lobby/main.'));
+      expect(imported.notes, contains('Lobby menu: the Gloss title is not kept; the file is gloss:lobby/main.'));
       final AnimusDocument existing = validateSource(imported.documents.first.location, imported.documents.first.path, imported.documents.first.source, schemas);
       expect(glossConflicts(imported, <AnimusDocument>[existing]), <DocumentLocation>[imported.documents.first.location]);
       expect(glossConflicts(imported, const <AnimusDocument>[]), isEmpty);

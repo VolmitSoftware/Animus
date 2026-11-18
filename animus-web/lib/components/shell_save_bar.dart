@@ -72,16 +72,18 @@ class SaveFlow {
   }
 
   /// Sends every change to the server as one change set (the bar's Apply,
-  /// Retry and Mod+S). In Simple it checks first ([applyChecked]): while a
-  /// change has a problem or was changed on the server too, nothing is sent
-  /// and [onBlocked] opens Review.
+  /// Retry and Mod+S). While a change has a problem or was changed on the
+  /// server too, nothing is sent and [onBlocked] opens Review, in either
+  /// mode. Simple also has the server validate first ([applyChecked]).
   Future<void> apply(LiveSession session, {required bool simple, required void Function() onBlocked}) async {
     if (session.busy != null) return;
     if (session.drafts.isEmpty) {
       ArcaneSonner.info('Nothing to apply.');
       return;
     }
-    if (simple) {
+    if (applyBlockedOf(session) != null) {
+      onBlocked();
+    } else if (simple) {
       if (await applyChecked(session) == ApplyOutcome.blocked) onBlocked();
     } else {
       await session.apply();
@@ -139,6 +141,7 @@ class ShellSaveBar extends StatelessWidget {
       );
     }
     final LoadProgress? loading = session.loading;
+    final ({int problems, int serverChanged, int commands}) blocks = applyBlocks(session);
     return serverSaveState(
       link: linkOf(session),
       changes: session.drafts.length,
@@ -146,7 +149,9 @@ class ShellSaveBar extends StatelessWidget {
       failure: state.phase == SavePhase.failed ? state.reason : null,
       applied: state.phase == SavePhase.applied ? state.count : null,
       undone: state.phase == SavePhase.undone ? state.count : null,
-      stale: session.stale.length,
+      stale: blocks.serverChanged,
+      problems: blocks.problems,
+      commands: blocks.commands,
       reading: session.reading,
       catalogFailed: !session.catalogLoaded && session.catalogProblem != null,
       linkMessage: session.connection.status.message,
@@ -165,7 +170,7 @@ class ShellSaveBar extends StatelessWidget {
     if (changeId == null || last == null) return;
     final bool yes = await askToConfirm(
       title: 'Undo the last apply?',
-      message: 'Puts ${last.documents.length == 1 ? '1 document' : '${last.documents.length} documents'} on the server back. Fails if edited since.',
+      message: 'Puts ${last.documents.length == 1 ? '1 file' : '${last.documents.length} files'} on the server back. Fails if edited since.',
       confirmLabel: 'Undo on the server',
       destructive: true,
     );

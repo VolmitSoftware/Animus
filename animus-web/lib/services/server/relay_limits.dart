@@ -24,4 +24,4 @@ bool fitsRelayFrame(Object? body) => utf8.encode(jsonEncode(body)).length <= rel
 
 /// What the editor says when a request is too large for the relay; [verb]
 /// is what sending fewer documents at once would still let the user do.
-String tooLargeForRelay(String verb) => 'Too large for the relay. Connect directly, or $verb fewer documents.';
+String tooLargeForRelay(String verb) => 'Too large for the relay. Connect directly, or $verb fewer files.';

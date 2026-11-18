@@ -453,7 +453,7 @@ void main() {
     expect(store.workspace!.server!.pending, isEmpty);
     expect(store.workspace!.server!.bases['npc:town/guard']!.revision, 2);
     expect(session.drafts, isEmpty);
-    expect(session.log.map((LiveNotice notice) => notice.message), contains(startsWith('Applied 1 document')));
+    expect(session.log.map((LiveNotice notice) => notice.message), contains(startsWith('Applied 1 file')));
   });
 
   test('should settle a change set still being written at reconnect from its change event', () async {
@@ -537,7 +537,7 @@ void main() {
     expect(session.busy, isNull);
     expect(session.stale, <String>{'npc:town/guard'});
     final List<String> messages = <String>[for (final LiveNotice notice in session.log) notice.message];
-    expect(messages.last, 'Resynced with the server: 1 document refreshed. 1 change conflicts with the server; review before applying.');
+    expect(messages.last, 'Resynced with the server: 1 file refreshed. 1 file changed on the server. Compare it before Apply.');
     expect(messages.where((String message) => message.startsWith('Updated')), isEmpty, reason: 'one line for the whole resync');
   });
 
@@ -582,7 +582,7 @@ void main() {
     expect(store.libraryEntry(DocumentKind.npc, 'town/guard')!.stale, isTrue);
     expect((store.document(DocumentKind.npc, 'town/smith')!.json! as Map<String, Object?>)['name'], 'Blacksmith');
     expect(store.libraryEntry(DocumentKind.npc, 'town/newcomer')!.name, 'Newcomer');
-    expect(session.log.last.message, 'Reloaded the catalog: 1 new, 2 removed, 1 refreshed. 1 change conflicts with the server; review before applying.');
+    expect(session.log.last.message, 'Reloaded the catalog: 1 new, 2 removed, 1 refreshed. 1 file changed on the server. Compare it before Apply.');
   });
 
   test('should say a Reload found nothing changed', () async {

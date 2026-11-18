@@ -1,8 +1,8 @@
 /// The start page. A first visit shows three ways in (pair a server, try the
 /// examples, open my files) with Blank workspace and Import under them. A
 /// returning visit lists what to continue first (paired servers with their
-/// state, then the workspaces kept in this browser) and folds the ways in
-/// into one row below.
+/// state, then the workspaces kept in this browser) and every way in below,
+/// each with its line.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -80,8 +80,8 @@ class _HomeScreenState extends State<HomeScreen> {
       });
 
   void _examples() => _run('open the examples', () async {
-        final WorkspaceSnapshot made = await component.store.openFiles('Example packs', starterWorkspaceFiles());
-        ArcaneSonner.success('Opened ${made.name} (${countOf(made.documents.length, 'document')}).');
+        final WorkspaceSnapshot made = await component.store.openFiles('Examples', starterWorkspaceFiles());
+        ArcaneSonner.success('Opened ${made.name} (${countOf(made.documents.length, 'file')}).');
         component.onNavigate(WorkspaceRoute(made.id));
         focusMainHeading();
       });
@@ -133,11 +133,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ]),
         ]),
         dom.section(attributes: const <String, String>{'aria-labelledby': 'start-new'}, <Widget>[
-          StartMore(actions: actions, compact: true, heading: sectionHeading('Start', id: 'start-new')),
+          stack(spacing: 12, <Widget>[
+            sectionHeading('Start', id: 'start-new'),
+            StartList(actions: actions, returning: true),
+          ]),
         ]),
       ] else ...<Widget>[
         StartCards(actions: actions),
-        StartMore(actions: actions),
+        StartList(actions: actions),
       ],
     ]);
   }

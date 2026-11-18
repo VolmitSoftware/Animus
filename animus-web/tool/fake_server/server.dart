@@ -104,6 +104,8 @@ class FakeServer {
   /// A server restart lasting [duration]: the relay stays up but reports the
   /// server gone, and the direct path is unreachable.
   void goOffline(Duration duration) {
+    // A real server says it stops on the streams it can still reach.
+    api.events.closeWhere((EventStream stream) => stream.path == StreamPath.direct, 'server-stopping');
     drop('direct', duration);
     _offlineUntil = now().add(duration);
     _announcedOffline = true;

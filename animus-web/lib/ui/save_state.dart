@@ -55,6 +55,24 @@ class SaveBarState {
 
 String _changes(int count) => count == 1 ? '1 change' : '$count changes';
 
+String _files(int count) => count == 1 ? '1 file' : '$count files';
+
+/// Why Apply cannot go yet, said the same in the save bar and in Review:
+/// files with [problems], files also [serverChanged], and behaviors that
+/// need Run commands ([commands]) the pairing lacks. Null when nothing
+/// stops it.
+String? applyBlockedReason({required int problems, required int serverChanged, int commands = 0}) {
+  final String? files = switch ((problems > 0, serverChanged > 0)) {
+    (true, true) => 'Fix ${_files(problems)} and compare ${_files(serverChanged)} before Apply.',
+    (true, false) => 'Fix ${_files(problems)} before Apply.',
+    (false, true) => '${_files(serverChanged)} changed on the server. Compare ${serverChanged == 1 ? 'it' : 'them'} before Apply.',
+    (false, false) => null,
+  };
+  final String? run = commands > 0 ? '${_files(commands)} ${commands == 1 ? 'needs' : 'need'} Run commands, which this pairing lacks.' : null;
+  if (files == null || run == null) return files ?? run;
+  return '$files $run';
+}
+
 /// A workspace kept in this browser. [flashed] is the moment after Mod+S.
 SaveBarState localSaveState({required bool saving, required bool unsaved, String? problem, bool canSend = false, bool flashed = false}) {
   if (unsaved) {
@@ -72,7 +90,8 @@ enum ServerLink { online, connecting, reconnecting, offline, needsPairing, other
 
 /// A paired server's workspace: [changes] drafts not applied, an apply in
 /// progress, the reason the last one failed, how many the last one applied
-/// or [undone], documents changed both here and on the server ([stale]),
+/// or [undone], files changed both here and on the server ([stale]), changed
+/// files with [problems] (either stops Apply: the bar offers Review instead),
 /// the catalog not read yet ([reading]) or not readable ([catalogFailed]),
 /// the background read of documents ([loadDone] of [loadTotal]) and the
 /// documents the last read could not get ([loadFailed]). [linkMessage] says
@@ -86,6 +105,8 @@ SaveBarState serverSaveState({
   int? applied,
   int? undone,
   int stale = 0,
+  int problems = 0,
+  int commands = 0,
   bool reading = false,
   bool catalogFailed = false,
   String? linkMessage,
@@ -115,11 +136,10 @@ SaveBarState serverSaveState({
       break;
   }
   if (applying) return const SaveBarState('Applying...', SaveTone.busy);
+  final String? blocked = changes > 0 || stale > 0 ? applyBlockedReason(problems: changes > 0 ? problems : 0, serverChanged: stale, commands: changes > 0 ? commands : 0) : null;
+  if (blocked != null) return SaveBarState(blocked, SaveTone.attention, primary: SaveAction.review);
   if (failure != null && changes > 0) {
     return SaveBarState('Apply failed: $failure', SaveTone.failed, primary: retry ? SaveAction.retry : null, secondary: review);
-  }
-  if (stale > 0) {
-    return SaveBarState('${_changes(stale)} ${stale == 1 ? 'conflicts' : 'conflict'} with the server', SaveTone.attention, primary: SaveAction.review);
   }
   final bool loading = loadTotal > 0 && loadDone < loadTotal;
   final String progress = 'Loading $loadDone of $loadTotal';
@@ -129,7 +149,7 @@ SaveBarState serverSaveState({
   if (catalogFailed) return SaveBarState('Could not read the server', SaveTone.failed, primary: SaveAction.retryCatalog, secondary: review);
   if (reading) return SaveBarState('Reading the server...', SaveTone.busy, secondary: review);
   if (loadFailed > 0) {
-    return SaveBarState('${loadFailed == 1 ? '1 document' : '$loadFailed documents'} could not load', SaveTone.failed, primary: SaveAction.retryLoads, secondary: review);
+    return SaveBarState('${_files(loadFailed)} could not load', SaveTone.failed, primary: SaveAction.retryLoads, secondary: review);
   }
   if (loading) return SaveBarState(progress, SaveTone.busy, secondary: review);
   if (applied != null && applied > 0) {

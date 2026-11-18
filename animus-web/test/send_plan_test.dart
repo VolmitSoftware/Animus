@@ -82,7 +82,7 @@ void main() {
     });
 
     test('should say apply and the server documents in failure sentences', () {
-      expect(plainSyncProblem('Could not load the server catalog. Timed out.'), "Could not read the server's documents. Timed out.");
+      expect(plainSyncProblem('Could not load the server catalog. Timed out.'), "Could not read the server's files. Timed out.");
       expect(plainSyncProblem('An earlier push has no answer yet. Press Check the earlier push.'), 'An earlier apply has no answer yet. Check it first.');
       expect(plainSyncProblem('The push went out but its answer did not arrive (lost). Press Check the earlier push once connected.'),
           'The changes went out but the answer did not arrive (lost). Check it once connected.');

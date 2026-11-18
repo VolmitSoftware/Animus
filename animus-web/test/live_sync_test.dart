@@ -278,13 +278,13 @@ void main() {
       await edit('town/guard', (Map<String, Object?> json) => json..['notes'] = 'x' * (1024 * 1024));
       final int sent = network.sent.length;
       expect(await session.apply(), isFalse);
-      expect(session.log.last.message, 'Too large for the relay. Connect directly, or apply fewer documents.');
+      expect(session.log.last.message, 'Too large for the relay. Connect directly, or apply fewer files.');
       expect(session.saveState.reason, 'Too large for the relay.');
       expect(store.workspace!.server!.pending, isEmpty, reason: 'nothing recorded as sent');
       expect(await session.validate(), isFalse);
-      expect(session.log.last.message, 'Too large for the relay. Connect directly, or check fewer documents.');
+      expect(session.log.last.message, 'Too large for the relay. Connect directly, or check fewer files.');
       await session.startPreview(focus: <String>{'npc:town/guard'});
-      expect(session.log.last.message, 'Too large for the relay. Connect directly, or preview fewer documents.');
+      expect(session.log.last.message, 'Too large for the relay. Connect directly, or preview fewer files.');
       expect(network.sent.length, sent, reason: 'nothing went over the relay');
     });
 

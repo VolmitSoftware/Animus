@@ -165,19 +165,19 @@ void main() {
     };
     expect(await session.apply(), isTrue);
     expect(store.workspace!.server!.pending, isEmpty);
-    expect(log().last, startsWith('Applied 1 document'));
+    expect(log().last, startsWith('Applied 1 file'));
   });
 
   test('should explain a refused validation that names no error', () {
     expect(validationLine(false, 2, 0), contains('named no error'));
     expect(validationLine(false, 2, 3), startsWith('The server found 3 errors.'));
-    expect(validationLine(true, 1, 0), 'The server accepts 1 document.');
+    expect(validationLine(true, 1, 0), 'The server accepts 1 file.');
   });
 
   test('should name an apply or undo in plain words, without the change id', () {
     const ChangeApplied applied = ChangeApplied('key-1', '56d8a4da-1042-4c3e-9e0f-1b2c3d4e5f60', <AppliedDocument>[AppliedDocument(DocumentKind.npc, 'town/baker', 3, 'abc')]);
-    expect(appliedLine(applied, undo: false), 'Applied 1 document.');
-    expect(appliedLine(applied, undo: true), 'Undid 1 document.');
+    expect(appliedLine(applied, undo: false), 'Applied 1 file.');
+    expect(appliedLine(applied, undo: true), 'Undid 1 file.');
   });
 
   test('should not report a spawn the connection cut short as a success', () {

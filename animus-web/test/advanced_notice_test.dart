@@ -15,42 +15,42 @@ void main() {
 
     test('should count an import Simple hides entirely and land on the one document', () {
       final AdvancedNotice one = advancedNotice(Arrival.imported, <ArrivedDocument>[_doc(DocumentKind.inventory, 'town:counter')])!;
-      expect(one.message, '1 imported document is in Advanced.');
+      expect(one.message, '1 imported file is in Advanced.');
       expect(one.landing('ws'), const DocumentRoute('ws', DocumentKind.inventory, 'town:counter'));
 
       final AdvancedNotice two = advancedNotice(Arrival.imported, <ArrivedDocument>[_doc(DocumentKind.quest, 'town:hunt'), _doc(DocumentKind.inventory, 'town:counter')])!;
-      expect(two.message, '2 imported documents are in Advanced.');
+      expect(two.message, '2 imported files are in Advanced.');
       expect(two.landing('ws'), const KindListRoute('ws', DocumentKind.quest), reason: 'the list of the first hidden kind that arrived');
     });
 
     test('should say how many of a mixed import Simple hides', () {
       expect(
         advancedNotice(Arrival.imported, <ArrivedDocument>[_doc(DocumentKind.npc, 'a'), _doc(DocumentKind.group, 'guards'), _doc(DocumentKind.shop, 'b:c')])!.message,
-        '1 of 3 imported documents is in Advanced.',
+        '1 of 3 imported files is in Advanced.',
       );
       expect(
         advancedNotice(Arrival.imported, <ArrivedDocument>[_doc(DocumentKind.npc, 'a'), _doc(DocumentKind.group, 'guards'), _doc(DocumentKind.rig, 'r:golem')])!.message,
-        '2 of 3 imported documents are in Advanced.',
+        '2 of 3 imported files are in Advanced.',
       );
     });
 
     test('should count what the server brought that Simple hides, server behaviors included', () {
-      expect(advancedNotice(Arrival.server, <ArrivedDocument>[_doc(DocumentKind.npc, 'a'), _doc(DocumentKind.menu, 'town:hub')])!.message, '1 new document is in Advanced.');
+      expect(advancedNotice(Arrival.server, <ArrivedDocument>[_doc(DocumentKind.npc, 'a'), _doc(DocumentKind.menu, 'town:hub')])!.message, '1 new file is in Advanced.');
       expect(
         advancedNotice(Arrival.server, <ArrivedDocument>[_doc(DocumentKind.serverBehaviors, 'server-behaviors'), _doc(DocumentKind.skin, 'abc')])!.message,
-        '2 new documents are in Advanced.',
+        '2 new files are in Advanced.',
       );
     });
   });
 
-  test('should name how many documents only Advanced lists', () {
-    expect(hiddenDocumentsText(1), '1 document is in Advanced.');
-    expect(hiddenDocumentsText(4), '4 documents are in Advanced.');
+  test('should name how many files only Advanced lists', () {
+    expect(hiddenDocumentsText(1), '1 file is in Advanced.');
+    expect(hiddenDocumentsText(4), '4 files are in Advanced.');
   });
 
-  test('should name how many search matches only Advanced lists', () {
-    expect(hiddenMatchesText(1), '1 match is in Advanced.');
-    expect(hiddenMatchesText(3), '3 matches are in Advanced.');
+  test('should offer the search matches only Advanced lists as a row to show them', () {
+    expect(hiddenMatchesLabel(1), 'Show 1 match in Advanced');
+    expect(hiddenMatchesLabel(3), 'Show 3 matches in Advanced');
   });
 
   group('hiddenOnly', () {
@@ -79,16 +79,23 @@ void main() {
     test('should count server news that comes in quick succession as one arrival', () {
       expect(notices.add(Arrival.server, <ArrivedDocument>[_doc(DocumentKind.npc, 'a')]), isNull);
       now = now.add(const Duration(milliseconds: 200));
-      expect(notices.add(Arrival.server, <ArrivedDocument>[_doc(DocumentKind.menu, 'town:hub')])!.message, '1 new document is in Advanced.');
+      expect(notices.add(Arrival.server, <ArrivedDocument>[_doc(DocumentKind.menu, 'town:hub')])!.message, '1 new file is in Advanced.');
       now = now.add(const Duration(milliseconds: 200));
       final AdvancedNotice notice = notices.add(Arrival.server, <ArrivedDocument>[_doc(DocumentKind.menu, 'town:shop')])!;
-      expect(notice.message, '2 new documents are in Advanced.');
+      expect(notice.message, '2 new files are in Advanced.');
       expect(notice.landing('ws'), const KindListRoute('ws', DocumentKind.menu));
     });
 
     test('should count a document heard twice once', () {
       notices.add(Arrival.server, <ArrivedDocument>[_doc(DocumentKind.quest, 'town:hunt')]);
-      expect(notices.add(Arrival.server, <ArrivedDocument>[_doc(DocumentKind.quest, 'town:hunt')])!.message, '1 new document is in Advanced.');
+      expect(notices.add(Arrival.server, <ArrivedDocument>[_doc(DocumentKind.quest, 'town:hunt')])!.message, '1 new file is in Advanced.');
+    });
+
+    test('should start over once the notice was acted on, however soon the next file comes', () {
+      notices.add(Arrival.server, <ArrivedDocument>[_doc(DocumentKind.inventory, 'town:counter')]);
+      notices.clear();
+      now = now.add(const Duration(milliseconds: 200));
+      expect(notices.add(Arrival.server, <ArrivedDocument>[_doc(DocumentKind.inventory, 'town:stall')])!.message, '1 new file is in Advanced.');
     });
 
     test('should start over after a pause', () {
