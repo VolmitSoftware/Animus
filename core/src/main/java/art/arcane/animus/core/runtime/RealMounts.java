@@ -16,6 +16,8 @@ import java.util.UUID;
  * position again and waits for the vehicle, or for the next one of its type. One NPC rides each real entity. Owner thread.
  */
 final class RealMounts<P, I> {
+    /** Why a server whose transport cannot carry bodies on entities has no mob riding. */
+    static final String NO_CARRY = "NPCs ride mobs only on a server build that shows NPCs on real entities";
     /** Ticks between two searches for the nearest vehicle of a type while an NPC has none. */
     static final int SEARCH_TICKS = 20;
     final class Binding {
@@ -64,7 +66,7 @@ final class RealMounts<P, I> {
         if (bindings.isEmpty()) return;
         RuntimeHost<P, I> host = service.host;
         String unavailable = host.realVehiclesUnavailable();
-        if (unavailable == null && !service.packets.carryAvailable()) unavailable = "this server build cannot show NPCs on real entities";
+        if (unavailable == null && !service.packets.carryAvailable()) unavailable = NO_CARRY;
         for (Binding binding : bindings.values()) {
             if (!binding.value.state.snapshot().active()) { if (binding.vehicle != null) release(binding, "the NPC is not active"); continue; }
             if (unavailable != null) { if (binding.vehicle != null) release(binding, unavailable); binding.problem = unavailable; continue; }

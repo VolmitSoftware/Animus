@@ -65,6 +65,13 @@ class CitizensDropInTest {
 
     private static String joined(List<String> lines) { return String.join("\n", lines); }
 
+    /** The preview's reply, then what review lists for the staged preview: every detail the preview counted. */
+    static String previewed(CitizensDropIn flow, String mode, Optional<String> label, Map<String, String> worlds, boolean factorGroups) throws IOException {
+        List<String> lines = new ArrayList<>(flow.preview(mode, label, worlds, factorGroups));
+        lines.addAll(flow.reviewApplied());
+        return String.join("\n", lines);
+    }
+
     @Test void findsNothingWithoutASaveAndSaysNothingOnStartup() throws Exception {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
@@ -113,7 +120,7 @@ class CitizensDropInTest {
             assertEquals(Optional.of("imports/saves.yml"), found.source());
 
             List<String> staged = flow.preview("reject", Optional.empty(), Map.of(), false);
-            assertEquals("Next: /animus import citizens apply", staged.getLast());
+            assertEquals(CitizensDropIn.NEXT_STAGED, staged.getLast());
             assertEquals(CitizensDropIn.Phase.STAGED, flow.progress().phase());
 
             List<String> applied = flow.applyStaged();
@@ -166,14 +173,14 @@ class CitizensDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
-            String staged = joined(flow.preview("reject", Optional.empty(), Map.of(), false));
+            String staged = previewed(flow, "reject", Optional.empty(), Map.of(), false);
             assertTrue(staged.contains("3 NPCs, 3 valid"), staged);
             assertTrue(staged.contains("Folders: npcs/world/ 2, npcs/world_nether/ 1"), staged);
             assertTrue(staged.contains("1 shops"), staged);
             assertFalse(staged.contains("accept"), staged);
             assertTrue(staged.contains("Kept, not converted: denizen 1\n"), staged);
             assertTrue(staged.contains("1 .schem/.nbt files") && staged.contains("1 old .schematic"), staged);
-            assertTrue(staged.endsWith("Next: /animus import citizens apply"), staged);
+            assertTrue(staged.endsWith("Next: /animus import citizens apply, or /animus import citizens discard"), staged);
             assertTrue(npcs.all().isEmpty());
             assertTrue(flow.startupNotice().orElseThrow().contains("staged, not applied"));
 
@@ -222,6 +229,81 @@ class CitizensDropInTest {
 
             flow.applyStaged();
             assertEquals(3, npcs.all().size());
+        }
+    }
+
+    /** The preview is one line per source and the Next line; review shows the staged details; discard drops the preview. */
+    @Test void thePreviewSumsUpEachSourceAndReviewShowsTheStagedDetails() throws Exception {
+        Files.createDirectories(root.resolve("plugins/Animus/imports/dtltraders/shops/Bakery"));
+        Files.writeString(root.resolve("plugins/Animus/imports/dtltraders/shops/Bakery/Bakery.yml"), ShopImporterTest.BAKERY);
+        Files.writeString(root.resolve("plugins/Animus/imports/saves.yml"), SAVES);
+        Files.createDirectories(root.resolve("plugins/Builder/schematics"));
+        Files.write(root.resolve("plugins/Builder/schematics/hut.schem"), new byte[]{1, 2, 3});
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            CitizensDropIn flow = dropIn(store, npcs);
+            List<String> staged = flow.preview("reject", Optional.empty(), Map.of(), false);
+            assertEquals(List.of("Citizens: 3 NPCs, 1 schematic; kept, not converted: denizen 1",
+                    "dtlTraders: 1 shop, 5 entries, 0 issues",
+                    "Next: /animus import citizens review, then /animus import citizens apply"), staged, joined(staged));
+
+            String review = joined(flow.reviewApplied());
+            assertTrue(review.startsWith("Staged, not installed:"), review);
+            assertTrue(review.contains("Folders: npcs/world/ 2, npcs/world_nether/ 1") && review.contains("Kept, not converted: denizen 1"), review);
+            assertTrue(review.endsWith("Next: /animus import citizens apply, or /animus import citizens discard"), review);
+
+            assertEquals(List.of(art.arcane.animus.core.text.Palette.success("Discarded the staged preview; nothing was installed")), flow.discardStaged());
+            assertEquals(CitizensDropIn.Phase.FOUND, flow.progress().phase());
+            IOException nothing = assertThrows(IOException.class, flow::applyStaged);
+            assertTrue(nothing.getMessage().contains("Nothing staged"), nothing.getMessage());
+
+            flow.preview("reject", Optional.empty(), Map.of(), false);
+            flow.applyStaged();
+            IOException applied = assertThrows(IOException.class, flow::discardStaged);
+            assertEquals("The import is installed; /animus import citizens rollback undoes it", applied.getMessage());
+        }
+    }
+
+    /** A guard that died for good after apply is Animus's own write: rollback undoes the death, then the import. */
+    @Test void rollbackUndoesADeathAnimusRecordedOnAnImportedNpc() throws Exception {
+        Files.writeString(Files.createDirectories(root.resolve("plugins/Animus/imports")).resolve("saves.yml"), SAVES);
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            CitizensDropIn flow = dropIn(store, npcs);
+            flow.preview("reject", Optional.empty(), Map.of(), false);
+            flow.applyStaged();
+            NpcDefinition guard = npcs.find("citizens-1").orElseThrow();
+            assertTrue(art.arcane.animus.core.runtime.HealthRecords.markDead(npcs, store, guard.uuid()).isPresent());
+            String rolledBack = joined(flow.rollbackApplied());
+            assertTrue(rolledBack.contains("Citizens import undone"), rolledBack);
+            assertTrue(npcs.all().isEmpty(), rolledBack);
+        }
+    }
+
+    /** An edit someone made to an imported NPC stops the rollback, and the reply names that edit with the command that undoes it. */
+    @Test void aRollbackStoppedByAnEditNamesThatEditsRollback() throws Exception {
+        Files.writeString(Files.createDirectories(root.resolve("plugins/Animus/imports")).resolve("saves.yml"), SAVES);
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            CitizensDropIn flow = dropIn(store, npcs);
+            flow.preview("reject", Optional.empty(), Map.of(), false);
+            flow.applyStaged();
+            NpcRepository.Draft draft = npcs.draft("citizens-2");
+            JsonObject renamed = draft.document();
+            renamed.addProperty("name", "Head Baker");
+            String edit = npcs.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), renamed));
+            List<String> stopped = flow.rollbackApplied();
+            String text = joined(stopped);
+            assertTrue(text.contains("Rollback stopped: citizens-2 changed after the import"), text);
+            assertFalse(text.contains("npcs/") || text.contains("/animus reload"), "no file path, no advice that does not help: " + text);
+            assertEquals("Next: /animus rollback " + edit.substring(0, 8) + ", then /animus import citizens rollback", stopped.getLast(), text);
+            assertEquals(3, npcs.all().size(), "nothing is half undone");
+
+            store.rollback(edit);
+            npcs.reloadAfterRollback();
+            String undone = joined(flow.rollbackApplied());
+            assertTrue(undone.contains("Citizens import undone"), undone);
+            assertTrue(npcs.all().isEmpty());
         }
     }
 
@@ -274,7 +356,7 @@ class CitizensDropInTest {
                 """);
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
-            String preview = joined(dropIn(store, npcs).preview("reject", Optional.empty(), Map.of(), false));
+            String preview = previewed(dropIn(store, npcs), "reject", Optional.empty(), Map.of(), false);
             assertTrue(preview.contains("1 NPCs, 1 valid") && preview.contains("1 skins on non-player NPCs unused"), preview);
         }
     }
@@ -297,7 +379,7 @@ class CitizensDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
-            String staged = joined(flow.preview("duplicate", Optional.of("copy"), Map.of("world", "survival"), false));
+            String staged = previewed(flow, "duplicate", Optional.of("copy"), Map.of("world", "survival"), false);
             assertTrue(staged.contains("Folders: npcs/survival/ 2, npcs/world_nether/ 1") && staged.contains("Application duplicate"), staged);
             flow.applyStaged();
             assertEquals("copy-copy", npcs.find("citizens-1-copy").orElseThrow().group());
@@ -367,7 +449,7 @@ class CitizensDropInTest {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
             String health = "Health: 1 NPC can be hurt and die; 1 NPC stays protected from damage as in Citizens (/animus npc health <npc> setting=killable value=on)";
-            String staged = joined(flow.preview("reject", Optional.empty(), Map.of(), false));
+            String staged = previewed(flow, "reject", Optional.empty(), Map.of(), false);
             assertTrue(staged.contains(health), staged);
             flow.applyStaged();
             JsonObject vulnerable = npcs.find("citizens-0").orElseThrow().json().getAsJsonObject("modules");
@@ -385,7 +467,7 @@ class CitizensDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
-            String staged = joined(flow.preview("reject", Optional.empty(), Map.of(), false));
+            String staged = previewed(flow, "reject", Optional.empty(), Map.of(), false);
             assertTrue(staged.contains("Converted: 1 patrol routes (2 waypoints, 0 guide points), look-close on 1 NPCs, 1 text and 1 command behaviors"), staged);
             assertTrue(staged.contains("Kept, not converted: nothing"), staged);
             assertTrue(staged.contains("Commands: 1 imported behaviors and shops run commands as they did before (such as citizens:commands-5); apply allows citizens in [behaviors.actions] commandNamespaces"), staged);

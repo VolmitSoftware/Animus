@@ -357,6 +357,12 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         owner();
         return riders.stop(playerName, "stopped by administrator") || seats.stop(playerName, "stopped by administrator");
     }
+    @Override public Optional<String> mobRidingMissing() {
+        String reason = host.realVehiclesUnavailable();
+        BodyTransport<P, I> transport = packets;
+        if (reason == null && transport != null && !transport.carryAvailable()) reason = RealMounts.NO_CARRY;
+        return Optional.ofNullable(reason);
+    }
     @Override public String seatStatus() {
         if (!available()) return "Seats unavailable: " + down();
         owner();

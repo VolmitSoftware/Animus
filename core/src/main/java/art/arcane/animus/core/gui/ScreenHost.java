@@ -82,7 +82,7 @@ public interface ScreenHost<P, S> {
      * inventory and that protection lets the shop's owner open it. A platform without container shops refuses.
      */
     default art.arcane.animus.core.shop.ShopStock<S> stock(art.arcane.animus.core.shop.ShopDocument shop) {
-        return art.arcane.animus.core.shop.ShopStock.refused(NO_CONTAINER_SHOPS);
+        return art.arcane.animus.core.shop.ShopStock.refused(NO_CHEST_SHOPS);
     }
 
     /** Whether players can keep shop stock in container blocks on this platform. */
@@ -95,16 +95,21 @@ public interface ScreenHost<P, S> {
      * Why the player may not keep a shop's stock in this block now: it is not loaded on this thread, it holds no
      * inventory, or protection would not let the player open it. Empty when it may.
      */
-    default Optional<String> stockRefusal(P player, art.arcane.animus.core.shop.ShopDocument.Container container) { return Optional.of(NO_CONTAINER_SHOPS); }
+    default Optional<String> stockRefusal(P player, art.arcane.animus.core.shop.ShopDocument.Container container) { return Optional.of(NO_CHEST_SHOPS); }
 
     /** Opens the block's inventory for the player as if they opened it by hand; empty when it opened, else why not. */
-    default Optional<String> openContainer(P player, art.arcane.animus.core.shop.ShopDocument.Container container) { return Optional.of(NO_CONTAINER_SHOPS); }
+    default Optional<String> openContainer(P player, art.arcane.animus.core.shop.ShopDocument.Container container) { return Optional.of(NO_CHEST_SHOPS); }
 
     /** Gives the shop maker item, found by its item marker like the wand; {@code NONE} on a platform without one. */
     default WandGift giveShopItem(P player) { return WandGift.NONE; }
 
-    /** What a platform without container shops says. */
-    String NO_CONTAINER_SHOPS = "this server has no container shops; they need Paper, Spigot or Folia";
+    /** What a platform without container shops says to a buyer of a chest shop. */
+    String NO_CHEST_SHOPS = "Chest shops need Paper, Spigot or Folia";
+    /** What a platform without container shops says to a player who would make or run a shop. */
+    String NO_PLAYER_SHOPS = "Player shops need Paper, Spigot or Folia";
+
+    /** Why this platform cannot draw {@code frame}, such as a chest shape its menus lack; empty when it can. */
+    default Optional<String> unshowable(ScreenFrame frame) { return Optional.empty(); }
 
     /**
      * What the player holds or wears in a hand or armor slot, in the definition item shape with its components. Empty

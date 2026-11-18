@@ -76,7 +76,7 @@ final class DiagnosticCommands {
         void watch() { services.debug().watch(actor()); }
     }
 
-    @Director(name = "proof", description = "Packet previews only you see; Bukkit and Paper, folia for Folia")
+    @Director(name = "proof", description = "Packet previews only you see")
     static final class Proof extends CommandGroup {
         ProofControlGroup control;
         FoliaProof folia;
@@ -89,9 +89,11 @@ final class DiagnosticCommands {
 
         private ProofControl proof() { return services.proof(); }
 
+        @NeedsFeature(NeedsFeature.Feature.PACKET_PREVIEW)
         @Director(description = "Show the preview state")
         void status() { proof().status(actor()); }
 
+        @NeedsFeature(NeedsFeature.Feature.PACKET_PREVIEW)
         @Director(description = "Show a preview body in front of you", origin = DirectorOrigin.PLAYER)
         void spawn(@Param(name = "body", description = "The preview type, such as minecraft:player or minecraft:horse") String body,
                    @Param(name = "skin", defaultValue = "", description = "A stored skin's SHA-256 hash") String skin) {
@@ -100,18 +102,21 @@ final class DiagnosticCommands {
             proof().spawn(actor, body, ContentCommands.given(skin));
         }
 
+        @NeedsFeature(NeedsFeature.Feature.PACKET_PREVIEW)
         @Director(description = "Move a preview entity by an offset", origin = DirectorOrigin.PLAYER)
         void move(@Param(name = "entity", description = "The preview entity id") int entity,
                   @Param(name = "dx", description = "X offset") double dx,
                   @Param(name = "dy", description = "Y offset") double dy,
                   @Param(name = "dz", description = "Z offset") double dz) { proof().move(actor(), entity, dx, dy, dz); }
 
+        @NeedsFeature(NeedsFeature.Feature.PACKET_PREVIEW)
         @Director(description = "Walk a preview entity along a path to an offset", origin = DirectorOrigin.PLAYER)
         void path(@Param(name = "entity", description = "The preview entity id") int entity,
                   @Param(name = "dx", description = "X offset in blocks") int dx,
                   @Param(name = "dy", description = "Y offset in blocks") int dy,
                   @Param(name = "dz", description = "Z offset in blocks") int dz) { proof().path(actor(), entity, dx, dy, dz); }
 
+        @NeedsFeature(NeedsFeature.Feature.PACKET_PREVIEW)
         @Director(description = "Seat preview entities on a vehicle", origin = DirectorOrigin.PLAYER)
         void mount(@Param(name = "vehicle", description = "The vehicle entity id") int vehicle,
                    @Param(name = "riders", defaultValue = "", description = "Comma-separated rider entity ids, up to 8") String riders) {
@@ -123,6 +128,7 @@ final class DiagnosticCommands {
             proof().mount(actor, vehicle, seated);
         }
 
+        @NeedsFeature(NeedsFeature.Feature.PACKET_PREVIEW)
         @Director(description = "Remove your preview bodies", origin = DirectorOrigin.PLAYER)
         void clear() { proof().clear(actor()); }
     }
@@ -131,6 +137,7 @@ final class DiagnosticCommands {
     static final String SKIN = "A skin is the SHA-256 hash of a stored skin; tab completion lists the stored ones";
 
     @Director(name = "control", description = "Steer a preview body")
+    @NeedsFeature(NeedsFeature.Feature.PACKET_PREVIEW)
     static final class ProofControlGroup extends CommandGroup {
         ProofControlGroup(CommandServices services) { super(services); }
 
@@ -144,7 +151,8 @@ final class DiagnosticCommands {
         void status() { services.proof().controlStatus(actor()); }
     }
 
-    @Director(name = "folia", description = "Folia's stationary packet preview; Folia only")
+    @Director(name = "folia", description = "A stationary preview only you see")
+    @NeedsFeature(NeedsFeature.Feature.FOLIA_PREVIEW)
     static final class FoliaProof extends CommandGroup {
         FoliaProof(CommandServices services) { super(services); }
 

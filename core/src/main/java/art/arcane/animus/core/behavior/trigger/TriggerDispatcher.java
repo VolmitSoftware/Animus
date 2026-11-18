@@ -140,6 +140,14 @@ public final class TriggerDispatcher implements TriggerSink {
     /** The platform proved it can run NPCs on their owner. Disabled settings stay unavailable. */
     public void connect() { blocked = null; }
     public void unavailable(String reason) { blocked = Objects.requireNonNull(reason); }
+    /** What a platform that senses nothing around NPCs says of each trigger that needs it. */
+    public static final String NO_SENSING = "Triggers that sense entities and other NPCs need Paper, Spigot or Folia";
+    private volatile String unsensed;
+    /**
+     * The platform senses nothing around NPCs: each {@link TriggerKind#sensed() sensed} trigger stays unbound with
+     * {@code reason} as its problem, and the log says once per behavior which of its triggers never fire. Connect during startup.
+     */
+    public void sensing(String reason) { unsensed = Objects.requireNonNull(reason); }
     /** A hotload of {@code [behaviors.triggers]}; the owner adopts it on its next pump. Thread-safe. */
     public void settings(TriggerSettings next) { pendingSettings.set(Objects.requireNonNull(next)); }
     /** {@code behaviors.enabled}: while false no event is accepted and nothing new starts; running executions finish. Thread-safe. */
@@ -374,6 +382,8 @@ public final class TriggerDispatcher implements TriggerSink {
         List<Binding> ordered = new ArrayList<>();
         Map<String, Stats> retained = new HashMap<>();
         Problems problems = new Problems();
+        String noSensing = unsensed;
+        Map<String, java.util.Set<String>> unsensedKinds = new java.util.TreeMap<>();
         for (NpcDefinition definition : candidates) {
             String npcField = "npc=" + definition.id();
             List<Binding> bound = new ArrayList<>();
@@ -385,6 +395,11 @@ public final class TriggerDispatcher implements TriggerSink {
                 BehaviorCatalog.Accepted accepted = resolution.accepted().orElseThrow();
                 for (TriggerBinding trigger : accepted.program().triggers()) {
                     String triggerField = npcField + " trigger=" + reference + "#" + trigger.id();
+                    if (noSensing != null && trigger.spec().kind().sensed()) {
+                        problems.add("trigger-sensing-unavailable", triggerField, noSensing);
+                        unsensedKinds.computeIfAbsent(reference, (String ignored) -> new java.util.LinkedHashSet<>()).add(trigger.spec().kind().jsonName());
+                        continue;
+                    }
                     if (trigger.spec() instanceof TriggerBinding.Proximity proximity && proximity.radius() > settings.maximumProximityRadius()) {
                         problems.add("trigger-proximity-budget", triggerField, "Radius exceeds behaviors.triggers.maximumProximityRadius"); continue;
                     }
@@ -407,6 +422,8 @@ public final class TriggerDispatcher implements TriggerSink {
             }
             if (!bound.isEmpty()) byNpc.put(definition.uuid(), List.copyOf(bound));
         }
+        unsensedKinds.forEach((String behavior, java.util.Set<String> kinds) -> faults.once(behavior, "Behavior " + behavior + ": its " + joined(List.copyOf(kinds))
+                + (kinds.size() == 1 ? " trigger never fires" : " triggers never fire") + " here; " + Character.toLowerCase(noSensing.charAt(0)) + noSensing.substring(1)));
         stats.clear(); stats.putAll(retained);
         npcAdmitted.keySet().retainAll(byNpc.keySet());
         index = new Index(Map.copyOf(byNpc), List.copyOf(ordered), problems.list());
@@ -643,6 +660,11 @@ public final class TriggerDispatcher implements TriggerSink {
                     binding.program.entry(), fired < 0 ? OptionalLong.empty() : OptionalLong.of(now - fired), stat.fired, stat.active, stat.queued, stat.suppressed, stat.dropped));
         }
         return List.copyOf(rows);
+    }
+
+    /** {@code a}, {@code a and b}, {@code a, b and c}. */
+    private static String joined(List<String> items) {
+        return items.size() == 1 ? items.getFirst() : String.join(", ", items.subList(0, items.size() - 1)) + " and " + items.getLast();
     }
 
     private static final class Problems {

@@ -98,7 +98,10 @@ public final class EditorImports {
     public JsonObject stage(String mode, Optional<String> label, Map<String, String> worlds) throws EditorError, IOException {
         for (Map.Entry<String, String> world : worlds.entrySet())
             if (world.getKey().isBlank() || world.getValue().isBlank()) throw EditorMessages.invalid("Invalid world mapping: " + world.getKey() + "=" + world.getValue());
-        return run((CitizensDropIn dropIn) -> dropIn.preview(mode, label, worlds, false), EditorError.Code.INVALID_REQUEST);
+        return run((CitizensDropIn dropIn) -> {
+            dropIn.preview(mode, label, worlds, false);
+            return dropIn.reviewApplied();
+        }, EditorError.Code.INVALID_REQUEST);
     }
 
     public JsonObject apply(String importId) throws EditorError, IOException { expect(importId, false); return run(CitizensDropIn::applyStaged, EditorError.Code.CONFLICT); }

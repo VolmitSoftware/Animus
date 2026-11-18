@@ -331,7 +331,7 @@ final class ContentCommands {
         }
     }
 
-    @Director(name = "citizens", description = "Migrate a Citizens server: preview, apply, review, rollback")
+    @Director(name = "citizens", description = "Migrate a Citizens server: preview, review, apply, rollback")
     static final class Citizens extends CommandGroup {
         Citizens(CommandServices services) { super(services); }
 
@@ -367,8 +367,11 @@ final class ContentCommands {
             });
         }
 
-        @Director(description = "List what the applied import converted and what it kept without converting")
+        @Director(description = "List what the staged preview or the installed import converted, and what it kept")
         void review() { step(CitizensDropIn::reviewApplied); }
+
+        @Director(description = "Drop the staged preview without installing it")
+        void discard() { step(CitizensDropIn::discardStaged); }
 
         @Director(description = "Undo the import")
         void rollback() { step(CitizensDropIn::rollbackApplied); }

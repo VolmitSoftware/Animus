@@ -38,6 +38,14 @@ class ModScreensTest {
 
     static boolean showsProfile(ItemStack stack) { return stack.getOrDefault(DataComponents.TOOLTIP_DISPLAY, TooltipDisplay.DEFAULT).shows(DataComponents.PROFILE); }
 
+    /** Mod menus are 9 wide, so a 5x1 or 3x3 chest GUI is refused with the platform limit; chests and the trading screen show. */
+    @Test void onlyNineWideChestGuisShow() {
+        assertEquals(Optional.of("5x1 and 3x3 chest GUIs need Paper, Spigot or Folia"), ModScreens.drawable(new art.arcane.animus.core.gui.ScreenFrame("Hopper", "5x1", 5, 1, java.util.Map.of())));
+        assertEquals(Optional.of("5x1 and 3x3 chest GUIs need Paper, Spigot or Folia"), ModScreens.drawable(new art.arcane.animus.core.gui.ScreenFrame("Dispenser", "3x3", 3, 3, java.util.Map.of())));
+        assertEquals(Optional.empty(), ModScreens.drawable(new art.arcane.animus.core.gui.ScreenFrame("Chest", "9x3", 9, 3, java.util.Map.of())));
+        assertEquals(Optional.empty(), ModScreens.drawable(art.arcane.animus.core.gui.ScreenFrame.merchant("Trades", new art.arcane.animus.core.gui.ScreenFrame.Merchant(List.of()))));
+    }
+
     @Test void anOnlinePlayersHeadWearsTheirOwnProfile() {
         ItemStack stack = head();
         ModScreens.owned(stack, "alex", this::online);

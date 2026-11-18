@@ -3,12 +3,14 @@ package art.arcane.animus.core.skin;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.config.SkinSettings;
+import art.arcane.animus.core.migration.CitizensDropIn;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.npc.GroupDocument;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.Placeholders;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.toolkit.SkinFiles;
@@ -41,7 +43,8 @@ import java.util.function.Supplier;
 /**
  * Skin work the server does by itself, off its main thread: unsigned skins NPCs wear are signed through MineSkin,
  * {@code animus:skin fromName} NPCs without a skin get the skin of the account named like them, and {@code refresh}
- * NPCs follow their player's skin. Each change is one transaction with Undo and one console line.
+ * NPCs follow their player's skin. Each change is one transaction with Undo and one console line; a change to an NPC an
+ * applied import installed rolls back with that import.
  */
 public final class SkinService implements AutoCloseable {
     public static final long SCAN_SECONDS = 15;
@@ -221,7 +224,7 @@ public final class SkinService implements AutoCloseable {
         document.addProperty("signature", signed.skin().signature());
         document.remove("image");
         SkinFiles.Moved moved = new SkinFiles(parts.npcs().get(), store).replace(unsigned.hash(), JsonDocuments.write(document));
-        settled.add(unsigned.hash());
+        CitizensDropIn.adopt(store, moved.tx());
         settled.add(moved.hash());
         parts.refresh().run();
         parts.log().accept("Signed skin " + name(unsigned.file(), unsigned.hash()) + " through MineSkin, so players see it; now " + moved.hash().substring(0, 12)
@@ -244,6 +247,7 @@ public final class SkinService implements AutoCloseable {
                 List<String> bare = ids.stream().filter((String id) -> npcs.find(id).map((NpcDefinition npc) -> !npc.json().has("skin")).orElse(false)).toList();
                 if (bare.isEmpty()) return null;
                 String line = new SkinFiles(npcs, parts.documents().get()).wear(answer.skin().get(), spelled, Optional.of(spelled), bare);
+                adopt(line);
                 parts.refresh().run();
                 parts.log().accept("Took the skin from the NPC's name: " + line);
                 return null;
@@ -271,12 +275,18 @@ public final class SkinService implements AutoCloseable {
                 String spelled = answer.name().orElse(name.get());
                 return files(() -> {
                     String line = new SkinFiles(parts.npcs().get(), parts.documents().get()).wear(answer.skin().get(), spelled, Optional.of(source), stale);
+                    adopt(line);
                     parts.refresh().run();
                     parts.log().accept(spelled + " changed their skin: " + line);
                     return null;
                 });
             });
         }).whenComplete((Void ignored, Throwable failure) -> busy.remove(key));
+    }
+
+    /** The changes a wear line reports become part of an applied import when they put a skin on NPCs it installed. File lane. */
+    private void adopt(String line) throws IOException {
+        for (String transaction : ChatLine.parse(line).transactions()) CitizensDropIn.adopt(parts.documents().get(), transaction);
     }
 
     /** The account a skin source names: the name itself, or a placeholder filled for no viewer. */

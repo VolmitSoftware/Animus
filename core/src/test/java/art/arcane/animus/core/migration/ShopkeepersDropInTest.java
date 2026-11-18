@@ -48,7 +48,7 @@ class ShopkeepersDropInTest {
         leave("admin.yml", "plugins/Shopkeepers/data/save.yml");
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
-            String staged = joined(dropIn(store, npcs).preview("reject", Optional.empty(), Map.of(), false));
+            String staged = CitizensDropInTest.previewed(dropIn(store, npcs), "reject", Optional.empty(), Map.of(), false);
             assertTrue(staged.contains("Shopkeepers plugins/Shopkeepers/data/save.yml: 6 shops"), staged);
             assertTrue(staged.contains("2 found, 1 not found"), staged);
             shopkeepersRunning.set(true);
@@ -74,7 +74,7 @@ class ShopkeepersDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             assertTrue(dropIn(store, npcs).startupNotice().orElseThrow().contains("Shopkeepers migration: found imports/shopkeepers/save.yml"));
-            String staged = joined(dropIn(store, npcs).preview("reject", Optional.empty(), Map.of(), false));
+            String staged = CitizensDropInTest.previewed(dropIn(store, npcs), "reject", Optional.empty(), Map.of(), false);
             assertTrue(staged.contains("3 unchecked"), staged);
             String applied = joined(dropIn(store, npcs).applyStaged());
             assertTrue(applied.contains("0 bound to Citizens NPCs, 3 wait"), applied);
@@ -100,7 +100,7 @@ class ShopkeepersDropInTest {
             leave("player.yml", "plugins/Animus/imports/shopkeepers/save.yml");
             leave("player-config.yml", "plugins/Animus/imports/shopkeepers/config.yml");
             leave("admin.yml", "plugins/Animus/imports/shopkeepers/save.yml");
-            String staged = joined(dropIn(store, npcs).preview("reject", Optional.empty(), Map.of(), false));
+            String staged = CitizensDropInTest.previewed(dropIn(store, npcs), "reject", Optional.empty(), Map.of(), false);
             assertTrue(staged.contains("with its config.yml"), staged);
             String applied = joined(dropIn(store, npcs).applyStaged());
             assertTrue(applied.contains("2 bound to Citizens NPCs"), applied);

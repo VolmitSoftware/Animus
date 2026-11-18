@@ -682,10 +682,14 @@ final class AnimusBukkit {
         } catch (ClassNotFoundException absent) { return Platform.SPIGOT; }
     }
 
-    private static CommandSender sender(CommandActor actor) { return ((BukkitActor) actor).sender(); }
-
     /** The packet previews: {@code /animus proof} reaches persisted NPCs never, {@code proof folia} runs on Folia only. */
     private final class BukkitProof implements ProofControl {
+        @Override public Optional<String> packetsMissing() { return replies.isFolia() ? Optional.of(NOT_ON_FOLIA) : Optional.empty(); }
+        @Override public Optional<String> foliaMissing() { return replies.isFolia() ? Optional.empty() : Optional.of(FOLIA_ONLY); }
+
+        /** The sender under the reply wrapper every command runs with. */
+        private CommandSender sender(CommandActor actor) { return ((BukkitActor) actor.origin()).sender(); }
+
         /** The player viewer, or empty after telling the console that previews belong to a player. */
         private Optional<Player> viewer(CommandActor actor) {
             if (sender(actor) instanceof Player player) return Optional.of(player);
@@ -738,7 +742,7 @@ final class AnimusBukkit {
 
         private boolean folia(CommandActor actor) {
             if (foliaProof != null && foliaProof.available()) return true;
-            actor.tell(Palette.error(foliaProof == null ? "Folia only" : foliaProof.status()));
+            actor.tell(Palette.error(foliaProof == null ? FOLIA_ONLY : foliaProof.status()));
             return false;
         }
 

@@ -155,6 +155,30 @@ class SkinServiceTest {
         assertEquals(1, looked.size(), "an NPC that has its skin is not looked up again");
     }
 
+    /** The skin the server takes from an imported NPC's name belongs to that import: rollback right after apply undoes both. */
+    @Test void scan_fromNameOnAnImportedNpc_rollsBackWithTheImport() throws IOException {
+        java.nio.file.Files.writeString(java.nio.file.Files.createDirectories(root.resolve("imports")).resolve("saves.yml"), """
+                npc:
+                  '7':
+                    uuid: 00000000-0000-0000-0000-000000000007
+                    name: Notch
+                    traits:
+                      type: PLAYER
+                      spawned: true
+                      location: {world: world, x: 1, y: 64, z: 1}
+                """);
+        accounts.put("notch", SkinLookup.Found.skin("Notch", new BodySkin(texture("https://textures.minecraft.net/texture/notch", false), SIGNATURE)));
+        SkinService service = service();
+        art.arcane.animus.core.migration.CitizensDropIn flow = new art.arcane.animus.core.migration.CitizensDropIn(store, npcs, art.arcane.animus.core.migration.CitizensDropIn.Host.NONE);
+        flow.preview("reject", Optional.empty(), Map.of(), false);
+        flow.applyStaged();
+        service.scan().join();
+        assertTrue(npcs.find("citizens-7").orElseThrow().json().has("skin"), "the imported NPC took the skin of the account named like it");
+        String rolledBack = String.join("\n", flow.rollbackApplied());
+        assertTrue(rolledBack.contains("Citizens import undone"), rolledBack);
+        assertTrue(npcs.all().isEmpty(), rolledBack);
+    }
+
     @Test void scan_fromNameWithNoSuchAccount_isAskedAgainOnlyHoursLater() throws IOException {
         write("npcs/town/ghost.json", npc("ghost", "Ghosty", ",\"modules\":{\"animus:skin\":{\"fromName\":true}}"));
         SkinService service = service();

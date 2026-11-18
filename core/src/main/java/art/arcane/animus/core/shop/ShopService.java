@@ -291,7 +291,7 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
     public void create(CommandActor actor) {
         UUID id = actor.player().orElseThrow();
         Optional<Toolkit<?, ?>> menu = Toolkit.of(screens);
-        if (!host.containerShops() || menu.isEmpty()) { actor.tell(Palette.error(upper(ScreenHost.NO_CONTAINER_SHOPS))); return; }
+        if (!host.containerShops() || menu.isEmpty()) { actor.tell(Palette.error(ScreenHost.NO_PLAYER_SHOPS)); return; }
         deliver(actor, Optional.empty(), (P player) -> {
             Optional<ShopSpot> spot = host.lookedAtContainer(player);
             if (spot.isEmpty()) actor.tell(Palette.error("Look at your chest, barrel or other container, within 5 blocks"));
@@ -302,20 +302,22 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
     /** {@code /animus shop item}: the shop maker item. */
     public void item(CommandActor actor) {
         Optional<Toolkit<?, ?>> menu = Toolkit.of(screens);
-        if (!host.containerShops() || menu.isEmpty()) { actor.tell(Palette.error(upper(ScreenHost.NO_CONTAINER_SHOPS))); return; }
+        if (!host.containerShops() || menu.isEmpty()) { actor.tell(Palette.error(ScreenHost.NO_PLAYER_SHOPS)); return; }
         menu.get().shopItem(actor.player().orElseThrow());
     }
 
     /** {@code /animus shop manage}: one shop's menu, or the list of the player's shops. */
     public void manage(CommandActor actor, Optional<String> shop) {
         Optional<Toolkit<?, ?>> menu = Toolkit.of(screens);
+        if (!host.containerShops()) { actor.tell(Palette.error(ScreenHost.NO_PLAYER_SHOPS)); return; }
         if (menu.isEmpty()) { actor.tell(Palette.error("The Animus menu is not running on this server")); return; }
         UUID id = actor.player().orElseThrow();
         if (shop.isPresent()) menu.get().manageShop(id, shop.get());
         else menu.get().shopList(id);
     }
 
-    private static String upper(String text) { return Character.toUpperCase(text.charAt(0)) + text.substring(1); }
+    /** Why players cannot make or run shops on this platform; empty where they can. */
+    public Optional<String> playerShopsMissing() { return host.containerShops() ? Optional.empty() : Optional.of(ScreenHost.NO_PLAYER_SHOPS); }
 
     /** Clears the limits and stock counters of a shop, for everyone or one player by name or UUID. */
     public void reset(CommandActor actor, String shop, Optional<String> named) {
@@ -368,8 +370,8 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
             Optional<Path> savesFile = saves.isPresent() ? Optional.of(runtime.documents().resolve("imports/inbox/" + saves.get())) : Optional.empty();
             ShopImporter.Preview preview = new ShopImporter().preview(runtime.documents().resolve("imports/inbox/" + folder), savesFile, runtime.documents());
             answer(actor, "Shop preview " + preview.id() + ": " + preview.shops() + " shops, " + preview.entries() + " entries, "
-                    + preview.issues() + " issues, limit data " + preview.limitStatus());
-            answer(actor, "Review " + preview.directory().resolve("report.json") + ", then /animus import shops apply " + preview.id());
+                    + preview.issues() + " issues, limit data " + preview.limitStatus() + "; nothing installed");
+            answer(actor, "Next: /animus import shops apply " + preview.id());
         });
     }
 

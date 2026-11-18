@@ -26,6 +26,14 @@ class ReplyActorTest {
         @Override public void play(CommandSound sound) { sounds.add(sound); }
     }
 
+    /** Platform code behind a command reaches the actor the platform made, not the reply wrapper around it. */
+    @Test void theOriginIsThePlatformActorUnderEveryWrapper() {
+        Platform platform = new Platform(true);
+        RecentChanges changes = new RecentChanges();
+        assertEquals(platform, new ReplyActor(platform, false, changes).origin());
+        assertEquals(platform, ReplyActor.menu(ReplyActor.menu(platform, true, changes), true, changes).origin());
+    }
+
     @Test void aSimplePlayerSeesUndoWithoutTheId() {
         Platform platform = new Platform(true);
         RecentChanges changes = new RecentChanges();

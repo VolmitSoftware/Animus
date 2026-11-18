@@ -55,10 +55,10 @@ class DenizenDropInTest {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
             assertTrue(flow.startupNotice().orElseThrow().contains("plugins/Denizen/scripts"));
-            String staged = joined(flow.preview("reject", Optional.empty(), Map.of(), false));
+            String staged = CitizensDropInTest.previewed(flow, "reject", Optional.empty(), Map.of(), false);
             assertTrue(staged.contains("Denizen plugins/Denizen: 18 scripts; 13 behaviors for 4 NPCs; 16 flag values imported, 2 kept"), staged);
             assertTrue(staged.contains("apply allows") && staged.contains("denizen in [behaviors.actions] commandNamespaces"), staged);
-            assertTrue(staged.endsWith("Next: /animus import citizens apply"), staged);
+            assertTrue(staged.endsWith("Next: /animus import citizens apply, or /animus import citizens discard"), staged);
 
             denizen.set(true);
             IOException refused = assertThrows(IOException.class, () -> flow.applyStaged());

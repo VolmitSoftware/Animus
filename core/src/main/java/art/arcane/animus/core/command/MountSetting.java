@@ -17,10 +17,16 @@ import java.util.UUID;
 final class MountSetting {
     private MountSetting() {}
 
+    /** Whether {@code vehicle} names a real entity, by type or UUID, rather than another NPC. */
+    static boolean real(String vehicle) { return vehicle.contains(":") || vehicle.matches("[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}"); }
+
+    /** Why the NPC cannot ride {@code vehicle} on this server: a real entity where {@code noMobs} says NPCs ride none. */
+    static java.util.Optional<String> refused(String vehicle, java.util.Optional<String> noMobs) { return real(vehicle) ? noMobs : java.util.Optional.empty(); }
+
     /** Seats the NPC on {@code vehicle}: an NPC id, an entity UUID or an entity type, the last within {@code range}. */
     static String set(NpcRepository repository, String id, String vehicle, String range) throws IOException {
         JsonObject module = new JsonObject();
-        boolean real = vehicle.contains(":") || vehicle.matches("[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}");
+        boolean real = real(vehicle);
         if (real) {
             module.addProperty("entity", vehicle);
             if (!range.isEmpty()) {

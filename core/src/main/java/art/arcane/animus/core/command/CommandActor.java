@@ -22,6 +22,9 @@ public interface CommandActor {
     /** Runs the action on the actor's owner later. False when it cannot be accepted. */
     boolean reply(Runnable action);
 
+    /** The actor the platform made, under any wrapper a command runs it in; platform code reads its sender from this one. */
+    default CommandActor origin() { return this; }
+
     /** Where the player stands, for commands that default to it; empty for the console. Read on the actor's owner. */
     default Optional<WorldPosition> position() { return Optional.empty(); }
 

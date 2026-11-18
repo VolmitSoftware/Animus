@@ -118,6 +118,18 @@ class CommandVocabularyTest {
         assertEquals(report, console.told, "the console reads every line");
     }
 
+    /** A long reply keeps its Next line on screen after the [Details] line, so the step to take is never hidden. */
+    @Test void aLongReplyKeepsItsNextLineInView() {
+        RecordingActor player = new RecordingActor(true);
+        List<String> report = new ArrayList<>();
+        for (int index = 1; index <= 8; index++) report.add("line " + index);
+        report.add("Next: /animus import citizens apply");
+        CommandGroup.lines(player, report);
+        assertEquals(List.of("line 1", "line 2", "line 3", "line 4", "Next: /animus import citizens apply"), player.told);
+        assertTrue(player.rich.getFirst().visible().endsWith("Showing 5 of 9 lines [Details]"), player.rich.getFirst().visible());
+        assertEquals(CommandGroup.PLAYER_LINES, player.told.size() + player.rich.size());
+    }
+
     @Test void attributeChangesCarryTheUndoChip() {
         ChatLine line = ChatLine.parse("guard: scale = 1.5; tx " + UUID.randomUUID());
         assertTrue(line.visible().contains("[Undo]"), line.visible());

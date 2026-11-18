@@ -80,9 +80,14 @@ final class MountScreen<P, S> extends ToolScreen<P, S> {
                 (GuiModel.Click click) -> pickAndClose("NPC for " + first + " to ride", (String picked) -> mount(first, picked)));
         button(CARRY, "minecraft:chest_minecart", title("Carry another NPC"), lore(List.of("&7The NPC you click rides " + first), any("pick it with the wand")),
                 (GuiModel.Click click) -> pickAndClose("Rider for " + first, (String picked) -> mount(picked, first)));
-        button(MOB, "minecraft:lead", title("Ride a mob"), lore(List.of("&7" + first + " rides the nearest horse, boat or other mob"), any("pick a kind")),
-                (GuiModel.Click click) -> push(new ChoiceScreen<>(toolkit, viewer, commands, "Mob for " + first, VEHICLES, null,
-                        (com.google.gson.JsonElement type) -> toolkit.write(viewer, (ToolkitFiles ignored) -> new CombatFiles(toolkit.npcs()).mountEntity(first, type.getAsString())))));
+        Optional<String> noMobs = toolkit.living().mobRidingMissing();
+        List<String> mobLore = new ArrayList<>(List.of("&7" + first + " rides the nearest horse, boat or other mob"));
+        noMobs.ifPresent((String reason) -> mobLore.add("&c" + reason));
+        button(MOB, "minecraft:lead", title("Ride a mob"), lore(mobLore, noMobs.isPresent() ? List.of() : any("pick a kind")), (GuiModel.Click click) -> {
+            if (noMobs.isPresent()) { toolkit.refuse(viewer.player(), noMobs.get()); return; }
+            push(new ChoiceScreen<>(toolkit, viewer, commands, "Mob for " + first, VEHICLES, null,
+                    (com.google.gson.JsonElement type) -> toolkit.write(viewer, (ToolkitFiles ignored) -> new CombatFiles(toolkit.npcs()).mountEntity(first, type.getAsString()))));
+        });
         button(SEAT, "minecraft:oak_stairs", title("Seat"), lore(List.of("&7Players sit on top with a click, as GSit seats players"), any("open")),
                 (GuiModel.Click click) -> push(new SettingsScreen<>(toolkit, viewer, commands, CombatFields.seat())));
         button(RIDING, "minecraft:carrot_on_a_stick", title("Riding"), lore(List.of("&7How players ride it: permission, speed, leash, lifetime"), any("open")),

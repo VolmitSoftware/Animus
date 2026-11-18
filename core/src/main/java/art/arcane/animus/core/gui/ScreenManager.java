@@ -123,6 +123,8 @@ public final class ScreenManager<P, S> {
             try { next = screen.fillsPlaceholders() ? screen.render().filled(placeholders.get(), id) : screen.render(); }
             catch (RuntimeException failure) { warn.accept("Screen failed to render for " + id + ": " + failure); close(); return; }
             if (!reopen && next.equals(frame)) return;
+            Optional<String> refused = host.unshowable(next);
+            if (refused.isPresent()) { host.message(player, art.arcane.animus.core.text.Palette.error(refused.get())); close(); return; }
             Optional<Object> shown = host.show(player, next, window);
             if (shown.isEmpty()) { close(); return; }
             window = shown.get();

@@ -67,6 +67,32 @@ class EntityTriggerDispatchTest {
         assertEquals(List.of(), dispatcher.entityPlan().watches(npc));
     }
 
+    /** A platform that senses nothing around NPCs leaves each sensed trigger unbound with its reason, said once per behavior. */
+    @Test void aPlatformWithoutSensingSaysWhySensedTriggersNeverFire() throws Exception {
+        BehaviorProgram program = BehaviorCompiler.compile("{\"schemaVersion\":1,\"id\":\"" + BEHAVIOR + "\",\"entry\":\"main\",\"routines\":{\"main\":{\"type\":\"sequence\",\"steps\":[]}},\"triggers\":"
+                + "[{\"id\":\"near\",\"event\":\"entity_proximity\",\"phase\":\"enter\",\"radius\":6},{\"id\":\"ear\",\"event\":\"npc_speech\",\"radius\":12},{\"id\":\"click\",\"event\":\"interaction\"}]}").program().orElseThrow();
+        BehaviorCatalog.Accepted accepted = new BehaviorCatalog.Accepted(1, String.format("%064x", 1), 100, program, Set.of());
+        catalog.set(new BehaviorCatalog.Snapshot(1, Map.of(), Map.of(BEHAVIOR, new BehaviorCatalog.Resolution(BEHAVIOR, true, Optional.of(accepted), List.of())), List.of()));
+        definitions.set(Map.of("listener", definition("listener", npc)));
+        dispatcher = new TriggerDispatcher(settings(0, 16), definitions::get, catalog::get);
+        List<String> logged = new ArrayList<>();
+        dispatcher.log(logged::add);
+        dispatcher.sensing(TriggerDispatcher.NO_SENSING);
+        dispatcher.connect();
+        dispatcher.activated(npc);
+        pump();
+        pump();
+        assertEquals(List.of(), dispatcher.entityPlan().watches(npc));
+        List<art.arcane.animus.api.Diagnostic> problems = dispatcher.snapshot().diagnostics().stream().filter((art.arcane.animus.api.Diagnostic problem) -> problem.code().equals("trigger-sensing-unavailable")).toList();
+        assertEquals(2, problems.size(), dispatcher.snapshot().diagnostics().toString());
+        assertEquals("Triggers that sense entities and other NPCs need Paper, Spigot or Folia", problems.getFirst().message());
+        assertEquals(List.of("Behavior " + BEHAVIOR + ": its entity_proximity and npc_speech triggers never fire here; triggers that sense entities and other NPCs need Paper, Spigot or Folia"), logged);
+        definitions.set(Map.of("listener", definition("listener", npc)));
+        dispatcher.activated(npc);
+        pump();
+        assertEquals(1, logged.size(), "said once");
+    }
+
     @Test void aHitPublishedBeforeTheBlowThatKillsTheNpcStillRuns() throws Exception {
         setUp(settings(0, 16), "[{\"id\":\"shot\",\"event\":\"hit_by_projectile\"},{\"id\":\"dead\",\"event\":\"death\"}]");
         dispatcher.publish(new TriggerEvent.Entity(npc, TriggerKind.HIT_BY_PROJECTILE, BEHAVIOR + "#shot", Optional.of(new TriggerEvent.Subject(player, "minecraft:player", "Alex", Set.of())),

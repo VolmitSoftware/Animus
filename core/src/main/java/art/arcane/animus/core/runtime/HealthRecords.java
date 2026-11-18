@@ -1,8 +1,10 @@
 package art.arcane.animus.core.runtime;
 
 import art.arcane.animus.core.combat.HealthSettings;
+import art.arcane.animus.core.migration.CitizensDropIn;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
+import art.arcane.animus.core.storage.DocumentStore;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
@@ -21,12 +23,14 @@ public final class HealthRecords {
 
     private HealthRecords() {}
 
-    /** Marks the NPC with this UUID dead; empty when no definition has it or it is already marked. */
-    public static Optional<Recorded> markDead(NpcRepository repository, UUID npc) throws IOException {
+    /** Marks the NPC with this UUID dead; empty when no definition has it or it is already marked. A death on an imported NPC rolls back with the import. */
+    public static Optional<Recorded> markDead(NpcRepository repository, DocumentStore store, UUID npc) throws IOException {
         for (NpcDefinition definition : repository.snapshot().values()) {
             if (!definition.uuid().equals(npc)) continue;
             if (definition.dead()) return Optional.empty();
-            return Optional.of(new Recorded(definition.id(), write(repository, definition.id(), true)));
+            String transaction = write(repository, definition.id(), true);
+            CitizensDropIn.adopt(store, transaction);
+            return Optional.of(new Recorded(definition.id(), transaction));
         }
         return Optional.empty();
     }

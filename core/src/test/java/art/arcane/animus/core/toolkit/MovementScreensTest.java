@@ -169,6 +169,19 @@ class MovementScreensTest extends ToolkitHarness {
         assertEquals(List.of("animus ride status"), alex.commands);
     }
 
+    /** Where NPCs cannot ride mobs, Ride a mob says so in one line and saves nothing. */
+    @Test void rideAMobSaysWhereThePlatformCannot() {
+        mobRiding = java.util.Optional.of("NPCs ride mobs only on Paper, Spigot or Folia");
+        toolkit.mode(alex.id, ToolkitMode.ADVANCED);
+        toolkit.open(alex.id, MountScreen::new);
+        assertTrue(lore("Ride a mob").contains("NPCs ride mobs only on Paper, Spigot or Folia"), lore("Ride a mob"));
+        click("Ride a mob", Click.LEFT);
+        drain();
+        assertTrue(alex.messages.contains("[Animus]: NPCs ride mobs only on Paper, Spigot or Folia"), alex.messages.toString());
+        assertFalse(buttons().containsValue("Horse"), "no mob list opens");
+        assertFalse(npcs.find("guard").orElseThrow().json().has("modules") && npcs.find("guard").orElseThrow().json().getAsJsonObject("modules").has("animus:mount"));
+    }
+
     @Test void aMobMountAndASeatAreSetFromTheMountsScreen() {
         toolkit.mode(alex.id, ToolkitMode.ADVANCED);
         toolkit.open(alex.id, MountScreen::new);

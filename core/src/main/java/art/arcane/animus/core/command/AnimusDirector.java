@@ -34,6 +34,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -80,6 +81,7 @@ public final class AnimusDirector {
     private final DirectorRuntimeEngine engine;
     private final Completer values;
     private final Predicate<String> plugins;
+    private final Function<NeedsFeature.Feature, Optional<String>> features;
     private final Predicate<UUID> simple;
     private final Supplier<RecentChanges> changes;
 
@@ -90,12 +92,15 @@ public final class AnimusDirector {
      * @param root    the {@code @Director} root command object
      * @param values  completion values for a parameter name
      * @param plugins whether a server plugin a {@link NeedsPlugin} command names is running
+     * @param features why this platform lacks a {@link NeedsFeature} feature, empty where it has it
      * @param simple  whether a player is in Simple mode
      * @param changes where each player's reported changes are kept for {@code /animus undo}, read for each command
      */
-    AnimusDirector(Object root, Completer values, Predicate<String> plugins, Predicate<UUID> simple, Supplier<RecentChanges> changes) {
+    AnimusDirector(Object root, Completer values, Predicate<String> plugins, Function<NeedsFeature.Feature, Optional<String>> features, Predicate<UUID> simple,
+                   Supplier<RecentChanges> changes) {
         this.values = Objects.requireNonNull(values);
         this.plugins = Objects.requireNonNull(plugins);
+        this.features = Objects.requireNonNull(features);
         this.simple = Objects.requireNonNull(simple);
         this.changes = Objects.requireNonNull(changes);
         engine = DirectorEngineFactory.create(Objects.requireNonNull(root), DirectorEngineOptions.builder()
@@ -106,7 +111,15 @@ public final class AnimusDirector {
     }
 
     /** Every player reads the Advanced forms of help and replies. */
-    public AnimusDirector(Object root, Completer values, Predicate<String> plugins) { this(root, values, plugins, (UUID player) -> false, kept(new RecentChanges())); }
+    public AnimusDirector(Object root, Completer values, Predicate<String> plugins) { this(root, values, plugins, EVERY_FEATURE); }
+
+    /** As {@link #AnimusDirector(Object, Completer, Predicate)} on a platform that lacks the features {@code features} names a reason for. */
+    public AnimusDirector(Object root, Completer values, Predicate<String> plugins, Function<NeedsFeature.Feature, Optional<String>> features) {
+        this(root, values, plugins, features, (UUID player) -> false, kept(new RecentChanges()));
+    }
+
+    /** A platform with every {@link NeedsFeature} feature. */
+    static final Function<NeedsFeature.Feature, Optional<String>> EVERY_FEATURE = (NeedsFeature.Feature feature) -> Optional.empty();
 
     private static Supplier<RecentChanges> kept(RecentChanges changes) { return () -> changes; }
 
@@ -313,20 +326,51 @@ public final class AnimusDirector {
         return previous[to.length()];
     }
 
-    /** A command whose plugin is not running: only that it needs the plugin. */
+    /** A command whose plugin is not running, or whose feature this platform lacks: only why. */
     private boolean missing(CommandActor actor, DirectorRuntimeNode node) {
-        actor.tell(Palette.error(node.path() + " needs " + needs(node).orElseThrow()));
+        actor.tell(Palette.error(needs(node).orElseThrow()));
         return false;
     }
 
-    /** The plugin the node or a group above it needs while that plugin is not running. */
+    /**
+     * Why the node cannot run here, in one sentence: a plugin it or a group above it needs is not running, this platform
+     * lacks a feature it needs, or it is a group where nothing inside runs. Empty when it can run.
+     */
     public Optional<String> needs(DirectorRuntimeNode node) {
         for (DirectorRuntimeNode cursor = node; cursor != null; cursor = cursor.getParent()) {
-            NeedsPlugin annotation = cursor.getMethod() != null ? cursor.getMethod().getAnnotation(NeedsPlugin.class)
-                    : cursor.getInstance().getClass().getAnnotation(NeedsPlugin.class);
-            if (annotation != null && !plugins.test(annotation.value())) return Optional.of(annotation.value());
+            NeedsPlugin plugin = annotation(cursor, NeedsPlugin.class);
+            if (plugin != null && !plugins.test(plugin.value())) return Optional.of(cursor.path() + " needs " + plugin.value());
+            NeedsFeature feature = annotation(cursor, NeedsFeature.class);
+            if (feature != null) {
+                Optional<String> lacking = features.apply(feature.value());
+                if (lacking.isPresent()) return lacking;
+            }
         }
-        return Optional.empty();
+        return node.isInvocable() || node.getChildren().isEmpty() ? Optional.empty() : inside(node);
+    }
+
+    /** For a group: the first child's reason when no child runs here, else empty. */
+    private Optional<String> inside(DirectorRuntimeNode group) {
+        Optional<String> first = Optional.empty();
+        for (DirectorRuntimeNode child : group.getChildren()) {
+            if (child.getDescriptor().isHidden()) continue;
+            Optional<String> reason = child.isInvocable() || child.getChildren().isEmpty() ? own(child) : inside(child).or(() -> own(child));
+            if (reason.isEmpty()) return Optional.empty();
+            if (first.isEmpty()) first = reason;
+        }
+        return first;
+    }
+
+    /** Why this node alone, not the groups above it, cannot run here. */
+    private Optional<String> own(DirectorRuntimeNode node) {
+        NeedsPlugin plugin = annotation(node, NeedsPlugin.class);
+        if (plugin != null && !plugins.test(plugin.value())) return Optional.of(node.path() + " needs " + plugin.value());
+        NeedsFeature feature = annotation(node, NeedsFeature.class);
+        return feature == null ? Optional.empty() : features.apply(feature.value());
+    }
+
+    private static <A extends java.lang.annotation.Annotation> A annotation(DirectorRuntimeNode node, Class<A> type) {
+        return node.getMethod() != null ? node.getMethod().getAnnotation(type) : node.getInstance().getClass().getAnnotation(type);
     }
 
     private static DirectorRuntimeNode named(DirectorRuntimeNode group, String word) {

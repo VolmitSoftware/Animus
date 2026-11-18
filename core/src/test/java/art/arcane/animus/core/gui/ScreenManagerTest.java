@@ -32,6 +32,18 @@ class ScreenManagerTest {
 
     private void open(Optional<UUID> npc, boolean teleportCloses) { assertTrue(manager.open(alex, npc, (ScreenManager<Player, Stack>.Viewer viewer) -> Optional.of(new Counter(teleportCloses)))); }
 
+    /** A window the platform cannot draw does not open, and the player is told why instead of seeing nothing happen. */
+    @Test void aWindowThePlatformCannotDrawSaysWhy() {
+        host.unshowable = (ScreenFrame frame) -> frame.width() == 9 ? Optional.empty() : Optional.of("5x1 and 3x3 chest GUIs need Paper, Spigot or Folia");
+        Screen hopper = new Screen() {
+            @Override public ScreenFrame render() { return new ScreenFrame("Hopper", "5x1", 5, 1, Map.of()); }
+            @Override public void click(int slot, GuiModel.Click click) {}
+        };
+        assertFalse(manager.open(alex, Optional.empty(), (ScreenManager<Player, Stack>.Viewer viewer) -> Optional.of(hopper)));
+        assertNull(alex.window);
+        assertEquals(List.of("[Animus]: 5x1 and 3x3 chest GUIs need Paper, Spigot or Folia"), alex.messages);
+    }
+
     @Test void clicksOnAStaleWindowAreIgnored() {
         open(Optional.empty(), true);
         Object stale = alex.window;

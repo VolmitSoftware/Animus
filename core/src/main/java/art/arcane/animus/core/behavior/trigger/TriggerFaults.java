@@ -17,6 +17,12 @@ final class TriggerFaults {
 
     void sink(Consumer<String> sink) { this.sink = Objects.requireNonNull(sink); }
 
+    /** Logs {@code line} the first time {@code key} comes up. */
+    void once(String key, String line) {
+        if (reported.size() >= REMEMBERED || !reported.add("once:" + key)) return;
+        sink.accept(line);
+    }
+
     void report(String behavior, String event, String where, RuntimeException fault) {
         if (reported.size() >= REMEMBERED || !reported.add(behavior + "#" + event)) return;
         sink.accept("Behavior trigger: FAILED | " + behavior + " on its " + event + " trigger" + where + ": " + fault.getClass().getSimpleName()

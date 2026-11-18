@@ -85,6 +85,8 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     boolean stopRider(String playerName);
     /** Who sits on which NPC, for {@code /animus seat status}. */
     default String seatStatus() { return "Seats are unavailable on this server"; }
+    /** Why NPCs cannot ride mobs, boats and minecarts on this server; empty where they can. */
+    default Optional<String> mobRidingMissing() { return Optional.empty(); }
     /**
      * Turns sitting on NPCs on or off for one player, or flips it when {@code on} is empty, as GSit's
      * {@code /gsit playertoggle} does for sitting on players; turning it off gets the player off any NPC. Any thread.

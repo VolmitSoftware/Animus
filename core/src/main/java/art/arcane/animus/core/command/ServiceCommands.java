@@ -62,14 +62,17 @@ final class ServiceCommands {
 
         @Director(description = "Make your own shop on the chest you look at", origin = DirectorOrigin.PLAYER)
         @AnimusPermission(PermissionNodes.SHOPS_CREATE)
+        @NeedsFeature(NeedsFeature.Feature.PLAYER_SHOPS)
         void create() { services.shops().create(actor()); }
 
         @Director(description = "Get the shop item: sneak and right-click your chest with it to make a shop", origin = DirectorOrigin.PLAYER)
         @AnimusPermission(PermissionNodes.SHOPS_CREATE)
+        @NeedsFeature(NeedsFeature.Feature.PLAYER_SHOPS)
         void item() { services.shops().item(actor()); }
 
         @Director(description = "Run your shops, or one shop by its id", origin = DirectorOrigin.PLAYER)
         @AnimusPermission(PermissionNodes.SHOPS_CREATE)
+        @NeedsFeature(NeedsFeature.Feature.PLAYER_SHOPS)
         void manage(@Param(name = "shop", defaultValue = "", description = "The shop id; all your shops when left out") String shop) {
             services.shops().manage(actor(), given(shop));
         }
@@ -92,11 +95,11 @@ final class ServiceCommands {
     }
 
     /** {@code /animus import shops}. */
-    @Director(name = "shops", description = "Import dtlTraders and Shopkeepers shops")
+    @Director(name = "shops", description = "Import dtlTraders shops")
     static final class ShopImport extends CommandGroup {
         ShopImport(CommandServices services) { super(services); }
 
-        @Director(description = "Preview a dtlTraders or Shopkeepers folder from imports/inbox/")
+        @Director(description = "Preview a dtlTraders folder from imports/inbox/; Shopkeepers imports with import citizens preview")
         void preview(@Param(name = "source", description = "A folder directly under imports/inbox/") String source,
                      @Param(name = "saves", defaultValue = "", description = "A .yml saves file directly under imports/inbox/") String saves) {
             services.shops().importPreview(actor(), source, given(saves));

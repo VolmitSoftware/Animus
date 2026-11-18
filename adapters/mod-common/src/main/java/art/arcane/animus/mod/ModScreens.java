@@ -114,6 +114,13 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
     }
     @Override public void giveLevels(ServerPlayer player, int levels) { player.giveExperienceLevels(levels); }
 
+    /** Mod menus are chests 9 slots wide and the trading screen; a 5x1 or 3x3 chest GUI has no menu here. */
+    static Optional<String> drawable(ScreenFrame frame) {
+        return frame.merchant().isEmpty() && frame.width() != 9 ? Optional.of("5x1 and 3x3 chest GUIs need Paper, Spigot or Folia") : Optional.empty();
+    }
+
+    @Override public Optional<String> unshowable(ScreenFrame frame) { return drawable(frame); }
+
     @Override public Optional<Object> show(ServerPlayer player, ScreenFrame frame, Object window) {
         if (frame.merchant().isPresent()) return merchant(player, frame, window);
         if (window instanceof Trading trading && player.containerMenu == trading.menu) trading.menu.replaced = true;

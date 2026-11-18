@@ -82,7 +82,7 @@ class AnimusDirectorTest {
     @Test void aChangeIsRememberedWithTheNodeItsCommandNeeded() {
         RecentChanges changes = new RecentChanges();
         AnimusDirector saver = new AnimusDirector(new Saver(), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
-                (String plugin) -> true, (UUID player) -> false, () -> changes);
+                (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> false, () -> changes);
         Actor keeper = new Actor(true, "probe.shop");
         saver.execute(keeper, new String[]{"save"});
         assertEquals("probe.shop", changes.latest(keeper.player().orElseThrow()).orElseThrow().node());
@@ -244,6 +244,50 @@ class AnimusDirectorTest {
         assertTrue(admin.lines.isEmpty(), admin.text());
     }
 
+    /** On Folia the packet previews answer where to go instead, and help and completion list only the Folia preview. */
+    @Test void aPreviewThePlatformLacksAnswersWhyAndLeavesHelp() {
+        AnimusDirector folia = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(), (String plugin) -> true,
+                (NeedsFeature.Feature feature) -> feature == NeedsFeature.Feature.PACKET_PREVIEW ? java.util.Optional.of(ProofControl.NOT_ON_FOLIA) : java.util.Optional.empty());
+        for (String[] typed : List.of(new String[]{"proof", "status"}, new String[]{"proof", "spawn", "minecraft:player"}, new String[]{"proof", "control", "start", "3"})) {
+            for (boolean player : List.of(true, false)) {
+                Actor admin = new Actor(player, AnimusDirector.ADMIN);
+                folia.execute(admin, typed);
+                assertEquals("[Animus]: Not on Folia; use /animus proof folia", admin.text(), String.join(" ", typed));
+            }
+        }
+        Actor admin = new Actor(true, AnimusDirector.ADMIN);
+        assertEquals(List.of("folia"), folia.complete(admin, new String[]{"proof", ""}));
+        folia.execute(admin, new String[]{"proof"});
+        assertEquals(List.of("folia"), admin.entries(), "the Folia help lists only what runs");
+
+        AnimusDirector paper = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(), (String plugin) -> true,
+                (NeedsFeature.Feature feature) -> feature == NeedsFeature.Feature.FOLIA_PREVIEW ? java.util.Optional.of(ProofControl.FOLIA_ONLY) : java.util.Optional.empty());
+        Actor operator = new Actor(true, AnimusDirector.ADMIN);
+        paper.execute(operator, new String[]{"proof", "folia", "spawn"});
+        assertEquals("[Animus]: " + ProofControl.FOLIA_ONLY, operator.text());
+        assertFalse(paper.complete(operator, new String[]{"proof", ""}).contains("folia"));
+
+        AnimusDirector mod = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(), (String plugin) -> true,
+                (NeedsFeature.Feature feature) -> feature == NeedsFeature.Feature.PLAYER_SHOPS ? java.util.Optional.empty() : java.util.Optional.of(ProofControl.MOD_SERVER));
+        Actor modded = new Actor(false, AnimusDirector.ADMIN);
+        mod.execute(modded, new String[]{"proof", "status"});
+        assertEquals("[Animus]: Packet previews need Paper, Spigot or Folia", modded.text());
+        assertFalse(mod.complete(new Actor(true, AnimusDirector.ADMIN), new String[]{""}).contains("proof"), "nothing in it runs, so the group leaves help");
+    }
+
+    /** On a mod server the player shop commands leave help and each says what they need. */
+    @Test void playerShopCommandsSayTheyNeedAChestServer() {
+        AnimusDirector mod = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(), (String plugin) -> true,
+                (NeedsFeature.Feature feature) -> feature == NeedsFeature.Feature.PLAYER_SHOPS ? java.util.Optional.of(art.arcane.animus.core.gui.ScreenHost.NO_PLAYER_SHOPS) : java.util.Optional.empty());
+        for (String command : List.of("create", "item", "manage")) {
+            Actor player = new Actor(true, PermissionNodes.SHOPS_CREATE);
+            mod.execute(player, new String[]{"shop", command});
+            assertEquals("[Animus]: Player shops need Paper, Spigot or Folia", player.text(), command);
+        }
+        List<String> offered = mod.complete(new Actor(true, AnimusDirector.ADMIN), new String[]{"shop", ""});
+        assertTrue(offered.contains("list") && !offered.contains("create") && !offered.contains("item") && !offered.contains("manage"), offered.toString());
+    }
+
     @Test void anUnknownCommandNamesTheNearestOneWhenItIsClose() {
         AnimusDirector real = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
         Actor admin = new Actor(true, AnimusDirector.ADMIN);
@@ -290,7 +334,7 @@ class AnimusDirectorTest {
 
     @Test void aSimplePlayerGetsTheShortHelpAndAllCommandsIsOneClickAway() {
         AnimusDirector simple = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor, java.util.Map<String, String> given) -> List.of(),
-                (String plugin) -> true, (UUID player) -> true, RecentChanges::new);
+                (String plugin) -> true, AnimusDirector.EVERY_FEATURE, (UUID player) -> true, RecentChanges::new);
         Actor player = new Actor(true, AnimusDirector.ADMIN);
         simple.execute(player, new String[]{"help"});
         AnimusHelp.Page brief = player.pages.getLast();

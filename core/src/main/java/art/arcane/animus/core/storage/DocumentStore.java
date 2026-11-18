@@ -219,16 +219,28 @@ public final class DocumentStore implements AutoCloseable {
     /** Undoes a committed transaction, named by its id or a unique prefix of at least four characters. */
     public synchronized String rollback(String transaction) throws IOException {
         String id = transaction(transaction);
-        List<Change> inverse = inverse(id);
-        for (Change change : inverse) {
-            if (JsonDocuments.hash(read(change.path())).equals(change.expectedHash())) continue;
-            Optional<String> later = laterTransaction(id, change.path(), JsonDocuments.hash(read(change.path())));
-            if (later.isPresent())
-                throw new IOException("Conflict: " + change.path() + " was changed again by the later transaction " + later.get().substring(0, 8)
-                        + "; roll that one back first with /animus rollback " + later.get().substring(0, 8));
-            throw new IOException("Conflict: " + change.path() + " was edited after this transaction; fix the file or /animus reload, then roll back again");
+        Optional<Blocked> blocked = blocked(id);
+        if (blocked.isPresent()) {
+            Blocked found = blocked.get();
+            if (found.by().isPresent())
+                throw new IOException("Conflict: " + found.path() + " was changed again by the later transaction " + found.by().get().substring(0, 8)
+                        + "; roll that one back first with /animus rollback " + found.by().get().substring(0, 8));
+            throw new IOException("Conflict: " + found.path() + " was edited after this transaction; fix the file or /animus reload, then roll back again");
         }
-        return commit(inverse);
+        return commit(inverse(id));
+    }
+
+    /** A document a transaction wrote that holds something else now, and the later transaction whose result it holds, when one does. */
+    public record Blocked(String path, Optional<String> by) {}
+
+    /** Why undoing the committed {@code transaction} would conflict: the first document it wrote that changed since; empty when an undo applies. */
+    public synchronized Optional<Blocked> blocked(String transaction) throws IOException {
+        for (Change change : inverse(transaction)) {
+            String current = JsonDocuments.hash(read(change.path()));
+            if (current.equals(change.expectedHash())) continue;
+            return Optional.of(new Blocked(change.path(), laterTransaction(transaction, change.path(), current)));
+        }
+        return Optional.empty();
     }
 
     /** The later transaction whose result {@code path} still holds ({@code current} is its hash), so a refused rollback can name it. */

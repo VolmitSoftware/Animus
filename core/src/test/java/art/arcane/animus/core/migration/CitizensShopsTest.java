@@ -153,7 +153,7 @@ class CitizensShopsTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = new CitizensDropIn(store, npcs, new CitizensDropIn.Host(Optional.of(root.resolve("plugins")), () -> false, () -> false, () -> false));
-            String staged = String.join("\n", flow.preview("reject", Optional.empty(), Map.of(), false));
+            String staged = CitizensDropInTest.previewed(flow, "reject", Optional.empty(), Map.of(), false);
             assertTrue(staged.contains("Next: /animus import citizens apply"), staged);
             assertTrue(staged.contains("Also read beside the save: citizenscmd.yml, shops.yml; 2 Citizens shops install in shops/citizens/"), staged);
             flow.applyStaged();

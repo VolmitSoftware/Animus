@@ -82,6 +82,9 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
     }
     @Override public void giveLevels(Player player, int levels) { player.levels += levels; }
 
+    /** What {@code unshowable} answers: by default every frame shows. */
+    public java.util.function.Function<ScreenFrame, Optional<String>> unshowable = (ScreenFrame frame) -> Optional.empty();
+    @Override public Optional<String> unshowable(ScreenFrame frame) { return unshowable.apply(frame); }
     @Override public Optional<Object> show(Player player, ScreenFrame frame, Object window) {
         if (unsupported.contains(frame.resolution())) return Optional.empty();
         if (window != null && window == player.window && frame.sameWindow(player.frame)) { player.frame = frame; return Optional.of(window); }

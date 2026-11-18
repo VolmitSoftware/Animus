@@ -42,8 +42,8 @@ final class DenizenDropIn {
         return state.has("denizen") && state.get("denizen").isJsonObject() ? Optional.of(state.getAsJsonObject("denizen")) : Optional.empty();
     }
 
-    /** Converts the folder against the Citizens save into {@code state.denizen} and returns the lines to show. */
-    static List<String> stage(DocumentStore store, CitizensDropIn.Found found, Path citizens, JsonObject state) throws IOException {
+    /** Converts the folder against the Citizens save into {@code state.denizen} and returns what to show. */
+    static CitizensDropIn.Staged stage(DocumentStore store, CitizensDropIn.Found found, Path citizens, JsonObject state) throws IOException {
         DenizenImporter.Preview preview = new DenizenImporter().preview(found.path(), Optional.of(citizens), store);
         JsonObject part = new JsonObject();
         part.addProperty("source", found.label());
@@ -56,7 +56,9 @@ final class DenizenDropIn {
         lines.add("Denizen " + found.label() + ": " + scripts(report) + " scripts; " + preview.behaviors() + " behaviors for " + preview.bindings() + " NPCs; "
                 + preview.flagsImported() + " flag values imported, " + preview.flagsPreserved() + " kept; " + preview.preserved() + " items kept, reasons in " + part.get("report").getAsString());
         if (preview.held() > 0) lines.add(preview.held() + " behaviors held: a guard or stop in them did not convert, so apply leaves them unbound and off; heldBehaviors in the report lists the lines");
-        return lines;
+        String summary = "Denizen: " + CitizensDropIn.count(scripts(report), "script") + ", " + CitizensDropIn.count(preview.behaviors(), "behavior") + " for "
+                + CitizensDropIn.count(preview.bindings(), "NPC") + (preview.held() > 0 ? "; " + preview.held() + " held until /animus import denizen release" : "");
+        return new CitizensDropIn.Staged(summary, lines);
     }
 
     /**

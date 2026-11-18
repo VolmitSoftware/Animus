@@ -72,7 +72,7 @@ class GroupFactoringTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = new CitizensDropIn(store, npcs, new CitizensDropIn.Host(Optional.of(root.resolve("plugins")), () -> false, () -> false, () -> false));
-            String staged = String.join("\n", flow.preview("reject", Optional.empty(), Map.of(), true));
+            String staged = CitizensDropInTest.previewed(flow, "reject", Optional.empty(), Map.of(), true);
             assertTrue(staged.contains("Factored groups: groups/citizens-"), staged);
             assertTrue(staged.contains(".json (2 NPCs)"), staged);
             flow.applyStaged();

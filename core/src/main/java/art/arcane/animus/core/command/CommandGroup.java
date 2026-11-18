@@ -135,12 +135,16 @@ abstract class CommandGroup {
 
     /**
      * A reply of several lines. The console gets every line. A player gets up to {@link #PLAYER_LINES}; a longer reply
-     * shows the first lines, then how many of how many with every line behind [Details].
+     * shows the first lines, then how many of how many with every line behind [Details], then its {@code Next:} line
+     * when it ends with one, so the step to take stays in view.
      */
     static void lines(CommandActor actor, List<String> lines) {
         if (actor.player().isEmpty() || lines.size() <= PLAYER_LINES) { lines.forEach(actor::tell); return; }
-        lines.subList(0, PLAYER_LINES - 1).forEach(actor::tell);
+        boolean next = lines.getLast().startsWith("Next: ");
+        int first = next ? PLAYER_LINES - 2 : PLAYER_LINES - 1;
+        lines.subList(0, first).forEach(actor::tell);
         actor.rich(ChatLine.reply("Showing " + (PLAYER_LINES - 1) + " of " + lines.size() + " lines").details("Details", lines));
+        if (next) actor.tell(lines.getLast());
     }
 
     /** One line answered later on the actor's owner. */

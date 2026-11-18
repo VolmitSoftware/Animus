@@ -87,7 +87,9 @@ public interface RuntimeHost<P, I> extends TerrainReader {
     /** The region entry rule a ride asks for each new block, since a ride moves its rider with no movement event. */
     default RideEntry.Rule rideEntry() { return RideEntry.OPEN; }
     /** Why NPCs cannot ride real entities here, or null when they can. */
-    default String realVehiclesUnavailable() { return "NPCs ride real entities only on Paper, Spigot and Folia"; }
+    default String realVehiclesUnavailable() { return NO_MOB_RIDING; }
+    /** What a platform without real vehicles for NPCs says. */
+    String NO_MOB_RIDING = "NPCs ride mobs only on Paper, Spigot or Folia";
     /** The loaded, living entity with this UUID. Players are never vehicles. */
     default Optional<RealEntity> entity(UUID uuid) { return Optional.empty(); }
     /** The nearest loaded, living entity of this type within {@code range} blocks of a point that {@code free} accepts. */

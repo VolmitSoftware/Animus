@@ -71,6 +71,7 @@ public final class ReplyActor implements CommandActor {
     @Override public void menu(DirectorMiniMenu.ContentMenu menu) { heard(false); actor.menu(menu); }
     @Override public void page(List<String> lines) { heard(false); actor.page(lines); }
     @Override public ChatLine line(String message) { return actor.line(message); }
+    @Override public CommandActor origin() { return actor.origin(); }
     @Override public boolean permitted(String node) { return actor.permitted(node); }
     @Override public Optional<UUID> player() { return actor.player(); }
     @Override public boolean reply(Runnable action) { return actor.reply(action); }

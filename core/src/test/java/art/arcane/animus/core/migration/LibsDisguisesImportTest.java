@@ -67,7 +67,7 @@ class LibsDisguisesImportTest {
             npcs.loadForStartup();
             CitizensDropIn flow = new CitizensDropIn(store, npcs, new CitizensDropIn.Host(Optional.of(plugins()), () -> false, () -> false, () -> false));
             List<String> staged = flow.preview("reject", Optional.empty(), Map.of(), false);
-            assertEquals("Next: /animus import citizens apply", staged.getLast(), String.join("\n", staged));
+            assertEquals(CitizensDropIn.NEXT_STAGED, staged.getLast(), String.join("\n", staged));
             flow.applyStaged();
             assertEquals("zombie setBaby true", disguise(npcs, "citizens-1"));
             assertEquals("horse setColor BLACK", disguise(npcs, "citizens-2"));

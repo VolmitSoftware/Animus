@@ -9,6 +9,15 @@ import java.util.Optional;
  * internals, so every other platform answers with {@link #unavailable}. Called on the actor's owner.
  */
 public interface ProofControl {
+    String NOT_ON_FOLIA = "Not on Folia; use /animus proof folia";
+    String FOLIA_ONLY = "Only on Folia; on this server use /animus proof spawn";
+    String MOD_SERVER = "Packet previews need Paper, Spigot or Folia";
+
+    /** Why the packet previews of {@code /animus proof} do not run on this platform; empty where they do. */
+    default Optional<String> packetsMissing() { return Optional.empty(); }
+    /** Why the stationary preview of {@code /animus proof folia} does not run on this platform; empty where it does. */
+    default Optional<String> foliaMissing() { return Optional.empty(); }
+
     void status(CommandActor actor);
     void spawn(CommandActor actor, String type, Optional<String> skin);
     void move(CommandActor actor, int entity, double dx, double dy, double dz);
@@ -24,10 +33,12 @@ public interface ProofControl {
     /** The actor's preview body ids, for completing {@code entity}, {@code vehicle} and {@code riders}. */
     default List<Integer> bodies(CommandActor actor) { return List.of(); }
 
-    /** Every preview command refuses with {@code reason}. */
+    /** Every preview command refuses with {@code reason}, and help leaves them out. */
     static ProofControl unavailable(String reason) {
         String refusal = Palette.error(reason);
         return new ProofControl() {
+            @Override public Optional<String> packetsMissing() { return Optional.of(reason); }
+            @Override public Optional<String> foliaMissing() { return Optional.of(reason); }
             @Override public void status(CommandActor actor) { actor.tell(refusal); }
             @Override public void spawn(CommandActor actor, String type, Optional<String> skin) { actor.tell(refusal); }
             @Override public void move(CommandActor actor, int entity, double dx, double dy, double dz) { actor.tell(refusal); }

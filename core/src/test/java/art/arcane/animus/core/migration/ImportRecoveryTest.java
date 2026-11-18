@@ -127,7 +127,8 @@ class ImportRecoveryTest {
             Files.writeString(store.resolve("shops/dtltraders/bakery.json"), shop.replace("Bakery", "Edited bakery"));
 
             String stopped = String.join("\n", dropIn(store, npcs).rollbackApplied());
-            assertTrue(stopped.contains("rollback again"), stopped);
+            assertTrue(stopped.contains("Rollback stopped: shops/dtltraders/bakery.json was edited by hand after the import")
+                    && stopped.endsWith("Next: put that edit back, then /animus import citizens rollback"), stopped);
             assertEquals(applied, transactions(store), "nothing was undone, so both stay listed");
             assertFalse(Files.exists(store.resolve("schematics/hut.schem")), "cleanup runs even when a transaction conflicts");
             assertEquals(2, npcs.all().size());

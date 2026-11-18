@@ -116,7 +116,17 @@ public final class AnimusCommandTree extends CommandGroup {
      */
     public AnimusDirector director() {
         return new AnimusDirector(this, this::values, services == null ? (String plugin) -> true : services.plugins(),
+                services == null ? AnimusDirector.EVERY_FEATURE : this::lacking,
                 (UUID player) -> services == null || services.mode(player) == ToolkitMode.SIMPLE, this::changes);
+    }
+
+    /** Why this platform lacks a {@link NeedsFeature} feature, as its services say; empty where it has it. */
+    private java.util.Optional<String> lacking(NeedsFeature.Feature feature) {
+        return switch (feature) {
+            case PACKET_PREVIEW -> services.proof().packetsMissing();
+            case FOLIA_PREVIEW -> services.proof().foliaMissing();
+            case PLAYER_SHOPS -> services.shops().playerShopsMissing();
+        };
     }
 
     /**

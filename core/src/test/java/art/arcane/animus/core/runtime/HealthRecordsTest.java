@@ -27,10 +27,10 @@ class HealthRecordsTest {
             store.commit(List.of(new DocumentStore.Change("npcs/town/ghost.json", "missing", JSON)));
             NpcRepository repository = new NpcRepository(store);
             repository.loadForStartup();
-            HealthRecords.Recorded recorded = HealthRecords.markDead(repository, GHOST).orElseThrow();
+            HealthRecords.Recorded recorded = HealthRecords.markDead(repository, store, GHOST).orElseThrow();
             assertEquals("ghost", recorded.id());
             assertEquals("NPC ghost died for good; /animus npc revive ghost brings it back; tx " + recorded.transaction(), recorded.deathNotice());
-            assertTrue(HealthRecords.markDead(repository, GHOST).isEmpty(), "Marked once");
+            assertTrue(HealthRecords.markDead(repository, store, GHOST).isEmpty(), "Marked once");
             NpcRepository restarted = new NpcRepository(store);
             restarted.loadForStartup();
             NpcDefinition dead = restarted.find("ghost").orElseThrow();

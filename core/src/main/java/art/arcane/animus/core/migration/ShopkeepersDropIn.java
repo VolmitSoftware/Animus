@@ -70,8 +70,8 @@ final class ShopkeepersDropIn {
         return state.has("shopkeepers") && state.get("shopkeepers").isJsonObject() ? Optional.of(state.getAsJsonObject("shopkeepers")) : Optional.empty();
     }
 
-    /** Stages the save into {@code state.shopkeepers} and returns the lines to show. Links are checked against the Citizens save when one is given. */
-    static List<String> stage(DocumentStore store, Found found, Optional<Path> citizens, JsonObject state) throws IOException {
+    /** Stages the save into {@code state.shopkeepers} and returns what to show. Links are checked against the Citizens save when one is given. */
+    static CitizensDropIn.Staged stage(DocumentStore store, Found found, Optional<Path> citizens, JsonObject state) throws IOException {
         StableSource.Read source = StableSource.read(found.save().path(), found.save().label());
         ShopkeepersImporter.Preview preview = new ShopkeepersImporter().preview(found.save().path(), found.config(), citizens, store);
         if (!preview.summary().get("sourceSha256").getAsString().equals(source.sha256()))
@@ -92,7 +92,11 @@ final class ShopkeepersDropIn {
                 + preview.npcs() + " new mob NPCs; " + preview.issues() + " issues");
         lines.add("Shopkeepers Citizens links: " + links.get("inCitizensSave").getAsInt() + " found, " + links.get("notInCitizensSave").getAsInt() + " not found, "
                 + links.get("unchecked").getAsInt() + " unchecked; report " + part.get("report").getAsString());
-        return lines;
+        int missing = links.get("notInCitizensSave").getAsInt();
+        String summary = "Shopkeepers: " + CitizensDropIn.count(preview.shops(), "shop") + ", " + CitizensDropIn.count(offers.get("trade").getAsInt(), "trading offer")
+                + ", " + CitizensDropIn.count(preview.npcs(), "new mob NPC") + ", " + CitizensDropIn.count(preview.issues(), "issue")
+                + (missing > 0 ? "; " + CitizensDropIn.count(missing, "Citizens link", "Citizens links") + " not found" : "");
+        return new CitizensDropIn.Staged(summary, lines);
     }
 
     /** Applies a staged save, binding every Citizens shopkeeper whose NPC is installed. Its transaction goes through {@code journal}. */

@@ -127,7 +127,7 @@ final class PlayerShopFlow<P, S> {
             case GIVEN -> toolkit.say(player, ChatLine.success("Shop item given; sneak and right-click your chest with it"));
             case MOVED -> toolkit.say(player, ChatLine.success("The shop item is in your hand; sneak and right-click your chest with it"));
             case DROPPED -> toolkit.say(player, ChatLine.success("Inventory full; the shop item is at your feet"));
-            case NONE -> toolkit.refuse(player, ScreenHost.NO_CONTAINER_SHOPS);
+            case NONE -> toolkit.refuse(player, ScreenHost.NO_PLAYER_SHOPS);
         }
     }
 

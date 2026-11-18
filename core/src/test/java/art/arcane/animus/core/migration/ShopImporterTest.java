@@ -222,10 +222,26 @@ class ShopImporterTest {
         }
     }
 
-    @Test void aFolderWithoutShopsIsRefused() {
-        assertThrows(java.io.IOException.class, () -> {
-            try (DocumentStore store = new DocumentStore(folder.resolve("animus"))) { new ShopImporter().preview(folder, Optional.empty(), store); }
+    @Test void aFolderWithoutShopsIsRefusedByItsNameWithoutTheServerPath() throws Exception {
+        Path empty = Files.createDirectories(folder.resolve("dock-shops"));
+        java.io.IOException refused = assertThrows(java.io.IOException.class, () -> {
+            try (DocumentStore store = new DocumentStore(folder.resolve("animus"))) { new ShopImporter().preview(empty, Optional.empty(), store); }
         });
+        assertEquals("dock-shops is not a dtlTraders folder: it has no guis.yml and no shops/ folder", refused.getMessage());
+    }
+
+    /** A Shopkeepers save in the inbox is not a dtlTraders folder; the refusal names the command that imports it. */
+    @Test void aShopkeepersSavePointsToTheCitizensImport() throws Exception {
+        for (String save : List.of("save.yml", "data/save.yml")) {
+            Path shops = Files.createDirectories(folder.resolve("dock-" + save.length()));
+            Files.createDirectories(shops.resolve(save).getParent());
+            Files.writeString(shops.resolve(save), "data-version: 4\n");
+            java.io.IOException refused = assertThrows(java.io.IOException.class, () -> {
+                try (DocumentStore store = new DocumentStore(folder.resolve("animus"))) { new ShopImporter().preview(shops, Optional.empty(), store); }
+            });
+            assertEquals(shops.getFileName() + " holds a Shopkeepers save; Shopkeepers shops import with /animus import citizens preview, which reads plugins/Shopkeepers/data/save.yml or imports/shopkeepers/save.yml",
+                    refused.getMessage());
+        }
     }
 
     @Test void everySourceFieldIsClassified() throws Exception {

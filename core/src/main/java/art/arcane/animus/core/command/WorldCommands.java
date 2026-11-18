@@ -126,6 +126,8 @@ final class WorldCommands {
                  @Param(name = "ride", description = "Another NPC's id, an entity UUID, or an entity type such as minecraft:horse") String vehicle,
                  @Param(name = "range", defaultValue = "", description = "With an entity type: how far from the NPC to look, 1-32 blocks; 8 by default") String range) {
             CommandActor actor = actor();
+            java.util.Optional<String> refused = MountSetting.refused(vehicle, living().mobRidingMissing());
+            if (refused.isPresent()) { actor.tell(Palette.error(refused.get())); return; }
             npc(actor, npc).ifPresent((String id) -> files(actor, () -> {
                 String line = MountSetting.set(runtime().npcs(), id, vehicle, range);
                 living().refresh();

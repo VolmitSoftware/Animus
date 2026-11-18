@@ -63,6 +63,8 @@ abstract class ToolkitHarness {
     boolean recording;
     Toolkit<Player, Stack> toolkit;
     FakeNpcRuntime<Player> living;
+    /** Why NPCs cannot ride mobs here; empty where they can. */
+    Optional<String> mobRiding = Optional.empty();
     /** The running behavior runs the command layer reports; none unless a test sets them. */
     Toolkit.Runs runs = (String npc) -> CompletableFuture.completedFuture(List.of());
     /** How the shop screens write prices: an economy that calls its money Coins, unless a test takes it away. */
@@ -96,6 +98,7 @@ abstract class ToolkitHarness {
             @Override public boolean highlight(UUID viewer, String id, int ticks) { glows.add(id); return true; }
             @Override public void followRoute(String id, String route) { calls.add("follow " + id + " " + route); }
             @Override public boolean stopNavigation(String id) { calls.add("stop " + id); return true; }
+            @Override public Optional<String> mobRidingMissing() { return mobRiding; }
         };
         toolkit = Toolkit.install(new Toolkit.Parts<>(() -> npcs, () -> store, manager, living, queued ? queue::add : Runnable::run,
                 (Player player) -> Optional.empty(), Optional.of((String id, art.arcane.animus.core.virtual.WorldPosition destination) -> {

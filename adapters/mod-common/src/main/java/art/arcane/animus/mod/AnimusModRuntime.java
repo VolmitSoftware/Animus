@@ -75,7 +75,7 @@ import org.slf4j.LoggerFactory;
 public final class AnimusModRuntime {
     private static final Logger LOGGER = LoggerFactory.getLogger(BuildIdentity.ID);
     /** Packet previews read Bukkit's server internals and are not part of the mod runtime. */
-    private static final ProofControl BUKKIT_ONLY = ProofControl.unavailable("Packet proof previews are available only on Bukkit and Paper servers.");
+    private static final ProofControl BUKKIT_ONLY = ProofControl.unavailable(ProofControl.MOD_SERVER);
     /** A server correction moves a player less than this far; a real teleport moves it farther. */
     private static final double CORRECTION_SQUARED = 1.0;
     private final Platform platform;
@@ -238,6 +238,7 @@ public final class AnimusModRuntime {
             next.skins = art.arcane.animus.core.skin.SkinService.start(next.runtime, files, next.living::refresh, art.arcane.animus.core.skin.SkinService::unfilled, LOGGER::info);
             TriggerDispatcher triggers = next.behaviors.triggers();
             ServerTriggerDispatcher servers = next.behaviors.servers();
+            if (triggers != null) triggers.sensing(TriggerDispatcher.NO_SENSING);
             if (triggers != null) next.ticks.every(new art.arcane.animus.core.behavior.trigger.TriggerLink(triggers, servers, next.living, LOGGER::info));
             NpcRepository definitions = next.runtime.npcs();
             PersistedNpcService<ServerPlayer, ItemStack> npcs = next.living;

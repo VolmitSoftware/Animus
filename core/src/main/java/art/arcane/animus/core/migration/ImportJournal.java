@@ -8,6 +8,7 @@ import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -64,6 +65,8 @@ final class ImportJournal {
         JsonObject undoing = state.has(UNDOING) && state.get(UNDOING).isJsonObject() ? state.getAsJsonObject(UNDOING) : new JsonObject();
         String inverse = undoing.has(transaction) ? undoing.get(transaction).getAsString() : null;
         if (inverse == null || !committed(inverse)) {
+            Optional<DocumentStore.Blocked> blocked = store.blocked(transaction);
+            if (blocked.isPresent()) throw new Blocked(blocked.get());
             if (inverse == null) {
                 inverse = UUID.randomUUID().toString();
                 undoing.addProperty(transaction, inverse);
@@ -85,6 +88,12 @@ final class ImportJournal {
         if (undoing.isEmpty()) state.remove(UNDOING);
         write(state);
         return inverse;
+    }
+
+    /** An undo refused before anything was written: a document the transaction wrote changed since. */
+    static final class Blocked extends IOException {
+        final DocumentStore.Blocked blocked;
+        Blocked(DocumentStore.Blocked blocked) { super("Conflict: " + blocked.path() + " changed since"); this.blocked = blocked; }
     }
 
     /** True when the transaction committed: its rollback receipt exists. A listed id without one never landed. */

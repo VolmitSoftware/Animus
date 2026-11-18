@@ -61,7 +61,7 @@ public final class ShopImporter {
 
     /** Stages a preview; the same sources give the same id and reuse the staged preview. */
     public Preview preview(Path folder, Optional<Path> saves, DocumentStore store) throws IOException {
-        if (!Files.isDirectory(folder, LinkOption.NOFOLLOW_LINKS)) throw new IOException("Not a dtlTraders data folder: " + folder);
+        if (!Files.isDirectory(folder, LinkOption.NOFOLLOW_LINKS)) throw new IOException(folder.getFileName() + " is not a folder");
         Map<String, Path> sources = sources(folder);
         StringBuilder identity = new StringBuilder("animus-dtltraders-v" + VERSION + "\n");
         for (Map.Entry<String, Path> source : sources.entrySet()) identity.append(source.getKey()).append('=').append(hash(source.getValue())).append('\n');
@@ -734,7 +734,12 @@ public final class ShopImporter {
                 }
             }
         }
-        if (sources.keySet().stream().noneMatch((String name) -> name.equals("guis.yml") || name.startsWith("shops/"))) throw new IOException("No shops/<name>/<name>.yml or guis.yml in " + folder);
+        if (sources.keySet().stream().noneMatch((String name) -> name.equals("guis.yml") || name.startsWith("shops/"))) {
+            for (String save : List.of("save.yml", "data/save.yml"))
+                if (Files.isRegularFile(folder.resolve(save), LinkOption.NOFOLLOW_LINKS))
+                    throw new IOException(folder.getFileName() + " holds a Shopkeepers save; Shopkeepers shops import with /animus import citizens preview, which reads plugins/Shopkeepers/data/save.yml or imports/shopkeepers/save.yml");
+            throw new IOException(folder.getFileName() + " is not a dtlTraders folder: it has no guis.yml and no shops/ folder");
+        }
         return sources;
     }
 
