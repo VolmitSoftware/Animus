@@ -496,10 +496,10 @@ List<(String, String)> capabilityProblems(String id, JsonMap a) {
   void flagPlayer() {
     player();
     final String scope = text('scope') ?? 'player';
-    if (a.containsKey('player') && scope != 'player' && scope != 'relationship') add('player', 'Player names whose flag it is, so Scope must be player or relationship.');
+    if (a.containsKey('player') && scope != 'player' && scope != 'relationship') add('player', 'Player names whose flag it is, so Scope must be Each player or NPC and player.');
     if (!a.containsKey('npc')) return;
     npc();
-    if (scope != 'npc' && scope != 'relationship') add('npc', 'NPC names whose flag it is, so Scope must be npc or relationship.');
+    if (scope != 'npc' && scope != 'relationship') add('npc', 'NPC names whose flag it is, so Scope must be This NPC or NPC and player.');
   }
 
   void quest() {

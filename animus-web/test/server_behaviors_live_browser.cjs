@@ -142,7 +142,7 @@ async function run(browser, viewport, label, theme) {
   const read = page.locator('[data-testid="behavior-read"]');
   // Both parts read alike: each is a heading saying how often it runs.
   await read.getByRole('heading', {name: 'Every 6 seconds'}).waitFor();
-  await read.getByRole('heading', {name: /^Every second\b/}).waitFor();
+  await read.getByRole('heading', {name: /^Starts every second\b/}).waitFor();
   assert.equal(await read.getByText(/delta time/i).count(), 0, `${label}: no Denizen event names in Simple`);
   const edit = page.locator('[data-testid="edit-in-advanced"]');
   assert.notEqual(await edit.getAttribute('data-action-slot'), 'primary', `${label}: Edit in Advanced is not the page's primary`);

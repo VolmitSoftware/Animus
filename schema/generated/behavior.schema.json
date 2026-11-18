@@ -6268,7 +6268,7 @@
     },
     "node-call": {
       "type": "object",
-      "description": "Runs another routine of this document, optionally for another player or NPC.",
+      "description": "Runs another routine of this behavior, optionally for another player or NPC.",
       "additionalProperties": false,
       "properties": {
         "type": {
@@ -6276,7 +6276,7 @@
         },
         "routine": {
           "$ref": "#/$defs/identifier",
-          "description": "A routine of this document."
+          "description": "A routine of this behavior."
         },
         "arguments": {
           "type": "object",
@@ -6358,7 +6358,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "enum": [
@@ -7170,7 +7170,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "interaction"
@@ -7231,7 +7231,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "proximity"
@@ -7280,7 +7280,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "spawn"
@@ -7308,7 +7308,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "despawn"
@@ -7336,7 +7336,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "damage"
@@ -7364,7 +7364,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "death"
@@ -7392,7 +7392,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "waypoint"
@@ -7426,7 +7426,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "timer"
@@ -7461,7 +7461,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "dialogue_choice"
@@ -7498,7 +7498,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "module"
@@ -7532,7 +7532,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "build_finished"
@@ -7560,7 +7560,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "build_paused"
@@ -7588,7 +7588,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "animation_finished"
@@ -7621,7 +7621,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "entity_proximity"
@@ -7695,7 +7695,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "entity_collide"
@@ -7762,7 +7762,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "hit_by_projectile"
@@ -7826,7 +7826,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "item_dropped"
@@ -7901,7 +7901,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "vehicle_bump"
@@ -7960,7 +7960,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "leash_tie"
@@ -8019,7 +8019,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "leash_pass"
@@ -8085,7 +8085,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "npc_proximity"
@@ -8139,7 +8139,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "npc_speech"
@@ -8191,7 +8191,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_join"
@@ -8223,7 +8223,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_quit"
@@ -8251,7 +8251,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_chat"
@@ -8285,7 +8285,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "command"
@@ -8346,7 +8346,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "server_start"
@@ -8374,7 +8374,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_death"
@@ -8402,7 +8402,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_respawn"
@@ -8430,7 +8430,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_world_change"
@@ -8470,7 +8470,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_area"
@@ -8540,7 +8540,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_inventory_open"
@@ -8579,7 +8579,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_inventory_close"
@@ -8612,7 +8612,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_inventory_click"
@@ -8661,7 +8661,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_item_drop"
@@ -8700,7 +8700,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_item_pickup"
@@ -8739,7 +8739,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_item_consume"
@@ -8778,7 +8778,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_block_click"
@@ -8822,7 +8822,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_block_place"
@@ -8861,7 +8861,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_block_break"
@@ -8900,7 +8900,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_damaged"
@@ -8944,7 +8944,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_damage_entity"
@@ -8983,7 +8983,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_kill"
@@ -9016,7 +9016,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "projectile_launch"
@@ -9060,7 +9060,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "projectile_hit"
@@ -9114,7 +9114,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "entity_shoot_bow"
@@ -9163,7 +9163,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "quest_started"
@@ -9196,7 +9196,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "quest_stage"
@@ -9229,7 +9229,7 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "quest_completed"

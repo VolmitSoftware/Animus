@@ -1,64 +1,34 @@
 /// The Behaviors page: every behavior of the workspace in one list (plain
 /// names, what starts each one, conversations and the rest as filters),
-/// and New behavior, which asks for a name and a kind in a dialog and opens
-/// the new behavior.
+/// and New behavior, the New dialog for behaviors: what it starts from (a
+/// conversation, a template, blank or, in Advanced, a server behavior), its
+/// name and folder, then the new behavior opens.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 
-import '../../logic/conversation/conversation_edit.dart' show newConversationBehavior;
 import '../../logic/conversation/conversation_json.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/behavior_words.dart';
-import '../../logic/offline/new_documents.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
-import '../../services/browser.dart';
 import '../../state/editor_store.dart';
 import '../../state/library.dart';
 import '../../state/workspace_repository.dart';
 import '../../state/workspace_route.dart';
 import '../../ui/action_row.dart';
-import '../../ui/dialog.dart';
-import '../../ui/field.dart';
 import '../../ui/library_list.dart';
 import '../../ui/library_query.dart';
 import '../../ui/library_rows.dart';
 import '../../ui/mode.dart';
 import '../../ui/page_header.dart';
 import '../list_page.dart' show SubKindTabs;
+import '../offline/new_document_page.dart';
 import '../shell_sidebar.dart' show jobOfKind;
 
 const LibraryFilter conversationsFilter = LibraryFilter('conversation', 'Conversations');
 const LibraryFilter otherBehaviorsFilter = LibraryFilter('other', 'Other');
-
-/// What New behavior makes.
-enum NewBehaviorKind {
-  conversation('Conversation', 'Lines and answers. Starts on a click.'),
-  blank('Blank behavior', 'No steps yet. You add them in Advanced.'),
-  server('Server behavior', 'Runs on the server with no NPC.');
-
-  const NewBehaviorKind(this.label, this.line);
-
-  final String label;
-  final String line;
-}
-
-/// The behavior New behavior writes for [kind] under [id].
-JsonMap newBehavior(NewBehaviorKind kind, String id) => switch (kind) {
-      NewBehaviorKind.conversation => newConversationBehavior(id),
-      NewBehaviorKind.blank || NewBehaviorKind.server => <String, Object?>{
-          'schemaVersion': 1,
-          'revision': 1,
-          'id': id,
-          if (kind == NewBehaviorKind.server) 'server': true,
-          'entry': 'main',
-          'routines': <String, Object?>{
-            'main': <String, Object?>{'type': 'sequence', 'steps': <Object?>[]},
-          },
-        },
-    };
 
 /// Whether a behavior reads as a conversation: the whole document when it
 /// is here, else its catalog summary (it answers dialogue choices). Read
@@ -120,73 +90,11 @@ class BehaviorListPage extends StatefulWidget {
 }
 
 class _BehaviorListPageState extends State<BehaviorListPage> {
-  static const String _nameId = 'new-behavior-name';
-
   bool _open = false;
-  NewBehaviorKind _kind = NewBehaviorKind.conversation;
-  String _name = '';
-  String? _problem;
-  bool _busy = false;
 
-  void _start() {
-    setState(() {
-      _open = true;
-      _kind = NewBehaviorKind.conversation;
-      _name = '';
-      _problem = null;
-    });
-    focusWhenShown(_nameId);
-  }
+  void _start() => setState(() => _open = true);
 
   void _close() => setState(() => _open = false);
-
-  Set<String> get _taken => <String>{for (final LibraryEntry entry in component.store.library(DocumentKind.behavior)) entry.id};
-
-  /// The id the typed name gets: the workspace's usual folder and the name
-  /// as a slug, numbered when taken.
-  String _idFor(String name) {
-    final String namespace = defaultNamespace(
-      <String>[for (final AnimusDocument document in component.workspace.documents) document.id],
-      component.workspace.name,
-      server: component.workspace.server != null,
-    );
-    return freeId('$namespace:${slug(name, fallback: 'behavior')}', _taken);
-  }
-
-  Future<void> _create() async {
-    if (_busy) return;
-    if (_name.trim().isEmpty) {
-      setState(() => _problem = 'Give it a name.');
-      return;
-    }
-    final String id = _idFor(_name.trim());
-    if (!validDocumentId(DocumentKind.behavior, id)) {
-      setState(() => _problem = 'Use letters, digits and dashes.');
-      return;
-    }
-    setState(() => _busy = true);
-    final EditorStore store = component.store;
-    final AnimusDocument? listed = store.document(DocumentKind.serverBehaviors, DocumentKind.serverBehaviorsId);
-    await store.commit(
-      documents: <DocumentChange>[
-        DocumentChange(DocumentKind.behavior, id, prettyJson(newBehavior(_kind, id)), path: newDocumentPath(DocumentKind.behavior, id)),
-        if (_kind == NewBehaviorKind.server && listed != null)
-          DocumentChange.update(DocumentKind.serverBehaviors, listed.id, (Object? latest) {
-            final JsonMap json = asMap(latest);
-            return <String, Object?>{...json, 'behaviors': <Object?>[...asList(json['behaviors']), id]};
-          }),
-      ],
-      label: 'create $id',
-    );
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (store.document(DocumentKind.behavior, id) == null) {
-      setState(() => _problem = store.problem ?? 'Not created: the workspace changed. Press Create again.');
-      return;
-    }
-    _close();
-    component.onNavigate(DocumentRoute(component.workspace.id, DocumentKind.behavior, id, _kind == NewBehaviorKind.conversation ? ViewMode.conversation : ViewMode.visual));
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -217,45 +125,16 @@ class _BehaviorListPageState extends State<BehaviorListPage> {
         emptyMessage: 'No behaviors yet.',
         emptyAction: Button.primary(label: 'New behavior', onPressed: _start),
       ),
-      if (_open) _dialog(advanced),
+      if (_open)
+        NewDocumentPage(
+          key: const ValueKey<String>('new:behavior'),
+          store: component.store,
+          workspace: workspace,
+          kind: DocumentKind.behavior,
+          conversation: true,
+          onNavigate: component.onNavigate,
+          onClose: _close,
+        ),
     ]);
   }
-
-  Widget _dialog(bool advanced) => AppDialog(
-        open: true,
-        id: 'new-behavior',
-        title: 'New behavior',
-        onClose: _close,
-        footer: DialogFooter(cancel: RowAction('Cancel', _close), primary: RowAction('Create', _busy ? null : _create)),
-        children: <Widget>[
-          ArcaneRadioGroup<NewBehaviorKind>(
-            name: 'new-behavior-kind',
-            label: 'Kind',
-            // The plain radio list: no boxes inside the dialog.
-            variant: RadioGroupVariant.standard,
-            value: _kind,
-            options: <RadioOption<NewBehaviorKind>>[
-              for (final NewBehaviorKind kind in NewBehaviorKind.values)
-                if (advanced || kind != NewBehaviorKind.server) RadioOption<NewBehaviorKind>(value: kind, label: kind.label, description: kind.line),
-            ],
-            onChanged: (NewBehaviorKind kind) => setState(() => _kind = kind),
-          ),
-          Field(
-            label: 'Name',
-            forId: _nameId,
-            required: true,
-            error: _problem,
-            hint: advanced && _name.trim().isNotEmpty ? _idFor(_name.trim()) : null,
-            child: TextInput(
-              id: _nameId,
-              value: _name,
-              onChanged: (String value) => setState(() {
-                _name = value;
-                _problem = null;
-              }),
-              onSubmitted: (String _) => _create(),
-            ),
-          ),
-        ],
-      );
 }

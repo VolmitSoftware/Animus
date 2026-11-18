@@ -87,6 +87,35 @@ String defaultNamespace(Iterable<String> ids, String workspace, {bool server = f
   return server ? 'local' : slug(workspace, fallback: 'local');
 }
 
+/// Kinds whose id is `namespace:name`: New asks for the namespace as a
+/// folder.
+bool namespacedKind(DocumentKind kind) => !const <DocumentKind>{
+      DocumentKind.npc,
+      DocumentKind.route,
+      DocumentKind.recording,
+      DocumentKind.pack,
+      DocumentKind.group,
+      DocumentKind.animation,
+      DocumentKind.skin,
+      DocumentKind.presets,
+      DocumentKind.serverBehaviors,
+    }.contains(kind);
+
+/// The namespaces (folders) [ids] use, in order: `town` in `town:guard`
+/// and in the NPC folder of `town/baker`.
+List<String> workspaceNamespaces(Iterable<String> ids) {
+  final Set<String> found = <String>{};
+  for (final String id in ids) {
+    final RegExpMatch? match = RegExp(r'^([a-z0-9_.-]+)[:/]').firstMatch(id);
+    if (match != null) found.add(match.group(1)!);
+  }
+  return found.toList()..sort();
+}
+
+/// A free namespaced id for [name] in [namespace] (`local` when empty).
+String newIdIn(String namespace, String name, Set<String> taken, {String fallback = 'behavior'}) =>
+    freeId('${slug(namespace, fallback: 'local')}:${slug(name, fallback: fallback)}', taken);
+
 /// [base], or `base-2`, `base-3`... when [taken] has it.
 String freeId(String base, Set<String> taken) {
   if (!taken.contains(base)) return base;
@@ -209,21 +238,39 @@ JsonMap newNpc(NpcSeed seed, {required String uuid}) {
 
 // --- behaviors ---------------------------------------------------------------
 
-/// Behavior templates the New page offers, from the example packs.
+/// What New behavior starts from: a conversation, the templates from the
+/// example packs, an empty behavior, or (Advanced) a server behavior.
 enum BehaviorTemplate {
+  conversation('Conversation', 'Lines and answers'),
   greeter('Greeter', 'Greets on click, waves nearby'),
-  conversation('Conversation', 'Lines and answers, edited as a tree'),
-  dialogue('Dialogue', 'A question with answers'),
+  question('Question', 'Asks a question with answers'),
   patrol('Patrol', 'Walks a square on a timer'),
   shop('Shop', 'Opens a shop on click'),
   guard('Guard', 'Challenges strangers, calls for help'),
-  quest('Quest', 'A delivery quest');
+  quest('Quest', 'A delivery quest'),
+  blank('Blank', 'No steps yet; add them in Advanced'),
+  server('Server behavior', 'Runs on the server with no NPC', advancedOnly: true);
 
-  const BehaviorTemplate(this.label, this.description);
+  const BehaviorTemplate(this.label, this.description, {this.advancedOnly = false});
 
   final String label;
   final String description;
+
+  /// Offered in Advanced only.
+  final bool advancedOnly;
 }
+
+/// The templates an NPC's New behavior offers: those that do something
+/// on an NPC.
+const List<BehaviorTemplate> npcTemplates = <BehaviorTemplate>[
+  BehaviorTemplate.conversation,
+  BehaviorTemplate.greeter,
+  BehaviorTemplate.question,
+  BehaviorTemplate.patrol,
+  BehaviorTemplate.shop,
+  BehaviorTemplate.guard,
+  BehaviorTemplate.quest,
+];
 
 JsonMap _action(String capability, Map<String, Object?> arguments) =>
     <String, Object?>{'type': 'action', 'capability': capability, 'arguments': arguments};
@@ -253,6 +300,17 @@ JsonMap behaviorFromTemplate(BehaviorTemplate template, String id, {String? shop
   switch (template) {
     case BehaviorTemplate.conversation:
       return newConversationBehavior(id);
+    case BehaviorTemplate.blank || BehaviorTemplate.server:
+      return <String, Object?>{
+        'schemaVersion': 1,
+        'revision': 1,
+        'id': id,
+        if (template == BehaviorTemplate.server) 'server': true,
+        'entry': 'main',
+        'routines': <String, Object?>{
+          'main': <String, Object?>{'type': 'sequence', 'steps': <Object?>[]},
+        },
+      };
     case BehaviorTemplate.greeter:
       routines = <String, Object?>{
         'main': _sequence(<JsonMap>[
@@ -278,7 +336,7 @@ JsonMap behaviorFromTemplate(BehaviorTemplate template, String id, {String? shop
         <String, Object?>{'id': 'click', 'event': 'interaction', 'cooldownTicks': 40},
         <String, Object?>{'id': 'near', 'event': 'proximity', 'phase': 'enter', 'radius': 6, 'routine': 'wave', 'cooldownTicks': 200},
       ];
-    case BehaviorTemplate.dialogue:
+    case BehaviorTemplate.question:
       routines = <String, Object?>{
         'main': _sequence(<JsonMap>[
           _lookAtPlayer(),

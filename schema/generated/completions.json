@@ -341,7 +341,7 @@
           "maxLength": 36
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "money"
         ],
@@ -399,7 +399,7 @@
           "maxLength": 36
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "item"
         ],
@@ -449,7 +449,7 @@
           "maxLength": 36
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "money"
         ],
@@ -788,7 +788,7 @@
           "maxLength": 36
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "item"
         ],
@@ -1058,7 +1058,7 @@
           "maximum": 1000000.0
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "spawned"
         ],
@@ -1387,7 +1387,7 @@
           "maximum": 1000000000000
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "equals"
         ],
@@ -1571,7 +1571,7 @@
           "required": false
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "name"
         ],
@@ -1607,7 +1607,7 @@
           "required": false
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "value"
         ],
@@ -2099,7 +2099,7 @@
           "maxLength": 36
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "title"
         ],
@@ -2128,7 +2128,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -2198,7 +2198,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -2252,7 +2252,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -2283,7 +2283,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -2322,7 +2322,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -2359,7 +2359,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -2390,7 +2390,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -2428,7 +2428,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -2466,7 +2466,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -2507,7 +2507,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -2544,7 +2544,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -2575,7 +2575,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -2606,7 +2606,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -2659,7 +2659,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -2759,7 +2759,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -2857,7 +2857,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -2953,7 +2953,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -3057,7 +3057,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -3143,7 +3143,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -3229,7 +3229,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -3318,7 +3318,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -3386,7 +3386,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -3448,7 +3448,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -3484,7 +3484,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -3519,7 +3519,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -3567,7 +3567,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -3629,7 +3629,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -3664,7 +3664,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -3695,7 +3695,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -3732,7 +3732,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -3787,7 +3787,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -3857,7 +3857,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -3909,7 +3909,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -3956,7 +3956,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -4018,7 +4018,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -4068,7 +4068,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -4118,7 +4118,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -4180,7 +4180,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -4244,7 +4244,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -4302,7 +4302,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -4354,7 +4354,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -4414,7 +4414,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -4464,7 +4464,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -4521,7 +4521,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -4597,7 +4597,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -4685,7 +4685,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -4749,7 +4749,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -4794,7 +4794,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -4839,7 +4839,7 @@
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -5076,12 +5076,12 @@
         }
       },
       "call": {
-        "description": "Runs another routine of this document, optionally for another player or NPC.",
+        "description": "Runs another routine of this behavior, optionally for another player or NPC.",
         "fields": {
           "routine": {
             "type": "routine",
             "required": true,
-            "description": "A routine of this document."
+            "description": "A routine of this behavior."
           },
           "arguments": {
             "type": "arguments",

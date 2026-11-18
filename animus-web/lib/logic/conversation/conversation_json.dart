@@ -10,6 +10,7 @@
 library;
 
 import '../gui/gui_json.dart';
+import '../inspect/behavior_words.dart' show triggerSentence;
 import 'conversation_model.dart';
 
 sealed class ConversationRead {
@@ -104,7 +105,7 @@ class _Reader {
             entry = routine;
           }
         default:
-          throw _Misfit('$path.event', 'Starts on ${trigger['event']}.');
+          throw _Misfit('$path.event', '${triggerSentence(trigger)}.');
       }
     }
     final Map<String, StepList> blocks = <String, StepList>{
@@ -119,12 +120,12 @@ class _Reader {
 
   ConversationStart _start(JsonMap trigger, String path, JsonMap routines) {
     if (trigger['event'] == 'proximity') {
-      if (trigger['phase'] != 'enter') throw _Misfit('$path.phase', 'Starts on leaving.');
+      if (trigger['phase'] != 'enter') throw _Misfit('$path.phase', '${triggerSentence(trigger)}.');
       return ConversationStart(ConversationStartKind.proximity, radius: trigger['radius'] is num ? trigger['radius']! as num : 6, trigger: trigger);
     }
     final String action = asString(trigger['action']) ?? 'interact';
     final ConversationStartKind? kind = ConversationStartKind.values.where((ConversationStartKind kind) => kind.action == action).firstOrNull;
-    if (kind == null) throw _Misfit('$path.action', 'Starts on $action.');
+    if (kind == null) throw _Misfit('$path.action', '${triggerSentence(trigger)}.');
     if (kind == ConversationStartKind.sneakClick && (trigger['consume'] == null || trigger['consume'] == 'true')) return ConversationStart(kind, trigger: trigger);
     if (kind != ConversationStartKind.click) {
       if (trigger.containsKey('consume')) throw _Misfit('$path.consume', 'Claims clicks.');

@@ -20,6 +20,7 @@ class CapabilitySpec {
     required this.reason,
     required this.arguments,
     this.oneOfRequired = const <List<String>>[],
+    this.anyOfRequired = const <List<String>>[],
     this.reach = 'both',
   });
 
@@ -35,8 +36,12 @@ class CapabilitySpec {
   final String reason;
   final List<FieldSpec> arguments;
 
-  /// Groups of arguments of which one group must be given whole.
+  /// Groups of arguments of which exactly one must be given whole: the
+  /// editor offers them as one choice.
   final List<List<String>> oneOfRequired;
+
+  /// Groups of arguments of which at least one must be given whole.
+  final List<List<String>> anyOfRequired;
 
   /// `npc` when it needs an NPC body, so a server behavior cannot run it;
   /// otherwise `both`.
@@ -52,14 +57,15 @@ class CapabilitySpec {
 const String offlineCatalogReason = 'platform-unavailable: offline validation has no server';
 
 /// A capability as a picker option: its name in words, the module that
-/// adds it when that is not Animus, then whether it is unavailable (offline,
-/// or not on this server) and privileged. The id itself is in the field's tip.
+/// adds it when that is not Animus, then whether the paired server lacks it
+/// and whether it is privileged. The id itself is in the field's tip.
 String capabilityChoiceLabel(CapabilitySpec spec) {
   final int colon = spec.id.indexOf(':');
   final String namespace = colon < 0 ? '' : spec.id.substring(0, colon);
   final List<String> notes = <String>[
     if (namespace.isNotEmpty && namespace != 'animus') namespace,
-    if (!spec.available) spec.reason == offlineCatalogReason ? 'unavailable offline' : 'not on this server',
+    // Offline nothing is known about the server, so nothing is said.
+    if (!spec.available && spec.reason != offlineCatalogReason) 'not on this server',
     if (spec.privileged) 'privileged',
   ];
   final String words = actionLabel(spec.id);
@@ -139,9 +145,8 @@ class CompletionCatalog {
               available: raw['available'] != false,
               reason: asString(raw['reason']) ?? 'available',
               arguments: _fields(raw['arguments']),
-              oneOfRequired: <List<String>>[
-                for (final Object? group in asList(raw['oneOfRequired'])) <String>[for (final Object? key in asList(group)) if (key is String) key],
-              ],
+              oneOfRequired: _groups(raw['oneOfRequired']),
+              anyOfRequired: _groups(raw['anyOfRequired']),
               reach: asString(raw['reach']) ?? 'both',
             ),
       ],
@@ -207,6 +212,10 @@ class CompletionCatalog {
   /// their name in [FieldSpec.schema]'s `x-type` for the editors.
   static List<FieldSpec> _fields(Object? raw) => <FieldSpec>[
         for (final MapEntry<String, Object?> entry in asMap(raw).entries) fieldFromSpec(entry.key, asMap(entry.value)),
+      ];
+
+  static List<List<String>> _groups(Object? raw) => <List<String>>[
+        for (final Object? group in asList(raw)) <String>[for (final Object? key in asList(group)) if (key is String) key],
       ];
 }
 

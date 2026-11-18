@@ -359,7 +359,7 @@ public final class BehaviorSchemaGenerator {
             case "result" -> new Field(described(reference("identifier"), type == BehaviorNodeType.ACTION
                     ? "A declared variable that receives the capability's result, a map such as the items an inventory read gives."
                     : "A declared variable that receives the routine's return value."), "variable", false);
-            case "routine" -> new Field(described(reference("identifier"), "A routine of this document."), "routine", true);
+            case "routine" -> new Field(described(reference("identifier"), "A routine of this behavior."), "routine", true);
             case "player" -> new Field(described(reference("operand"), "A player UUID the routine runs for: its player facts, player flags and actions address that player."), "value", false);
             case "npc" -> new Field(described(reference("operand"), "An NPC UUID the routine runs for: its NPC facts, NPC flags and actions address that NPC."), "value", false);
             case "variable" -> new Field(described(pattern(NONBLANK), "A declared variable."), "variable", true);
@@ -490,7 +490,7 @@ public final class BehaviorSchemaGenerator {
     }
     private static Field triggerField(String name) {
         return switch (name) {
-            case "id" -> new Field(described(reference("identifier"), "Unique within this document."), "identifier", true);
+            case "id" -> new Field(described(reference("identifier"), "Unique within this behavior."), "identifier", true);
             case "event" -> new Field(described(choices(TriggerKind.names()), "What starts the run."), "event", true);
             case "routine" -> new Field(described(reference("identifier"), "Starts this routine instead of entry."), "routine", false);
             case "cooldownTicks" -> new Field(described(range("integer", 0, TriggerCompiler.MAX_COOLDOWN_TICKS), "Overrides the configured cooldown, per trigger on each NPC."), "integer", false);
@@ -613,12 +613,14 @@ public final class BehaviorSchemaGenerator {
                 for (Map.Entry<String, JsonElement> property : schema.getAsJsonObject("properties").entrySet())
                     arguments.add(property.getKey(), completion(property.getValue(), required.contains(property.getKey())));
             entry.add("arguments", arguments);
-            JsonArray alternatives = new JsonArray();
-            for (String group : List.of("anyOf", "oneOf"))
+            // oneOf groups exclude each other (an editor offers them as one choice); anyOf groups may be combined.
+            for (String group : List.of("oneOf", "anyOf")) {
+                JsonArray alternatives = new JsonArray();
                 if (schema.has(group) && schema.get(group).isJsonArray())
                     for (JsonElement option : schema.getAsJsonArray(group))
                         if (option.isJsonObject() && option.getAsJsonObject().has("required")) alternatives.add(option.getAsJsonObject().get("required").deepCopy());
-            if (!alternatives.isEmpty()) entry.add("oneOfRequired", alternatives);
+                if (!alternatives.isEmpty()) entry.add(group + "Required", alternatives);
+            }
             entries.add(entry);
         }
         root.add("capabilities", entries);

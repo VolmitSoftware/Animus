@@ -237,17 +237,23 @@ async function run(browser, viewport, tag, theme) {
   await trigger.getByLabel('Radius', {exact: true}).fill('8');
   await settle(page);
   const step = editor.locator('[data-node-path="$.routines.wave.steps[1]"]');
-  await chooseAndWait(step.getByRole('combobox', {name: 'Type of step 2'}), 'wait');
+  // The particle step's settings would go: the change asks first.
+  await choose(step.getByRole('combobox', {name: 'Type of step 2'}), 'wait');
+  const ask = page.getByRole('alertdialog');
+  await ask.getByText(/Show particle .* goes\. Undo brings it back\./).waitFor();
+  await ask.getByRole('button', {name: 'Change', exact: true}).click();
+  await ask.waitFor({state: 'detached'});
   await step.getByLabel('Ticks', {exact: true}).waitFor();
   const wave = editor.locator('[data-routine="wave"]');
-  // The part's own "Add step" is its last: a loop's steps have their own.
+  // The routine's own "Add step" is its last: a loop's steps have their own.
   // Menu buttons with an icon carry the icon's glyph in their name.
   const addStep = () => wave.getByRole('button', {name: /Add step$/}).last();
-  await pickMenu(page, addStep(), 'Run part');
+  await pickMenu(page, addStep(), 'Call routine');
   await editor.locator('[data-node-path="$.routines.wave.steps[2]"]').waitFor();
-  // The say step names its capability in words and says it is not checked offline.
+  // The say step names its capability in words, with no note offline.
   const say = editor.locator('[data-node-path="$.routines.main.steps[1].then"]');
-  await say.getByRole('combobox', {name: 'What this step does'}).filter({hasText: /^Say \(unavailable offline\)/}).waitFor();
+  await say.getByRole('combobox', {name: 'What this step does'}).filter({hasText: /^Say/}).waitFor();
+  assert.doesNotMatch(await say.getByRole('combobox', {name: 'What this step does'}).textContent(), /offline/);
   await settle(page);
   await shot(page, `${tag}-behavior-editor`);
   json = await codeOf(page);
@@ -295,8 +301,9 @@ async function run(browser, viewport, tag, theme) {
   await set.getByLabel('Value of step 6 expression').fill('len(names)');
   await settle(page);
   const greet = editor.locator('[data-node-path="$.routines.main.steps[1].else.steps[0]"]');
-  await pickMenu(page, greet.locator('[data-argument="text"]').getByRole('button', {name: 'Fill from'}), 'From a template');
-  await greet.getByLabel('Text template').fill('Hi {{ player.name }}');
+  // Text players read takes its {{ }} holes as typed and is stored as a template; Fill from offers no template for it.
+  await greet.getByLabel('Text', {exact: true}).fill('Hi {{ player.name }}');
+  await greet.getByLabel('Text', {exact: true}).press('Tab');
   await settle(page);
   await shot(page, `${tag}-behavior-v2`);
   await noOverflow(page, `${tag} behavior editor`);
@@ -320,7 +327,7 @@ async function run(browser, viewport, tag, theme) {
   await page.locator('.ui-page-header').getByText('Valid', {exact: true}).waitFor();
 
   // Keyboard: Enter on a step's header folds it and opens it again; its
-  // "..." menu moves, duplicates and deletes it in words.
+  // "..." menu moves, duplicates, copies and deletes it in words.
   await steps(page);
   const first = editor.locator('[data-node-path="$.routines.wave.steps[0]"] > details');
   await first.locator(':scope > summary').focus();
@@ -329,7 +336,7 @@ async function run(browser, viewport, tag, theme) {
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => document.querySelector('[data-node-path="$.routines.wave.steps[0]"] > details').open);
   const actions = await menuItems(page, step.getByRole('toolbar', {name: 'Step 2'}).getByRole('button', {name: 'More actions'}));
-  assert.deepEqual(actions, ['Move up', 'Move down', 'Duplicate', 'Delete']);
+  assert.deepEqual(actions, ['Move up', 'Move down', 'Duplicate', 'Copy', 'Delete']);
 
   // Test of the loop: one pass per item.
   const pane = page.locator('[data-testid="test-pane"]');

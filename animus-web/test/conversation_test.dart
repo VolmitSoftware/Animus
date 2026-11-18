@@ -92,7 +92,7 @@ void main() {
 
     test('should write a hand-written conversation back unchanged', () {
       expect(writeConversation(_read(_ferry), _ferry), _ferry);
-      for (final BehaviorTemplate template in <BehaviorTemplate>[BehaviorTemplate.dialogue, BehaviorTemplate.quest, BehaviorTemplate.conversation]) {
+      for (final BehaviorTemplate template in <BehaviorTemplate>[BehaviorTemplate.question, BehaviorTemplate.quest, BehaviorTemplate.conversation]) {
         final JsonMap behavior = behaviorFromTemplate(template, 'town:${template.name}');
         expect(writeConversation(_read(behavior), behavior), behavior, reason: template.name);
       }

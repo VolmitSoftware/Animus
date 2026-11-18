@@ -11,10 +11,12 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/action_groups.dart';
+import '../../logic/inspect/argument_choices.dart';
 import '../../logic/inspect/behavior_edit.dart';
 import '../../logic/inspect/behavior_kept.dart';
 import '../../logic/inspect/typed_values.dart';
 import '../../logic/inspect/behavior_operands.dart';
+import '../../logic/inspect/behavior_steps.dart' show stepName;
 import '../../logic/inspect/behavior_words.dart';
 import '../../logic/inspect/command_scope.dart';
 import '../../logic/inspect/completion_catalog.dart';
@@ -33,6 +35,7 @@ import '../../model/document_kind.dart';
 import '../../ui/action_row.dart';
 import '../../ui/info_tip.dart';
 import '../../ui/menu.dart';
+import '../../ui/toggle_choice.dart';
 import '../select/suggest_input.dart';
 import '../../logic/suggest/person_names.dart';
 import '../select/animus_select.dart';
@@ -76,6 +79,8 @@ class CapabilityFields extends StatelessWidget {
     final Set<String> declared = argumentKnownKeys(spec);
     final Set<String> topPointers = <String>{for (final String key in declared) argumentPointer(key)};
     final bool action = kind == 'action';
+    final List<ArgumentChoice> groups = spec == null ? const <ArgumentChoice>[] : argumentChoices(spec);
+    final int? chosen = spec == null || groups.isEmpty ? null : chosenArgumentGroup(node, spec);
     return dom.div(id: _blockId, classes: 'animus-capability', <Widget>[
       Field(
         label: action ? 'What it does' : 'What it checks',
@@ -122,9 +127,10 @@ class CapabilityFields extends StatelessWidget {
               }
               // The new required arguments start empty: they are pending,
               // with focus on the first, until the user leaves the step.
-              final FieldSpec? first = context.catalog.capability(next)?.arguments.where((FieldSpec argument) => argument.required).firstOrNull;
-              if (first != null) holdField(_blockId, focus: argumentElementId(_at(<JsonStep>['arguments', first.key])));
-              _put(changeCapability(node, next, context.catalog));
+              final JsonMap changed = changeCapability(node, next, context.catalog);
+              final String? empty = context.catalog.capability(next)?.arguments.where((FieldSpec argument) => asMap(changed['arguments'])[argument.key] == '').firstOrNull?.key;
+              if (empty != null) holdField(_blockId, focus: argumentElementId(_at(<JsonStep>['arguments', empty])));
+              context.change(steps, changed, 'change ${stepName(node)} to ${stepName(changed)}');
             },
           ),
           if (spec == null)
@@ -137,9 +143,12 @@ class CapabilityFields extends StatelessWidget {
             ),
         ]),
       ),
-      if (spec != null && spec.oneOfRequired.isNotEmpty) noteLine('Give one of: ${spec.oneOfRequired.map((List<String> group) => group.map(argumentLabel).join(' + ')).join(', or ')}.'),
+      if (spec != null && spec.anyOfRequired.isNotEmpty)
+        noteLine('Give at least one of: ${spec.anyOfRequired.map((List<String> group) => group.map(argumentLabel).join(' + ')).join(', or ')}.'),
+      if (spec != null && groups.isNotEmpty) _choice(spec, groups, chosen),
       if (spec != null)
         for (final FieldSpec argument in spec.arguments)
+          if (_shown(spec, argument, chosen, arguments))
           ArgumentField(
             key: ValueKey<String>(_at(<JsonStep>['arguments', argument.key])),
             node: node,
@@ -182,6 +191,46 @@ class CapabilityFields extends StatelessWidget {
   /// Whether [argument] is text players read or a command, where `{{ }}`
   /// holes make it a template as it is typed.
   static bool _textual(String? id, FieldSpec argument) => argument.kind == FieldKind.string && argumentProfile(id, argument.key).holes == ExpressionSyntax.behavior;
+  /// The capability's exclusive argument groups as one choice: Look at the
+  /// player or at coordinates, Navigate by route, anchor or coordinates.
+  Widget _choice(CapabilitySpec spec, List<ArgumentChoice> choices, int? chosen) {
+    final String label = argumentChoiceField(spec);
+    final List<String> keys = <String>[for (final List<String> group in spec.oneOfRequired) ...group];
+    final int picked = chosen == null ? -1 : choices.indexWhere((ArgumentChoice choice) => choice.stands(chosen));
+    final int? shown = picked < 0 ? null : picked;
+    return Field(
+      key: const ValueKey<String>('argument-choice'),
+      label: label,
+      problems: <Diagnostic>[
+        if (chosen == null) ...diagnosticsAt(context.diagnostics, _at(const <JsonStep>['arguments'])),
+        if (chosen == null)
+          for (final String key in keys) ...diagnosticsAt(context.diagnostics, _at(<JsonStep>['arguments', key])),
+      ],
+      child: ToggleChoice<int?>(
+        label: label,
+        value: shown,
+        options: <ChoiceOption<int?>>[for (int index = 0; index < choices.length; index++) ChoiceOption<int?>(index, choices[index].label)],
+        onChanged: (int? next) {
+          if (next == null || next == shown) return;
+          final JsonMap changed = chooseArgumentGroup(node, spec, choices[next].group);
+          final String? empty = choices[next].keys.where((String key) => asMap(changed['arguments'])[key] == '').firstOrNull;
+          if (empty != null) holdField(_blockId, focus: argumentElementId(_at(<JsonStep>['arguments', empty])));
+          context.change(steps, changed, 'set ${stepName(node)} to ${choices[next].label.toLowerCase()}');
+        },
+      ),
+    );
+  }
+
+  /// Whether [argument] gets its own row: not when it belongs to an
+  /// exclusive group other than the chosen one, nor when the choice alone
+  /// fills it (Look's target is always the player).
+  static bool _shown(CapabilitySpec spec, FieldSpec argument, int? chosen, JsonMap arguments) {
+    final List<List<String>> groups = spec.oneOfRequired;
+    if (!groups.any((List<String> group) => group.contains(argument.key))) return true;
+    if (chosen == null || !groups[chosen].contains(argument.key)) return false;
+    final bool fixed = argument.options.length == 1 && groups[chosen].length == 1;
+    return !(fixed && arguments[argument.key] == argument.options.first.value);
+  }
 
   /// The control for an argument written as a value. An argument of any
   /// type holding text, a number or true or false is edited as that, never
@@ -205,6 +254,17 @@ class CapabilityFields extends StatelessWidget {
         label: humanizeKey(argument.key),
         value: value as String?,
         onChanged: write,
+      );
+    }
+    // A flag or quest scope reads as a variable's: who shares it.
+    if (argument.key == 'scope' && argument.options.every((FieldOption option) => flagScopeWords.containsKey(option.value))) {
+      return AnimusSelect.values(
+        id: controlId(_at(<JsonStep>['arguments', argument.key])),
+        value: asString(value) ?? 'player',
+        values: <String>[for (final FieldOption option in argument.options) '${option.value}'],
+        labels: flagScopeWords,
+        hiddenLabel: 'Who shares it',
+        onChanged: (String? next) => write(next == null || next == 'player' ? null : next),
       );
     }
     return InspectControl(
@@ -302,7 +362,7 @@ class CallArguments extends StatelessWidget {
     void put(JsonMap next) => context.write(at, next.isEmpty ? null : next);
     return Field(
       label: 'Arguments',
-      tip: 'Variables set before the part runs.',
+      tip: 'Variables set before the routine runs.',
       problems: diagnosticsAt(context.diagnostics, formatPath(at)),
       child: stack(<Widget>[
         for (final MapEntry<String, Object?> entry in arguments.entries)

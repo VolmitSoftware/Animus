@@ -5,6 +5,7 @@
 library;
 
 import '../gui/gui_json.dart';
+import 'argument_choices.dart';
 import 'behavior_operands.dart';
 import 'completion_catalog.dart';
 import 'schema_fields.dart';
@@ -66,9 +67,12 @@ const Map<String, JsonMap> _starterArguments = <String, JsonMap>{
   'animus:flag-state': <String, Object?>{'name': 'met'},
 };
 
+/// What a new step does or checks first: Say (Message on the server) and a
+/// flag check, the most common of each.
 CapabilitySpec? _firstCapability(String kind, CompletionCatalog catalog, {bool server = false}) {
   final List<CapabilitySpec> all = catalog.capabilitiesFor(kind, server: server);
-  return all.where((CapabilitySpec spec) => spec.id == (server ? 'animus:message' : 'animus:say')).firstOrNull ??
+  final String usual = kind == 'condition' ? 'animus:flag-state' : (server ? 'animus:message' : 'animus:say');
+  return all.where((CapabilitySpec spec) => spec.id == usual).firstOrNull ??
       all.where((CapabilitySpec spec) => spec.available).firstOrNull ??
       all.firstOrNull;
 }
@@ -108,12 +112,12 @@ JsonMap defaultNode(String type, CompletionCatalog catalog, {String? routine, Js
       return <String, Object?>{'type': type, 'ticks': 1};
     case 'action' || 'condition':
       final CapabilitySpec? capability = _firstCapability(type, catalog, server: server);
-      return <String, Object?>{
+      return _withChosenGroup(<String, Object?>{
         'type': type,
         'capability': capability?.id ?? '',
         'arguments': <String, Object?>{...defaultArguments(capability), ...?_starterArguments[capability?.id]},
         if (type == 'condition') 'then': defaultNode('sequence', catalog),
-      };
+      }, capability);
     case 'call':
       return <String, Object?>{'type': type, 'routine': routine ?? 'main'};
     case 'set':
@@ -137,6 +141,8 @@ JsonMap defaultNode(String type, CompletionCatalog catalog, {String? routine, Js
 /// [node] changed to [type]. Fields of the old type that the new one lacks
 /// go; child nodes move across where they fit (a sequence's steps become a
 /// parallel's branches, or a repeat's body as a sequence); other keys stay.
+/// A single step changed to a type that holds steps goes inside it.
+/// [typeChangeLoss] says what a change drops.
 JsonMap changeNodeType(JsonMap node, String type, CompletionCatalog catalog, {String? routine, JsonMap variables = const <String, Object?>{}, bool server = false}) {
   final String? old = asString(node['type']);
   if (old == type) return node;
@@ -161,6 +167,12 @@ JsonMap changeNodeType(JsonMap node, String type, CompletionCatalog catalog, {St
   }
   final List<String> lists = nodeListFields(type, catalog);
   final List<String> slots = nodeSlotFields(type, catalog);
+  // A single step changed to a list, a loop or an If becomes its first
+  // step, unknown keys and all, so nothing it held is lost.
+  if (old != null && children.isEmpty && nodeListFields(old, catalog).isEmpty && nodeSlotFields(old, catalog).isEmpty && (lists.isNotEmpty || slots.isNotEmpty)) {
+    children.add(node);
+    out.removeWhere((String key, Object? _) => key != 'type');
+  }
   if (children.isNotEmpty) {
     if (lists.isNotEmpty && asList(out[lists.first]).isEmpty) {
       out[lists.first] = children;
@@ -189,7 +201,14 @@ JsonMap changeCapability(JsonMap node, String id, CompletionCatalog catalog) {
   for (final MapEntry<String, Object?> entry in defaultArguments(next).entries) {
     arguments.putIfAbsent(entry.key, () => entry.value);
   }
-  return <String, Object?>{...node, 'capability': id, 'arguments': arguments};
+  return _withChosenGroup(<String, Object?>{...node, 'capability': id, 'arguments': arguments}, next);
+}
+
+/// [node] using the first of [spec]'s exclusive argument groups when it
+/// uses none yet: a new Look looks at the player.
+JsonMap _withChosenGroup(JsonMap node, CapabilitySpec? spec) {
+  if (spec == null || spec.oneOfRequired.isEmpty || chosenArgumentGroup(node, spec) != null) return node;
+  return chooseArgumentGroup(node, spec, 0);
 }
 
 /// A new trigger for [event] with an id not in [taken].

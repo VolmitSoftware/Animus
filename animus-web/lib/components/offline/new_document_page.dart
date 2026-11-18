@@ -46,6 +46,8 @@ import '../list_page.dart' show listNoun;
 import '../shell_sidebar.dart' show kindTitle;
 import '../quest/quest_fields.dart';
 import '../select/skin_faces.dart';
+import '../select/suggest_input.dart';
+import '../../logic/inspect/schema_fields.dart' show FieldOption;
 import 'new_document_kinds.dart';
 import '../select/animus_select.dart';
 import '../suggest/suggest_scope.dart';
@@ -108,6 +110,9 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
   String _name = '';
   String? _id;
   String _title = '';
+
+  /// The namespace a namespaced kind goes in, once the user picks one.
+  String? _folder;
 
   // NPC.
   String _type = 'minecraft:player';
@@ -201,6 +206,10 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
         server: component.workspace.server != null,
       );
 
+  /// The folder (namespace) the form shows: the picked one, the one a
+  /// dropdown's "+ New" asked for, else the workspace's usual one.
+  String get _shownFolder => _folder ?? _folderNamespace ?? _namespace;
+
   /// The namespace a dropdown's "+ New" asked for, when it is a valid one.
   String? get _folderNamespace {
     final String? folder = component.folder;
@@ -224,7 +233,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
       DocumentKind.npc => npcIdIn(npcFolderSlug(_group), base),
       DocumentKind.route || DocumentKind.pack || DocumentKind.group => base,
       DocumentKind.animation => '${_rig ?? '$_namespace:rig'}/$base',
-      _ => '${_folderNamespace ?? _namespace}:$base',
+      _ => '${slug(_shownFolder, fallback: 'local')}:$base',
     };
     return freeId(candidate, _taken(kind));
   }
@@ -345,7 +354,15 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
         case DocumentKind.behavior:
           final JsonMap behavior = behaviorFromTemplate(_template, id, shop: _shop, origin: _postOf(_attachTo));
           final List<DocumentChange> changes = <DocumentChange>[_change(kind, id, behavior)];
-          final AnimusDocument? npc = _attachTo == null ? null : component.store.document(DocumentKind.npc, _attachTo!);
+          // A server behavior runs only once the server behaviors list names it.
+          final AnimusDocument? listed = _template == BehaviorTemplate.server ? component.store.document(DocumentKind.serverBehaviors, DocumentKind.serverBehaviorsId) : null;
+          if (listed != null) {
+            changes.add(DocumentChange.update(DocumentKind.serverBehaviors, listed.id, (Object? latest) {
+              final JsonMap json = asMap(latest);
+              return <String, Object?>{...json, 'behaviors': <Object?>[...asList(json['behaviors']), id]};
+            }));
+          }
+          final AnimusDocument? npc = _attachTo == null || _template == BehaviorTemplate.server ? null : component.store.document(DocumentKind.npc, _attachTo!);
           if (npc != null && npc.json is Map<String, Object?>) {
             final JsonMap json = asMap(npc.json);
             changes.add(DocumentChange(DocumentKind.npc, npc.id, prettyJson(<String, Object?>{

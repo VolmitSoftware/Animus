@@ -37,6 +37,10 @@ enum GuiTextMode {
 /// [writeAt]); edits sharing [coalesce] close together undo as one step.
 typedef JsonEdit = void Function(JsonUpdate update, {String? coalesce});
 
+/// A [JsonEdit] that also names the step for the Undo and Redo notices
+/// ("move Say up").
+typedef LabeledJsonEdit = void Function(JsonUpdate update, {String? coalesce, String? label});
+
 /// Whether the system asks for reduced motion; animated previews start
 /// paused when it does.
 bool prefersReducedMotion() => web.window.matchMedia('(prefers-reduced-motion: reduce)').matches;

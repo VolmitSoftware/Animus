@@ -12,7 +12,7 @@ List<String> _lines(OutlinePart part) => <String>[for (final OutlineLine line in
 
 void main() {
   group('behavior outline', () {
-    test('should say what starts each part and its steps in words, branches as Yes and No', () {
+    test('should say what starts each routine and its steps in words, branches as Yes and No', () {
       final List<OutlinePart> parts = behaviorOutline(_json('''
 {"id": "town:guard", "entry": "main", "routines": {
   "main": {"type": "sequence", "steps": [
@@ -29,7 +29,7 @@ void main() {
   {"id": "tick", "event": "timer", "intervalTicks": 200, "routine": "warn-off"}]}'''));
       expect(parts, hasLength(2));
       expect(parts.first.title, 'What it does');
-      expect(parts.first.runs, 'On click, Player nearby');
+      expect(parts.first.runs, 'Starts when a player clicks, or when a player comes near');
       expect(_lines(parts.first), <String>[
         '0:Look at the player',
         '0:If flag met is true',
@@ -37,10 +37,10 @@ void main() {
         '2:Say: Again?',
         '1:No:',
         '2:Say: Halt.',
-        '2:Run Warn off',
+        '2:Call routine Warn off',
       ]);
       expect(parts.last.title, 'Warn off');
-      expect(parts.last.runs, 'Every 10 seconds');
+      expect(parts.last.runs, 'Starts every 10 seconds');
       expect(_lines(parts.last), <String>['0:Repeat 2 times', '1:Wait 20 ticks (1s)']);
     });
 
@@ -74,7 +74,7 @@ void main() {
       final List<OutlinePart> parts = behaviorOutline(_json('''
 {"server": true, "entry": "main", "routines": {"main": {"type": "action", "capability": "animus:message", "arguments": {"text": "Welcome"}}},
  "triggers": [{"id": "join", "event": "player_join"}]}'''));
-      expect(parts.single.runs, 'Player joins');
+      expect(parts.single.runs, 'Starts when a player joins');
       expect(_lines(parts.single), <String>['0:Message: Welcome']);
     });
 
@@ -88,7 +88,7 @@ void main() {
   {"id": "on-delta-time-secondly", "event": "timer", "intervalTicks": 20, "routine": "on-delta-time-secondly"},
   {"id": "on-delta-time-secondly-2", "event": "timer", "intervalTicks": 40, "routine": "on-delta-time-secondly-2"},
   {"id": "on-delta-time-minutely", "event": "timer", "intervalTicks": 1200, "routine": "on-delta-time-minutely"}]}'''));
-      expect(<String>[for (final OutlinePart part in parts) part.title], <String>['Every second', 'Every 2 seconds', 'Every minute'],
+      expect(<String>[for (final OutlinePart part in parts) part.title], <String>['Starts every second', 'Starts every 2 seconds', 'Starts every minute'],
           reason: 'parts started by events read alike, the first one too');
       expect(<String?>[for (final OutlinePart part in parts) part.runs], <String?>[null, null, null]);
     });

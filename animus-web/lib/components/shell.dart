@@ -762,9 +762,10 @@ class _EditorShellState extends State<EditorShell> with WorkspaceActions {
             onSource: (String source) => component.store.editSource(document.kind, document.id, source),
             codeDraft: component.store.codeDraft(document.kind, document.id),
             onCodeDraft: (String? text) => component.store.setCodeDraft(document.kind, document.id, text),
-            onJson: (JsonUpdate update, {String? coalesce}) => component.store.commit(
+            onJson: (JsonUpdate update, {String? coalesce, String? label}) => component.store.commit(
                   documents: <DocumentChange>[DocumentChange.update(document.kind, document.id, update)],
                   coalesce: coalesce == null ? null : '${document.kind.wireName}:${document.id}:$coalesce',
+                  label: label,
                 ),
             onRename: movable(document.kind) ? (String id) => relocate(workspace, document, id, copy: false) : null,
             onDuplicate: movable(document.kind) && document.kind != DocumentKind.recording ? (String id) => relocate(workspace, document, id, copy: true) : null,

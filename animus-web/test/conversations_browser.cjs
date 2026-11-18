@@ -26,7 +26,7 @@ const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {assertNothingCut} = require('./support/cut_text.cjs');
 const {isCompact, openFromSidebar, openJob, pickOption, saveAction, saveState, setMode, showView, waitOnline, hidePreview} = require('./support/shell.cjs');
-const {choose, chooseText} = require('./support/select.cjs');
+const {choose, chooseText, optionLabels} = require('./support/select.cjs');
 
 const site = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })()).replace(/\/$/, '');
 const fake = (process.env.ANIMUS_FAKE_URL || (() => { throw new Error('Set ANIMUS_FAKE_URL to your own fake server, never :9797'); })()).replace(/\/$/, '');
@@ -165,14 +165,18 @@ async function run(browser, viewport, label, theme) {
   // The workspace fills from the catalog by itself.
   await page.locator('[data-testid="home-count"]').first().waitFor();
 
-  // New behavior from the Behaviors list: Conversation is the default kind,
-  // and the behavior opens in its Conversation view (Simple has no switch).
+  // New behavior from the Behaviors list: Conversation is what it starts
+  // from by default, the templates and Blank sit beside it, and the
+  // behavior opens in its Conversation view (Simple has no switch).
   await openJob(page, 'Behaviors');
   await page.locator('[data-testid="list-new"]').click();
   const dialog = page.getByRole('dialog', {name: 'New behavior'});
   await dialog.waitFor();
-  assert.equal(await dialog.getByRole('radio', {name: /Conversation/}).isChecked(), true, `${label}: Conversation is the default kind`);
-  assert.equal(await dialog.getByRole('radio', {name: /Server behavior/}).count(), 0, `${label}: Server behavior is Advanced only`);
+  const startFrom = dialog.locator('button[role="combobox"][id="new-behavior-template"]');
+  assert.match(await startFrom.textContent(), /Conversation/, `${label}: Conversation is the default start`);
+  const templates = await optionLabels(startFrom);
+  for (const name of ['Greeter', 'Question', 'Patrol', 'Shop', 'Guard', 'Quest', 'Blank']) assert.ok(templates.includes(name), `${label}: ${name} in ${templates}`);
+  assert.ok(!templates.includes('Server behavior'), `${label}: Server behavior is Advanced only`);
   await page.locator('#new-behavior-name').fill('Harbor master');
   await dialog.getByRole('button', {name: 'Create', exact: true}).click();
   await page.waitForFunction(() => location.hash.includes('/behavior/') && location.hash.includes('view=conversation'));
@@ -209,7 +213,7 @@ async function run(browser, viewport, label, theme) {
   await tab.locator('[data-block="main"]').waitFor();
   await chooseText(page.locator('button[role="combobox"][id="conv-start"]'), 'On click');
 
-  // Start over: delete the starter question, then the parts it led to,
+  // Start over: delete the starter question, then the routines it led to,
   // which nothing reaches now.
   await stepAction(page, 'main:1', 'Delete', 'Delete');
   await tab.locator('li[data-step="main:1"]').waitFor({state: 'detached'});
@@ -217,8 +221,8 @@ async function run(browser, viewport, label, theme) {
     const section = tab.locator(`section[data-block="${part}"]`);
     await section.getByText('Nothing leads here.').waitFor();
     const menu = await openMenu(page, section.locator('[data-action-slot="more"]').first());
-    await menu.getByRole('menuitem', {name: 'Delete part'}).click();
-    await confirmWith(page, 'Delete part');
+    await menu.getByRole('menuitem', {name: 'Delete routine'}).click();
+    await confirmWith(page, 'Delete routine');
     await section.waitFor({state: 'detached'});
   }
 

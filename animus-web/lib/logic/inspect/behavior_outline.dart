@@ -1,5 +1,5 @@
-/// A behavior as plain sentences for Simple mode: each part (routine) with
-/// what starts it and its steps as an indented outline. No ids, paths or
+/// A behavior as plain sentences for Simple mode: each routine with what
+/// starts it and its steps as an indented outline. No ids, paths or
 /// node type names; a condition's branches read "Yes:" and "No:".
 library;
 
@@ -16,7 +16,7 @@ class OutlineLine {
   final String text;
 }
 
-/// One part of a behavior: its title, what runs it (null when the title
+/// One routine of a behavior: its title, what runs it (null when the title
 /// already says it) and its lines.
 class OutlinePart {
   const OutlinePart(this.title, this.runs, this.lines);
@@ -26,10 +26,11 @@ class OutlinePart {
   final List<OutlineLine> lines;
 }
 
-/// The entry part first ("What it does"), then every other part. A part
-/// named after its event (an import's `on-delta-time-secondly-2`) is titled
-/// by what starts it ("Every 2 seconds") instead of its name, and then an
-/// entry part an event starts is too, so the parts read alike. [names]
+/// The entry routine first ("What it does"), then every other routine. A
+/// routine named after its event (an import's `on-delta-time-secondly-2`)
+/// is titled by what starts it ("Starts every 2 seconds") instead of its
+/// name, and then an entry routine an event starts is too, so the routines
+/// read alike. [names]
 /// names the documents steps open or play.
 List<OutlinePart> behaviorOutline(JsonMap behavior, {DocumentNames names = idDocumentName}) {
   final JsonMap routines = asMap(behavior['routines']);
@@ -54,7 +55,7 @@ OutlinePart _part(String name, String entry, List<JsonMap> triggers, List<Outlin
 }
 
 String _runs(List<JsonMap> triggers) {
-  final String line = startLine(triggers: triggers);
+  final String line = startsSentence(triggers);
   if (line == 'Runs when called' && triggers.any((JsonMap trigger) => trigger['event'] == 'dialogue_choice')) return 'After an answer';
   return line;
 }
@@ -99,7 +100,7 @@ class _Walker {
         _add(depth, nodeSummary(node, variables: variables, names: names));
         _node(node['body'], depth + 1);
       case 'call':
-        _add(depth, 'Run ${behaviorTitle(asString(node['routine']) ?? '?')}');
+        _add(depth, 'Call routine ${behaviorTitle(asString(node['routine']) ?? '?')}');
       case null when node.isEmpty:
         return;
       default:

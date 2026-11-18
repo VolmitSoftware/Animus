@@ -64,6 +64,10 @@ const List<ShortcutGroup> shortcutGroups = <ShortcutGroup>[
   ShortcutGroup('Behavior steps', 'On a focused step', <Shortcut>[
     Shortcut(<String>['Up', 'Down'], 'Move between steps'),
     Shortcut(<String>['Right', 'Left'], 'Open or close the step'),
+    Shortcut(<String>['Alt+Up', 'Alt+Down'], 'Move the step'),
+    Shortcut(<String>['Mod+C'], 'Copy the step'),
+    Shortcut(<String>['Mod+V'], 'Paste after the step'),
+    Shortcut(<String>['Mod+D'], 'Duplicate'),
     Shortcut(<String>['Delete'], 'Remove the step, after a question'),
   ]),
   ShortcutGroup('Lists of points, offers and keyframes', 'On a focused route point, offer or keyframe', <Shortcut>[

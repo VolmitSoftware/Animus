@@ -239,12 +239,12 @@ void main() {
           arguments: const <FieldSpec>[],
         );
 
-    test('should name the capability in words with its module, never its id, and say offline only when the offline catalog is the reason', () {
+    test('should name the capability in words with its module, never its id, and say nothing of availability offline', () {
       expect(capabilityChoiceLabel(spec(available: true, id: 'animus:look')), 'Look at');
       expect(capabilityChoiceLabel(spec(available: true, id: 'animus:combat-control')), 'Fight');
       expect(capabilityChoiceLabel(spec(available: true)), 'Glow (example)');
       expect(capabilityChoiceLabel(spec(available: true, privileged: true)), 'Glow (example; privileged)');
-      expect(capabilityChoiceLabel(spec(available: false, reason: 'platform-unavailable: offline validation has no server')), 'Glow (example; unavailable offline)');
+      expect(capabilityChoiceLabel(spec(available: false, reason: 'platform-unavailable: offline validation has no server')), 'Glow (example)');
       expect(capabilityChoiceLabel(spec(available: false, reason: 'platform-unavailable: needs Paper')), 'Glow (example; not on this server)');
       expect(capabilityChoiceLabel(spec(available: false, reason: 'platform-unavailable: needs Paper', privileged: true)), 'Glow (example; not on this server; privileged)');
     });

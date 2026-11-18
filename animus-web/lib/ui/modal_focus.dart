@@ -63,6 +63,8 @@ mixin ModalFocus<T extends StatefulWidget> on State<T> {
     _keys = ((web.KeyboardEvent event) {
       if (!modalOpen || !identical(_openModals.last, this)) return;
       if (event.key == 'Escape') {
+        // A dropdown open inside closes first, by itself; the modal stays.
+        if (web.document.getElementById(modalId)?.querySelector('[role="combobox"][aria-expanded="true"]') != null) return;
         event.preventDefault();
         event.stopPropagation();
         modalClose();

@@ -16,7 +16,7 @@ public enum BehaviorNodeType {
     BREAK("break", "Leaves the innermost loop."),
     CONTINUE("continue", "Starts the next pass of the innermost loop."),
     PARALLEL("parallel", "Runs independent branches, then joins them.", "branches"),
-    CALL("call", "Runs another routine of this document, optionally for another player or NPC.", "routine", "arguments", "result", "player", "npc"),
+    CALL("call", "Runs another routine of this behavior, optionally for another player or NPC.", "routine", "arguments", "result", "player", "npc"),
     RETURN("return", "Ends the current routine, optionally with a value.", "value"),
     SET("set", "Writes a declared variable.", "variable", "value");
 

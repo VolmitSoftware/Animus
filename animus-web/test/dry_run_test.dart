@@ -19,7 +19,7 @@ void main() {
     final JsonMap greeter = behaviorFromTemplate(BehaviorTemplate.greeter, 'a:g');
     expect(dryRunStarts(greeter).map((DryRunStart start) => start.id), <String?>['click', 'near', null]);
     expect(dryRunStarts(greeter).first.label, 'click: a player right-clicks the NPC');
-    final JsonMap dialogue = behaviorFromTemplate(BehaviorTemplate.dialogue, 'a:d');
+    final JsonMap dialogue = behaviorFromTemplate(BehaviorTemplate.question, 'a:d');
     expect(dryRunStarts(dialogue).map((DryRunStart start) => start.id), <String?>['click', null]);
   });
 
@@ -59,7 +59,7 @@ void main() {
   });
 
   test('should open a prompt, then run the answer trigger the user picks', () {
-    final JsonMap dialogue = behaviorFromTemplate(BehaviorTemplate.dialogue, 'a:d');
+    final JsonMap dialogue = behaviorFromTemplate(BehaviorTemplate.question, 'a:d');
     final DryRunSession asked = dryRun(dialogue, DryRunInputs.start('click'));
     expect(asked.unanswered?.dialogue, 'topic');
     expect(asked.unanswered?.options.map((DryRunOption option) => option.id), <String>['news', 'directions', 'leave']);
@@ -71,7 +71,7 @@ void main() {
   });
 
   test('should say when no trigger answers a picked option', () {
-    final JsonMap dialogue = behaviorFromTemplate(BehaviorTemplate.dialogue, 'a:d');
+    final JsonMap dialogue = behaviorFromTemplate(BehaviorTemplate.question, 'a:d');
     dialogue['triggers'] = <Object?>[asList(dialogue['triggers']).first];
     final DryRunSession session = dryRun(dialogue, DryRunInputs.start('click').withAnswer('topic', 'leave'));
     expect(session.runs.last.steps.single.outcome, DryRunOutcome.problem);

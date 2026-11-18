@@ -117,7 +117,7 @@ async function run(browser, {viewport, theme}) {
   await page.keyboard.press('ArrowRight');
   await waitOpen(again, true, `${label}: Right opens ${path}`);
   // A step of a list can go; Delete on it asks first.
-  const removable = page.locator('.animus-behavior-editor .animus-node-children[role="group"] > .ui-section.animus-node').first();
+  const removable = page.locator('.animus-behavior-editor .animus-node-children[role="group"] > div > .ui-section.animus-node').first();
   const removablePath = await removable.getAttribute('data-node-path');
   await folds(removable).locator(':scope > summary').focus();
   await page.keyboard.press('Delete');

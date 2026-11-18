@@ -142,7 +142,7 @@ async function run(browser, viewport, label, skinFile) {
     await page.getByLabel('Name', {exact: true}).fill('&6Old Tom');
     await page.getByRole('group', {name: 'Skin'}).getByRole('button', {name: 'PNG file'}).click();
     await loadSkin(page, skinFile);
-    await pickLead(page, page.getByRole('combobox', {name: 'Behavior'}), 'New: Dialogue');
+    await pickLead(page, page.getByRole('combobox', {name: 'Behavior'}), 'New: Question');
     await more(page);
     await page.getByLabel('Folder', {exact: true}).fill('town');
     await page.getByLabel('X', {exact: true}).fill('12');
@@ -181,7 +181,7 @@ async function run(browser, viewport, label, skinFile) {
   await create(page, workspace, 'group', 'trait group', async () => page.getByLabel('Id', {exact: true}).fill('guards'));
 
   const hrefs = (await documentHrefs(page)).map((href) => decodeURIComponent(href));
-  for (const expected of ['/npc/town/old-tom', '/behavior/sketchbook:old-tom-dialogue', '/behavior/sketchbook:shop', '/pack/town-pack', '/route/market-loop', '/shop/sketchbook:market',
+  for (const expected of ['/npc/town/old-tom', '/behavior/sketchbook:old-tom-question', '/behavior/sketchbook:shop', '/pack/town-pack', '/route/market-loop', '/shop/sketchbook:market',
     '/quest/sketchbook:bread-run', '/inventory/sketchbook:board', '/menu/sketchbook:hub', '/hologram/sketchbook:welcome', '/rig/sketchbook:golem', '/animation/sketchbook:golem/wave',
     '/text-animation/sketchbook:blink', '/presets/presets', '/group/guards']) {
     assert.ok(hrefs.some((href) => href.endsWith(expected)), `${label}: ${expected} is listed`);
@@ -225,7 +225,7 @@ async function run(browser, viewport, label, skinFile) {
   await openFromSidebar(page, 'market-loop');
   await page.waitForFunction(() => decodeURIComponent(location.hash).includes('/route/market-loop'));
 
-  // Test: the dialogue answers a prompt; the shop's click is server only.
+  // Test: the question answers a prompt; the shop's click is server only.
   const test = async (id) => {
     await go(page, `${base}/behavior/${encodeURIComponent(id)}`);
     const pane = page.locator('[data-testid="test-pane"]');
@@ -234,10 +234,10 @@ async function run(browser, viewport, label, skinFile) {
     await pickStart(page, pane, 'On click');
     return pane;
   };
-  const dialogue = await test('sketchbook:old-tom-dialogue');
-  await dialogue.getByRole('button', {name: 'Any news?'}).click();
-  await dialogue.locator('.animus-conv-chat').getByText('The harvest festival starts at', {exact: false}).waitFor();
-  await dialogue.locator('.animus-mc-text-line', {hasText: 'harvest festival'}).first().waitFor();
+  const question = await test('sketchbook:old-tom-question');
+  await question.getByRole('button', {name: 'Any news?'}).click();
+  await question.locator('.animus-conv-chat').getByText('The harvest festival starts at', {exact: false}).waitFor();
+  await question.locator('.animus-mc-text-line', {hasText: 'harvest festival'}).first().waitFor();
   await shot(page, label, '03b-test-dialogue');
   const shop = await test('sketchbook:shop');
   await shop.locator('[data-outcome="serverOnly"]', {hasText: 'open shop'}).first().waitFor();

@@ -28,6 +28,18 @@ JsonMap _behavior(Object? main, {JsonMap? variables, List<Object?>? triggers, Js
     };
 
 void main() {
+  test('should name flag scopes in the words the Scope list shows', () {
+    JsonMap flag(String scope, JsonMap who) => <String, Object?>{
+          'type': 'action',
+          'capability': 'animus:set-flag',
+          'arguments': <String, Object?>{'name': 'met', 'scope': scope, ...who},
+        };
+    final List<String> player = _errors('rules:sample', _behavior(flag('global', <String, Object?>{'player': '069a79f4-44e9-4726-a5be-fca90e38aaf5'}))).map((Diagnostic d) => d.message).toList();
+    expect(player, contains('Player names whose flag it is, so Scope must be Each player or NPC and player.'));
+    final List<String> npc = _errors('rules:sample', _behavior(flag('player', <String, Object?>{'npc': '00000000-0000-4000-8000-0000000000a1'}))).map((Diagnostic d) => d.message).toList();
+    expect(npc, contains('NPC names whose flag it is, so Scope must be This NPC or NPC and player.'));
+  });
+
   test('should refuse exactly what the server refuses, at the field the server names', () {
     int checked = 0;
     for (final Object? raw in asList(asMap(fixtureIndex())['documents'])) {

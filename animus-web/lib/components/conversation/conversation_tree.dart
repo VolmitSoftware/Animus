@@ -87,7 +87,7 @@ const List<(String, String)> stepKinds = <(String, String)>[
   ('Ask', 'With answers'),
   ('If', 'Yes or no'),
   ('Do', 'Give, set, open'),
-  ('Go to', 'Jump to part'),
+  ('Go to', 'Jump to routine'),
   ('End', 'Stop here'),
 ];
 
@@ -128,7 +128,7 @@ class _TreeBuilder {
     final StepList? entry = conversation.blocks[conversation.entry];
     final Widget start = dom.section(
       classes: 'animus-conv-part is-start',
-      attributes: <String, String>{'data-block': conversation.entry, 'aria-label': advanced ? 'Part ${conversation.entry}' : 'Start'},
+      attributes: <String, String>{'data-block': conversation.entry, 'aria-label': advanced ? 'Routine ${conversation.entry}' : 'Start'},
       <Widget>[
         stack(<Widget>[
           if (advanced) _partHead(conversation.entry, 'Start'),
@@ -146,7 +146,7 @@ class _TreeBuilder {
     return stack(spacing: 16, <Widget>[
       main,
       if (others.isNotEmpty) ...<Widget>[
-        const dom.h3(<Widget>[Component.text('Other parts')]),
+        const dom.h3(<Widget>[Component.text('Other routines')]),
         ...others,
       ],
     ]);
@@ -159,12 +159,12 @@ class _TreeBuilder {
     final StepList? list = conversation.blocks[name];
     return dom.section(
       classes: 'animus-conv-part${orphan ? ' is-orphan' : ''}',
-      attributes: <String, String>{'data-block': name, 'aria-label': 'Part ${scope.partName(name)}'},
+      attributes: <String, String>{'data-block': name, 'aria-label': 'Routine ${scope.partName(name)}'},
       <Widget>[
         stack(<Widget>[
           ActionRow(
             dense: true,
-            label: 'Part ${scope.partName(name)}',
+            label: 'Routine ${scope.partName(name)}',
             leading: <Widget>[
               dom.h4(<Widget>[Component.text(blockTitle(conversation, name))]),
               if (advanced) ...<Widget>[
@@ -173,7 +173,7 @@ class _TreeBuilder {
               ],
             ],
             more: <AppMenuEntry>[
-              if (orphan) deleteEntry('Delete part', 'Delete this part?', () => edit((Conversation c) => c.blocks.remove(name))),
+              if (orphan) deleteEntry('Delete routine', 'Delete this routine?', () => edit((Conversation c) => c.blocks.remove(name))),
             ],
           ),
           if (orphan) problemLine(DiagnosticSeverity.warning, 'Nothing leads here.'),
@@ -428,7 +428,7 @@ class _TreeBuilder {
         ConversationGoto(:final String target) => ConversationPicker(
               label: 'Go to',
               value: target,
-              placeholder: 'Pick a part',
+              placeholder: 'Pick a routine',
               options: <PickOption>[
                 for (final String name in conversation.blocks.keys)
                   PickOption(name, blockTitle(conversation, name), hint: advanced && name != conversation.entry ? name : null),

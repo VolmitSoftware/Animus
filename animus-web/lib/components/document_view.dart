@@ -206,7 +206,7 @@ class DocumentPane extends StatefulWidget {
   final ServerLookups? liveLookups;
 
   /// Form edits.
-  final JsonEdit onJson;
+  final LabeledJsonEdit onJson;
 
   /// Moves the document to a new id; returns a problem to show, or null.
   final Future<String?> Function(String id)? onRename;
@@ -753,9 +753,10 @@ class _DocumentPaneState extends State<DocumentPane> {
           ),
       DocumentKind.behavior => BehaviorEditor(
           document: document,
-          onJson: onJson,
+          onJson: component.onJson,
           schemas: _schemas,
           diagnostics: _allDiagnostics(document),
+          onRename: component.onRename,
         ),
       DocumentKind.route => _route(document, json, workspace),
       DocumentKind.group => NpcInspector.forGroup(

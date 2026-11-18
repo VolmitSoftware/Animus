@@ -7208,7 +7208,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "node-call": {
       "type": "object",
-      "description": "Runs another routine of this document, optionally for another player or NPC.",
+      "description": "Runs another routine of this behavior, optionally for another player or NPC.",
       "additionalProperties": false,
       "properties": {
         "type": {
@@ -7216,7 +7216,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "routine": {
           "$ref": "#/$defs/identifier",
-          "description": "A routine of this document."
+          "description": "A routine of this behavior."
         },
         "arguments": {
           "type": "object",
@@ -7298,7 +7298,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "enum": [
@@ -8110,7 +8110,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "interaction"
@@ -8171,7 +8171,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "proximity"
@@ -8220,7 +8220,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "spawn"
@@ -8248,7 +8248,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "despawn"
@@ -8276,7 +8276,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "damage"
@@ -8304,7 +8304,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "death"
@@ -8332,7 +8332,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "waypoint"
@@ -8366,7 +8366,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "timer"
@@ -8401,7 +8401,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "dialogue_choice"
@@ -8438,7 +8438,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "module"
@@ -8472,7 +8472,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "build_finished"
@@ -8500,7 +8500,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "build_paused"
@@ -8528,7 +8528,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "animation_finished"
@@ -8561,7 +8561,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "entity_proximity"
@@ -8635,7 +8635,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "entity_collide"
@@ -8702,7 +8702,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "hit_by_projectile"
@@ -8766,7 +8766,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "item_dropped"
@@ -8841,7 +8841,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "vehicle_bump"
@@ -8900,7 +8900,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "leash_tie"
@@ -8959,7 +8959,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "leash_pass"
@@ -9025,7 +9025,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "npc_proximity"
@@ -9079,7 +9079,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "npc_speech"
@@ -9131,7 +9131,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_join"
@@ -9163,7 +9163,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_quit"
@@ -9191,7 +9191,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_chat"
@@ -9225,7 +9225,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "command"
@@ -9286,7 +9286,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "server_start"
@@ -9314,7 +9314,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_death"
@@ -9342,7 +9342,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_respawn"
@@ -9370,7 +9370,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_world_change"
@@ -9410,7 +9410,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_area"
@@ -9480,7 +9480,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_inventory_open"
@@ -9519,7 +9519,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_inventory_close"
@@ -9552,7 +9552,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_inventory_click"
@@ -9601,7 +9601,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_item_drop"
@@ -9640,7 +9640,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_item_pickup"
@@ -9679,7 +9679,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_item_consume"
@@ -9718,7 +9718,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_block_click"
@@ -9762,7 +9762,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_block_place"
@@ -9801,7 +9801,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_block_break"
@@ -9840,7 +9840,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_damaged"
@@ -9884,7 +9884,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_damage_entity"
@@ -9923,7 +9923,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "player_kill"
@@ -9956,7 +9956,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "projectile_launch"
@@ -10000,7 +10000,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "projectile_hit"
@@ -10054,7 +10054,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "entity_shoot_bow"
@@ -10103,7 +10103,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "quest_started"
@@ -10136,7 +10136,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "quest_stage"
@@ -10169,7 +10169,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier",
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "const": "quest_completed"
@@ -10565,7 +10565,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "maxLength": 36
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "money"
         ],
@@ -10623,7 +10623,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "maxLength": 36
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "item"
         ],
@@ -10673,7 +10673,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "maxLength": 36
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "money"
         ],
@@ -11012,7 +11012,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "maxLength": 36
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "item"
         ],
@@ -11282,7 +11282,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "maximum": 1000000.0
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "spawned"
         ],
@@ -11611,7 +11611,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "maximum": 1000000000000
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "equals"
         ],
@@ -11795,7 +11795,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "required": false
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "name"
         ],
@@ -11831,7 +11831,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "required": false
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "value"
         ],
@@ -12323,7 +12323,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "maxLength": 36
         }
       },
-      "oneOfRequired": [
+      "anyOfRequired": [
         [
           "title"
         ],
@@ -12352,7 +12352,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -12422,7 +12422,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -12476,7 +12476,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -12507,7 +12507,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -12546,7 +12546,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -12583,7 +12583,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -12614,7 +12614,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -12652,7 +12652,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -12690,7 +12690,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -12731,7 +12731,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -12768,7 +12768,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -12799,7 +12799,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -12830,7 +12830,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -12883,7 +12883,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -12983,7 +12983,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -13081,7 +13081,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -13177,7 +13177,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -13281,7 +13281,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -13367,7 +13367,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -13453,7 +13453,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -13542,7 +13542,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -13610,7 +13610,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -13672,7 +13672,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -13708,7 +13708,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -13743,7 +13743,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -13791,7 +13791,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -13853,7 +13853,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -13888,7 +13888,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -13919,7 +13919,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -13956,7 +13956,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -14011,7 +14011,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -14081,7 +14081,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -14133,7 +14133,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -14180,7 +14180,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -14242,7 +14242,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -14292,7 +14292,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -14342,7 +14342,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -14404,7 +14404,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -14468,7 +14468,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -14526,7 +14526,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -14578,7 +14578,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -14638,7 +14638,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -14688,7 +14688,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -14745,7 +14745,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -14821,7 +14821,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -14909,7 +14909,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -14973,7 +14973,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -15018,7 +15018,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -15063,7 +15063,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id": {
           "type": "identifier",
           "required": true,
-          "description": "Unique within this document."
+          "description": "Unique within this behavior."
         },
         "event": {
           "type": "event",
@@ -15300,12 +15300,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         }
       },
       "call": {
-        "description": "Runs another routine of this document, optionally for another player or NPC.",
+        "description": "Runs another routine of this behavior, optionally for another player or NPC.",
         "fields": {
           "routine": {
             "type": "routine",
             "required": true,
-            "description": "A routine of this document."
+            "description": "A routine of this behavior."
           },
           "arguments": {
             "type": "arguments",

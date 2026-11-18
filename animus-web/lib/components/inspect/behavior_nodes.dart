@@ -1,8 +1,12 @@
 /// One behavior node and its children as a card (the kit's quiet
-/// disclosure): the summary names the node in words and says what it does;
-/// the body starts with a toolbar (its type, and a "..." menu to move,
-/// duplicate or delete it), then its fields and its children.
+/// disclosure): the summary has a drag handle, names the node in words and
+/// says what it does; the body starts with a toolbar (its type, and a "..."
+/// menu to move, duplicate, copy, paste or delete it), then its fields and
+/// its children. Every structural edit is one undo step named for the
+/// notice ("move Say up"); a type change that drops content asks first.
 library;
+
+import 'dart:js_interop';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
@@ -15,6 +19,7 @@ import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/behavior_edit.dart';
 import '../../logic/inspect/behavior_language.dart';
 import '../../logic/inspect/behavior_operands.dart';
+import '../../logic/inspect/behavior_steps.dart';
 import '../../logic/inspect/behavior_summary.dart';
 import '../../logic/inspect/behavior_types.dart';
 import '../../logic/inspect/behavior_words.dart';
@@ -36,9 +41,10 @@ import 'behavior_operand.dart';
 import 'inspect_fields.dart';
 import '../select/animus_select.dart';
 import '../../ui/field.dart';
-import '../../ui/number_input.dart';
 import '../../ui/stack.dart';
 import '../../ui/problem_text.dart';
+import '../shortcut_sheet.dart' show macPlatform;
+import 'step_inputs.dart';
 
 /// What every node card needs: the catalog, the document and its writers.
 class BehaviorContext {
@@ -48,7 +54,8 @@ class BehaviorContext {
     required this.document,
     required this.diagnostics,
     required this.write,
-    required this.writeDocument,
+    required this.change,
+    required this.changeDocument,
   });
 
   final CompletionCatalog catalog;
@@ -56,11 +63,16 @@ class BehaviorContext {
   final JsonMap document;
   final List<Diagnostic> diagnostics;
 
-  /// Writes [value] at [steps] of the document; null removes it.
+  /// Writes [value] at [steps] of the document; null removes it. Typing in
+  /// one field joins one undo step.
   final void Function(List<JsonStep> steps, Object? value) write;
 
-  /// Writes a whole new document, for edits that touch several parts.
-  final void Function(JsonMap document) writeDocument;
+  /// A structural edit (add, move, delete, paste, a type change): its own
+  /// undo step, named [label] in the Undo and Redo notices.
+  final void Function(List<JsonStep> steps, Object? value, String label) change;
+
+  /// A structural edit of the whole document, named [label].
+  final void Function(JsonMap document, String label) changeDocument;
 
   List<String> get routines => asMap(document['routines']).keys.toList();
   JsonMap get variables => asMap(document['variables']);
@@ -85,7 +97,7 @@ class BehaviorContext {
     final JsonMap node = newNode(type);
     final JsonMap needed = variablesForNewNode(type, variables);
     final JsonMap base = needed.isEmpty ? document : <String, Object?>{...document, 'variables': <String, Object?>{...variables, ...needed}};
-    writeDocument(place(base, node));
+    changeDocument(place(base, node), 'add ${stepName(node)}');
   }
 
   /// Adds a node of [type] at [steps] (a list when [append]).
@@ -93,26 +105,107 @@ class BehaviorContext {
         final Object value = append ? <Object?>[...asList(readIn(base, steps)), node] : node;
         return asMap(writeIn(base, steps, value));
       });
+
+  /// Adds a node of [type] after the single step at [slot], both in order.
+  void addAfter(List<JsonStep> slot, String type) => add(type, (JsonMap base, JsonMap node) {
+        final Object? existing = readIn(base, slot);
+        return asMap(writeIn(base, slot, existing is Map<String, Object?> ? wrapWithStep(existing, node) : node));
+      });
+
+  /// Moves the step at [from] of the list [fromList] to before index [to] of
+  /// [intoList] as one undo step, then focuses it there.
+  void move(List<JsonStep> fromList, int from, List<JsonStep> intoList, int to, String label) {
+    final JsonMap? moved = moveStep(document, fromList, from, intoList, to);
+    if (moved == null) return;
+    changeDocument(moved, label);
+    final bool same = formatPath(fromList) == formatPath(intoList);
+    focusStep(formatPath(<JsonStep>[...intoList, same && to > from ? to - 1 : to]));
+  }
+
+  /// Copies [node] for pasting here or into another routine or behavior.
+  void copy(Object? node) {
+    final CopiedStep copied = copyStep(document, node, catalog);
+    copiedStep = copied;
+    ArcaneSonner.info('Copied ${copied.name}.');
+  }
+
+  /// Pastes the copied step at index [at] of the list [list].
+  void paste(List<JsonStep> list, int at) {
+    final CopiedStep? copied = copiedStep;
+    if (copied == null) return;
+    changeDocument(pasteStep(document, list, at, copied), 'paste ${copied.name}');
+    focusStep(formatPath(<JsonStep>[...list, at]));
+  }
+
+  /// Pastes the copied step into the single-step field [slot].
+  void pasteIn(List<JsonStep> slot) {
+    final CopiedStep? copied = copiedStep;
+    if (copied == null) return;
+    changeDocument(pasteInto(document, slot, copied), 'paste ${copied.name}');
+  }
 }
+
+/// Focuses the summary of the step at [path] once the page shows it.
+void focusStep(String path) {
+  int tries = 0;
+  void attempt() {
+    final web.NodeList found = web.document.querySelectorAll('.animus-node');
+    for (int index = 0; index < found.length; index++) {
+      final web.Element node = found.item(index)! as web.Element;
+      if (node.getAttribute('data-node-path') != path) continue;
+      final web.Element? summary = node.querySelector(':scope > details > summary');
+      if (summary != null) {
+        (summary as web.HTMLElement).focus();
+        return;
+      }
+    }
+    if (++tries < 30) web.window.setTimeout(attempt.toJS, 16.toJS);
+  }
+
+  web.window.setTimeout(attempt.toJS, 0.toJS);
+}
+
+/// The step being dragged: its list and place, in which behavior.
+class _StepDrag {
+  const _StepDrag(this.behavior, this.list, this.index, this.name);
+
+  final String behavior;
+  final List<JsonStep> list;
+  final int index;
+  final String name;
+}
+
+_StepDrag? _dragging;
 
 /// The labels the type picker shows, in words.
 Map<String, String> nodeTypeLabels(Iterable<String> types) => <String, String>{for (final String type in types) type: nodeLabel(type)};
 
-/// A menu button that adds a node of the picked type.
+/// A menu button that adds a node of the picked type, or with [onPaste]
+/// the copied step.
 class AddNodeMenu extends StatelessWidget {
-  const AddNodeMenu({required this.context, required this.label, required this.onAdd, super.key});
+  const AddNodeMenu({required this.context, required this.label, required this.onAdd, this.onPaste, super.key});
 
   final BehaviorContext context;
   final String label;
   final void Function(String type) onAdd;
+  final void Function()? onPaste;
 
   @override
-  Widget build(BuildContext build) => AppMenu(
-        label: label,
-        icon: ArcaneIcon.plus(),
-        outline: true,
-        entries: <AppMenuEntry>[for (final String type in context.nodeTypes) AppMenuEntry(nodeLabel(type), () => onAdd(type))],
-      );
+  Widget build(BuildContext build) {
+    final CopiedStep? copied = copiedStep;
+    return AppMenu(
+      label: label,
+      icon: ArcaneIcon.plus(),
+      outline: true,
+      entries: <AppMenuEntry>[
+        for (final String type in context.nodeTypes) AppMenuEntry(nodeLabel(type), () => onAdd(type)),
+        if (onPaste != null && copied != null) ...<AppMenuEntry>[
+          const AppMenuEntry.separator(),
+          AppMenuEntry('Paste ${copied.name}', onPaste, hint: macPlatform ? 'Cmd+V' : 'Ctrl+V'),
+        ],
+      ],
+    );
+  }
 }
 
 /// Asks before deleting [what] (a step and what it holds).
@@ -120,17 +213,17 @@ Future<void> confirmDelete(String what, String detail, void Function() remove) a
   if (await askToConfirm(title: 'Delete $what?', message: '$detail Undo brings it back.', confirmLabel: 'Delete', destructive: true)) remove();
 }
 
-/// A node card. [flat] draws a part's top node without its own card: the
-/// part's card already holds it.
+/// A node card. [flat] draws a routine's top node without its own card: the
+/// routine's card already holds it. A step of a list gets [list] (the
+/// list's path) and its [index] there, for moving, pasting and dragging.
 class BehaviorNodeView extends StatelessWidget {
   const BehaviorNodeView({
     required this.context,
     required this.node,
     required this.steps,
+    this.list,
+    this.index,
     this.onRemove,
-    this.onUp,
-    this.onDown,
-    this.onDuplicate,
     this.caption,
     this.flat = false,
     super.key,
@@ -139,10 +232,13 @@ class BehaviorNodeView extends StatelessWidget {
   final BehaviorContext context;
   final Object? node;
   final List<JsonStep> steps;
+
+  /// The list this step is in, and its place there.
+  final List<JsonStep>? list;
+  final int? index;
+
+  /// Removes a step that is not in a list (an If's Yes or No).
   final void Function()? onRemove;
-  final void Function()? onUp;
-  final void Function()? onDown;
-  final void Function()? onDuplicate;
 
   /// Where the node sits: `Yes`, `Step 2`, ...
   final String? caption;
@@ -152,31 +248,69 @@ class BehaviorNodeView extends StatelessWidget {
   BehaviorContext get ctx => context;
   String get _path => formatPath(steps);
   String get _label => caption ?? 'Step';
+  String get _name => stepName(node);
 
   void _put(JsonMap next) => ctx.write(steps, next);
 
+  int get _count => asList(readIn(ctx.document, list ?? const <JsonStep>[])).length;
+
+  void Function()? get _up => list == null || index! == 0 ? null : () => ctx.move(list!, index!, list!, index! - 1, 'move $_name up');
+
+  void Function()? get _down => list == null || index! >= _count - 1 ? null : () => ctx.move(list!, index!, list!, index! + 2, 'move $_name down');
+
+  void Function()? get _duplicate => list == null
+      ? null
+      : () {
+          ctx.change(list!, insertItem(asList(readIn(ctx.document, list!)), index! + 1, deepCopy(node)), 'duplicate $_name');
+          focusStep(formatPath(<JsonStep>[...list!, index! + 1]));
+        };
+
+  void Function()? get _remove => list != null ? () => ctx.change(list!, removeItem(asList(readIn(ctx.document, list!)), index!), 'delete $_name') : onRemove;
+
+  void Function()? get _pasteAfter {
+    if (copiedStep == null) return null;
+    if (list != null) return () => ctx.paste(list!, index! + 1);
+    return () => ctx.pasteIn(steps);
+  }
+
   /// The short line beside the type: a count for lists, else the summary.
   String _line(JsonMap value) => switch (asString(value['type'])) {
-        'sequence' => _count(asList(value['steps']).length, 'step'),
-        'parallel' => _count(asList(value['branches']).length, 'branch'),
+        'sequence' => _countWords(asList(value['steps']).length, 'step'),
+        'parallel' => _countWords(asList(value['branches']).length, 'branch'),
         _ => nodeSummary(value, variables: ctx.variables),
       };
 
-  static String _count(int count, String noun) => countOf(count, noun, plural: noun == 'branch' ? 'branches' : null);
+  static String _countWords(int count, String noun) => countOf(count, noun, plural: noun == 'branch' ? 'branches' : null);
 
   /// The keys the shortcut sheet lists for a focused step.
   void _onKey(web.KeyboardEvent key, void Function(bool open) show, String line) {
+    final bool mod = macPlatform ? key.metaKey : key.ctrlKey;
+    void run(void Function()? action) {
+      if (action == null) return;
+      key.preventDefault();
+      action();
+    }
+
     switch (key.key) {
+      case 'ArrowUp' || 'ArrowDown' when key.altKey:
+        run(key.key == 'ArrowUp' ? _up : _down);
       case 'ArrowRight' || 'ArrowLeft':
         key.preventDefault();
         show(key.key == 'ArrowRight');
       case 'ArrowDown' || 'ArrowUp':
         key.preventDefault();
         _focusStep(key.target! as web.Element, key.key == 'ArrowDown' ? 1 : -1);
+      case 'c' || 'C' when mod:
+        run(() => ctx.copy(node));
+      case 'v' || 'V' when mod:
+        run(_pasteAfter);
+      case 'd' || 'D' when mod:
+        run(_duplicate);
       case 'Delete':
-        if (onRemove == null) return;
+        final void Function()? remove = _remove;
+        if (remove == null) return;
         key.preventDefault();
-        confirmDelete(_label.toLowerCase(), '$line, with what it holds.', onRemove!);
+        confirmDelete(_label.toLowerCase(), '$line, with what it holds.', remove);
     }
   }
 
@@ -194,6 +328,64 @@ class BehaviorNodeView extends StatelessWidget {
     shown[at + by].focus();
   }
 
+  String get _behaviorId => asString(ctx.document['id']) ?? '';
+
+  /// The grip a step is dragged by, to another place in any list of this
+  /// behavior. The keyboard way is Alt+Up and Alt+Down.
+  Widget _grip() => dom.span(
+        classes: 'animus-conv-handle',
+        attributes: <String, String>{'draggable': 'true', 'title': 'Drag to move', 'aria-hidden': 'true', 'data-step-grip': ''},
+        events: <String, void Function(web.Event)>{
+          'click': (web.Event event) => event.preventDefault(),
+          'dragstart': (web.Event event) {
+            event.stopPropagation();
+            _dragging = _StepDrag(_behaviorId, list!, index!, _name);
+            final web.DataTransfer? data = (event as web.DragEvent).dataTransfer;
+            data?.setData('text/plain', _path);
+            data?.effectAllowed = 'move';
+            final web.Element? card = (event.target as web.Element?)?.closest('.animus-node');
+            if (card != null) data?.setDragImage(card, 16, 16);
+          },
+          'dragend': (web.Event _) => _dragging = null,
+        },
+        <Widget>[ArcaneIcon.gripVertical(size: IconSize.sm)],
+      );
+
+  /// Drops a dragged step of this behavior before this one (after it when
+  /// it came from above in the same list).
+  Map<String, void Function(web.Event)> _dropEvents() {
+    bool fits() => _dragging != null && list != null && _dragging!.behavior == _behaviorId;
+    return <String, void Function(web.Event)>{
+      'dragover': (web.Event event) {
+        if (!fits()) return;
+        event.preventDefault();
+        event.stopPropagation();
+      },
+      'drop': (web.Event event) {
+        if (!fits()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        final _StepDrag from = _dragging!;
+        _dragging = null;
+        final bool same = formatPath(from.list) == formatPath(list!);
+        if (same && from.index == index) return;
+        ctx.move(from.list, from.index, list!, same && from.index < index! ? index! + 1 : index!, 'move ${from.name}');
+      },
+    };
+  }
+
+  /// Confirms a type change that drops content, then writes it.
+  Future<void> _changeType(JsonMap value, String next) async {
+    final JsonMap changed = changeNodeType(value, next, ctx.catalog, routine: ctx.entry, variables: ctx.variables, server: ctx.server);
+    final String? loss = typeChangeLoss(value, changed, ctx.catalog);
+    final String to = nodeLabel(next);
+    if (loss != null) {
+      final String what = RegExp(r'^\d+ steps?$').hasMatch(loss) ? (loss.startsWith('1 ') ? '$loss goes' : '$loss go') : '"$loss" goes';
+      if (!await askToConfirm(title: 'Change $_name to $to?', message: '$what. Undo brings it back.', confirmLabel: 'Change')) return;
+    }
+    ctx.change(steps, changed, 'change $_name to $to');
+  }
+
   @override
   Widget build(BuildContext build) {
     final JsonMap value = asMap(node);
@@ -203,13 +395,21 @@ class BehaviorNodeView extends StatelessWidget {
     final bool failing = diagnosticsAt(ctx.diagnostics, _path, nested: true).any((Diagnostic d) => d.severity == DiagnosticSeverity.error);
     final List<String> kept = unknownKeys(value, spec?.fields.map((FieldSpec field) => field.key) ?? const <String>[]);
     final String line = _line(value);
+    final String mod = macPlatform ? 'Cmd' : 'Ctrl';
+    final String alt = macPlatform ? 'Option' : 'Alt';
+    final void Function()? up = _up, down = _down, duplicate = _duplicate, remove = _remove, pasteAfter = _pasteAfter;
+    final CopiedStep? copied = copiedStep;
     final List<AppMenuEntry> menu = <AppMenuEntry>[
-      if (onUp != null) AppMenuEntry('Move up', onUp),
-      if (onDown != null) AppMenuEntry('Move down', onDown),
-      if (onDuplicate != null) AppMenuEntry('Duplicate', onDuplicate),
-      if (onRemove != null) ...<AppMenuEntry>[
-        if (onUp != null || onDown != null || onDuplicate != null) const AppMenuEntry.separator(),
-        AppMenuEntry('Delete', () => confirmDelete(_label.toLowerCase(), '$line, with what it holds.', onRemove!), destructive: true),
+      if (list != null) ...<AppMenuEntry>[
+        AppMenuEntry('Move up', up, hint: '$alt+Up'),
+        AppMenuEntry('Move down', down, hint: '$alt+Down'),
+        AppMenuEntry('Duplicate', duplicate, hint: '$mod+D'),
+      ],
+      if (!flat) AppMenuEntry('Copy', () => ctx.copy(node), hint: '$mod+C'),
+      if (!flat && pasteAfter != null && copied != null) AppMenuEntry(list != null ? 'Paste ${copied.name} after' : 'Paste ${copied.name}', pasteAfter, hint: '$mod+V'),
+      if (remove != null) ...<AppMenuEntry>[
+        const AppMenuEntry.separator(),
+        AppMenuEntry('Delete', () => confirmDelete(_label.toLowerCase(), '$line, with what it holds.', remove), destructive: true),
       ],
     ];
     final List<Widget> body = <Widget>[
@@ -224,7 +424,7 @@ class BehaviorNodeView extends StatelessWidget {
             noneLabel: 'Pick a type',
             hiddenLabel: 'Type of ${_label.toLowerCase()}',
             onChanged: (String? next) {
-              if (next != null) _put(changeNodeType(value, next, ctx.catalog, routine: ctx.entry, variables: ctx.variables, server: ctx.server));
+              if (next != null && next != type) _changeType(value, next);
             },
           ),
           if (spec == null) noteLine(type == null ? 'Pick a type' : 'Unknown type, kept as written'),
@@ -237,11 +437,12 @@ class BehaviorNodeView extends StatelessWidget {
     ];
     final Map<String, String> attributes = <String, String>{'data-node-path': _path, 'data-node-type': type ?? ''};
     if (flat) return dom.div(classes: 'animus-node is-flat', attributes: attributes, body);
-    return AppSection(
+    final Widget card = AppSection(
       classes: 'animus-node${failing ? ' has-error' : ''}',
       attributes: attributes,
       onKey: (web.KeyboardEvent key, void Function(bool open) show) => _onKey(key, show, line),
       summary: <Widget>[
+        if (list != null) _grip(),
         Text(_label, size: FontSize.sm, color: TextColor.muted),
         TipLabel(label: Component.text(nodeLabel(type)), tip: _tip(type, spec), docs: Docs.behaviorNodes),
         Text(line, size: FontSize.sm, color: TextColor.muted),
@@ -249,6 +450,7 @@ class BehaviorNodeView extends StatelessWidget {
       ],
       children: body,
     );
+    return list == null ? card : dom.div(events: _dropEvents(), <Widget>[card]);
   }
 
   /// The engine's word for the type, then what it does.
@@ -398,10 +600,12 @@ class BehaviorNodeView extends StatelessWidget {
       field,
       'integer',
       label: 'Times',
-      literal: NumberInput(
+      literal: BoundedNumberInput(
         value: count is num ? count : null,
-        label: 'Times ${_label.toLowerCase()} repeats',
-        onChanged: (num? next) => ctx.write(<JsonStep>[...steps, 'count'], (next ?? 0).round().clamp(0, 128)),
+        minimum: 0,
+        maximum: 128,
+        label: 'Times',
+        onChanged: (int next) => ctx.write(<JsonStep>[...steps, 'count'], next),
       ),
     );
   }
@@ -413,10 +617,13 @@ class BehaviorNodeView extends StatelessWidget {
       field,
       'integer',
       label: 'Ticks',
-      literal: NumberInput(
+      literal: BoundedNumberInput(
         value: ticks is num ? ticks : null,
-        label: 'Ticks to wait',
-        onChanged: (num? next) => ctx.write(<JsonStep>[...steps, 'ticks'], (next ?? 1).round().clamp(1, 72000)),
+        minimum: 1,
+        maximum: 72000,
+        ticks: true,
+        label: 'Ticks',
+        onChanged: (int next) => ctx.write(<JsonStep>[...steps, 'ticks'], next),
       ),
     );
   }
@@ -442,19 +649,19 @@ class BehaviorNodeView extends StatelessWidget {
   }
 
   Widget _routineRow(JsonMap value, FieldSpec field) => Field(
-        label: 'Part',
-        tip: 'The part (routine) this step runs. ${field.description ?? ''}'.trim(),
+        label: 'Routine',
+        tip: 'The routine this step calls. ${field.description ?? ''}'.trim(),
         problems: <Diagnostic>[
           ..._problems('routine'),
           if (value['routine'] is String && !ctx.routines.contains(value['routine']))
-            Diagnostic(DiagnosticSeverity.warning, formatPath(<JsonStep>[...steps, 'routine']), 'No part ${value['routine']} in this behavior.'),
+            Diagnostic(DiagnosticSeverity.warning, formatPath(<JsonStep>[...steps, 'routine']), 'No routine ${value['routine']} in this behavior.'),
         ],
         child: AnimusSelect.values(
           value: asString(value['routine']),
           values: ctx.routines,
           labels: <String, String>{for (final String name in ctx.routines) name: behaviorTitle(name)},
-          noneLabel: 'Pick a part',
-          hiddenLabel: 'Part ${_label.toLowerCase()} runs',
+          noneLabel: 'Pick a routine',
+          hiddenLabel: 'Routine ${_label.toLowerCase()} calls',
           onChanged: (String? next) => ctx.write(<JsonStep>[...steps, 'routine'], next),
         ),
       );
@@ -486,7 +693,7 @@ class BehaviorNodeView extends StatelessWidget {
     void create() {
       final String name = uniqueName(resultVariableName(asString(value['capability'])), ctx.variables.keys);
       final JsonMap base = <String, Object?>{...ctx.document, 'variables': <String, Object?>{...ctx.variables, name: <String, Object?>{'type': 'map', 'initial': <String, Object?>{}}}};
-      ctx.writeDocument(asMap(writeIn(base, <JsonStep>[...steps, field.key], name)));
+      ctx.changeDocument(asMap(writeIn(base, <JsonStep>[...steps, field.key], name)), 'add variable $name');
     }
 
     return Field(
@@ -523,7 +730,7 @@ class BehaviorNodeView extends StatelessWidget {
         RowAction('Add a variable', () {
           final String name = uniqueName('item', ctx.variables.keys);
           final JsonMap base = <String, Object?>{...ctx.document, 'variables': <String, Object?>{...ctx.variables, name: <String, Object?>{'type': 'any', 'initial': ''}}};
-          ctx.writeDocument(asMap(writeIn(base, <JsonStep>[...steps, field.key], name)));
+          ctx.changeDocument(asMap(writeIn(base, <JsonStep>[...steps, field.key], name)), 'add variable $name');
         }),
       ]),
     );
@@ -534,6 +741,7 @@ class BehaviorNodeView extends StatelessWidget {
     final JsonList items = asList(value[field.key]);
     final bool branches = field.key == 'branches';
     final String noun = branches ? 'Branch' : 'Step';
+    final String behavior = asString(ctx.document['id']) ?? '';
     return dom.div(classes: 'animus-node-children', attributes: <String, String>{'role': 'group', 'aria-label': '${branches ? 'Branches' : 'Steps'} of ${_label.toLowerCase()}'}, <Widget>[
       if (items.isEmpty) noteLine(branches ? 'Add at least one branch.' : 'No steps yet.'),
       for (int index = 0; index < items.length; index++)
@@ -542,16 +750,39 @@ class BehaviorNodeView extends StatelessWidget {
           context: ctx,
           node: items[index],
           steps: <JsonStep>[...at, index],
+          list: at,
+          index: index,
           caption: '$noun ${index + 1}',
-          onUp: index == 0 ? null : () => ctx.write(at, moveItem(items, index, index - 1)),
-          onDown: index == items.length - 1 ? null : () => ctx.write(at, moveItem(items, index, index + 1)),
-          onDuplicate: () => ctx.write(at, <Object?>[...items]..insert(index + 1, deepCopy(items[index]))),
-          onRemove: () => ctx.write(at, removeItem(items, index)),
         ),
       for (final Diagnostic problem in diagnosticsAt(ctx.diagnostics, formatPath(at))) _problem(problem.severity, problem.message),
-      ActionRow(dense: true, leading: <Widget>[
-        AddNodeMenu(context: ctx, label: 'Add ${noun.toLowerCase()}', onAdd: (String type) => ctx.addAt(at, type, append: true)),
-      ]),
+      // Dropping a dragged step on the Add row puts it last.
+      dom.div(
+        events: <String, void Function(web.Event)>{
+          'dragover': (web.Event event) {
+            if (_dragging?.behavior != behavior) return;
+            event.preventDefault();
+            event.stopPropagation();
+          },
+          'drop': (web.Event event) {
+            final _StepDrag? from = _dragging;
+            if (from == null || from.behavior != behavior) return;
+            event.preventDefault();
+            event.stopPropagation();
+            _dragging = null;
+            ctx.move(from.list, from.index, at, items.length, 'move ${from.name}');
+          },
+        },
+        <Widget>[
+          ActionRow(dense: true, leading: <Widget>[
+            AddNodeMenu(
+              context: ctx,
+              label: 'Add ${noun.toLowerCase()}',
+              onAdd: (String type) => ctx.addAt(at, type, append: true),
+              onPaste: () => ctx.paste(at, items.length),
+            ),
+          ]),
+        ],
+      ),
     ]);
   }
 
@@ -574,7 +805,7 @@ class BehaviorNodeView extends StatelessWidget {
         tip: field.description,
         problems: diagnosticsAt(ctx.diagnostics, formatPath(at)),
         child: ActionRow(dense: true, leading: <Widget>[
-          AddNodeMenu(context: ctx, label: 'Add', onAdd: (String type) => ctx.addAt(at, type)),
+          AddNodeMenu(context: ctx, label: 'Add', onAdd: (String type) => ctx.addAt(at, type), onPaste: () => ctx.pasteIn(at)),
         ]),
       );
     }
@@ -585,8 +816,20 @@ class BehaviorNodeView extends StatelessWidget {
         node: child,
         steps: at,
         caption: caption,
-        onRemove: field.required ? null : () => ctx.write(at, null),
+        onRemove: field.required ? null : () => ctx.change(at, null, 'delete ${stepName(child)}'),
       ),
+      ?growStep(ctx, at, child),
     ]);
   }
+}
+
+/// "Add step" under a single step that is not a list (an If's Yes, a
+/// routine of one step): the new step joins it in order. Null under a list,
+/// which has its own.
+Widget? growStep(BehaviorContext ctx, List<JsonStep> slot, Object? child) {
+  final String? type = asString(asMap(child)['type']);
+  if (type == null || type == 'sequence' || type == 'parallel') return null;
+  return ActionRow(dense: true, leading: <Widget>[
+    AddNodeMenu(context: ctx, label: 'Add step', onAdd: (String added) => ctx.addAfter(slot, added), onPaste: () => ctx.pasteIn(slot)),
+  ]);
 }

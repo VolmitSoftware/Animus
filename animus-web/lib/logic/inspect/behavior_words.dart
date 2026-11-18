@@ -120,6 +120,102 @@ String soundName(String id) {
 /// What makes the sound [id]: Blocks, Creatures, Items or Other.
 String soundGroup(String id) => _soundGroups[_soundPath(id).split('.').first] ?? 'Other';
 
+/// What a click of an interaction trigger is, after "Starts when".
+const Map<String, String> _clickClauses = <String, String>{
+  'interact': 'a player clicks',
+  'attack': 'a player left-clicks',
+  'any': 'a player clicks either button',
+  'sneak_interact': 'a player sneak-clicks',
+  'sneak_attack': 'a player sneak-left-clicks',
+  'drop': 'a player presses drop',
+  'sneak_drop': 'a player sneaks and presses drop',
+  'swap_hands': 'a player swaps hands',
+  'sneak_swap_hands': 'a player sneaks and swaps hands',
+};
+
+String _phase(JsonMap trigger, String enter, String leave) => trigger['phase'] == 'leave' ? leave : enter;
+
+/// What starts a run, after "Starts": "when a player clicks", or for a
+/// timer "every 10 seconds".
+String triggerClause(JsonMap trigger) {
+  final String event = asString(trigger['event']) ?? '';
+  final Object? interval = trigger['intervalTicks'];
+  final String clause = switch (event) {
+    'interaction' => _clickClauses[asString(trigger['action']) ?? 'interact'] ?? 'a player clicks',
+    'proximity' => _phase(trigger, 'a player comes near', 'a player walks away'),
+    'timer' => interval is int && interval > 0 ? everyWords(interval).toLowerCase() : 'on a timer',
+    'spawn' => 'the NPC spawns',
+    'despawn' => 'the NPC despawns',
+    'damage' => 'the NPC is hurt',
+    'death' => 'the NPC is killed',
+    'waypoint' => 'the NPC reaches a route point',
+    'dialogue_choice' => 'a player picks an answer',
+    'module' => 'a module starts it',
+    'build_finished' => 'a build finishes',
+    'build_paused' => 'a build pauses',
+    'animation_finished' => 'an animation ends',
+    'entity_proximity' => _phase(trigger, 'an entity comes near', 'an entity moves away'),
+    'entity_collide' => 'an entity touches the NPC',
+    'hit_by_projectile' => 'a projectile hits the NPC',
+    'item_dropped' => 'an item is dropped nearby',
+    'vehicle_bump' => 'a vehicle bumps the NPC',
+    'leash_tie' => 'a player ties a lead to the NPC',
+    'leash_pass' => 'a mob on a lead passes',
+    'npc_proximity' => _phase(trigger, 'another NPC comes near', 'another NPC moves away'),
+    'npc_speech' => 'another NPC speaks nearby',
+    'player_join' => 'a player joins',
+    'player_quit' => 'a player leaves the server',
+    'player_chat' => 'a player chats',
+    'command' => trigger['name'] is String ? 'a player runs /${trigger['name']}' : 'a player runs its command',
+    'server_start' => 'the server starts',
+    'player_death' => 'a player dies',
+    'player_respawn' => 'a player respawns',
+    'player_world_change' => 'a player changes world',
+    'player_area' => _phase(trigger, 'a player enters an area', 'a player leaves an area'),
+    'player_inventory_open' => 'a player opens an inventory',
+    'player_inventory_close' => 'a player closes an inventory',
+    'player_inventory_click' => 'a player clicks an inventory slot',
+    'player_item_drop' => 'a player drops an item',
+    'player_item_pickup' => 'a player picks up an item',
+    'player_item_consume' => 'a player eats or drinks',
+    'player_block_click' => 'a player clicks a block',
+    'player_block_place' => 'a player places a block',
+    'player_block_break' => 'a player breaks a block',
+    'player_damaged' => 'a player is hurt',
+    'player_damage_entity' => 'a player hits a mob',
+    'player_kill' => 'a player kills a mob',
+    'projectile_launch' => 'a projectile is launched',
+    'projectile_hit' => 'a projectile hits',
+    'entity_shoot_bow' => 'a bow is shot',
+    'quest_started' => 'a player starts a quest',
+    'quest_stage' => 'a quest moves on a stage',
+    'quest_completed' => 'a player completes a quest',
+    _ => eventWords(event).toLowerCase(),
+  };
+  return event == 'timer' && clause.startsWith('every') ? clause : 'when $clause';
+}
+
+/// One trigger as a sentence: "Starts when a player clicks", "Starts every
+/// 10 seconds".
+String triggerSentence(JsonMap trigger) => 'Starts ${triggerClause(trigger)}';
+
+/// What starts a routine from its [triggers] (answers left out, they
+/// continue a conversation): "Starts when a player clicks, or every 10
+/// seconds"; "Runs when called" with none.
+String startsSentence(List<Object?> triggers) {
+  final List<String> clauses = <String>[];
+  for (final Object? raw in triggers) {
+    final JsonMap trigger = asMap(raw);
+    if (trigger['event'] == 'dialogue_choice') continue;
+    final String clause = triggerClause(trigger);
+    if (!clauses.contains(clause)) clauses.add(clause);
+  }
+  if (clauses.isEmpty) return 'Runs when called';
+  final List<String> shown = clauses.take(3).toList();
+  final String more = clauses.length > 3 ? ' +${clauses.length - 3}' : '';
+  return 'Starts ${shown.join(', or ')}$more';
+}
+
 /// One line about what starts a behavior, from its trigger [events] (a
 /// catalog summary) or, when loaded, its [triggers]. Answers are left out:
 /// they continue a conversation, they do not start one.
@@ -167,8 +263,8 @@ const Map<String, NodeWords> nodeWords = <String, NodeWords>{
   'break': NodeWords('Leave loop', 'Stops the loop it is in.'),
   'continue': NodeWords('Next round', 'Skips to the next round of its loop.'),
   'set': NodeWords('Set variable', 'Stores a value for later steps.'),
-  'call': NodeWords('Run part', 'Runs another part of this behavior.'),
-  'return': NodeWords('Stop', 'Ends this part here.'),
+  'call': NodeWords('Call routine', 'Runs another routine of this behavior.'),
+  'return': NodeWords('Stop', 'Ends this routine here.'),
 };
 
 /// The label of node [type]; an unknown type keeps its own name.
@@ -192,6 +288,15 @@ const Map<String, String> variableScopeWords = <String, String>{
   'execution': 'One run',
   'npc': 'This NPC',
   'player': 'Each player',
+  'relationship': 'NPC and player',
+  'global': 'Everyone',
+};
+
+/// Flag and quest scopes in words, as variables say them; no scope is
+/// Each player.
+const Map<String, String> flagScopeWords = <String, String>{
+  'player': 'Each player',
+  'npc': 'This NPC',
   'relationship': 'NPC and player',
   'global': 'Everyone',
 };

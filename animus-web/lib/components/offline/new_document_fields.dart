@@ -6,10 +6,14 @@ part of 'new_document_page.dart';
 extension _NewDocumentFields on _NewDocumentPageState {
   List<Widget> _fields(DocumentKind kind, EditorMode mode) {
     final bool advanced = mode == EditorMode.advanced;
-    final List<Widget> more = <Widget>[if (advanced && !fixedIdKinds.contains(kind)) _idField(kind)];
+    final List<Widget> more = <Widget>[
+      // A behavior asks for its folder beside its name.
+      if (namespacedKind(kind) && kind != DocumentKind.behavior) _folderField(kind),
+      if (advanced && !fixedIdKinds.contains(kind)) _idField(kind),
+    ];
     final List<Widget> fields = switch (kind) {
       DocumentKind.npc => _npcFields(advanced),
-      DocumentKind.behavior => _behaviorFields(),
+      DocumentKind.behavior => _behaviorFields(advanced),
       DocumentKind.pack => <Widget>[
           _text('Name', 'new-pack-name', _title, (String value) => _title = value, kind: kind),
           _text('Description', 'new-pack-description', _name, (String value) => _name = value, kind: kind),
@@ -189,6 +193,28 @@ extension _NewDocumentFields on _NewDocumentPageState {
         ),
       );
 
+  /// The folder (namespace) of a namespaced kind, from the workspace's
+  /// folders or a new one. Behaviors in one folder share flags and quests.
+  Widget _folderField(DocumentKind kind) {
+    final List<String> folders = workspaceNamespaces(<String>[for (final AnimusDocument document in component.workspace.documents) document.id]);
+    return Field(
+      label: 'Folder',
+      forId: 'new-folder',
+      tip: kind == DocumentKind.behavior ? 'Where the file goes. Behaviors in one folder share their flags and quests.' : 'Where the file goes, such as town.',
+      child: SuggestInput(
+        id: 'new-folder',
+        value: _shownFolder,
+        label: 'Folder',
+        suggestions: <FieldOption>[for (final String folder in folders) FieldOption(folder)],
+        onChanged: (String value) => _set(() {
+          _folder = value.trim();
+          final String? id = _id;
+          if (id != null && id.contains(':')) _id = '${_folder!}:${id.substring(id.indexOf(':') + 1)}';
+        }),
+      ),
+    );
+  }
+
   Widget _idField(DocumentKind kind) {
     final String? problem = _id == null ? null : _idProblem(kind);
     return Field(
@@ -199,7 +225,10 @@ extension _NewDocumentFields on _NewDocumentPageState {
       child: TextInput(
         id: 'new-id',
         value: _idFor(kind),
-        onChanged: (String value) => _set(() => _id = value),
+        onChanged: (String value) => _set(() {
+          _id = value;
+          if (namespacedKind(kind) && value.contains(':')) _folder = value.substring(0, value.indexOf(':'));
+        }),
         onSubmitted: (String _) {
           if (!_busy) _create(kind);
         },
@@ -247,15 +276,15 @@ extension _NewDocumentFields on _NewDocumentPageState {
           allowNone: true,
           noneLabel: 'None yet',
           values: <String>[
-            for (final BehaviorTemplate template in BehaviorTemplate.values) 'new:${template.name}',
+            for (final BehaviorTemplate template in npcTemplates) 'new:${template.name}',
             for (final AnimusDocument behavior in behaviors) behavior.id,
           ],
           labels: <String, String>{
-            for (final BehaviorTemplate template in BehaviorTemplate.values) 'new:${template.name}': 'New: ${template.label}',
+            for (final BehaviorTemplate template in npcTemplates) 'new:${template.name}': 'New: ${template.label}',
             for (final AnimusDocument behavior in behaviors) behavior.id: guiPlainText(behavior.title),
           },
           groups: <String, String>{
-            for (final BehaviorTemplate template in BehaviorTemplate.values) 'new:${template.name}': 'New',
+            for (final BehaviorTemplate template in npcTemplates) 'new:${template.name}': 'New',
             for (final AnimusDocument behavior in behaviors) behavior.id: 'In this workspace',
           },
           onChanged: (String? value) => _set(() => _behavior = value ?? ''),
@@ -379,9 +408,13 @@ extension _NewDocumentFields on _NewDocumentPageState {
         const <Widget>[],
       );
 
-  List<Widget> _behaviorFields() {
+  List<Widget> _behaviorFields(bool advanced) {
     final List<AnimusDocument> shops = _of(DocumentKind.shop);
     final List<AnimusDocument> npcs = _of(DocumentKind.npc);
+    final List<BehaviorTemplate> templates = <BehaviorTemplate>[
+      for (final BehaviorTemplate template in BehaviorTemplate.values)
+        if (advanced || !template.advancedOnly) template,
+    ];
     return <Widget>[
       Field(
         label: 'Start from',
@@ -389,12 +422,14 @@ extension _NewDocumentFields on _NewDocumentPageState {
         child: AnimusSelect.values(
           id: 'new-behavior-template',
           value: _template.name,
-          values: <String>[for (final BehaviorTemplate template in BehaviorTemplate.values) template.name],
-          labels: <String, String>{for (final BehaviorTemplate template in BehaviorTemplate.values) template.name: template.label},
-          details: <String, String>{for (final BehaviorTemplate template in BehaviorTemplate.values) template.name: template.description},
+          values: <String>[for (final BehaviorTemplate template in templates) template.name],
+          labels: <String, String>{for (final BehaviorTemplate template in templates) template.name: template.label},
+          details: <String, String>{for (final BehaviorTemplate template in templates) template.name: template.description},
           onChanged: (String? value) => _set(() => _template = BehaviorTemplate.values.asNameMap()[value] ?? BehaviorTemplate.greeter),
         ),
       ),
+      _text('Name', 'new-behavior-name', _name, (String value) => _name = value, kind: DocumentKind.behavior, placeholder: _template.label),
+      _folderField(DocumentKind.behavior),
       if (_template == BehaviorTemplate.shop && shops.isEmpty)
         AppAlert(
           tone: AlertTone.info,
@@ -418,20 +453,21 @@ extension _NewDocumentFields on _NewDocumentPageState {
             onChanged: (String? value) => _set(() => _shop = value),
           ),
         ),
-      Field(
-        label: 'Give to NPC',
-        forId: 'new-behavior-npc',
-        hint: _template == BehaviorTemplate.patrol ? 'Patrols around this NPC' : null,
-        child: AnimusSelect.values(
-          id: 'new-behavior-npc',
-          value: _attachTo,
-          allowNone: true,
-          noneLabel: 'Not yet',
-          values: <String>[for (final AnimusDocument npc in npcs) npc.id],
-          labels: <String, String>{for (final AnimusDocument npc in npcs) npc.id: guiPlainText(npc.title)},
-          onChanged: (String? value) => _set(() => _attachTo = value),
+      if (_template != BehaviorTemplate.server)
+        Field(
+          label: 'Give to NPC',
+          forId: 'new-behavior-npc',
+          hint: _template == BehaviorTemplate.patrol ? 'Patrols around this NPC' : null,
+          child: AnimusSelect.values(
+            id: 'new-behavior-npc',
+            value: _attachTo,
+            allowNone: true,
+            noneLabel: 'Not yet',
+            values: <String>[for (final AnimusDocument npc in npcs) npc.id],
+            labels: <String, String>{for (final AnimusDocument npc in npcs) npc.id: guiPlainText(npc.title)},
+            onChanged: (String? value) => _set(() => _attachTo = value),
+          ),
         ),
-      ),
     ];
   }
 

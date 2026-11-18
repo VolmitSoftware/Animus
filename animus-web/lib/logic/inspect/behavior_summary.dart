@@ -10,8 +10,9 @@ import '../../model/document_kind.dart';
 import '../gui/gui_json.dart';
 import '../gui/gui_text.dart';
 import '../item_ids.dart';
+import 'argument_choices.dart' show argumentGiven;
 import 'behavior_operands.dart';
-import 'behavior_words.dart' show soundName;
+import 'behavior_words.dart' show argumentLabel, soundName;
 import 'named_ids.dart' show particleName;
 
 const int _maximumLength = 72;
@@ -43,7 +44,8 @@ String argumentWords(JsonMap node, String key) {
     case ArgumentSource.template:
       return argumentSlotText(node, key);
     case ArgumentSource.binding || ArgumentSource.expression:
-      return '{${argumentSlotText(node, key)}}';
+      final String text = argumentSlotText(node, key);
+      return text.isEmpty ? '' : '{$text}';
   }
 }
 
@@ -83,74 +85,117 @@ String capabilityWords(String? id) {
   return spaced.isEmpty ? id : '${spaced[0].toUpperCase()}${spaced.substring(1)}';
 }
 
+/// A location argument in words: `1,64,3` as "1, 64, 3", `1,64,3,world_nether`
+/// as "1, 64, 3 in world_nether"; anything else, such as a placeholder, as
+/// written.
+String locationWords(String location) {
+  final List<String> parts = location.split(',').map((String part) => part.trim()).toList();
+  if ((parts.length != 3 && parts.length != 4) || parts.take(3).any((String part) => num.tryParse(part) == null)) return location;
+  final String at = parts.take(3).join(', ');
+  return parts.length == 4 && parts[3].isNotEmpty ? '$at in ${parts[3]}' : at;
+}
+
 String _action(JsonMap node, DocumentNames names) {
   final String? id = asString(node['capability']);
   final JsonMap arguments = asMap(node['arguments']);
-  String argument(String key) => argumentWords(node, key);
-  String shown(String key) => _plain(argument(key));
+  String argument(String key) => argumentWords(node, key).trim();
+  String shown(String key) => _plain(argument(key)).trim();
+  bool has(String key) => argument(key).isNotEmpty;
   String document(DocumentKind kind, String key) => _named(argument(key), (String value) => names(kind, value));
   String item(String key) => _named(argument(key), (String value) => itemName(value).toLowerCase());
+  // A value-or-name pair: "Say: Hello", or just "Say" before the text is typed.
+  String titled(String name, String value) => value.isEmpty ? name : '$name: $value';
+  String position() => <String>['x', 'y', 'z'].every(has) ? '${argument('x')}, ${argument('y')}, ${argument('z')}' : '';
+  // A location written x,y,z or x,y,z,world reads as coordinates, with its world when it names one.
+  String place() => locationWords(argument('location'));
+  final String name = capabilityWords(id);
   return switch (id) {
-    'animus:say' => 'Say: ${shown('text')}',
-    'animus:message' => 'Message: ${shown('text')}',
-    'animus:actionbar' => 'Action bar: ${shown('text')}',
-    'animus:title' => 'Title: ${<String>[shown('title'), shown('subtitle')].where((String part) => part.isNotEmpty).join(' / ')}',
-    'animus:set-flag' => arguments['clear'] != null ? 'Clear flag ${_flagName(node)}' : 'Set flag ${_flagName(node)} to ${arguments.containsKey('value') ? argument('value') : 'true'}',
-    'animus:set-quest-state' => 'Set quest ${_flagName(node)} to ${argument('value')}',
-    'animus:advance-quest-state' => 'Advance quest ${_flagName(node)} by ${arguments.containsKey('by') ? argument('by') : '1'}',
-    'animus:choices' => 'Ask: ${shown('prompt')}',
-    'animus:navigate' => arguments['route'] != null
+    'animus:say' => titled('Say', shown('text')),
+    'animus:message' => titled('Message', shown('text')),
+    'animus:actionbar' => titled('Action bar', shown('text')),
+    'animus:title' => titled('Title', <String>[shown('title'), shown('subtitle')].where((String part) => part.isNotEmpty).join(' / ')),
+    'animus:set-flag' => arguments['clear'] != null
+        ? (has('name') ? 'Clear flag ${_flagName(node)}' : 'Clear a flag')
+        : (has('name') ? 'Set flag ${_flagName(node)}${arguments.containsKey('value') ? (has('value') ? ' to ${argument('value')}' : '') : ' to true'}' : 'Set a flag'),
+    'animus:set-quest-state' => !has('name')
+        ? 'Set a quest'
+        : 'Set quest ${_flagName(node)}${has('value') ? ' to ${argument('value')}' : has('random') ? ' to a random stage up to ${argument('random')}' : ''}',
+    'animus:advance-quest-state' => has('name') ? 'Advance quest ${_flagName(node)} by ${has('by') ? argument('by') : '1'}' : 'Advance a quest',
+    'animus:choices' => titled('Ask', shown('prompt')),
+    'animus:navigate' => has('route')
         ? 'Walk route ${document(DocumentKind.route, 'route')}'
-        : arguments.containsKey('location')
-            ? 'Walk to ${argument('location')}'
-            : 'Walk to ${argument('x')}, ${argument('y')}, ${argument('z')}',
-    'animus:command' => 'Run command /${argument('command')}${arguments['asOperator'] == true ? ' as operator' : ''}',
-    'animus:give-item' => 'Give ${arguments.containsKey('amount') ? '${argument('amount')} ' : ''}${arguments.containsKey('stack') ? 'item ${argument('stack')}' : item('item')}',
+        : has('anchor')
+            ? 'Walk to anchor ${argument('anchor')}'
+            : position().isNotEmpty
+                ? 'Walk to ${position()}'
+                : has('location')
+                    ? 'Walk to ${place()}'
+                    : 'Walk',
+    'animus:command' => has('command') ? 'Run command /${argument('command')}${arguments['asOperator'] == true ? ' as operator' : ''}' : 'Run a command',
+    'animus:give-item' => has('stack')
+        ? 'Give ${has('amount') ? '${argument('amount')} ' : ''}item ${argument('stack')}'
+        : has('item')
+            ? 'Give ${has('amount') ? '${argument('amount')} ' : ''}${item('item')}'
+            : 'Give an item',
     'animus:read-inventory' => 'Read the inventory${node['result'] is String ? ' into ${node['result']}' : ''}',
-    'animus:bossbar' => arguments['operation'] == 'remove' ? 'Remove boss bar ${argument('id')}' : 'Boss bar ${argument('id')}${arguments.containsKey('title') ? ': ${shown('title')}' : ''}',
+    'animus:bossbar' => !has('id')
+        ? (arguments['operation'] == 'remove' ? 'Remove a boss bar' : 'Boss bar')
+        : arguments['operation'] == 'remove'
+            ? 'Remove boss bar ${argument('id')}'
+            : titled('Boss bar ${argument('id')}', shown('title')),
     'animus:sidebar' => switch (arguments['operation']) {
         'remove' => 'Remove the sidebar',
         'add' => 'Add sidebar lines',
-        'set_line' => 'Set sidebar line ${argument('line')}',
-        _ => 'Sidebar: ${shown('title')}',
+        'set_line' => has('line') ? 'Set sidebar line ${argument('line')}' : 'Set a sidebar line',
+        _ => titled('Sidebar', shown('title')),
       },
     'animus:ray-trace' => 'Find the block the player looks at${node['result'] is String ? ' into ${node['result']}' : ''}',
-    'animus:read-block' => 'Read the block at ${argument('location')}${node['result'] is String ? ' into ${node['result']}' : ''}',
-    'animus:explode' => 'Explosion of power ${arguments.containsKey('power') ? argument('power') : '1'}',
+    'animus:read-block' => has('location') ? 'Read the block at ${argument('location')}${node['result'] is String ? ' into ${node['result']}' : ''}' : 'Read a block',
+    'animus:explode' => 'Explosion of power ${has('power') ? argument('power') : '1'}',
     'animus:look-close' => arguments['enabled'] == false ? 'Turn look-close off' : 'Turn look-close on',
-    'animus:take-item' => 'Take ${arguments.containsKey('amount') ? '${argument('amount')} ' : ''}${item('item')}',
-    'animus:open-gui' => 'Open GUI ${document(DocumentKind.inventory, 'gui')}',
-    'animus:open-shop' => 'Open shop ${document(DocumentKind.shop, 'shop')}',
-    'animus:play-sound' => 'Play sound ${soundName(argument('sound')).toLowerCase()}',
-    'animus:spawn-particle' => 'Show particle ${_named(argument('particle'), (String value) => particleName(value).toLowerCase())}',
-    'animus:play-animation' => 'Play animation ${document(DocumentKind.animation, 'animation')}',
-    'animus:teleport' => 'Teleport the player',
-    'animus:look' => arguments['target'] == 'player'
+    'animus:take-item' => has('item') ? 'Take ${has('amount') ? '${argument('amount')} ' : ''}${item('item')}' : 'Take an item',
+    'animus:open-gui' => has('gui') ? 'Open GUI ${document(DocumentKind.inventory, 'gui')}' : 'Open a GUI',
+    'animus:open-shop' => has('shop') ? 'Open shop ${document(DocumentKind.shop, 'shop')}' : 'Open a shop',
+    'animus:play-sound' => has('sound') ? 'Play sound ${soundName(argument('sound')).toLowerCase()}' : 'Play a sound',
+    'animus:spawn-particle' => has('particle') ? 'Show particle ${_named(argument('particle'), (String value) => particleName(value).toLowerCase())}' : 'Show a particle',
+    'animus:play-animation' => has('animation') ? 'Play animation ${document(DocumentKind.animation, 'animation')}' : 'Play an animation',
+    'animus:teleport' => 'Teleport ${arguments['target'] == 'npc' ? 'the NPC' : 'the player'}${position().isNotEmpty ? ' to ${position()}' : has('location') ? ' to ${place()}' : has('anchor') ? ' to anchor ${argument('anchor')}' : switch (arguments['to']) {
+        'npc' => ' to the NPC',
+        'player' => ' to the player',
+        _ => '',
+      }}',
+    'animus:look' => argumentGiven(node, 'target')
         ? 'Look at the player'
-        : arguments.containsKey('location')
-            ? 'Look at ${argument('location')}'
-            : 'Look at ${argument('x')}, ${argument('y')}, ${argument('z')}',
-    _ => <String>[
-        capabilityWords(id),
-        if (arguments.isNotEmpty) arguments.keys.take(2).map((String key) => '$key ${argument(key)}').join(', '),
-      ].join(': '),
+        : position().isNotEmpty
+            ? 'Look at ${position()}'
+            : has('location')
+                ? 'Look at ${place()}'
+                : 'Look',
+    _ => titled(name, <String>[
+        for (final String key in arguments.keys)
+          if (has(key)) '${argumentLabel(key).toLowerCase()} ${argument(key)}',
+      ].take(2).join(', ')),
   };
 }
 
 String _condition(JsonMap node) {
   final Object? expression = node['expression'];
-  if (expression is String) return 'If $expression';
+  if (expression is String) return expression.trim().isEmpty ? 'If' : 'If $expression';
   final JsonMap arguments = asMap(node['arguments']);
+  String argument(String key) => argumentWords(node, key).trim();
+  bool has(String key) => argument(key).isNotEmpty;
   return switch (asString(node['capability'])) {
-    'animus:flag-state' => 'If flag ${_flagName(node)} is ${arguments.containsKey('value') ? argumentWords(node, 'value') : 'true'}',
-    'animus:quest-state' => 'If quest ${_flagName(node)} ${<String>[
-        if (arguments.containsKey('equals')) 'is ${argumentWords(node, 'equals')}',
-        if (arguments.containsKey('atLeast')) 'is at least ${argumentWords(node, 'atLeast')}',
-        if (arguments.containsKey('atMost')) 'is at most ${argumentWords(node, 'atMost')}',
-      ].join(' and ')}'
-          .trimRight(),
-    'animus:has-permission' => 'If the player has permission ${argumentWords(node, 'permission')}',
-    'animus:player-in-range' => 'If a player is within ${argumentWords(node, 'radius')} blocks',
+    'animus:flag-state' => has('name') ? 'If flag ${_flagName(node)} is ${arguments.containsKey('value') && has('value') ? argument('value') : 'true'}' : 'If a flag is set',
+    'animus:quest-state' => <String>[
+        has('name') ? 'If quest ${_flagName(node)}' : 'If a quest',
+        <String>[
+          if (has('equals')) 'is ${argument('equals')}',
+          if (has('atLeast')) 'is at least ${argument('atLeast')}',
+          if (has('atMost')) 'is at most ${argument('atMost')}',
+        ].join(' and '),
+      ].where((String part) => part.isNotEmpty).join(' '),
+    'animus:has-permission' => has('permission') ? 'If the player has permission ${argument('permission')}' : 'If the player has a permission',
+    'animus:player-in-range' => has('radius') ? 'If a player is within ${argument('radius')} blocks' : 'If a player is near',
     'animus:npc-state' => 'If the NPC is spawned and healthy',
     'animus:can-fit' => 'If the item fits in the inventory',
     final String? id => 'If ${capabilityWords(id).toLowerCase()}',

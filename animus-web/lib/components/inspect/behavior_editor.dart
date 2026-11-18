@@ -1,20 +1,23 @@
 /// A behavior that is not a conversation. Simple shows it read only, in
 /// plain sentences ([BehaviorSentences]). Advanced edits it, in reading
-/// order: the behavior's own fields (with the server switch), typed
-/// variables, its parts (routines) as cards of steps, then what starts them
-/// (triggers). Every edit writes the whole document through [JsonEdit],
-/// keeping unknown keys.
+/// order: the behavior's own fields (its id, renamed in place, and the
+/// server switch), typed variables, its routines as cards of steps, then
+/// its triggers. Every edit writes the whole document through
+/// [LabeledJsonEdit], keeping unknown keys; adding, moving and deleting are
+/// one undo step each, named in the notice.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
+import 'package:web/web.dart' as web;
 
 import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/behavior_edit.dart';
 import '../../logic/inspect/behavior_kept.dart';
 import '../../logic/inspect/behavior_operands.dart';
+import '../../logic/inspect/behavior_steps.dart';
 import '../../logic/inspect/behavior_words.dart';
 import '../../logic/inspect/completion_catalog.dart';
 import '../../logic/inspect/inspect_schemas.dart';
@@ -27,6 +30,7 @@ import '../../logic/suggest/field_profiles.dart';
 import '../../model/animus_document.dart';
 import '../../ui/action_row.dart';
 import '../../ui/badge.dart';
+import '../../ui/density.dart';
 import '../../ui/info_tip.dart';
 import '../../ui/menu.dart';
 import '../../ui/mode.dart';
@@ -56,11 +60,15 @@ String _variableBase(String type) => switch (type) {
     };
 
 class BehaviorEditor extends StatelessWidget {
-  const BehaviorEditor({required this.document, required this.onJson, required this.schemas, this.diagnostics = const <Diagnostic>[], super.key});
+  const BehaviorEditor({required this.document, required this.onJson, required this.schemas, this.diagnostics = const <Diagnostic>[], this.onRename, super.key});
 
   final AnimusDocument document;
-  final JsonEdit onJson;
+  final LabeledJsonEdit onJson;
   final InspectSchemas schemas;
+
+  /// Moves the behavior to a new id, NPCs that list it following; returns
+  /// why it could not. Null keeps the id read only.
+  final Future<String?> Function(String id)? onRename;
 
   /// The browser's and the server's diagnostics together.
   final List<Diagnostic> diagnostics;
@@ -77,6 +85,9 @@ class BehaviorEditor extends StatelessWidget {
 
   void _write(List<JsonStep> steps, Object? value) => onJson(writeAt(_doc, steps, value), coalesce: 'behavior:${steps.join('.')}');
 
+  /// A structural edit: its own undo step, named [label].
+  void _change(List<JsonStep> steps, Object? value, String label) => onJson(writeAt(_doc, steps, value), label: label);
+
   FieldSpec _spec(String key) =>
       schemas.behavior.fields(schemas.behavior.root, _doc).where((FieldSpec field) => field.key == key).firstOrNull ?? FieldSpec(key: key, kind: FieldKind.any);
 
@@ -90,7 +101,8 @@ class BehaviorEditor extends StatelessWidget {
       document: doc,
       diagnostics: diagnostics,
       write: _write,
-      writeDocument: (JsonMap next) => onJson(writeAt(doc, const <JsonStep>[], next), coalesce: 'behavior:document'),
+      change: _change,
+      changeDocument: (JsonMap next, String label) => onJson(writeAt(doc, const <JsonStep>[], next), label: label),
     );
     final BehaviorNames names = BehaviorNames(
       scope: behavior.scope,
@@ -106,23 +118,27 @@ class BehaviorEditor extends StatelessWidget {
     final bool server = behavior.server;
     return dom.section(classes: 'animus-behavior-editor', attributes: const <String, String>{'aria-label': 'Behavior editor'}, <Widget>[
       if (schemas.live) noteLine('Steps and triggers come from the server.'),
-      AppSection(title: 'Behavior', tip: 'The file: its id, the part it starts in, and whether it runs on the server.', docs: Docs.behaviors, children: <Widget>[
+      AppSection(title: 'Behavior', tip: 'The file: its id, the routine it starts in, and whether it runs on the server.', docs: Docs.behaviors, children: <Widget>[
         Field(
           label: 'Id',
-          tip: _spec('id').description ?? 'Set by the file path.',
+          tip: onRename == null
+              ? (_spec('id').description ?? 'Set by the file path.')
+              : 'Folder and name, such as town:greeter. Behaviors in one folder share flags and quests. Renaming moves the file; NPCs that list it follow.',
           problems: diagnosticsAt(diagnostics, r'$.id'),
-          child: dom.code(classes: 'animus-inspect-const', <Widget>[Component.text(asString(doc['id']) ?? '-')]),
+          child: onRename == null
+              ? dom.code(classes: 'animus-inspect-const', <Widget>[Component.text(asString(doc['id']) ?? '-')])
+              : RenameInput(value: document.id, label: 'Id', onRename: onRename!),
         ),
         Field(
           label: 'Starts in',
-          tip: 'The part that runs when a trigger names none. Written as entry.',
+          tip: 'The routine that runs when a trigger names none. Written as entry.',
           problems: diagnosticsAt(diagnostics, r'$.entry'),
           child: AnimusSelect.values(
             value: asString(doc['entry']),
             values: behavior.routines,
             labels: <String, String>{for (final String name in behavior.routines) name: behaviorTitle(name)},
-            noneLabel: 'Pick a part',
-            hiddenLabel: 'Part it starts in',
+            noneLabel: 'Pick a routine',
+            hiddenLabel: 'Routine it starts in',
             onChanged: (String? v) => _write(<JsonStep>['entry'], v),
           ),
         ),
@@ -177,7 +193,10 @@ class BehaviorEditor extends StatelessWidget {
       for (int index = 0; index < names.length; index++) _variable(doc, variables, names[index], index, put, server),
       _addMenu('Add variable', <AppMenuEntry>[
         for (final String type in _catalog.variableTypes)
-          AppMenuEntry(variableTypeWords[type] ?? type, () => put(<String, Object?>{...variables, uniqueName(_variableBase(type), names): <String, Object?>{'type': type, 'initial': literalFor(type)}})),
+          AppMenuEntry(variableTypeWords[type] ?? type, () {
+            final String name = uniqueName(_variableBase(type), names);
+            _change(<JsonStep>['variables'], <String, Object?>{...variables, name: <String, Object?>{'type': type, 'initial': literalFor(type)}}, 'add variable $name');
+          }),
       ]),
     ]);
   }
@@ -192,10 +211,11 @@ class BehaviorEditor extends StatelessWidget {
       ActionRow(
         label: 'Variable $name',
         leading: <Widget>[
-          VariableNameInput(
+          NameInput(
             name: name,
-            taken: <String>[for (final String other in variables.keys) if (other != name) other],
             label: 'Variable ${index + 1} name',
+            problemOf: (String next) => variableNameProblem(next, <String>[for (final String other in variables.keys) if (other != name) other]),
+            noteOf: variableNameNote,
             onRename: (String next) =>
                 onJson(_renameAt('variables', index, (JsonMap latest, String from) => renameVariable(latest, from, next, _catalog)), coalesce: 'behavior:rename-variable:$index'),
           ),
@@ -211,7 +231,14 @@ class BehaviorEditor extends StatelessWidget {
           ),
         ],
         more: <AppMenuEntry>[
-          AppMenuEntry('Delete variable', () => confirmDelete('variable $name', 'Steps that read it will show a problem.', () => put(<String, Object?>{...variables}..remove(name))), destructive: true),
+          AppMenuEntry(
+            'Delete variable',
+            () => confirmDelete('variable $name', 'Steps that read it will show a problem.', () {
+              final JsonMap rest = <String, Object?>{...variables}..remove(name);
+              _change(<JsonStep>['variables'], rest.isEmpty ? null : rest, 'delete variable $name');
+            }),
+            destructive: true,
+          ),
         ],
       ),
       for (final Diagnostic problem in diagnosticsAt(diagnostics, path)) problemLine(problem.severity, problem.message, classes: 'animus-node-problem'),
@@ -263,15 +290,18 @@ class BehaviorEditor extends StatelessWidget {
     final JsonMap routines = asMap(doc['routines']);
     final List<String> names = routines.keys.toList();
     return AppSection(
-      title: 'Parts',
+      title: 'Routines',
       count: routines.length,
-      tip: 'Named lists of steps, written as routines. Triggers start them; a step can run another part.',
+      tip: 'Named lists of steps, written as routines. Triggers start them; a step can call another routine.',
       docs: Docs.behaviorNodes,
       children: <Widget>[
         for (int index = 0; index < names.length; index++) _routine(doc, routines, names, index, behavior),
-        _addMenu('Add part', <AppMenuEntry>[
+        _addMenu('Add routine', <AppMenuEntry>[
           for (final String type in behavior.nodeTypes)
-            AppMenuEntry(nodeLabel(type), () => _write(<JsonStep>['routines'], <String, Object?>{...routines, uniqueName('part', names): behavior.newNode(type)})),
+            AppMenuEntry(nodeLabel(type), () {
+              final String name = uniqueName('routine', names);
+              _change(<JsonStep>['routines'], <String, Object?>{...routines, name: behavior.newNode(type)}, 'add routine ${behaviorTitle(name)}');
+            }),
         ]),
       ],
     );
@@ -290,18 +320,15 @@ class BehaviorEditor extends StatelessWidget {
       ],
       children: <Widget>[
         ActionRow(
-          label: 'Part ${behaviorTitle(name)}',
+          label: 'Routine ${behaviorTitle(name)}',
           leading: <Widget>[
             Expanded(
-              child: AutocompleteInput(
-                value: name,
-                label: 'Name of part ${index + 1}',
-                onChanged: (String next) {
-                  if (behaviorIdentifier.hasMatch(next) && !routines.containsKey(next)) {
-                    onJson(_renameAt('routines', index, (JsonMap latest, String from) => renameRoutine(latest, from, next, _catalog)), coalesce: 'behavior:rename:$index');
-                  }
-                },
-                profile: FieldProfile.none,
+              child: NameInput(
+                name: name,
+                label: 'Name of routine ${index + 1}',
+                problemOf: (String next) => routineNameProblem(next, <String>[for (final String other in names) if (other != name) other]),
+                onRename: (String next) =>
+                    onJson(_renameAt('routines', index, (JsonMap latest, String from) => renameRoutine(latest, from, next, _catalog)), coalesce: 'behavior:rename:$index'),
               ),
             ),
           ],
@@ -309,8 +336,8 @@ class BehaviorEditor extends StatelessWidget {
             if (!entry) AppMenuEntry('Start here', () => _write(<JsonStep>['entry'], name)),
             if (names.length > 1)
               AppMenuEntry(
-                'Delete part',
-                () => confirmDelete('part ${behaviorTitle(name)}', 'Its steps go with it.', () => _write(<JsonStep>['routines'], <String, Object?>{...routines}..remove(name))),
+                'Delete routine',
+                () => confirmDelete('routine ${behaviorTitle(name)}', 'Its steps go with it.', () => _change(<JsonStep>['routines'], <String, Object?>{...routines}..remove(name), 'delete routine ${behaviorTitle(name)}')),
                 destructive: true,
               ),
           ],
@@ -323,6 +350,7 @@ class BehaviorEditor extends StatelessWidget {
           caption: behaviorTitle(name),
           flat: true,
         ),
+        ?growStep(behavior, <JsonStep>['routines', name], routines[name]),
       ],
     );
   }
@@ -333,16 +361,20 @@ class BehaviorEditor extends StatelessWidget {
     final List<String> ids = <String>[for (final Object? trigger in triggers) asString(asMap(trigger)['id']) ?? ''];
     final List<String> events = _catalog.eventsFor(server: behavior.server);
     return AppSection(
-      title: 'Starts when',
+      title: 'Triggers',
       count: triggers.length,
-      tip: behavior.server ? 'Server events start it, written as triggers. NPC events need Server behavior off.' : 'What starts a part, written as triggers. Server events need Server behavior on.',
+      tip: behavior.server ? 'What starts a routine: server events. NPC events need Server behavior off.' : 'What starts a routine. Server events need Server behavior on.',
       docs: Docs.behaviorTriggers,
       children: <Widget>[
         if (triggers.isEmpty)
           noteLine(behavior.server ? 'Nothing starts it yet. Add a join, chat or command trigger.' : 'Nothing starts it yet. It runs only when called.'),
         for (int index = 0; index < triggers.length; index++) _trigger(triggers, index, put, behavior),
         _addMenu('Add trigger', <AppMenuEntry>[
-          for (final String event in events) AppMenuEntry(eventWords(event), () => put(<Object?>[...triggers, defaultTrigger(event, _catalog, ids, server: behavior.server)])),
+          for (final String event in events)
+            AppMenuEntry(eventWords(event), () {
+              final JsonMap trigger = defaultTrigger(event, _catalog, ids, server: behavior.server);
+              _change(<JsonStep>['triggers'], <Object?>[...triggers, trigger], 'add trigger ${triggerClause(trigger)}');
+            }),
         ]),
       ],
     );
@@ -366,7 +398,7 @@ class BehaviorEditor extends StatelessWidget {
     final String? value = asString(trigger[raw.key]);
     final PickerOptions options = dialogue ? promptOptions(prompts) : choiceOptions(prompts, asString(trigger['dialogue']));
     final String? note = value == null || options.ids.contains(value)
-        ? (dialogue && prompts.isEmpty ? 'No question yet. Add an Ask step to a part.' : null)
+        ? (dialogue && prompts.isEmpty ? 'No question yet. Add an Ask step to a routine.' : null)
         : (dialogue ? 'No question $value in this behavior.' : 'Not an answer of this question.');
     return Field(
       key: ValueKey<String>('$path.${raw.key}'),
@@ -405,7 +437,7 @@ class BehaviorEditor extends StatelessWidget {
       classes: 'animus-trigger${failing ? ' has-error' : ''}',
       attributes: <String, String>{'data-node-path': path, 'data-event': event ?? '', 'role': 'group', 'aria-label': 'Trigger ${index + 1}'},
       summary: <Widget>[
-        Component.text(triggerWords(trigger)),
+        Component.text(triggerSentence(trigger)),
         if (trigger['routine'] is String) Text('runs ${behaviorTitle(trigger['routine']! as String)}', size: FontSize.sm, color: TextColor.muted),
         if (failing || misplaced) const StatusBadge('Problem', tone: BadgeTone.error),
       ],
@@ -428,10 +460,17 @@ class BehaviorEditor extends StatelessWidget {
             if (spec == null) noteLine('Unknown event, kept as written'),
           ],
           more: <AppMenuEntry>[
-            AppMenuEntry('Move up', index == 0 ? null : () => put(moveItem(triggers, index, index - 1))),
-            AppMenuEntry('Move down', index == triggers.length - 1 ? null : () => put(moveItem(triggers, index, index + 1))),
+            AppMenuEntry('Move up', index == 0 ? null : () => _change(<JsonStep>['triggers'], moveItem(triggers, index, index - 1), 'move trigger up')),
+            AppMenuEntry('Move down', index == triggers.length - 1 ? null : () => _change(<JsonStep>['triggers'], moveItem(triggers, index, index + 1), 'move trigger down')),
             const AppMenuEntry.separator(),
-            AppMenuEntry('Delete trigger', () => confirmDelete('trigger ${index + 1}', triggerWords(trigger), () => put(removeItem(triggers, index))), destructive: true),
+            AppMenuEntry(
+              'Delete trigger',
+              () => confirmDelete('trigger ${index + 1}', triggerSentence(trigger), () {
+                final JsonList rest = removeItem(triggers, index);
+                _change(<JsonStep>['triggers'], rest.isEmpty ? null : rest, 'delete trigger ${triggerClause(trigger)}');
+              }),
+              destructive: true,
+            ),
           ],
         ),
         if (misplaced)
@@ -449,15 +488,15 @@ class BehaviorEditor extends StatelessWidget {
               Field(
                 key: ValueKey<String>('$path.${raw.key}'),
                 label: 'Runs',
-                tip: 'The part it starts. Written as routine.',
+                tip: 'The routine it starts. Written as routine.',
                 problems: diagnosticsAt(diagnostics, childPath(path, raw.key)),
                 child: AnimusSelect.values(
                   value: asString(trigger[raw.key]),
                   values: behavior.routines,
                   labels: <String, String>{for (final String name in behavior.routines) name: behaviorTitle(name)},
                   allowNone: !raw.required,
-                  noneLabel: 'The part it starts in',
-                  hiddenLabel: 'Part trigger ${index + 1} runs',
+                  noneLabel: 'The routine it starts in',
+                  hiddenLabel: 'Routine trigger ${index + 1} runs',
                   onChanged: (String? v) => _write(<JsonStep>[...steps, raw.key], v),
                 ),
               )
@@ -500,39 +539,117 @@ class BehaviorEditor extends StatelessWidget {
   }
 }
 
-/// A variable's name, renamed on each valid edit; an invalid name shows
-/// why and changes nothing.
-class VariableNameInput extends StatefulWidget {
-  const VariableNameInput({required this.name, required this.taken, required this.label, required this.onRename, super.key});
+/// A variable's or routine's name, renamed on each valid edit. An invalid
+/// name changes nothing and says why, also after focus leaves and the field
+/// shows the kept name again.
+class NameInput extends StatefulWidget {
+  const NameInput({required this.name, required this.label, required this.problemOf, required this.onRename, this.noteOf, super.key});
 
   final String name;
-  final List<String> taken;
   final String label;
+
+  /// Why a typed name cannot be used, or null.
+  final String? Function(String name) problemOf;
+
+  /// A warning about a valid name, or null.
+  final String? Function(String name)? noteOf;
   final void Function(String next) onRename;
 
   @override
-  State<VariableNameInput> createState() => _VariableNameInputState();
+  State<NameInput> createState() => _NameInputState();
 }
 
-class _VariableNameInputState extends State<VariableNameInput> {
+class _NameInputState extends State<NameInput> {
   String? _problem;
+  bool _left = false;
+
+  @override
+  void didUpdateWidget(NameInput oldComponent) {
+    super.didUpdateWidget(oldComponent);
+    if (oldComponent.name != component.name) _problem = null;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final String? note = _problem == null ? variableNameNote(component.name) : null;
-    return stack(spacing: 4, <Widget>[
-      AutocompleteInput(
-        value: component.name,
-        label: component.label,
-        onChanged: (String next) {
-          final String? problem = next == component.name ? null : variableNameProblem(next, component.taken);
-          setState(() => _problem = problem);
-          if (problem == null && next != component.name) component.onRename(next);
+    final String? note = _problem == null ? component.noteOf?.call(component.name) : null;
+    return dom.div(
+      events: <String, void Function(web.Event)>{
+        'focusout': (web.Event _) {
+          if (_problem != null && !_left) setState(() => _left = true);
         },
-        profile: FieldProfile.none,
-      ),
-      if (_problem != null) problemLine(DiagnosticSeverity.error, _problem!, classes: 'animus-node-problem', role: 'alert'),
-      if (note != null) problemLine(DiagnosticSeverity.warning, note, classes: 'animus-node-problem'),
-    ]);
+      },
+      <Widget>[
+        stack(spacing: 4, <Widget>[
+          AutocompleteInput(
+            value: component.name,
+            label: component.label,
+            invalid: _problem != null && !_left,
+            onChanged: (String next) {
+              final String? problem = next == component.name ? null : component.problemOf(next);
+              setState(() {
+                _problem = problem;
+                _left = false;
+              });
+              if (problem == null && next != component.name) component.onRename(next);
+            },
+            profile: FieldProfile.none,
+          ),
+          if (_problem != null) problemLine(DiagnosticSeverity.error, _left ? 'Kept ${component.name}. $_problem' : _problem!, classes: 'animus-node-problem', role: 'alert'),
+          if (note != null) problemLine(DiagnosticSeverity.warning, note, classes: 'animus-node-problem'),
+        ]),
+      ],
+    );
   }
+}
+
+/// A document id renamed when Enter is pressed or focus leaves: the move
+/// takes the NPCs that list it along. A refused id says why and keeps the
+/// old one.
+class RenameInput extends StatefulWidget {
+  const RenameInput({required this.value, required this.label, required this.onRename, super.key});
+
+  final String value;
+  final String label;
+  final Future<String?> Function(String id) onRename;
+
+  @override
+  State<RenameInput> createState() => _RenameInputState();
+}
+
+class _RenameInputState extends State<RenameInput> {
+  String? _typed;
+  String? _problem;
+  bool _busy = false;
+
+  Future<void> _commit() async {
+    final String next = (_typed ?? component.value).trim();
+    if (_busy || next == component.value) {
+      setState(() => _typed = null);
+      return;
+    }
+    setState(() => _busy = true);
+    final String? problem = await component.onRename(next);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _problem = problem == null ? null : 'Kept ${component.value}. $problem';
+      _typed = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => stack(spacing: 4, <Widget>[
+        TextInput(
+          size: controlSize(DensityScope.of(context)),
+          value: _typed ?? component.value,
+          attributes: <String, String>{'aria-label': component.label, if (_problem != null) 'aria-invalid': 'true'},
+          onChanged: (String value) => setState(() {
+            _typed = value;
+            _problem = null;
+          }),
+          onSubmitted: (String _) => _commit(),
+          onBlur: _commit,
+        ),
+        if (_problem != null) problemLine(DiagnosticSeverity.error, _problem!, classes: 'animus-node-problem', role: 'alert'),
+      ]);
 }

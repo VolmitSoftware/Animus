@@ -202,6 +202,18 @@ class BehaviorSchemaGeneratorTest {
         }
     }
 
+    @Test void completionsTellExclusiveArgumentGroupsFromAlternatives() {
+        Map<String, JsonObject> byId = new java.util.HashMap<>();
+        for (JsonElement entry : BehaviorSchemaGenerator.completions(withModules()).getAsJsonArray("capabilities"))
+            byId.put(entry.getAsJsonObject().get("id").getAsString(), entry.getAsJsonObject());
+        JsonObject look = byId.get("animus:look");
+        assertEquals("[[\"target\"],[\"x\",\"y\",\"z\"],[\"location\"]]", look.get("oneOfRequired").toString());
+        assertFalse(look.has("anyOfRequired"));
+        JsonObject title = byId.get("animus:title");
+        assertEquals("[[\"title\"],[\"subtitle\"]]", title.get("anyOfRequired").toString());
+        assertFalse(title.has("oneOfRequired"), "title and subtitle may both be given");
+    }
+
     @Test void schemaCarriesEveryLanguageElement() {
         String behavior = BehaviorSchemaGenerator.behaviorSchema(withModules()).toString();
         for (BehaviorNodeType node : BehaviorNodeType.values()) assertTrue(behavior.contains("\"const\":\"" + node.jsonName() + "\""), node.jsonName());
