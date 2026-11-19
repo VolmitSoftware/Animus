@@ -7,7 +7,6 @@ import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import art.arcane.volmlib.util.plugin.ComponentMessenger;
-import art.arcane.volmlib.util.plugin.ComponentText;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -61,7 +60,7 @@ record BukkitActor(CommandSender sender, ReplyScheduler replies) implements Comm
     private static final double NEARBY = 16;
     private static final int NEARBY_LIMIT = 20;
     /** One MiniMessage line, styled with its hover and click, as VolmLib's menus send each of theirs. */
-    @Override public void miniMessage(String line) { ComponentMessenger.send(sender, ComponentText.component(MiniMessage.miniMessage().deserialize(line))); }
+    @Override public void miniMessage(String line) { ComponentMessenger.send(sender, MiniMessage.miniMessage().deserialize(line)); }
     @Override public Optional<Coordinates.Facing> facing() {
         if (!(sender instanceof Player player)) return Optional.empty();
         Location at = player.getLocation();

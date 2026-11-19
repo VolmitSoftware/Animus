@@ -7,11 +7,6 @@ import static org.junit.jupiter.api.Assertions.*;
 class SplashScreenTest {
     private static final SplashScreen.Details READY = new SplashScreen.Details("0.1.0", "Paper 26.3-12-abc1234", SplashScreen.Startup.READY, 25, "2026-11-07", "http://127.0.0.1:8792");
 
-    @Test void colorizeSwitchesOnlyWhenTheGlyphKindChanges() {
-        assertEquals("[F]██[E]╗ [F]█[E]╔═╝", SplashScreen.colorize("██╗ █╔═╝", "[F]", "[E]"));
-        assertEquals("  ", SplashScreen.colorize("  ", "[F]", "[E]"));
-    }
-
     @Test void theArtRowsShareOneWidth() {
         for (String row : SplashScreen.ART) assertEquals(SplashScreen.ART.getFirst().length(), row.length(), row);
     }

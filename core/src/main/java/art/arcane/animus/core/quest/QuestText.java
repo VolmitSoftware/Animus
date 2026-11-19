@@ -1,7 +1,7 @@
 package art.arcane.animus.core.quest;
 
 import art.arcane.animus.core.text.RichText;
-import java.util.ArrayList;
+import art.arcane.volmlib.util.plugin.LegacyLoreLayout;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.Function;
@@ -47,20 +47,12 @@ public final class QuestText {
 
     public static String fill(String text, String player, QuestDocument quest) { return text.replace("{player}", player).replace("{quest}", RichText.plain(RichText.colorize(quest.title()))); }
 
-    /** Plain words wrapped at about {@value #LORE_WIDTH} characters, each line starting in {@code colour}. */
+    /**
+     * Words wrapped at about {@value #LORE_WIDTH} columns, starting in {@code colour}; a colour the text sets carries onto
+     * the lines after it. The lines come back section-coded.
+     */
     public static List<String> wrap(String text, String colour) {
-        List<String> lines = new ArrayList<>();
-        if (text.isBlank()) return lines;
-        StringBuilder line = new StringBuilder();
-        for (String word : text.trim().split("\\s+")) {
-            if (line.length() > 0 && RichText.plain(RichText.colorize(line + " " + word)).length() > LORE_WIDTH) {
-                lines.add(colour + line);
-                line.setLength(0);
-            }
-            if (line.length() > 0) line.append(' ');
-            line.append(word);
-        }
-        if (line.length() > 0) lines.add(colour + line);
-        return lines;
+        if (text.isBlank()) return List.of();
+        return LegacyLoreLayout.wrap(RichText.colorize(colour + String.join(" ", text.trim().split("\\s+"))), LORE_WIDTH);
     }
 }

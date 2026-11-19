@@ -10,6 +10,7 @@ import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.text.RichText;
+import art.arcane.volmlib.util.plugin.LegacyLoreLayout;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -277,7 +278,7 @@ abstract class ToolScreen<P, S> implements Screen {
         for (String line : lore) if (raw || !line.startsWith(RAW)) kept.add(line);
         List<String> lines = !raw && kept.size() > SIMPLE_LINES ? paired(kept) : kept;
         List<String> coloured = new ArrayList<>(lines.size());
-        for (String line : lines) for (String part : line.contains(PAIRED) || line.contains(PAIRED_SNEAK) ? List.of(line) : wrap(line)) coloured.add(RichText.colorize(part));
+        for (String line : lines) coloured.addAll(line.contains(PAIRED) || line.contains(PAIRED_SNEAK) ? List.of(RichText.colorize(line)) : wrap(line));
         items.put(slot, new ScreenFrame.Item(shown(item), Optional.of(RichText.colorize(name)), coloured, head));
     }
 
@@ -398,22 +399,13 @@ abstract class ToolScreen<P, S> implements Screen {
         return item.count() == 1 ? name.toString() : item.count() + "x " + name;
     }
 
-    /** A {@code &}-coded line cut at spaces into lines of at most {@link #LORE_WIDTH} visible characters, each keeping the colour. */
+    /**
+     * A {@code &}-coded line, colorized and cut at spaces into lines of at most {@link #LORE_WIDTH} visible columns; each
+     * line starts in the colour and styles the one before it ended in, hex colours included.
+     */
     static List<String> wrap(String line) {
-        if (RichText.plain(RichText.colorize(line)).length() <= LORE_WIDTH) return List.of(line);
-        String colour = line.length() > 1 && line.charAt(0) == '&' ? line.substring(0, 2) : "";
-        List<String> out = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        int visible = 0;
-        for (String word : line.substring(colour.length()).split(" ")) {
-            int length = RichText.plain(RichText.colorize(word)).length();
-            if (visible > 0 && visible + 1 + length > LORE_WIDTH) { out.add(colour + current); current.setLength(0); visible = 0; }
-            if (visible > 0) { current.append(' '); visible++; }
-            current.append(word);
-            visible += length;
-        }
-        if (!current.isEmpty()) out.add(colour + current);
-        return out;
+        String coloured = RichText.colorize(line);
+        return RichText.plain(coloured).length() <= LORE_WIDTH ? List.of(coloured) : LegacyLoreLayout.wrap(coloured, LORE_WIDTH);
     }
 
     /** {@code Folder town / market}, the lore line naming where an NPC's file lives. */

@@ -14,10 +14,12 @@ import art.arcane.animus.core.gui.ScreenHost;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.inventory.MockInventory.Stack;
 import art.arcane.animus.core.npc.NpcItem;
+import art.arcane.animus.core.text.RichText;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -119,6 +121,18 @@ class ToolkitFoundationTest extends ToolkitHarness {
                 ToolScreen.shown(new NpcItem("minecraft:leather_boots", 1, Optional.of("[custom_name=\"x\"]"), Optional.empty())).components().orElseThrow());
         assertEquals("[tooltip_display={hide_tooltip:true}]",
                 ToolScreen.shown(new NpcItem("minecraft:stone", 1, Optional.of("[tooltip_display={hide_tooltip:true}]"), Optional.empty())).components().orElseThrow());
+    }
+
+    @Test void hexColouredLoreKeepsItsColourOnEveryWrappedLine() {
+        List<String> lines = ToolScreen.wrap("&#FF4FA3Pink lore that runs well past the forty-eight columns a tooltip line may use");
+        assertTrue(lines.size() > 1, lines.toString());
+        for (String line : lines) {
+            String coloured = RichText.colorize(line);
+            assertFalse(RichText.plain(coloured).contains("&#"), line);
+            assertTrue(RichText.plain(coloured).length() <= ToolScreen.LORE_WIDTH, line);
+            for (RichText.Run run : RichText.sectionRuns(coloured))
+                assertEquals(OptionalInt.of(0xFF4FA3), run.rgb(), line);
+        }
     }
 
     @Test void promptTitlesFitTheAnvil() {

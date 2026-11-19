@@ -3,7 +3,6 @@ package art.arcane.animus.bukkit;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.volmlib.util.plugin.ComponentMessenger;
-import art.arcane.volmlib.util.plugin.ComponentText;
 import java.util.List;
 import java.util.Locale;
 import net.md_5.bungee.api.ChatColor;
@@ -28,7 +27,7 @@ public final class BukkitChat {
 
     /** A reply line: a player gets its chips through VolmLib's messenger, every other sender its console text. */
     public static void send(CommandSender to, ChatLine line) {
-        if (to instanceof Player && line.interactive()) ComponentMessenger.send(to, ComponentText.component(line.component()));
+        if (to instanceof Player && line.interactive()) ComponentMessenger.send(to, line.component());
         else send(to, line.console());
     }
 

@@ -132,35 +132,12 @@ public final class SplashScreen {
                 meta + "   Java: " + accent + details.javaMajor() + meta + " | Date: " + accent + details.date());
         List<String> lines = new ArrayList<>(ART.size());
         for (int row = 0; row < ART.size(); row++)
-            lines.add(colorize(ART.get(row), colors.paint(FILL), colors.paint(EDGE)) + column.get(row) + colors.reset());
+            lines.add(SplashScreenSupport.colorizeArt(ART.get(row), colors.paint(FILL), colors.paint(EDGE)) + column.get(row) + colors.reset());
         return lines;
     }
 
     /** The whole banner as one log message; it starts on a new line so the logger prefix stands alone. */
     public static String render(Details details, Colors colors) {
         return "\n" + String.join("\n", lines(details, colors));
-    }
-
-    /** Paints each run of {@code █} with {@code fill} and each run of box-drawing glyphs with {@code edge}. */
-    static String colorize(String row, String fill, String edge) {
-        StringBuilder out = new StringBuilder(row.length() * 2);
-        boolean inFill = false;
-        boolean inEdge = false;
-        for (int i = 0; i < row.length(); i++) {
-            char glyph = row.charAt(i);
-            if (glyph == '█') {
-                if (!inFill) {
-                    out.append(fill);
-                    inFill = true;
-                    inEdge = false;
-                }
-            } else if (glyph != ' ' && !inEdge) {
-                out.append(edge);
-                inEdge = true;
-                inFill = false;
-            }
-            out.append(glyph);
-        }
-        return out.toString();
     }
 }

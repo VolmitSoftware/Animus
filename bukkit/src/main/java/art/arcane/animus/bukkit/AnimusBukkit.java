@@ -44,6 +44,7 @@ import art.arcane.animus.bukkit.runtime.RegionNpcRuntime;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.volmlib.util.plugin.ComponentLog;
 import art.arcane.volmlib.util.plugin.SplashScreenSupport;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.RuntimeEnvironment;
 import art.arcane.animus.core.SplashScreen;
@@ -687,7 +688,7 @@ final class AnimusBukkit {
     private void splash(SplashScreen.Startup startup) {
         try {
             String server = host.getServer().getName() + " " + SplashScreenSupport.serverVersionWithoutMcSuffix(host.getServer().getVersion());
-            ComponentLog.logMarkup(host, host.getLogger(), null, Level.INFO, SplashScreen.render(SplashScreen.Details.current(server, startup, SplashScreen.editorUrl(runtime)), SplashScreen.Colors.MINIMESSAGE), null);
+            ComponentLog.log(host, host.getLogger(), Level.INFO, MiniMessage.miniMessage().deserialize(SplashScreen.render(SplashScreen.Details.current(server, startup, SplashScreen.editorUrl(runtime)), SplashScreen.Colors.MINIMESSAGE)), null);
         } catch (RuntimeException | LinkageError failure) {
             host.getLogger().log(Level.WARNING, "Splash screen failed to render", failure);
         }

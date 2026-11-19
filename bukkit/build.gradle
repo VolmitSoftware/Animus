@@ -100,6 +100,11 @@ tasks.named('shadowJar').configure {
     archiveFileName.set("${animus.projectName} v${version} [CraftBukkit] ${minecraftTargets.keySet().first()}-${minecraftTargets.keySet().last()}.jar")
     // bStats refuses to enable from its own package.
     relocate('org.bstats', "${animus.projectGroup}.internal.bstats")
+    // VolmLib's localization module brings these; chat and the splash reach VolmLib as components, so nothing here reads them.
+    dependencies {
+        exclude(dependency('net.kyori:adventure-text-serializer-legacy:.*'))
+        exclude(dependency('net.kyori:adventure-text-serializer-plain:.*'))
+    }
 }
 
 String namespace = animus.projectGroup.replace('.', '/')
@@ -116,7 +121,9 @@ pluginPackaging {
             // Every Director @Param names itself, so nothing reads compiled parameter names.
             stripParameterNames = true
             requiredEntries = ['plugin.yml', "${namespace}/bukkit/AnimusPlugin.class".toString()]
-            forbiddenPrefixes = ['org/bukkit/', 'io/papermc/', 'net/minecraft/', 'art/arcane/volmit/packaging/', 'org/gradle/']
+            // Kept out by the shadowJar exclusions above.
+            forbiddenPrefixes = ['org/bukkit/', 'io/papermc/', 'net/minecraft/', 'art/arcane/volmit/packaging/', 'org/gradle/',
+                "${namespace}/internal/kyori/adventure/text/serializer/legacy/".toString(), "${namespace}/internal/kyori/adventure/text/serializer/plain/".toString()]
             // Only the bundled libraries are tree-shaken. Animus's own classes are read by Gson and the config codecs, and
             // extensions and other plugins call API and event members that nothing in this jar calls.
             shrinkKeep = ["-keep class !${animus.projectGroup}.internal.**,${animus.projectGroup}.** { *; }".toString(),
