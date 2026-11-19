@@ -106,6 +106,18 @@ public final class BodyRules {
     }
     public static boolean canBeBaby(String type) { return babyFlag(type).isPresent(); }
 
+    /**
+     * What a body with its main-hand item in use shows besides the raised item: a skeleton draws its bow and a drowned
+     * raises its trident only as an aggressive mob, and a pillager charges its crossbow with its own charging flag.
+     */
+    public enum Aim { NONE, AGGRESSIVE, CHARGING }
+    private static final Set<String> AGGRESSIVE_AIM = Set.of("minecraft:skeleton", "minecraft:stray", "minecraft:wither_skeleton", "minecraft:bogged",
+            "minecraft:parched", "minecraft:drowned");
+    public static Aim aim(String type) {
+        if (AGGRESSIVE_AIM.contains(type)) return Aim.AGGRESSIVE;
+        return type.equals("minecraft:pillager") ? Aim.CHARGING : Aim.NONE;
+    }
+
     private static final Set<EquipmentSlot> WORN = Collections.unmodifiableSet(EnumSet.of(EquipmentSlot.MAIN_HAND, EquipmentSlot.OFF_HAND,
             EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET));
     /** Mobs the client draws in armor and with both hands, as a player. */

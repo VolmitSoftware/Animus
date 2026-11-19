@@ -162,7 +162,7 @@ class CombatParityTest {
             UUID npc = combatant(0, 0, "{\"targets\":{\"categories\":[\"monsters\"]},\"targeting\":{\"scanIntervalTicks\":1},\"melee\":{\"enabled\":false},"
                     + "\"ranged\":{\"enabled\":true,\"weapon\":\"" + weapon + "\",\"cooldownTicks\":5}}");
             UUID zombie = world.monster("minecraft:zombie", 8, 0);
-            run(2);
+            run(CombatTesting.FIRST_ARROW);
             assertEquals(Set.of(RangedWeapon.parse(weapon).orElseThrow()), Set.copyOf(world.launched.values()), weapon);
             UUID helper = world.launched.keySet().iterator().next();
             assertTrue(engine().helperHitReal(helper, mob(zombie)), weapon);
@@ -178,7 +178,7 @@ class CombatParityTest {
                 + "\"ranged\":{\"enabled\":true,\"cooldownTicks\":1,\"useAmmo\":true}}", holding("minecraft:bow", Map.of("minecraft:arrow", 2)));
         world.monster("minecraft:zombie", 8, 0);
         assertEquals(2, engine().status(npc).orElseThrow().ammunition());
-        run(20);
+        run(CombatTesting.FIRST_ARROW + CombatTesting.NEXT_ARROW);
         assertEquals(2, world.helperLaunches);
         assertEquals(0, engine().status(npc).orElseThrow().ammunition());
         UUID unlimited = combatant(0, 40, "{\"ranged\":{\"enabled\":true}}");

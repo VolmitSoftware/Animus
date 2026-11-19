@@ -7,6 +7,12 @@ import com.google.gson.JsonParser;
 final class CombatTesting {
     /** Killable with every default: 20 health, every attack source, a respawn after 100 ticks at home. */
     static final HealthSettings KILLABLE = health("{\"killable\":true}");
+    /** Ticks an archer that sees its target needs to draw in full and let its first arrow go, with a turn to spare. */
+    static final int FIRST_ARROW = 22;
+    /** Ticks between arrows when the cooldown is shorter than the draw: the release shows, then a full draw. */
+    static final int NEXT_ARROW = DrawCycle.RELEASE_TICKS + 20;
+    /** Ticks a crossbow needs to charge, be held loaded and aimed, and fire its first bolt, with a turn to spare. */
+    static final int FIRST_BOLT = 25 + DrawCycle.AIM_TICKS + 2;
 
     private CombatTesting() {}
 

@@ -14,6 +14,7 @@ import java.util.Set;
  * its redirect. Ammunition is counted per kind of ranged weapon. Owned by one brain on the engine's thread.
  */
 final class WeaponHand {
+    private static final String CROSSBOW = "minecraft:crossbow";
     private final CombatSettings settings;
     private final CombatLoadout loadout;
     private final Optional<NpcItem> own;
@@ -36,6 +37,27 @@ final class WeaponHand {
 
     /** What the NPC shows in its main hand now; empty for its definition's own item. */
     Optional<NpcItem> shown() { return held.equals(own) ? Optional.empty() : held; }
+    /**
+     * What the NPC shows in its main hand with its crossbow loaded or empty: a loaded crossbow carries the arrow it fires,
+     * so viewers draw it loaded and the body holding it aimed.
+     */
+    Optional<NpcItem> shown(boolean loaded) {
+        if (!loaded || held.isEmpty() || !held.get().id().equals(CROSSBOW)) return shown();
+        NpcItem item = held.get();
+        String charge = "minecraft:charged_projectiles=[{id:\"" + (rangedWeapon() == RangedWeapon.SPECTRAL_ARROW ? "minecraft:spectral_arrow" : "minecraft:arrow") + "\",count:1}]";
+        String components = item.components().filter((String text) -> text.length() > 2)
+                .map((String text) -> text.substring(0, text.length() - 1) + "," + charge + "]").orElse("[" + charge + "]");
+        return Optional.of(new NpcItem(item.id(), item.count(), Optional.of(components), item.imported()));
+    }
+    /** How the weapon it fires now is used: an arrow from a crossbow is charged, from anything else drawn as a bow; a trident is raised. */
+    DrawCycle.Style style() {
+        RangedWeapon fires = rangedWeapon();
+        if (fires == RangedWeapon.TRIDENT) return DrawCycle.Style.TRIDENT;
+        if (fires != RangedWeapon.ARROW && fires != RangedWeapon.SPECTRAL_ARROW) return DrawCycle.Style.THROWN;
+        return weapon.item().equals(CROSSBOW) ? DrawCycle.Style.CROSSBOW : DrawCycle.Style.BOW;
+    }
+    /** The Quick Charge level of the held item, which shortens a crossbow's charge. */
+    int quickCharge() { return weapon.level(VanillaMelee.QUICK_CHARGE); }
     VanillaMelee.Weapon weapon() { return weapon; }
     double meleeDamage() { return melee; }
     /** The shot damage before a bow's critical bonus. */

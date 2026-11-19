@@ -121,7 +121,7 @@ class VanillaCombatTest {
         NpcItem sword = item("minecraft:iron_sword", ""), bow = item("minecraft:bow", "[enchantments={power:5}]");
         UUID npc = combatant(0, 0, json, CombatTesting.KILLABLE, carrying(CombatLoadout.PLAYER, sword, bow, item("minecraft:stone_sword", "")));
         UUID zombie = world.monster("minecraft:zombie", 12, 0);
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         assertEquals(Optional.of(bow), world.held.get(npc), "The bow comes out for a target beyond reach");
         assertEquals(1, world.helperLaunches);
         world.moveReal(zombie, 2, 0);
@@ -136,7 +136,7 @@ class VanillaCombatTest {
                 + "\"ranged\":{\"enabled\":true,\"fromEquipment\":true,\"range\":30}}";
         combatant(0, 0, json, CombatTesting.KILLABLE, carrying(CombatLoadout.PLAYER, item("minecraft:bow", "[enchantments={power:5,flame:1,punch:2}]")));
         UUID zombie = world.monster("minecraft:zombie", 10, 0);
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         UUID helper = world.helpers.keySet().iterator().next();
         assertTrue(engine().helperHitReal(helper, new TargetRef(TargetKind.MOB, zombie)));
         double damage = world.realDamage.get(zombie);
@@ -149,11 +149,11 @@ class VanillaCombatTest {
                 + "\"ranged\":{\"enabled\":true,\"fromEquipment\":true,\"range\":30}}";
         combatant(0, 0, json, CombatTesting.KILLABLE, carrying(CombatLoadout.PLAYER, item("minecraft:crossbow", "[enchantments={multishot:1}]")));
         UUID zombie = world.monster("minecraft:zombie", 10, 0);
-        run(2);
+        run(CombatTesting.FIRST_BOLT);
         assertEquals(3, world.helperLaunches);
         UUID pierced = combatant(0, 30, json.replace("\"range\":30}", "\"range\":30,\"safeShot\":false}"), CombatTesting.KILLABLE, carrying(CombatLoadout.PLAYER, item("minecraft:crossbow", "[enchantments={piercing:1}]")));
         UUID first = world.monster("minecraft:zombie", 5, 30), second = world.monster("minecraft:husk", 10, 30);
-        run(2);
+        run(CombatTesting.FIRST_BOLT);
         UUID arrow = world.launchOrder.getLast();
         assertTrue(engine().helperHitReal(arrow, new TargetRef(TargetKind.MOB, first)));
         assertTrue(engine().ownsHelper(arrow), "Piercing I goes on through the first body");

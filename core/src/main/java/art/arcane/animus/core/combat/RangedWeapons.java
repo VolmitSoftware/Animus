@@ -22,6 +22,11 @@ public final class RangedWeapons {
     public static Optional<RangedWeapon> fired(String item) { return Optional.ofNullable(FIRED.get(item)); }
     /** A bow or crossbow, which is drawn and fires arrows. */
     public static boolean drawn(String item) { return item.equals("minecraft:bow") || item.equals("minecraft:crossbow"); }
+    /** What a held bow, crossbow or trident fires, which an NPC holding one shoots with; empty for any other item. */
+    public static Optional<RangedWeapon> held(String item) {
+        if (drawn(item)) return Optional.of(RangedWeapon.ARROW);
+        return item.equals("minecraft:trident") ? Optional.of(RangedWeapon.TRIDENT) : Optional.empty();
+    }
     /** A sword, axe or mace: what a melee switch picks. */
     public static boolean melee(String item) { return MELEE.contains(item); }
     /** A potion that leaves a lingering cloud where it breaks. */

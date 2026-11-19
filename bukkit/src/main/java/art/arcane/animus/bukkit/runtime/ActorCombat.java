@@ -287,6 +287,9 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
     @Override public double yaw(UUID npc) { return npc.equals(actor.uuid) ? actor.yaw : 0; }
     @Override public void swing(UUID npc) { if (npc.equals(actor.uuid)) actor.attackSwing(); }
     @Override public void drawing(UUID npc, boolean drawing) { if (npc.equals(actor.uuid)) actor.drawing(drawing); }
+    @Override public void sound(UUID npc, String sound, String category, float volume, float pitch) {
+        if (npc.equals(actor.uuid)) combat.sound(actor, sound, category, volume, pitch);
+    }
     @Override public void hold(UUID npc, Optional<art.arcane.animus.core.npc.NpcItem> item) { if (npc.equals(actor.uuid)) actor.holdItem(item); }
     /** One gesture shows per hit here, so a critical hit shows its own particles and an enchanted hit alone its sparkle. */
     @Override public void critical(UUID npc, boolean critical, boolean magic) {

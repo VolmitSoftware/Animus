@@ -167,7 +167,7 @@ class MockCombatWorld implements CombatWorld {
     }
     @Override public void face(UUID npc, Vec3 point) {}
     @Override public void swing(UUID npc) { swings.merge(npc, 1, Integer::sum); }
-    @Override public void drawing(UUID npc, boolean drawing) { drawn.put(npc, drawing); drawChanges++; }
+    @Override public void drawing(UUID npc, boolean drawing) { drawn.put(npc, drawing); drawChanges++; shown.add(drawing ? "draw" : "lower"); }
     @Override public double yaw(UUID npc) { return yaw; }
     @Override public DamageOutcome damageReal(UUID attacker, CombatTarget target, double amount, DamageKind kind, double reach, double knockback, boolean victimDrops) {
         if (realStatus != DamageStatus.APPLIED) return new DamageOutcome(realStatus, 0, false);
@@ -197,6 +197,7 @@ class MockCombatWorld implements CombatWorld {
         launched.put(helper, weapon);
         launchOrder.add(helper);
         helperLaunches++;
+        shown.add("shot");
         return Optional.of(helper);
     }
     @Override public Optional<Vec3> helperPosition(UUID helper) { return Optional.ofNullable(helpers.get(helper)); }
@@ -222,7 +223,13 @@ class MockCombatWorld implements CombatWorld {
     @Override public void critical(UUID npc, boolean critical, boolean magic) {
         criticals.computeIfAbsent(npc, (UUID key) -> new ArrayList<>()).add(critical && magic ? "critical+magic" : critical ? "critical" : "magic");
     }
-    @Override public void hold(UUID npc, Optional<art.arcane.animus.core.npc.NpcItem> item) { held.put(npc, item); }
+    /** What viewers were shown, in order: draw and lower, items held, sounds and shots. */
+    final List<String> shown = new ArrayList<>();
+    @Override public void hold(UUID npc, Optional<art.arcane.animus.core.npc.NpcItem> item) {
+        held.put(npc, item);
+        shown.add("hold " + item.map((art.arcane.animus.core.npc.NpcItem shownItem) -> shownItem.id() + shownItem.components().orElse("")).orElse("own"));
+    }
+    @Override public void sound(UUID npc, String sound, String category, float volume, float pitch) { shown.add("sound " + sound); }
     @Override public void igniteReal(TargetRef target, int ticks) { ignited.merge(target.id(), ticks, Math::max); }
     @Override public void brokePotion(WorldPosition at, String effect, boolean lingering, double radius, int ticks) { potions.add(effect + (lingering ? " cloud" : " splash")); }
 }

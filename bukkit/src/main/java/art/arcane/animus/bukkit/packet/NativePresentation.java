@@ -22,6 +22,8 @@ final class NativePresentation {
     private final Object sharedFlags, pose, standFlags, translation, billboard, text, background, lineWidth, styleFlags, viewRange, interpolationStart,
             interpolationDuration, livingFlags;
     private final Map<BodyRules.BabyFlag, Object> babies = new EnumMap<>(BodyRules.BabyFlag.class);
+    /** The mob flags and a pillager's charging flag, which a skeleton, drowned or pillager aims with; null where this server keeps them elsewhere. */
+    private final Object mobFlags, charging;
     /** The team colour setter, and the enum its argument names: ChatFormatting on 26.1, TeamColor inside an Optional later. */
     private final Method setColor;
     private final Class<? extends Enum> colors;
@@ -61,6 +63,15 @@ final class NativePresentation {
             try { babies.put(owner.getKey(), accessor(Class.forName(owner.getValue()), "DATA_BABY_ID")); }
             catch (ReflectiveOperationException missing) { /* stays grown */ }
         }
+        // A flag this server keeps elsewhere only leaves those mobs aiming with the raised item alone.
+        Object flags = null, charge = null;
+        try { flags = accessor(Class.forName("net.minecraft.world.entity.Mob"), "DATA_MOB_FLAGS_ID"); }
+        catch (ReflectiveOperationException missing) { /* item use alone */ }
+        for (String pillager : List.of("net.minecraft.world.entity.monster.illager.Pillager", "net.minecraft.world.entity.monster.Pillager")) {
+            try { charge = accessor(Class.forName(pillager), "IS_CHARGING_CROSSBOW"); break; }
+            catch (ReflectiveOperationException missing) { /* the older package, or item use alone */ }
+        }
+        mobFlags = flags; charging = charge;
         poses = (Class<? extends Enum>) Class.forName("net.minecraft.world.entity.Pose");
         for (NpcPose candidate : NpcPose.values()) Enum.valueOf((Class) poses, BodyLook.nativePose(candidate));
         Enum.valueOf((Class) poses, "FALL_FLYING");
@@ -113,6 +124,7 @@ final class NativePresentation {
         byte flags = look.sharedFlags(invisible);
         if (flags != 0) values.add(dataValue.invoke(null, sharedFlags, flags));
         if (look.livingFlags() != 0 && VariantWire.living(typeKey)) values.add(dataValue.invoke(null, livingFlags, look.livingFlags()));
+        if (look.usingItem()) aim(values, typeKey, true);
         Optional<BodyRules.BabyFlag> baby = look.traits().baby() ? BodyRules.babyFlag(typeKey) : Optional.empty();
         if (baby.isPresent() && babies.containsKey(baby.get())) values.add(dataValue.invoke(null, babies.get(baby.get()), Boolean.TRUE));
         if ((look.pose() != NpcPose.STANDING && look.pose() != NpcPose.SITTING) || (look.motion() & BodyLook.GLIDING) != 0)
@@ -156,7 +168,17 @@ final class NativePresentation {
         List<Object> values = new ArrayList<>(List.of(dataValue.invoke(null, sharedFlags, look.sharedFlags(invisible)),
                 dataValue.invoke(null, pose, Enum.valueOf((Class) poses, look.lookPose(typeKey)))));
         if (VariantWire.living(typeKey)) values.add(dataValue.invoke(null, livingFlags, look.livingFlags()));
+        aim(values, typeKey, look.usingItem());
         return values;
+    }
+
+    /** A skeleton or drowned aims as an aggressive mob and a pillager charges its crossbow while its item is in use. */
+    private void aim(List<Object> values, String typeKey, boolean using) throws ReflectiveOperationException {
+        switch (BodyRules.aim(typeKey)) {
+            case AGGRESSIVE -> { if (mobFlags != null) values.add(dataValue.invoke(null, mobFlags, (byte) (using ? BodyLook.AGGRESSIVE : 0))); }
+            case CHARGING -> { if (charging != null) values.add(dataValue.invoke(null, charging, using)); }
+            case NONE -> { }
+        }
     }
 
     /** Formatted text as a styled vanilla component, so hex colours render; a plain literal would show them as codes. */

@@ -99,7 +99,7 @@ class CombatPeersTest {
         UUID archer = combatant(0, 0, 20, "{\"targets\":{\"categories\":[\"npcs\"]},\"targeting\":{\"scanIntervalTicks\":1,\"scanRange\":30},\"melee\":{\"enabled\":false},"
                 + "\"ranged\":{\"enabled\":true,\"damage\":5,\"range\":30,\"cooldownTicks\":20}}");
         UUID dummy = combatant(10, 0, 20, "{\"melee\":{\"enabled\":false},\"pursuit\":{\"closeChase\":false}}", "{\"killable\":true,\"invulnerableTicks\":0}");
-        run(1);
+        run(CombatTesting.FIRST_ARROW);
         UUID helper = world.helpers.keySet().iterator().next();
         world.helpers.put(helper, new art.arcane.animus.core.virtual.Vec3(11, 65, 0));
         run(1);

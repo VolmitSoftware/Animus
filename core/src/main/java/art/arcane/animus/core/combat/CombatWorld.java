@@ -63,8 +63,13 @@ public interface CombatWorld {
     void face(UUID npc, Vec3 point);
     /** Shows one attack: the main-arm swing, or the type's own attack animation. Sent promptly, never dropped as cosmetic. */
     default void swing(UUID npc) {}
-    /** Shows the NPC drawing its bow, crossbow or trident while true, as a player holding use does. */
+    /** Shows the NPC drawing its bow, charging its crossbow or raising its trident while true, as a player holding use does. */
     default void drawing(UUID npc, boolean drawing) {}
+    /**
+     * Plays a sound at the NPC's body for the players near it who see it, as vanilla plays a weapon's sounds from the one
+     * using it. {@code category} is the sound category, {@code players} or {@code hostile}.
+     */
+    default void sound(UUID npc, String sound, String category, float volume, float pitch) {}
     /** Shows this item in the NPC's main hand, or its definition's own item again when empty. The definition is not changed. */
     default void hold(UUID npc, Optional<art.arcane.animus.core.npc.NpcItem> item) {}
     /** Shows a critical hit on the NPC, the enchanted hit sparkle, or both, as vanilla shows them on a struck body. */

@@ -439,7 +439,7 @@ class CombatEngineTest {
         combatant(0, 0, ARCHER);
         UUID target = world.npc(10, 0, 20);
         assertTrue(engine().register(target, "target", settings("{\"targeting\":{\"fightBack\":false}}", "{\"killable\":true,\"invulnerableTicks\":0}"), CombatLoadout.NONE));
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         assertEquals(1, world.helperLaunches);
         UUID helper = onlyHelper();
         world.helpers.put(helper, new Vec3(11, 65, 0));
@@ -454,7 +454,7 @@ class CombatEngineTest {
     @Test void aRealCallbackFirstBlocksALaterCollision() {
         combatant(0, 0, ARCHER);
         UUID zombie = world.monster("minecraft:zombie", 10, 0);
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         UUID helper = onlyHelper();
         assertTrue(engine().ownsHelper(helper));
         assertTrue(engine().helperHitReal(helper, mob(zombie)));
@@ -468,7 +468,7 @@ class CombatEngineTest {
         combatant(0, 0, ARCHER);
         UUID zombie = world.monster("minecraft:zombie", 10, 0);
         UUID bystander = world.animal("minecraft:cow", 5, 0);
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         UUID helper = onlyHelper();
         assertTrue(engine().helperHitReal(helper, mob(bystander)));
         assertFalse(world.realDamage.containsKey(bystander));
@@ -479,7 +479,7 @@ class CombatEngineTest {
         UUID archer = combatant(0, 0, ARCHER.replace("{\"targets\"", "{\"squad\":{\"name\":\"a\"},\"targets\""));
         UUID mate = combatant(4, 3, "{\"squad\":{\"name\":\"a\"}}", "{\"killable\":true,\"invulnerableTicks\":0}");
         world.monster("minecraft:zombie", 10, 0);
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         UUID helper = onlyHelper();
         world.helpers.put(helper, new Vec3(5, 65, 3.75));
         run(1);
@@ -490,7 +490,7 @@ class CombatEngineTest {
     @Test void protectionDeniedOnAProjectileHitStillRemovesTheHelper() {
         combatant(0, 0, ARCHER);
         UUID zombie = world.monster("minecraft:zombie", 10, 0);
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         UUID helper = onlyHelper();
         protection = request -> ProtectionAdapter.Decision.DENY;
         assertTrue(engine().helperHitReal(helper, mob(zombie)));
@@ -500,7 +500,7 @@ class CombatEngineTest {
     @Test void aBlockHitRetiresTheHelperWithoutDamage() {
         combatant(0, 0, ARCHER);
         UUID zombie = world.monster("minecraft:zombie", 10, 0);
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         UUID helper = onlyHelper();
         assertTrue(engine().helperHitBlock(helper));
         assertFalse(engine().helperHitBlock(helper));
@@ -510,7 +510,7 @@ class CombatEngineTest {
     @Test void helpersAreRemovedOnExpiry() {
         combatant(0, 0, ARCHER);
         world.monster("minecraft:zombie", 10, 0);
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         UUID helper = onlyHelper();
         run(CombatBudgets.DEFAULT.helperLifetimeTicks() + 1);
         assertTrue(world.removedHelpers.contains(helper));
@@ -518,7 +518,7 @@ class CombatEngineTest {
     @Test void helpersAreForgottenWhenTheirEntityVanishes() {
         combatant(0, 0, ARCHER);
         world.monster("minecraft:zombie", 10, 0);
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         UUID helper = onlyHelper();
         world.helpers.remove(helper);
         run(1);
@@ -527,7 +527,7 @@ class CombatEngineTest {
     @Test void helpersAreRemovedOnDisengageDespawnAndShutdown() {
         UUID archer = combatant(0, 0, ARCHER);
         world.monster("minecraft:zombie", 10, 0);
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         UUID first = onlyHelper();
         assertEquals(CombatOperations.Status.APPLIED, engine().disengage(archer).status());
         assertTrue(world.removedHelpers.contains(first), "Cancellation");
@@ -537,7 +537,7 @@ class CombatEngineTest {
         engine().unregister(archer);
         assertTrue(world.removedHelpers.contains(second), "Despawn");
         combatant(0, 1, ARCHER);
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         UUID third = onlyHelper();
         assertTrue(engine().ownsHelper(third));
         engine().close();
@@ -547,7 +547,7 @@ class CombatEngineTest {
     @Test void aDeadArcherLeavesNoHelpersBehind() {
         UUID archer = combatant(0, 0, ARCHER);
         world.monster("minecraft:zombie", 10, 0);
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         UUID helper = onlyHelper();
         CombatTesting.hit(engine(), archer, player(UUID.randomUUID()), near(), 100);
         assertTrue(world.removedHelpers.contains(helper));
@@ -556,7 +556,7 @@ class CombatEngineTest {
         budgets = new CombatBudgets(true, 64, 16, 4, 32, 32, 8, 2, 1, 1, 32, 100, 40, 8, 100, 8);
         combatant(0, 0, ARCHER.replace("\"cooldownTicks\":20", "\"cooldownTicks\":1"));
         world.monster("minecraft:zombie", 10, 0);
-        run(10);
+        run(CombatTesting.FIRST_ARROW + CombatTesting.NEXT_ARROW);
         assertEquals(1, world.helperLaunches);
     }
     @Test void aCancelledLaunchTracksNothing() {

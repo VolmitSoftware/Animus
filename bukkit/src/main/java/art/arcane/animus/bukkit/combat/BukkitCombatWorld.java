@@ -77,6 +77,9 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
     private static final Map<RangedWeapon, Class<? extends Projectile>> THROWN = Map.of(RangedWeapon.SNOWBALL, Snowball.class, RangedWeapon.EGG, Egg.class,
             RangedWeapon.FIREBALL, LargeFireball.class, RangedWeapon.SMALL_FIREBALL, SmallFireball.class, RangedWeapon.WITHER_SKULL, WitherSkull.class,
             RangedWeapon.LLAMA_SPIT, LlamaSpit.class, RangedWeapon.POTION, SplashPotion.class);
+    /** How far a weapon sound carries, as vanilla's sounds at full volume, and how many players hear one at most. */
+    private static final double SOUND_RANGE = 16;
+    private static final int SOUND_LISTENERS = 64;
     private final Plugin plugin;
     private final NamespacedKey helperKey;
     private final Set<UUID> suppressedDrops = new HashSet<>();
@@ -265,6 +268,28 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
             cloud.setColor(colour);
             cloud.setWaitTime(0);
         });
+    }
+    @Override public void sound(UUID npc, String sound, String category, float volume, float pitch) {
+        living.combatant(npc).ifPresent((art.arcane.animus.core.runtime.NpcRuntime.ActiveNpc active) ->
+                sound(living.players(), living.hidden(), active.id(), npc, active.state().position(), sound, category, volume, pitch));
+    }
+    /**
+     * On the NPC's owner: a weapon sound at its body for the players near it who see it, as far as vanilla carries a
+     * sound at full volume. Players another region owns hear it through their own region; a player the NPC is hidden
+     * from hears nothing.
+     */
+    public static void sound(art.arcane.animus.core.runtime.NpcRuntime.PlayerAccess<Player> players, art.arcane.animus.core.behavior.trigger.HiddenNpcs hidden,
+                             String id, UUID npc, WorldPosition at, String sound, String category, float volume, float pitch) {
+        World world = BukkitWorldLookup.find(org.bukkit.Bukkit.getServer(), at.world());
+        if (world == null) return;
+        org.bukkit.SoundCategory source = category.equals("players") ? org.bukkit.SoundCategory.PLAYERS : org.bukkit.SoundCategory.HOSTILE;
+        java.util.function.Consumer<Player> play = (Player viewer) -> {
+            if (viewer.getWorld().equals(world)) viewer.playSound(location(world, at.point()), sound, source, volume, pitch);
+        };
+        List<Player> near = players.ownedNear(at, SOUND_RANGE, SOUND_LISTENERS);
+        for (Player viewer : near) if (!hidden.hides(viewer.getUniqueId(), id, npc)) play.accept(viewer);
+        for (UUID elsewhere : players.elsewhereNear(at, SOUND_RANGE, SOUND_LISTENERS - near.size()))
+            if (!hidden.hides(elsewhere, id, npc)) players.deliver(elsewhere, play);
     }
     @Override public boolean member(TargetRef player, String kind, String name) {
         Player online = player.kind() == TargetKind.PLAYER ? plugin.getServer().getPlayer(player.id()) : null;

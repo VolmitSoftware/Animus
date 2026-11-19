@@ -207,4 +207,12 @@ class BodyLookTest {
         assertFalse(BodyLook.of(ID, "minecraft:villager", "Baker", appearance(List.of("Bread"), true, NpcPose.STANDING)).team(),
                 "a villager's name is a text row, not its name tag");
     }
+
+    @Test void aSkeletonOrDrownedAimsAsAnAggressiveMobAndAPillagerChargesItsCrossbow() {
+        for (String type : List.of("minecraft:skeleton", "minecraft:stray", "minecraft:wither_skeleton", "minecraft:bogged", "minecraft:parched", "minecraft:drowned"))
+            assertEquals(BodyRules.Aim.AGGRESSIVE, BodyRules.aim(type), type);
+        assertEquals(BodyRules.Aim.CHARGING, BodyRules.aim("minecraft:pillager"));
+        for (String type : List.of("minecraft:player", "minecraft:armor_stand", "minecraft:zombie", "minecraft:villager"))
+            assertEquals(BodyRules.Aim.NONE, BodyRules.aim(type), type + " shows its raised item alone");
+    }
 }

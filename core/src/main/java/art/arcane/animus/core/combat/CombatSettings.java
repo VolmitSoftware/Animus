@@ -118,7 +118,7 @@ public record CombatSettings(boolean enabled, TargetRules targets, TargetRules i
         JsonElement type = definition.get("type");
         boolean player = type != null && type.isJsonPrimitive() && type.getAsString().equals(BodyRules.PLAYER);
         HealthSettings health = HealthSettings.parse(healthModule.orElseGet(JsonObject::new), attributes);
-        CombatSettings settings = parseModule(attributes.isEmpty() ? module : CombatAttributes.fill(module, attributes, player), health);
+        CombatSettings settings = parseModule(attributes.isEmpty() ? module : CombatAttributes.fill(module, attributes, player), health, heldItem(definition));
         boolean enabled = settings.enabled(), passive = false;
         if (healthModule.isPresent() && (!known.has(MODULE) || !enabled)) {
             passive = true;
@@ -140,15 +140,30 @@ public record CombatSettings(boolean enabled, TargetRules targets, TargetRules i
     }
 
     /** The combat module alone, with {@code health} as the NPC's damage rules. */
-    public static CombatSettings parseModule(JsonObject module, HealthSettings health) {
+    public static CombatSettings parseModule(JsonObject module, HealthSettings health) { return parseModule(module, health, ""); }
+
+    /**
+     * The combat module of an NPC holding {@code held} in its main hand, or nothing for an empty string. A held bow,
+     * crossbow or trident, after any redirect, shoots with what it fires unless the ranged section says otherwise.
+     */
+    static CombatSettings parseModule(JsonObject module, HealthSettings health, String held) {
         Reader root = new Reader(module, ROOT);
         root.known("enabled", "targets", "ignores", "avoids", "targeting", "avoidance", "squad", "guard", "pursuit",
                 "melee", "ranged", "weapons", "greetings", "targetableByMobs", "victimDrops", "preservedSettings", "historicalStatistics", "migrationReport");
+        Weapons weapons = weapons(root.child("weapons"));
         return new CombatSettings(literalTrue(module, "enabled"),
                 rules(root.child("targets"), Level.SEEKING), rules(root.child("ignores"), Level.IGNORING), rules(root.child("avoids"), Level.SEEKING),
                 targeting(root.child("targeting")), avoidance(root.child("avoidance")), squad(root.child("squad")), guard(root.child("guard")),
-                pursuit(root.child("pursuit")), melee(root.child("melee")), ranged(root.child("ranged")), weapons(root.child("weapons")), greetings(root.child("greetings")),
+                pursuit(root.child("pursuit")), melee(root.child("melee")), ranged(root.child("ranged"), RangedWeapons.held(weapons.effective(held))), weapons, greetings(root.child("greetings")),
                 root.bool("targetableByMobs", false), root.bool("victimDrops", true), health, false);
+    }
+
+    /** The id of the definition's main-hand item, or an empty string when it holds none. */
+    private static String heldItem(JsonObject definition) {
+        JsonElement equipment = definition.get("equipment");
+        JsonElement hand = equipment != null && equipment.isJsonObject() ? equipment.getAsJsonObject().get("main_hand") : null;
+        JsonElement id = hand != null && hand.isJsonObject() ? hand.getAsJsonObject().get("id") : null;
+        return id != null && id.isJsonPrimitive() && MinecraftIds.valid(id.getAsString()) ? MinecraftIds.normalize(id.getAsString()) : "";
     }
 
     /** A wrong type is simply not an acceptance. Other fields reject; these two gate activation. */
@@ -281,10 +296,11 @@ public record CombatSettings(boolean enabled, TargetRules targets, TargetRules i
         return new Melee(reader.bool("enabled", true), reader.number("damage", 2, .01, 100), reader.number("reach", 3, .5, 6),
                 reader.integer("cooldownTicks", 20, 1, 1200), reader.number("knockback", .4, 0, 4), reader.bool("fromEquipment", false), weaponDamage);
     }
-    private static Ranged ranged(Reader reader) {
+    /** {@code held} is what a held bow, crossbow or trident fires: on and that weapon unless the section says otherwise. */
+    private static Ranged ranged(Reader reader, Optional<RangedWeapon> held) {
         reader.known("enabled", "weapon", "damage", "range", "minimumRange", "cooldownTicks", "velocity", "inaccuracy", "safeShot", "knockback", "effect",
                 "fromEquipment", "useAmmo", "lingering");
-        String name = reader.string("weapon", "arrow");
+        String name = reader.string("weapon", held.orElse(RangedWeapon.ARROW).jsonName());
         RangedWeapon weapon = RangedWeapon.parse(name).orElseThrow(() -> new IllegalArgumentException(reader.field("weapon")
                 + ": expected arrow, spectral_arrow, trident, snowball, egg, fireball, small_fireball, wither_skull, llama_spit or potion"));
         Optional<Effect> effect = Optional.empty();
@@ -297,7 +313,7 @@ public record CombatSettings(boolean enabled, TargetRules targets, TargetRules i
             effect = Optional.of(new Effect(MinecraftIds.normalize(id), potion.integer("amplifier", 0, 0, 9), potion.integer("durationTicks", 200, 1, 72000)));
         } else if (weapon == RangedWeapon.POTION) throw new IllegalArgumentException(reader.field("effect") + ": required for a potion");
         if (reader.has("lingering") && weapon != RangedWeapon.POTION) throw new IllegalArgumentException(reader.field("lingering") + ": only a potion lingers");
-        return new Ranged(reader.bool("enabled", false), weapon, reader.number("damage", 3, .01, 100), reader.number("range", 24, 1, 256),
+        return new Ranged(reader.bool("enabled", held.isPresent()), weapon, reader.number("damage", 3, .01, 100), reader.number("range", 24, 1, 256),
                 reader.number("minimumRange", 0, 0, 256), reader.integer("cooldownTicks", 40, 1, 1200), reader.number("velocity", 1.6, .5, 4),
                 reader.number("inaccuracy", 0, 0, 16), reader.bool("safeShot", true), reader.number("knockback", .4, 0, 4), effect,
                 reader.bool("fromEquipment", false), reader.bool("useAmmo", false), reader.bool("lingering", false));

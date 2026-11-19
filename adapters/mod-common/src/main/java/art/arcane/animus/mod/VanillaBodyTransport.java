@@ -402,6 +402,32 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
                     : List.of(event, new ClientboundSetEntityDataPacket(body.entityId, List.of(SynchedEntityData.DataValue.create(HEALTH, 0f)))));
         } finally { buffer.release(); }
     }
+    /**
+     * {@code Mob.DATA_MOB_FLAGS_ID} and {@code Pillager.IS_CHARGING_CROSSBOW}, private in vanilla; null where they cannot be
+     * read, and then those mobs aim with the raised item alone.
+     */
+    private static final net.minecraft.network.syncher.EntityDataAccessor<Byte> MOB_FLAGS = accessor(List.of("net.minecraft.world.entity.Mob"), "DATA_MOB_FLAGS_ID");
+    private static final net.minecraft.network.syncher.EntityDataAccessor<Boolean> CHARGING = accessor(
+            List.of("net.minecraft.world.entity.monster.illager.Pillager", "net.minecraft.world.entity.monster.Pillager"), "IS_CHARGING_CROSSBOW");
+    @SuppressWarnings("unchecked")
+    private static <T> net.minecraft.network.syncher.EntityDataAccessor<T> accessor(List<String> owners, String name) {
+        for (String owner : owners) {
+            try {
+                java.lang.reflect.Field field = Class.forName(owner).getDeclaredField(name);
+                field.setAccessible(true);
+                return (net.minecraft.network.syncher.EntityDataAccessor<T>) field.get(null);
+            } catch (ReflectiveOperationException | RuntimeException unavailable) { /* the next owner, or none */ }
+        }
+        return null;
+    }
+    /** A skeleton or drowned aims as an aggressive mob and a pillager charges its crossbow while its item is in use. */
+    private static void aim(List<SynchedEntityData.DataValue<?>> values, String typeKey, boolean using) {
+        switch (BodyRules.aim(typeKey)) {
+            case AGGRESSIVE -> { if (MOB_FLAGS != null) values.add(SynchedEntityData.DataValue.create(MOB_FLAGS, using ? BodyLook.AGGRESSIVE : (byte) 0)); }
+            case CHARGING -> { if (CHARGING != null) values.add(SynchedEntityData.DataValue.create(CHARGING, using)); }
+            case NONE -> { }
+        }
+    }
     /** {@code LivingEntity.DATA_HEALTH_ID}, private in vanilla; null where it cannot be read, and then only the death event is sent. */
     private static final net.minecraft.network.syncher.EntityDataAccessor<Float> HEALTH = healthAccessor();
     @SuppressWarnings("unchecked")
@@ -426,6 +452,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
                 SynchedEntityData.DataValue.create(EntityDataAccess.animus$pose(), pose)));
         if (art.arcane.animus.core.presentation.VariantWire.living(body.typeKey))
             values.add(SynchedEntityData.DataValue.create(LivingDataAccess.animus$livingFlags(), look.livingFlags()));
+        aim(values, body.typeKey, look.usingItem());
         return send(session, body, PacketKind.METADATA, List.of(new ClientboundSetEntityDataPacket(body.entityId, values)));
     }
 
@@ -758,6 +785,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         byte flags = look.sharedFlags(invisible);
         if (flags != 0) values.add(SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), flags));
         if (look.livingFlags() != 0 && art.arcane.animus.core.presentation.VariantWire.living(typeKey)) values.add(SynchedEntityData.DataValue.create(LivingDataAccess.animus$livingFlags(), look.livingFlags()));
+        if (look.usingItem()) aim(values, typeKey, true);
         if (look.traits().baby()) BodyRules.babyFlag(typeKey).ifPresent((BodyRules.BabyFlag flag) -> values.add(SynchedEntityData.DataValue.create(switch (flag) {
             case AGEABLE -> AgeableDataAccess.animus$baby();
             case ZOMBIE -> ZombieDataAccess.animus$baby();

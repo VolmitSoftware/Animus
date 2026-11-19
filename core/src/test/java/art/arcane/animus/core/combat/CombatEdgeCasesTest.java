@@ -107,7 +107,7 @@ class CombatEdgeCasesTest {
     @Test void aProtectedArrowSpendsItselfAndEndsTheFight() {
         UUID archer = combatant(0, 0, ARCHER);
         UUID zombie = world.monster("minecraft:zombie", 10, 0);
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         UUID helper = world.helpers.keySet().iterator().next();
         assertEquals(mob(zombie), status(archer).target().orElseThrow());
         protection = denying(zombie);
@@ -120,7 +120,7 @@ class CombatEdgeCasesTest {
         List<UUID> attackers = new ArrayList<>();
         UUID archer = combatant(0, 0, ARCHER);
         UUID zombie = world.monster("minecraft:zombie", 10, 0);
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         UUID helper = world.helpers.keySet().iterator().next();
         protection = (ProtectionAdapter.Request request) -> {
             attackers.add(request.attacker().id());
@@ -161,7 +161,7 @@ class CombatEdgeCasesTest {
         UUID guard = combatant(0, 0, json, health, new CombatLoadout(Optional.empty(), Map.of(), Map.of("minecraft:arrow", 2)));
         world.posts.put(guard, MockCombatWorld.at(0, 64, 0));
         UUID zombie = world.monster("minecraft:zombie", 10, 0);
-        run(4);
+        run(CombatTesting.FIRST_ARROW + CombatTesting.NEXT_ARROW);
         assertEquals(0, status(guard).ammunition());
         world.real.remove(zombie);
         CombatTesting.hit(engine(), guard, player(UUID.randomUUID()), MockCombatWorld.at(1, 64, 0), 100);
@@ -188,7 +188,7 @@ class CombatEdgeCasesTest {
     @Test void aDespawnMidFlightRemovesTheProjectileAndLaterCallbacksDoNothing() {
         UUID archer = combatant(0, 0, ARCHER);
         UUID zombie = world.monster("minecraft:zombie", 10, 0);
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         UUID helper = world.helpers.keySet().iterator().next();
         engine().unregister(archer);
         assertTrue(world.removedHelpers.contains(helper));
@@ -199,7 +199,7 @@ class CombatEdgeCasesTest {
     @Test void aStoppingEngineRefusesNewFightsButLetsShotsLand() {
         UUID archer = combatant(0, 0, ARCHER);
         world.monster("minecraft:zombie", 10, 0);
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         engine().stop();
         assertTrue(status(archer).target().isEmpty());
         assertEquals(1, engine().helperCount());

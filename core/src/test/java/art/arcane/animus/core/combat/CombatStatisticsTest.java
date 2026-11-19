@@ -54,7 +54,7 @@ class CombatStatisticsTest {
         UUID npc = world.npc(0, 0, 20);
         assertTrue(engine.register(npc, "guard", CombatSettings.parseModule(module, CombatTesting.KILLABLE), CombatLoadout.NONE));
         UUID far = world.monster("minecraft:zombie", 10, 0);
-        for (int i = 0; i < 3; i++) engine.tick();
+        for (int i = 0; i < CombatTesting.FIRST_ARROW; i++) engine.tick();
         UUID near = world.monster("minecraft:husk", 2, 0);
         world.moveReal(far, 40, 40);
         for (int i = 0; i < 3; i++) engine.tick();

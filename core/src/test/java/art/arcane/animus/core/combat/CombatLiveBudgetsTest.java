@@ -87,21 +87,21 @@ class CombatLiveBudgetsTest {
     }
 
     @Test void loweringHelperCapsLetsFlyingHelpersLiveOutTheirLifetimeButLaunchesNoMore() {
-        start(budgets(64, 8, 8, 40, 100));
+        start(budgets(64, 8, 8, 60, 100));
         combatant(0, 0, ARCHER);
         world.monster("minecraft:zombie", 10, 0);
-        run(4);
+        run(CombatTesting.FIRST_ARROW + CombatTesting.NEXT_ARROW);
         int flying = engine.helperCount();
         assertTrue(flying >= 2, "Several helpers in flight: " + flying);
         int launches = world.helperLaunches;
 
-        engine.reconfigure(budgets(64, 1, 1, 40, 100));
+        engine.reconfigure(budgets(64, 1, 1, 60, 100));
         run(10);
         assertEquals(launches, world.helperLaunches, "No helper launches while the count is above the lowered cap");
         assertEquals(flying, engine.helperCount(), "Helpers in flight are not removed early");
         assertTrue(world.removedHelpers.isEmpty());
 
-        run(40);
+        run(60);
         assertTrue(world.helperLaunches > launches, "Launching resumes once the old helpers expired");
         assertTrue(engine.helperCount() <= 1);
     }
@@ -111,7 +111,7 @@ class CombatLiveBudgetsTest {
         combatant(0, 0, ARCHER);
         world.monster("minecraft:zombie", 10, 0);
         engine.reconfigure(budgets(64, 1, 1, 5, 100));
-        run(2);
+        run(CombatTesting.FIRST_ARROW);
         assertEquals(1, world.helperLaunches);
         run(10);
         assertFalse(world.removedHelpers.isEmpty(), "The shorter lifetime retired the helper");
@@ -133,7 +133,7 @@ class CombatLiveBudgetsTest {
         start(budgets(64, 8, 8, 20, 100));
         UUID archer = combatant(0, 0, ARCHER);
         world.monster("minecraft:zombie", 10, 0);
-        run(3);
+        run(CombatTesting.FIRST_ARROW);
         assertTrue(fighting(archer));
         int flying = engine.helperCount();
         assertTrue(flying > 0);

@@ -1038,8 +1038,8 @@ public final class NpcSchemaGenerator {
                     "durationTicks", described(range("integer", 1, 72000), "200 by default."));
             effect.add("required", strings("id"));
             JsonObject ranged = section(
-                    "enabled", type("boolean"),
-                    "weapon", described(choices(Arrays.stream(RangedWeapon.values()).map(RangedWeapon::jsonName).toList()), "arrow by default."),
+                    "enabled", described(type("boolean"), "On by default when it holds a bow, crossbow or trident."),
+                    "weapon", described(choices(Arrays.stream(RangedWeapon.values()).map(RangedWeapon::jsonName).toList()), "What its held bow, crossbow or trident fires by default, else arrow."),
                     "damage", described(range("number", 0.01, 100), "3 by default."),
                     "range", described(range("number", 1, 256), "24 by default."),
                     "minimumRange", range("number", 0, 256),

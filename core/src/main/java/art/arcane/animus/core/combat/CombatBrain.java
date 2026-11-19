@@ -80,8 +80,10 @@ final class CombatBrain {
     private boolean alertPending;
     private boolean deathHandled;
     private boolean regionReported;
-    /** Whether viewers see the bow drawn, and whether this turn's fight wants it drawn. */
-    private boolean drawn, drawThisTurn;
+    /** How its drawn weapon is used from shot to shot. */
+    private final DrawCycle draw;
+    /** Whether viewers see the weapon drawn, and whether this turn aimed it. */
+    private boolean drawn, aimed;
     /** Where this fight's leash runs from and where it returns: the post, or where a patrolling NPC left its route. */
     private WorldPosition anchor;
     /** Where the returning NPC last moved and when, to tell a walk that ended from one still under way. */
@@ -129,6 +131,7 @@ final class CombatBrain {
             @Override public boolean member(TargetRef player, String kind, String name) { return world.member(player, kind, name); }
         };
         hand = new WeaponHand(settings, loadout);
+        draw = new DrawCycle(loadout.body());
         armor = settings.health().defense().armorFromEquipment() ? EquipmentStats.armor(loadout) : EquipmentStats.Armor.NONE;
         guarded = settings.guard().player().map((UUID id) -> new TargetRef(TargetKind.PLAYER, id))
                 .or(() -> settings.guard().npc().map((UUID id) -> new TargetRef(TargetKind.NPC, id))).orElse(null);
@@ -184,9 +187,9 @@ final class CombatBrain {
         VirtualNpcState.Snapshot self = current.get();
         if (self.active() && self.health() > 0 && visited > 0) engine.count(npc, CombatStatistics.Counter.TICKS_SPAWNED, now - visited);
         visited = now;
-        drawThisTurn = false;
-        if (self.health() == 0) { showDraw(); engine.vacate(this); return updateDead(now, self); }
-        if (!self.active()) { showDraw(); engine.vacate(this); return idle; }
+        aimed = false;
+        if (self.health() == 0) { showDraw(now); engine.vacate(this); return updateDead(now, self); }
+        if (!self.active()) { showDraw(now); engine.vacate(this); return idle; }
         heal(now, self);
         boolean engaged = engaged();
         if (!engaged && (disengaged || settings.passive() || !engine.playersNear(self.position(), searchRadius() + WAKE_MARGIN))) {
@@ -196,15 +199,16 @@ final class CombatBrain {
             if (!disengaged) return idle;
         } else if (!engine.claim(this)) return idle;
         long next = turn(now, self);
-        showDraw();
+        showDraw(now);
         if (!engaged()) engine.yieldTurn(this);
         return next;
     }
 
-    /** Raises or lowers the bow when this turn's fight changed whether it is drawn. */
-    private void showDraw() {
-        if (drawn == drawThisTurn) return;
-        drawn = drawThisTurn;
+    /** Shows the weapon drawn or lowered when this turn changed it; a turn that did not aim lowers it. */
+    private void showDraw(long now) {
+        if (!aimed) draw.lower(now);
+        if (drawn == draw.drawing()) return;
+        drawn = draw.drawing();
         world.drawing(npc, drawn);
     }
 
@@ -431,7 +435,10 @@ final class CombatBrain {
         boolean ready = now >= reactionUntil;
         double distance = foe.position().point().distance(self.position().point());
         double reach = CombatGeometry.reach(CombatGeometry.center(self.bounds()), foe.bounds());
-        if (hand.switchTo(reach > melee.reach())) world.hold(npc, hand.shown());
+        if (hand.switchTo(reach > melee.reach())) {
+            draw.end();
+            world.hold(npc, hand.shown());
+        }
         boolean switching = settings.weapons().autoswitch();
         boolean rangedEnabled = switching ? hand.holdsRanged() && hand.ammunition() != 0 : ranged.enabled();
         boolean meleeAllowed = melee.enabled() && !(rangedEnabled && hand.effect().map(CombatSettings.Effect::helpful).orElse(false)) && !(switching && hand.holdsRanged());
@@ -452,19 +459,7 @@ final class CombatBrain {
             }
             state = CombatState.ATTACKING;
         } else if (rangedUsable) {
-            RangedWeapon fires = hand.rangedWeapon();
-            drawThisTurn = fires.drawn();
-            if (ready && engine.helperCapacity(npc) && clearShot(self, foe) && rangedWindow.reserve(now, ranged.cooldownTicks())) {
-                try {
-                    world.face(npc, CombatGeometry.center(foe.bounds()));
-                    if (engine.shoot(this, new WorldPosition(self.position().world(), eye(self)), foe)) {
-                        if (!fires.drawn()) world.swing(npc);
-                        hand.fired();
-                    }
-                } finally {
-                    rangedWindow.release();
-                }
-            }
+            aim(now, self, foe, ready);
             state = CombatState.ATTACKING;
         }
         boolean chase;
@@ -480,6 +475,34 @@ final class CombatBrain {
             world.stop(npc);
         }
         return 1;
+    }
+
+    /**
+     * One turn of a ranged fight: the weapon is drawn, charged or raised until it is ready, then let go when the cooldown,
+     * a free helper and a clear line allow. The NPC faces its target as the draw begins, as the crossbow loads and as it shoots.
+     */
+    private void aim(long now, VirtualNpcState.Snapshot self, CombatTarget foe, boolean ready) {
+        aimed = true;
+        CombatSettings.Ranged ranged = settings.ranged();
+        DrawCycle.Style style = hand.style();
+        if (draw.use(style, hand.quickCharge())) world.hold(npc, hand.shown(false));
+        boolean wasDrawing = draw.drawing();
+        DrawCycle.Turn turn = draw.aim(now, engine.random());
+        for (DrawCycle.Sound sound : turn.sounds()) world.sound(npc, sound.id(), sound.category(), sound.volume(), sound.pitch());
+        if (turn.loaded()) world.hold(npc, hand.shown(true));
+        if (turn.loaded() || draw.drawing() && !wasDrawing) world.face(npc, CombatGeometry.center(foe.bounds()));
+        if (!turn.ready() || !ready || !engine.helperCapacity(npc) || !clearShot(self, foe) || !rangedWindow.reserve(now, ranged.cooldownTicks())) return;
+        try {
+            world.face(npc, CombatGeometry.center(foe.bounds()));
+            if (!engine.shoot(this, new WorldPosition(self.position().world(), eye(self)), foe)) return;
+            boolean wasLoaded = draw.loaded();
+            draw.release(now, ranged.cooldownTicks(), engine.random()).ifPresent((DrawCycle.Sound sound) -> world.sound(npc, sound.id(), sound.category(), sound.volume(), sound.pitch()));
+            if (wasLoaded) world.hold(npc, hand.shown(false));
+            if (style == DrawCycle.Style.THROWN) world.swing(npc);
+            hand.fired();
+        } finally {
+            rangedWindow.release();
+        }
     }
 
     private boolean clearShot(VirtualNpcState.Snapshot self, CombatTarget foe) {
@@ -627,7 +650,7 @@ final class CombatBrain {
     }
 
     private void finish() {
-        if (hand.restore()) world.hold(npc, hand.shown());
+        lowerWeapon();
         boolean wasEngaged = anchor != null || moving || state != CombatState.IDLE;
         state = CombatState.IDLE;
         // The next fight anchors at the post again, never where this one stopped.
@@ -636,6 +659,12 @@ final class CombatBrain {
         moving = false;
         stuck = 0;
         if (wasEngaged) world.release(npc);
+    }
+
+    /** The fight is over: the weapon is lowered, a loaded crossbow emptied, and its own item held again. */
+    private void lowerWeapon() {
+        boolean emptied = draw.end();
+        if (hand.restore() || emptied) world.hold(npc, hand.shown());
     }
 
     private long guarding(long now, VirtualNpcState.Snapshot self) {
@@ -923,6 +952,7 @@ final class CombatBrain {
         forced = false;
         moving = false;
         anchor = null;
+        lowerWeapon();
         engine.removeHelpers(npc);
         HealthSettings.Death death = settings.health().death();
         List<CombatWorld.Drop> drops = new ArrayList<>();

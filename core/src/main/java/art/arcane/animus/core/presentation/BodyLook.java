@@ -31,6 +31,8 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
     public static final int USING_ITEM = 0x100;
     /** The living-entity flag of a trident's riptide spin, which a spinning body shows. */
     public static final int SPIN_ATTACK = 0x04;
+    /** The mob flag of an aggressive mob, with which a skeleton draws its bow and a drowned raises its trident. */
+    public static final byte AGGRESSIVE = 0x04;
     public static final byte BILLBOARD_CENTER = 3;
     public static final int LINE_WIDTH = 4096;
     /** Vanilla's text display background; a blank row, such as a silent speech bubble, draws none at all. */

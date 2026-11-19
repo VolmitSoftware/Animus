@@ -112,4 +112,25 @@ class CombatSettingsTest {
     @Test void reviewNotesAndPreservedDataAreAccepted() {
         assertDoesNotThrow(() -> parse("{\"enabled\":false,\"preservedSettings\":{\"needsAmmo\":true},\"historicalStatistics\":{\"stats_punches\":1},\"migrationReport\":{\"notes\":[]}}"));
     }
+
+    private static CombatSettings.Ranged held(String combat, String item) {
+        return CombatSettings.parse(module(definition(combat, ",\"equipment\":{\"main_hand\":{\"id\":\"" + item + "\"}}"))).orElseThrow().ranged();
+    }
+    @Test void aFighterHoldingABowCrossbowOrTridentShootsWithItWithNoRangedSection() {
+        CombatSettings.Ranged bow = held("{\"enabled\":true}", "minecraft:bow");
+        assertTrue(bow.enabled(), "a held bow shoots");
+        assertEquals(RangedWeapon.ARROW, bow.weapon());
+        assertTrue(held("{\"enabled\":true,\"ranged\":{\"damage\":5}}", "minecraft:crossbow").enabled(), "a crossbow too, with other ranged settings written");
+        CombatSettings.Ranged trident = held("{\"enabled\":true}", "minecraft:trident");
+        assertTrue(trident.enabled());
+        assertEquals(RangedWeapon.TRIDENT, trident.weapon(), "a held trident is thrown");
+    }
+    @Test void writtenRangedSettingsWinOverTheHeldWeapon() {
+        assertFalse(held("{\"enabled\":true,\"ranged\":{\"enabled\":false}}", "minecraft:bow").enabled(), "ranged turned off stays off");
+        assertEquals(RangedWeapon.SNOWBALL, held("{\"enabled\":true,\"ranged\":{\"weapon\":\"snowball\"}}", "minecraft:trident").weapon());
+        assertFalse(held("{\"enabled\":true}", "minecraft:iron_sword").enabled(), "a sword fights in melee");
+        CombatSettings.Ranged redirected = held("{\"enabled\":true,\"weapons\":{\"redirects\":{\"minecraft:stick\":\"minecraft:trident\"}}}", "minecraft:stick");
+        assertTrue(redirected.enabled(), "a held item redirected to a ranged weapon shoots");
+        assertEquals(RangedWeapon.TRIDENT, redirected.weapon());
+    }
 }

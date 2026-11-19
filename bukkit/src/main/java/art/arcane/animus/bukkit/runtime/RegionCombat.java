@@ -327,6 +327,10 @@ public final class RegionCombat implements Listener, AutoCloseable {
     boolean onEntity(Entity entity, Runnable work) { return host.regions.execute(entity, work, () -> {}); }
     List<Player> ownedNear(WorldPosition center, double radius) { return host.players().ownedNear(center, radius, 1); }
     void deliver(UUID player, Consumer<Player> action) { host.players().deliver(player, action); }
+    /** A weapon sound at the actor's body for the players near it who see it, on the actor's region. */
+    void sound(RegionActor actor, String sound, String category, float volume, float pitch) {
+        art.arcane.animus.bukkit.combat.BukkitCombatWorld.sound(host.players(), host.hidden(), actor.id, actor.uuid, actor.position(), sound, category, volume, pitch);
+    }
     SpatialNpcIndex.Scan scan(WorldPosition center, double radius, SpatialNpcIndex.Cursor cursor, SpatialNpcIndex.Budget budget) {
         return host.index.scan(new SpatialNpcIndex.Query(center, radius), cursor, budget, host::knownLoaded);
     }

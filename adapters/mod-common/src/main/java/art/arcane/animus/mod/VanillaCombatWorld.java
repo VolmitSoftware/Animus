@@ -66,6 +66,9 @@ final class VanillaCombatWorld extends RuntimeCombatWorld<ServerPlayer, ItemStac
     private final VanillaTerrain terrain;
     private final Set<UUID> helpers = new HashSet<>();
     private final Set<UUID> suppressedDrops = new HashSet<>();
+    /** How far a weapon sound carries, as vanilla's sounds at full volume, and how many players hear one at most. */
+    private static final double SOUND_RANGE = 16;
+    private static final int SOUND_LISTENERS = 64;
     /** Entity type ids, looked up in the registry because the type constants moved between Minecraft versions. */
     private static final Map<RangedWeapon, String> PROJECTILES = Map.of(RangedWeapon.ARROW, "minecraft:arrow",
             RangedWeapon.SPECTRAL_ARROW, "minecraft:spectral_arrow", RangedWeapon.TRIDENT, "minecraft:trident", RangedWeapon.SNOWBALL, "minecraft:snowball",
@@ -212,6 +215,19 @@ final class VanillaCombatWorld extends RuntimeCombatWorld<ServerPlayer, ItemStac
         if (!(entity instanceof LivingEntity victim) || victim.isRemoved() || victim.isDeadOrDying() || id == null) return false;
         Optional<Holder.Reference<MobEffect>> type = BuiltInRegistries.MOB_EFFECT.get(id);
         return type.isPresent() && victim.addEffect(new MobEffectInstance(type.get(), effect.durationTicks(), effect.amplifier()));
+    }
+    /** A weapon sound at the NPC's body for the players near it who see it, as far as vanilla carries a sound at full volume. */
+    @Override public void sound(UUID npc, String sound, String category, float volume, float pitch) {
+        living.combatant(npc).ifPresent((art.arcane.animus.core.runtime.NpcRuntime.ActiveNpc active) -> {
+            WorldPosition at = active.state().position();
+            Holder<net.minecraft.sounds.SoundEvent> event = VanillaBehaviorPlatform.sound(sound);
+            net.minecraft.sounds.SoundSource source = category.equals("players") ? net.minecraft.sounds.SoundSource.PLAYERS : net.minecraft.sounds.SoundSource.HOSTILE;
+            long seed = server.overworld().getRandom().nextLong();
+            for (ServerPlayer viewer : living.players().ownedNear(at, SOUND_RANGE, SOUND_LISTENERS)) {
+                if (living.hidden().hides(viewer.getUUID(), active.id(), npc)) continue;
+                viewer.connection.send(new net.minecraft.network.protocol.game.ClientboundSoundPacket(event, source, at.point().x(), at.point().y(), at.point().z(), volume, pitch, seed));
+            }
+        });
     }
     @Override public boolean permitted(TargetRef player, String node) {
         if (player.kind() != TargetKind.PLAYER) return false;

@@ -25320,7 +25320,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "additionalProperties": false,
               "properties": {
                 "enabled": {
-                  "type": "boolean"
+                  "type": "boolean",
+                  "description": "On by default when it holds a bow, crossbow or trident."
                 },
                 "weapon": {
                   "enum": [
@@ -25335,7 +25336,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     "llama_spit",
                     "potion"
                   ],
-                  "description": "arrow by default."
+                  "description": "What its held bow, crossbow or trident fires by default, else arrow."
                 },
                 "damage": {
                   "type": "number",

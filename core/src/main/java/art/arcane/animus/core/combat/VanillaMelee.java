@@ -30,7 +30,7 @@ public final class VanillaMelee {
     public static final String SHARPNESS = "minecraft:sharpness", SMITE = "minecraft:smite", BANE = "minecraft:bane_of_arthropods",
             IMPALING = "minecraft:impaling", FIRE_ASPECT = "minecraft:fire_aspect", KNOCKBACK = "minecraft:knockback", LOOTING = "minecraft:looting",
             DENSITY = "minecraft:density", POWER = "minecraft:power", PUNCH = "minecraft:punch", FLAME = "minecraft:flame",
-            PIERCING = "minecraft:piercing", MULTISHOT = "minecraft:multishot", PROTECTION = "minecraft:protection",
+            PIERCING = "minecraft:piercing", MULTISHOT = "minecraft:multishot", QUICK_CHARGE = "minecraft:quick_charge", PROTECTION = "minecraft:protection",
             PROJECTILE_PROTECTION = "minecraft:projectile_protection", BLAST_PROTECTION = "minecraft:blast_protection",
             FIRE_PROTECTION = "minecraft:fire_protection", FEATHER_FALLING = "minecraft:feather_falling";
     /** The knockback every hit carries before any extra. */
