@@ -86,6 +86,10 @@ dependencies {
     testRuntimeOnly('com.sk89q.worldedit.worldedit-libs:core:7.3.15') { transitive = false }
     testRuntimeOnly('com.sk89q.worldguard.worldguard-libs:core:7.0.14') { transitive = false }
 }
+// Shrinking and the tests resolve Gson and SnakeYAML as the oldest supported server ships them.
+['compileClasspath', 'testCompileClasspath', 'testRuntimeClasspath'].each { String name ->
+    configurations.named(name).configure { resolutionStrategy.force(oldestServerLibraries) }
+}
 tasks.named('processResources').configure {
     inputs.properties(animus + [apiVersion: '26.1.2'])
     filesMatching('plugin.yml') { expand(animus + [apiVersion: '26.1.2']) }

@@ -27,6 +27,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -34,10 +35,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The plugin compiles against one Spigot API, but runs on Spigot and Paper from 26.1.2 to 26.3, whose APIs differ:
  * Paper has no {@code Material.getKeyOrThrow()}, for one. Every server class, method and field the compiled plugin
  * names is resolved here against each target's API jar, the way the JVM links it, so a call missing on any target
- * fails the build instead of throwing {@code NoSuchMethodError} on a live server.
+ * fails the build instead of throwing {@code NoSuchMethodError} on a live server. Gson and SnakeYAML count as server
+ * classes: the jar uses the copies each server ships, and the API jars depend on those same versions.
  */
 class ServerApiLinkageTest {
-    private static final List<String> SERVER_PACKAGES = List.of("org/bukkit/", "org/spigotmc/", "net/md_5/", "io/papermc/", "com/destroystokyo/");
+    private static final List<String> SERVER_PACKAGES = List.of("org/bukkit/", "org/spigotmc/", "net/md_5/", "io/papermc/", "com/destroystokyo/",
+            "com/google/gson/", "org/yaml/snakeyaml/");
 
     @Test
     void everyServerMemberThePluginNamesExistsOnEveryTarget() throws IOException {
@@ -69,6 +72,19 @@ class ServerApiLinkageTest {
             try (Classes classes = new Classes(target.getValue())) {
                 assertTrue(classes.links(shared), target.getKey() + " lacks Material.getKey()");
                 if (target.getKey().startsWith("paper-")) assertFalse(classes.links(spigotOnly), target.getKey() + " unexpectedly has Material.getKeyOrThrow()");
+            }
+        }
+    }
+
+    @Test
+    void theResolverJudgesSnakeYamlByEachTargetsOwnVersion() throws IOException {
+        // Paper ships SnakeYAML 2.2 and Spigot 2.6 or later; the duplicate-key warning switch arrived in between.
+        Reference newer = new Reference("org/yaml/snakeyaml/LoaderOptions", "setWarnOnDuplicateKeys", "(Z)V", Kind.METHOD, "test");
+        Reference shared = new Reference("org/yaml/snakeyaml/LoaderOptions", "setAllowDuplicateKeys", "(Z)V", Kind.METHOD, "test");
+        for (Map.Entry<String, List<Path>> target : targets().entrySet()) {
+            try (Classes classes = new Classes(target.getValue())) {
+                assertTrue(classes.links(shared), target.getKey() + " lacks LoaderOptions.setAllowDuplicateKeys");
+                assertEquals(target.getKey().startsWith("spigot-"), classes.links(newer), target.getKey() + " has the wrong SnakeYAML");
             }
         }
     }

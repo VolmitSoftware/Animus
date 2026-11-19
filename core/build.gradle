@@ -45,6 +45,18 @@ tasks.withType(Test).configureEach {
     }
 }
 
+// The mod jars bundle Gson and SnakeYAML; the Bukkit jar runs core on the server's copies, so the suite runs on both.
+Configuration serverLibraryClasspath = configurations.testRuntimeClasspath.copyRecursive()
+serverLibraryClasspath.resolutionStrategy.force(oldestServerLibraries)
+TaskProvider<Test> serverLibraryTest = tasks.register('serverLibraryTest', Test) {
+    group = 'verification'
+    description = 'Runs the tests on the Gson and SnakeYAML of the oldest supported Spigot or Paper server.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.output + sourceSets.main.output + serverLibraryClasspath
+}
+// The mod builds include core only for their own jars, which bundle Gson and SnakeYAML.
+if (rootProject.projectDir == animusRoot) tasks.named('check').configure { dependsOn(serverLibraryTest) }
+
 Provider<Directory> identityDirectory = layout.buildDirectory.dir('generated/sources/identity')
 tasks.register('generateBuildIdentity') {
     inputs.properties(animus)

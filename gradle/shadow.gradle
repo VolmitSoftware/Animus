@@ -23,8 +23,16 @@ tasks.named('shadowJar').configure {
         }
     }
     relocate('art.arcane.volmlib', "${animus.projectGroup}.internal.volmlib")
-    relocate('org.yaml.snakeyaml', "${animus.projectGroup}.internal.snakeyaml")
-    relocate('com.google.gson', "${animus.projectGroup}.internal.gson")
+    if (project.name == 'bukkit') {
+        // Spigot and Paper put their Gson and SnakeYAML on every plugin's classpath; the Bukkit jar uses those.
+        dependencies {
+            exclude(dependency('com.google.code.gson:gson:.*'))
+            exclude(dependency('org.yaml:snakeyaml:.*'))
+        }
+    } else {
+        relocate('org.yaml.snakeyaml', "${animus.projectGroup}.internal.snakeyaml")
+        relocate('com.google.gson', "${animus.projectGroup}.internal.gson")
+    }
     relocate('net.kyori', "${animus.projectGroup}.internal.kyori")
     relocate('com.moandjiezana.toml', "${animus.projectGroup}.internal.toml")
     exclude('META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'META-INF/maven/**', 'module-info.class')

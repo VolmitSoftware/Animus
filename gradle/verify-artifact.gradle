@@ -17,6 +17,13 @@ TaskProvider verification = tasks.register('verifyArtifact') {
     inputs.file(artifactFile)
     inputs.properties(animus)
     inputs.property('minecraftTargets', minecraftTargets)
+    // Spigot and Paper supply the Bukkit jar's Gson and SnakeYAML, so the command tree check below loads the oldest they ship.
+    Configuration serverLibraries = project.configurations.detachedConfiguration()
+    serverLibraries.transitive = false
+    if (platform == 'bukkit') {
+        oldestServerLibraries.each { String notation -> serverLibraries.dependencies.add(project.dependencies.create(notation)) }
+    }
+    inputs.files(serverLibraries).withPropertyName('serverLibraries')
     doLast {
         File artifact = artifactFile.get().asFile
         Closure<Void> require = { boolean condition, String message ->
@@ -53,15 +60,15 @@ TaskProvider verification = tasks.register('verifyArtifact') {
         Map<String, Object> target = minecraftTargets[animus.minecraftVersion]
         new JarFile(artifact).withCloseable { JarFile archive ->
             boolean versionedEntries = archive.entries().any { JarEntry entry -> !entry.directory && entry.name.startsWith('META-INF/versions/') }
-            // The Bukkit shrink drops the versioned SnakeYAML logger and leaves the manifest flag, which is harmless without versioned entries.
+            // SnakeYAML's logger is the only versioned entry, and the Bukkit jar leaves SnakeYAML to the server; its unused flag is harmless.
             require(archive.isMultiRelease() || !versionedEntries, 'versioned archive entries need a multi-release manifest')
             List<String> required = [metadataPath, entrypoint.replace('.', '/') + '.class',
                 namespace + 'core/AnimusRuntime.class', namespace + 'core/BuildIdentity.class',
                 'art/arcane/animus/api/AnimusApi.class', 'art/arcane/animus/api/TrustedModule.class',
-                internal + 'volmlib/util/config/ConfigJson.class',
-                internal + 'gson/Gson.class', internal + 'volmlib/util/director/runtime/DirectorRuntimeEngine.class',
+                internal + 'volmlib/util/config/ConfigJson.class', internal + 'volmlib/util/director/runtime/DirectorRuntimeEngine.class',
                 internal + 'volmlib/util/director/help/DirectorMiniMenu.class']
             if (platform != 'bukkit') {
+                required.add(internal + 'gson/Gson.class')
                 // The Bukkit shrink drops AtomicFileIO: only VolmLib's language file editors use it and Animus calls neither.
                 required.add(internal + 'volmlib/util/io/AtomicFileIO.class')
                 required.add(namespace + 'mod/AnimusModRuntime.class')
@@ -74,10 +81,12 @@ TaskProvider verification = tasks.register('verifyArtifact') {
             (metadataPaths.values() + ['paper-plugin.yml']).findAll { String path -> path != metadataPath }.each { String path ->
                 require(archive.getEntry(path) == null, "contains foreign platform metadata ${path}")
             }
-            // Libraries the server provides that this jar also bundles under internal/: Paper's Adventure and Bukkit's
-            // Gson and SnakeYAML; Minecraft's Gson on the mod loaders.
-            List<String> serverLibraries = platform == 'bukkit' ? ['kyori', 'gson', 'snakeyaml'] : ['gson']
-            List<String> relocatedServerNames = serverLibraries.collectMany { String library -> [internal + library + '/', internal.replace('/', '.') + library + '.'] }
+            // Libraries the server provides that this jar also bundles under internal/: Paper's Adventure on Bukkit and
+            // Minecraft's Gson on the mod loaders. The Bukkit jar bundles no Gson or SnakeYAML; Spigot and Paper ship both.
+            Closure<List<String>> internalNames = { List<String> libraries -> libraries.collectMany { String library -> [internal + library + '/', internal.replace('/', '.') + library + '.'] } }
+            List<String> relocatedServerNames = internalNames(platform == 'bukkit' ? ['kyori'] : ['gson'])
+            List<String> unbundledNames = platform == 'bukkit' ? internalNames(['gson', 'snakeyaml']) : []
+            List<String> unrelocatedLibraries = platform == 'bukkit' ? ['art/arcane/volmlib/'] : ['art/arcane/volmlib/', 'com/google/gson/']
             Set<String> classes = new HashSet<>()
             List<String> forbidden = ['org/bukkit/', 'org/spigotmc/', 'io/papermc/', 'net/minecraft/',
                 'com/mojang/', 'net/minecraftforge/', 'net/neoforged/', 'net/fabricmc/', 'art/arcane/volmlib/', 'com/google/gson/', 'org/yaml/snakeyaml/', 'org/bstats/']
@@ -91,7 +100,8 @@ TaskProvider verification = tasks.register('verifyArtifact') {
                 // A class name in a string is meant for the server's own copy of a library it shares with this jar; Shadow
                 // relocates it like the bundled copy, and the lookup then finds the bundled class instead of the server's.
                 archive.getInputStream(entry).withCloseable { InputStream stream ->
-                    Map<String, Object> pool = constantPool(stream.readAllBytes())
+                    byte[] bytecode = stream.readAllBytes()
+                    Map<String, Object> pool = constantPool(bytecode)
                     String relocated = pool.strings.find { String text -> relocatedServerNames.any { String name -> text.contains(name) } }
                     require(relocated == null, "${entry.name} names ${relocated}, a relocated class the server provides; resolve the server's class from a type it returns")
                     // Attribute names sit in the pool only while an attribute uses them.
@@ -101,6 +111,9 @@ TaskProvider verification = tasks.register('verifyArtifact') {
                     boolean own = classPath.startsWith(namespace) && !classPath.startsWith(internal)
                     require(!own || !texts.contains('Code') || texts.contains('LineNumberTable') && texts.contains('SourceFile'),
                         "${entry.name} lost the line numbers or source file its stack traces need")
+                    String constants = new String(bytecode, StandardCharsets.ISO_8859_1)
+                    String missing = unbundledNames.find { String name -> constants.contains(name) }
+                    require(missing == null, "${entry.name} names ${missing}, a relocated library this jar does not bundle")
                 }
                 if (classPath.startsWith(namespace) && !classPath.startsWith(internal)) {
                     archive.getInputStream(entry).withCloseable { InputStream stream ->
@@ -111,7 +124,7 @@ TaskProvider verification = tasks.register('verifyArtifact') {
                         int javaVersion = platform == 'bukkit' || classPath.startsWith(namespace + 'core/') ? 25 : (int) target.javaVersion
                         require(bytes.readUnsignedShort() == javaVersion + 44, "${entry.name} must target Java ${javaVersion}")
                         String constants = new String(bytecode, StandardCharsets.ISO_8859_1)
-                        require(!constants.contains('art/arcane/volmlib/') && !constants.contains('com/google/gson/'), "unrelocated library reference in ${entry.name}")
+                        require(!unrelocatedLibraries.any { String library -> constants.contains(library) }, "unrelocated library reference in ${entry.name}")
                         if (platform == 'forge' && (classPath == namespace + 'mod/AnimusModRuntime.class' || classPath == namespace + 'mod/MinecraftVersion.class')) {
                             boolean srgReferences = Pattern.compile('m_[0-9]+_').matcher(constants).find()
                             require(srgReferences == (target.forgeRuntimeMappings == 'srg'), "incorrect Forge runtime mappings in ${entry.name}")
@@ -200,7 +213,7 @@ TaskProvider verification = tasks.register('verifyArtifact') {
                 }
             }
         }
-        URL[] locations = [artifact.toURI().toURL()] as URL[]
+        URL[] locations = ([artifact] + serverLibraries.files).collect { File file -> file.toURI().toURL() } as URL[]
         new URLClassLoader(locations, ClassLoader.getPlatformClassLoader()).withCloseable { URLClassLoader isolated ->
             Class<?> identity = Class.forName(animus.projectGroup + '.core.BuildIdentity', true, isolated)
             [ID: animus.projectId, NAME: animus.projectName, VERSION: animus.projectVersion].each { String field, String expected ->

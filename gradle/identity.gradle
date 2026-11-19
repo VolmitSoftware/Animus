@@ -38,5 +38,7 @@ if (!targets.containsKey(values.minecraftVersion)) {
 }
 ext.animus = values
 ext.minecraftTargets = targets
+// The oldest Gson and SnakeYAML a supported Spigot or Paper server ships (Paper 26.1.2); the Bukkit jar runs on the server's own.
+ext.oldestServerLibraries = ['com.google.code.gson:gson:2.13.2', 'org.yaml:snakeyaml:2.2']
 group = values.projectGroup
 version = values.projectVersion
