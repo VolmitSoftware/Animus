@@ -7,6 +7,7 @@ import art.arcane.animus.core.shop.ShopDocument;
 import art.arcane.animus.core.shop.ShopSpot;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.toolkit.Toolkit;
+import art.arcane.volmlib.util.event.ProtectionProbe;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -39,7 +40,8 @@ import org.bukkit.inventory.DoubleChestInventory;
  * next right-click on a container after Add chest answers it; either reads what protection plugins decided about the
  * click first. A shop's chests stay its own: only the owner and staff who run any shop open or break them, explosions
  * leave them, no hopper takes from them, and no chest joins one from beside it. An owner breaking a chest takes it out of
- * the shop. Runs on each event's own thread; the lookups read the last loaded shops without locks.
+ * the shop. Other plugins' protection probes get the same answers, silently, and change nothing. Runs on each event's own
+ * thread; the lookups read the last loaded shops without locks.
  */
 public final class BukkitPlayerShops implements Listener {
     private final PlayerShops shops;
@@ -50,7 +52,7 @@ public final class BukkitPlayerShops implements Listener {
     /** Last, so the protection plugins have said whether the player may use the block. */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void interact(PlayerInteractEvent event) {
-        if (event.getHand() != EquipmentSlot.HAND || event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null) return;
+        if (ProtectionProbe.isProbe(event) || event.getHand() != EquipmentSlot.HAND || event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null) return;
         Player player = event.getPlayer();
         boolean item = BukkitWand.is(player.getInventory().getItemInMainHand(), Toolkit.SHOP_ITEM), picking = toolkit.pickingChest(player.getUniqueId());
         if (!picking && !(item && player.isSneaking())) return;
@@ -79,18 +81,21 @@ public final class BukkitPlayerShops implements Listener {
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void broken(BlockBreakEvent event) {
+    public void breaking(BlockBreakEvent event) {
         if (!shops.any()) return;
         Block block = event.getBlock();
-        Optional<ShopDocument> listed = at(block);
-        Optional<ShopDocument> shop = listed.or(() -> partner(block).flatMap(this::at));
-        if (shop.isEmpty()) return;
-        if (!mayRun(event.getPlayer(), shop.get())) {
-            event.setCancelled(true);
-            BukkitChat.send(event.getPlayer(), Palette.error("This chest belongs to " + owner(shop.get()) + "'s shop"));
-            return;
-        }
-        if (listed.isPresent()) shops.broken(listed.get(), block(listed.get(), block));
+        Optional<ShopDocument> shop = at(block).or(() -> partner(block).flatMap(this::at));
+        if (shop.isEmpty() || mayRun(event.getPlayer(), shop.get())) return;
+        event.setCancelled(true);
+        if (!ProtectionProbe.isProbe(event)) BukkitChat.send(event.getPlayer(), Palette.error("This chest belongs to " + owner(shop.get()) + "'s shop"));
+    }
+
+    /** Last, so a break that protection or anything else cancelled leaves the chest in its shop. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void broken(BlockBreakEvent event) {
+        if (!shops.any() || ProtectionProbe.isProbe(event)) return;
+        Block block = event.getBlock();
+        at(block).ifPresent((ShopDocument shop) -> shops.broken(shop, block(shop, block)));
     }
 
     /** A chest placed beside a shop's chest would join it and open its stock to whoever placed it. */
@@ -104,7 +109,7 @@ public final class BukkitPlayerShops implements Listener {
             Optional<ShopDocument> shop = at(beside);
             if (shop.isPresent() && !mayRun(event.getPlayer(), shop.get())) {
                 event.setCancelled(true);
-                BukkitChat.send(event.getPlayer(), Palette.error("A chest here would join " + owner(shop.get()) + "'s shop"));
+                if (!ProtectionProbe.isProbe(event)) BukkitChat.send(event.getPlayer(), Palette.error("A chest here would join " + owner(shop.get()) + "'s shop"));
                 return;
             }
         }

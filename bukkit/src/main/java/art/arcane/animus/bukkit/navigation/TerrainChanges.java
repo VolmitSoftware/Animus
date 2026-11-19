@@ -1,6 +1,7 @@
 package art.arcane.animus.bukkit.navigation;
 
 import art.arcane.animus.core.navigation.BlockPos;
+import art.arcane.volmlib.util.event.ProtectionProbe;
 import java.util.List;
 import java.util.Objects;
 import org.bukkit.block.Block;
@@ -29,7 +30,8 @@ public final class TerrainChanges implements Listener {
 
     public TerrainChanges(Sink sink) { this.sink = Objects.requireNonNull(sink, "sink"); }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true) public void broken(BlockBreakEvent event) { changed(event.getBlock()); }
+    /** Other plugins' protection probes break nothing. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true) public void broken(BlockBreakEvent event) { if (!ProtectionProbe.isProbe(event)) changed(event.getBlock()); }
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true) public void burned(BlockBurnEvent event) { changed(event.getBlock()); }
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true) public void faded(BlockFadeEvent event) { changed(event.getBlock()); }
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true) public void decayed(LeavesDecayEvent event) { changed(event.getBlock()); }

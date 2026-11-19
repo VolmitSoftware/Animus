@@ -20,6 +20,8 @@ apply plugin: 'art.arcane.volmit-packaging'
 ext.animusRoot = projectDir.parentFile
 apply from: '../gradle/identity.gradle'
 apply from: '../gradle/java.gradle'
+// Other plugins mark the fake events they fire to ask protection plugins; Animus's listeners skip them.
+ext.platformVolmLibKept = ['art/arcane/volmlib/util/event/ProtectionProbe']
 apply from: '../gradle/shadow.gradle'
 apply from: '../gradle/verify-artifact.gradle'
 

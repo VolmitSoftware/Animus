@@ -14,6 +14,7 @@ import art.arcane.animus.core.recording.RecordingEvent;
 import art.arcane.animus.core.recording.RecordingHost;
 import art.arcane.animus.core.recording.RecordingSessions;
 import art.arcane.animus.core.virtual.Vec3;
+import art.arcane.volmlib.util.event.ProtectionProbe;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.Optional;
@@ -64,9 +65,10 @@ public final class BukkitRecordings implements RecordingHost<Player, ItemStack>,
         if (event.getAnimationType() == PlayerAnimationType.ARM_SWING) sessions.swung(event.getPlayer());
     }
 
+    /** A door the player used; other plugins' protection probes use none. */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void interacted(PlayerInteractEvent event) {
-        if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getHand() != EquipmentSlot.HAND) return;
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getHand() != EquipmentSlot.HAND || ProtectionProbe.isProbe(event)) return;
         Block block = event.getClickedBlock();
         if (RecorderLook.openable(block)) sessions.used(event.getPlayer(), block.getX(), block.getY(), block.getZ(), block.getType().getKey().toString());
     }

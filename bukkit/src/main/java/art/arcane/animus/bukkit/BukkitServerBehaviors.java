@@ -7,6 +7,7 @@ import art.arcane.animus.core.behavior.trigger.ServerEvent;
 import art.arcane.animus.core.behavior.trigger.ServerTriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerKind;
 import art.arcane.animus.core.platform.BukkitWorlds;
+import art.arcane.volmlib.util.event.ProtectionProbe;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -62,7 +63,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 /**
  * The platform half of server behaviors: player events published as immutable {@link ServerEvent}s, Animus-managed commands
  * kept in step with the enabled command triggers, and the player and server fact snapshots behavior expressions read.
- * Listeners publish; cancellable world events are cancelled inline when a trigger's cancel condition holds. Snapshots are refreshed every {@link SnapshotFacts#REFRESH_TICKS} ticks on each player's owner and
+ * Listeners publish; cancellable world events are cancelled inline when a trigger's cancel condition holds. Other plugins'
+ * protection probes publish nothing. Snapshots are refreshed every {@link SnapshotFacts#REFRESH_TICKS} ticks on each player's owner and
  * the global owner; nothing scans the world.
  */
 final class BukkitServerBehaviors implements Listener, AutoCloseable {
@@ -263,7 +265,7 @@ final class BukkitServerBehaviors implements Listener, AutoCloseable {
     /** A right click fires once per hand, as Denizen's clicks do. */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true) public void blockClick(PlayerInteractEvent event) {
         Action action = event.getAction();
-        if (action != Action.LEFT_CLICK_BLOCK && action != Action.RIGHT_CLICK_BLOCK) return;
+        if (action != Action.LEFT_CLICK_BLOCK && action != Action.RIGHT_CLICK_BLOCK || ProtectionProbe.isProbe(event)) return;
         ServerTriggerDispatcher dispatcher = listening(TriggerKind.PLAYER_BLOCK_CLICK);
         Block block = event.getClickedBlock();
         if (dispatcher == null || block == null) return;
@@ -274,13 +276,13 @@ final class BukkitServerBehaviors implements Listener, AutoCloseable {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true) public void blockPlace(BlockPlaceEvent event) {
         ServerTriggerDispatcher dispatcher = listening(TriggerKind.PLAYER_BLOCK_PLACE);
-        if (dispatcher == null) return;
+        if (dispatcher == null || ProtectionProbe.isProbe(event)) return;
         if (dispatcher.decide(block(TriggerKind.PLAYER_BLOCK_PLACE, event.getPlayer(), event.getBlockPlaced()))) event.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true) public void blockBreak(BlockBreakEvent event) {
         ServerTriggerDispatcher dispatcher = listening(TriggerKind.PLAYER_BLOCK_BREAK);
-        if (dispatcher == null) return;
+        if (dispatcher == null || ProtectionProbe.isProbe(event)) return;
         if (dispatcher.decide(block(TriggerKind.PLAYER_BLOCK_BREAK, event.getPlayer(), event.getBlock()))) event.setCancelled(true);
     }
 

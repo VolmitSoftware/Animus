@@ -6,6 +6,7 @@ import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.toolkit.Toolkit;
+import art.arcane.volmlib.util.event.ProtectionProbe;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Executor;
@@ -55,10 +56,13 @@ public final class BukkitToolkit implements Listener, AutoCloseable {
         if (toolkit.interacted(player, event.getNpcId(), event.getAction() == VirtualNpcInteractionEvent.Action.ATTACK, player.isSneaking())) event.setCancelled(true);
     }
 
-    /** The wand's right-click on air or a block opens the menu instead of using the block; a swing at air reports the miss. */
+    /**
+     * The wand's right-click on air or a block opens the menu instead of using the block; a swing at air reports the miss.
+     * Other plugins' protection probes are no clicks.
+     */
     @EventHandler(priority = EventPriority.LOW)
     public void interact(PlayerInteractEvent event) {
-        if (event.getHand() != EquipmentSlot.HAND) return;
+        if (event.getHand() != EquipmentSlot.HAND || ProtectionProbe.isProbe(event)) return;
         Player player = event.getPlayer();
         switch (event.getAction()) {
             case RIGHT_CLICK_AIR, RIGHT_CLICK_BLOCK -> {
