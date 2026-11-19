@@ -1,11 +1,11 @@
 package art.arcane.animus.core.editor;
 
-import art.arcane.animus.core.editor.transport.EditorEventSink;
-import art.arcane.animus.core.editor.transport.EditorEventStream;
-import art.arcane.animus.core.editor.transport.EditorRequest;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.volmlib.util.editor.transport.EditorEventSink;
+import art.arcane.volmlib.util.editor.transport.EditorEventStream;
+import art.arcane.volmlib.util.editor.transport.EditorRequest;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;

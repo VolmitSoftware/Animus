@@ -2,12 +2,16 @@ package art.arcane.animus.core.editor;
 
 import art.arcane.animus.core.config.EditorSettings;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.volmlib.util.editor.EditorAddresses;
+import art.arcane.volmlib.util.editor.EditorListener;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -43,14 +47,14 @@ class EditorListenerTest {
 
     private static EditorSettings settings(int port, String certificate, String key) {
         EditorSettings d = EditorSettings.DEFAULT;
-        return new EditorSettings(true, "", d.editorUrl(), true, "127.0.0.1", port, "", certificate, key, d.allowedOrigins(), 7, 30, 4096, 16384, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24, 160, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT);
+        return new EditorSettings(true, "", d.editorUrl(), true, "127.0.0.1", port, "", List.of(), certificate, key, d.allowedOrigins(), 7, 30, 4096, 16384, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24, 160, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT);
     }
 
     @Test
     void http_helloPreflightAndBounds() throws Exception {
         EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
-             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+             EditorListener listener = new EditorListener(EditorLink.PRODUCT, EditorLink.listener(settings), harness.root, harness.api, (String line) -> {})) {
             listener.start();
             HttpClient client = HttpClient.newHttpClient();
             String base = "http://127.0.0.1:" + listener.port() + "/animus";
@@ -83,7 +87,7 @@ class EditorListenerTest {
     void http_documentBody_keepsNullFields() throws Exception {
         EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
-             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+             EditorListener listener = new EditorListener(EditorLink.PRODUCT, EditorLink.listener(settings), harness.root, harness.api, (String line) -> {})) {
             Files.createDirectories(harness.root.resolve("recordings"));
             Files.copy(SharedFixtures.fixture("recordings/market-loop.json"), harness.root.resolve("recordings/market-loop.json"));
             listener.start();
@@ -98,7 +102,7 @@ class EditorListenerTest {
     void http_forgetTwice_answersNoContentBothTimes() throws Exception {
         EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
-             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+             EditorListener listener = new EditorListener(EditorLink.PRODUCT, EditorLink.listener(settings), harness.root, harness.api, (String line) -> {})) {
             listener.start();
             String token = harness.token();
             HttpClient client = HttpClient.newHttpClient();
@@ -121,7 +125,7 @@ class EditorListenerTest {
     void websocket_authFrameThenEvents() throws Exception {
         EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
-             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+             EditorListener listener = new EditorListener(EditorLink.PRODUCT, EditorLink.listener(settings), harness.root, harness.api, (String line) -> {})) {
             listener.start();
             String token = harness.token();
             LinkedBlockingQueue<String> frames = new LinkedBlockingQueue<>();
@@ -162,7 +166,7 @@ class EditorListenerTest {
     void websocket_slowConsumerAtQueueLimit_closesWithLimitReason() throws Exception {
         EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
-             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+             EditorListener listener = new EditorListener(EditorLink.PRODUCT, EditorLink.listener(settings), harness.root, harness.api, (String line) -> {})) {
             listener.start();
             String token = harness.token();
             LinkedBlockingQueue<String> frames = new LinkedBlockingQueue<>();
@@ -204,7 +208,7 @@ class EditorListenerTest {
     void websocket_clientThatStopsReading_isDroppedWithoutStallingOtherStreams() throws Exception {
         EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
-             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+             EditorListener listener = new EditorListener(EditorLink.PRODUCT, EditorLink.listener(settings), harness.root, harness.api, (String line) -> {})) {
             listener.start();
             String token = harness.token();
             AtomicInteger delivered = new AtomicInteger();
@@ -271,7 +275,7 @@ class EditorListenerTest {
     void apply_connectionDroppedMidApply_resolvesThroughChangeStatus() throws Exception {
         EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
-             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+             EditorListener listener = new EditorListener(EditorLink.PRODUCT, EditorLink.listener(settings), harness.root, harness.api, (String line) -> {})) {
             listener.start();
             String token = harness.token();
             String key = "key-0000000000000042";
@@ -329,7 +333,7 @@ class EditorListenerTest {
     void websocket_badToken_isClosed() throws Exception {
         EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
-             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+             EditorListener listener = new EditorListener(EditorLink.PRODUCT, EditorLink.listener(settings), harness.root, harness.api, (String line) -> {})) {
             listener.start();
             CompletableFuture<Integer> closed = new CompletableFuture<>();
             WebSocket socket = HttpClient.newHttpClient().newWebSocketBuilder()
@@ -344,14 +348,19 @@ class EditorListenerTest {
         }
     }
 
-    @Test
-    void tls_operatorPemFiles_serveHttps() throws Exception {
+    /** Settings serving TLS from the test certificate, written into the temp folder. */
+    private EditorSettings tlsSettings() throws IOException {
         Path certificate = directory.resolve("certificate.pem"), key = directory.resolve("key.pem");
         try (InputStream input = EditorListenerTest.class.getResourceAsStream("/editor-tls/certificate.pem")) { Files.write(certificate, input.readAllBytes()); }
         try (InputStream input = EditorListenerTest.class.getResourceAsStream("/editor-tls/key.pem")) { Files.write(key, input.readAllBytes()); }
-        EditorSettings settings = settings(0, certificate.toString(), key.toString());
+        return settings(0, certificate.toString(), key.toString());
+    }
+
+    @Test
+    void tls_operatorPemFiles_serveHttps() throws Exception {
+        EditorSettings settings = tlsSettings();
         try (EditorHarness harness = new EditorHarness(directory, settings);
-             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+             EditorListener listener = new EditorListener(EditorLink.PRODUCT, EditorLink.listener(settings), harness.root, harness.api, (String line) -> {})) {
             listener.start();
             SSLContext trustAll = SSLContext.getInstance("TLS");
             trustAll.init(null, new TrustManager[]{new X509TrustManager() {
@@ -366,6 +375,75 @@ class EditorListenerTest {
             assertThrows(IOException.class, () -> HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + listener.port() + "/animus/v1/hello"))
                     .timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString()));
         }
+    }
+
+    @Test
+    void tls_trickledHandshake_isCutOff() throws Exception {
+        EditorSettings settings = tlsSettings();
+        try (EditorHarness harness = new EditorHarness(directory, settings);
+             EditorListener listener = new EditorListener(EditorLink.PRODUCT, EditorLink.listener(settings), harness.root, harness.api, (String line) -> {})) {
+            listener.start();
+            byte[] hello = new byte[64];
+            System.arraycopy(new byte[]{0x16, 0x03, 0x01, 0x02, 0x00, 0x01, 0x00, 0x01, (byte) 0xfc, 0x03, 0x03}, 0, hello, 0, 11);
+            try (Socket client = new Socket("127.0.0.1", listener.port())) {
+                assertNotNull(trickle(client, hello, 12), "a TLS handshake that trickles in under the read timeout is dropped within its deadline");
+            }
+        }
+    }
+
+    @Test
+    void websocket_trickledAuthFrame_isClosedUnauthorized() throws Exception {
+        EditorSettings settings = settings(0, "", "");
+        try (EditorHarness harness = new EditorHarness(directory, settings);
+             EditorListener listener = new EditorListener(EditorLink.PRODUCT, EditorLink.listener(settings), harness.root, harness.api, (String line) -> {})) {
+            listener.start();
+            String token = harness.token();
+            try (Socket client = new Socket("127.0.0.1", listener.port())) {
+                String status = statusLine(client, "GET /animus/v1/events HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: " + EditorHarness.ORIGIN + "\r\nUpgrade: websocket\r\n"
+                        + "Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n");
+                assertEquals("HTTP/1.1 101 Switching Protocols", status);
+                StringBuilder head = new StringBuilder("\r");
+                while (!head.toString().endsWith("\r\n\r\n")) {
+                    int read = client.getInputStream().read();
+                    if (read < 0) throw new IOException("closed during the upgrade");
+                    head.append((char) read);
+                }
+                byte[] answer = trickle(client, maskedText("{\"type\":\"auth\",\"token\":\"" + token + "\"}"), 12);
+                assertNotNull(answer, "an auth frame that trickles in under the read timeout is cut off within its deadline");
+                if (answer.length > 0) {
+                    assertTrue(answer.length >= 4 && (answer[0] & 0xff) == 0x88, "the only frame is a close with a code");
+                    assertEquals(4401, ((answer[2] & 0xff) << 8) | (answer[3] & 0xff));
+                }
+            }
+        }
+    }
+
+    /**
+     * Sends {@code bytes} one every two seconds, so no single read waits long. Returns what the server sent once it answered
+     * or closed (empty for a bare close), or null when it was still waiting after {@code seconds}.
+     */
+    private static byte[] trickle(Socket client, byte[] bytes, int seconds) throws IOException {
+        InputStream input = client.getInputStream();
+        OutputStream output = client.getOutputStream();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(seconds);
+        for (byte next : bytes) {
+            long left = (deadline - System.nanoTime()) / 1_000_000;
+            if (left <= 0) return null;
+            int first;
+            try {
+                output.write(next);
+                output.flush();
+                client.setSoTimeout((int) Math.min(2000, left));
+                first = input.read();
+            } catch (SocketTimeoutException waiting) { continue; }
+            catch (IOException reset) { return new byte[0]; }
+            ByteArrayOutputStream answer = new ByteArrayOutputStream();
+            client.setSoTimeout(3000);
+            try { for (int read = first; read >= 0; read = input.read()) answer.write(read); }
+            catch (IOException ended) { /* Closed, reset, or quiet after its last frame. */ }
+            return answer.toByteArray();
+        }
+        return null;
     }
 
     /** Sends a request head on a raw socket and reads the status line, failing if the server waits for more. */
@@ -383,7 +461,7 @@ class EditorListenerTest {
     void http_tokenIsCheckedBeforeTheBodyIsRead() throws Exception {
         EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
-             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+             EditorListener listener = new EditorListener(EditorLink.PRODUCT, EditorLink.listener(settings), harness.root, harness.api, (String line) -> {})) {
             listener.start();
             try (Socket client = new Socket("127.0.0.1", listener.port())) {
                 String status = statusLine(client, "POST /animus/v1/validate HTTP/1.1\r\nHost: x\r\nContent-Length: 4000\r\n\r\n");
@@ -405,7 +483,7 @@ class EditorListenerTest {
     void http_slowHeadIsCutOff() throws Exception {
         EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
-             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+             EditorListener listener = new EditorListener(EditorLink.PRODUCT, EditorLink.listener(settings), harness.root, harness.api, (String line) -> {})) {
             listener.start();
             try (Socket client = new Socket("127.0.0.1", listener.port())) {
                 client.setSoTimeout(20_000);
@@ -431,7 +509,7 @@ class EditorListenerTest {
     void http_slowOpenBodyIsCutOff() throws Exception {
         EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
-             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+             EditorListener listener = new EditorListener(EditorLink.PRODUCT, EditorLink.listener(settings), harness.root, harness.api, (String line) -> {})) {
             listener.start();
             try (Socket client = new Socket("127.0.0.1", listener.port())) {
                 client.setSoTimeout(20_000);
@@ -455,16 +533,16 @@ class EditorListenerTest {
 
     @Test
     void addresses_ipv6CountsByItsSlash64() throws Exception {
-        assertEquals(EditorListener.addressKey(java.net.InetAddress.getByName("2001:db8:1:2::1")), EditorListener.addressKey(java.net.InetAddress.getByName("2001:db8:1:2:ffff::9")));
-        assertNotEquals(EditorListener.addressKey(java.net.InetAddress.getByName("2001:db8:1:2::1")), EditorListener.addressKey(java.net.InetAddress.getByName("2001:db8:1:3::1")));
-        assertEquals("203.0.113.9", EditorListener.addressKey(java.net.InetAddress.getByName("203.0.113.9")));
+        assertEquals(EditorAddresses.key(java.net.InetAddress.getByName("2001:db8:1:2::1")), EditorAddresses.key(java.net.InetAddress.getByName("2001:db8:1:2:ffff::9")));
+        assertNotEquals(EditorAddresses.key(java.net.InetAddress.getByName("2001:db8:1:2::1")), EditorAddresses.key(java.net.InetAddress.getByName("2001:db8:1:3::1")));
+        assertEquals("203.0.113.9", EditorAddresses.key(java.net.InetAddress.getByName("203.0.113.9")));
     }
 
     @Test
     void http_oneAddressCannotHoldEveryConnection() throws Exception {
         EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
-             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+             EditorListener listener = new EditorListener(EditorLink.PRODUCT, EditorLink.listener(settings), harness.root, harness.api, (String line) -> {})) {
             listener.start();
             List<Socket> held = new java.util.ArrayList<>();
             try {
@@ -481,10 +559,10 @@ class EditorListenerTest {
     @Test
     void settings_plainHttpOffLoopback_isRefused() {
         EditorSettings d = EditorSettings.DEFAULT;
-        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> new EditorSettings(true, "", d.editorUrl(), true, "0.0.0.0", 9797, "", "", "",
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> new EditorSettings(true, "", d.editorUrl(), true, "0.0.0.0", 9797, "", List.of(), "", "",
                 d.allowedOrigins(), 7, 30, 4096, 16384, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24, 160, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT));
         assertTrue(refused.getMessage().contains("not loopback"));
-        assertThrows(IllegalArgumentException.class, () -> new EditorSettings(true, "", d.editorUrl(), false, "127.0.0.1", 9797, "", "", "",
+        assertThrows(IllegalArgumentException.class, () -> new EditorSettings(true, "", d.editorUrl(), false, "127.0.0.1", 9797, "", List.of(), "", "",
                 List.of("http://example.net"), 7, 30, 4096, 16384, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24, 160, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT));
     }
 }

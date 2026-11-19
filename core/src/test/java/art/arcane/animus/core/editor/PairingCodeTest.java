@@ -1,5 +1,6 @@
 package art.arcane.animus.core.editor;
 
+import art.arcane.volmlib.util.editor.PairingCode;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
@@ -19,7 +20,7 @@ class PairingCodeTest {
             JsonObject entry = element.getAsJsonObject();
             String code = entry.get("code").getAsString();
             JsonObject payload = entry.getAsJsonObject("payload");
-            PairingCode pairing = PairingCode.decode(code);
+            PairingCode pairing = PairingCode.decode(EditorLink.PRODUCT, code);
             assertEquals(payload.get("tokenId").getAsString(), pairing.tokenId());
             assertEquals(payload.get("secret").getAsString(), pairing.secret());
             assertEquals(payload.get("fingerprint").getAsString(), pairing.fingerprint());
@@ -38,7 +39,7 @@ class PairingCodeTest {
         int refused = 0;
         for (JsonElement element : fixtures.getAsJsonArray("invalid")) {
             JsonObject entry = element.getAsJsonObject();
-            assertThrows(IllegalArgumentException.class, () -> PairingCode.decode(entry.get("code").getAsString()), entry.get("reason").getAsString());
+            assertThrows(IllegalArgumentException.class, () -> PairingCode.decode(EditorLink.PRODUCT, entry.get("code").getAsString()), entry.get("reason").getAsString());
             refused++;
         }
         assertTrue(refused >= 8);
@@ -46,12 +47,12 @@ class PairingCodeTest {
 
     @Test
     void refusesToIssueAPlainHttpAddressOffLoopback() {
-        PairingCode valid = PairingCode.decode(firstValidCode());
-        assertThrows(IllegalArgumentException.class, () -> new PairingCode(java.util.Optional.of("http://10.0.0.5:9797"), valid.relayUrl(),
+        PairingCode valid = PairingCode.decode(EditorLink.PRODUCT, firstValidCode());
+        assertThrows(IllegalArgumentException.class, () -> new PairingCode(EditorLink.PRODUCT, java.util.Optional.of("http://10.0.0.5:9797"), valid.relayUrl(),
                 valid.fingerprint(), valid.serverKey(), valid.tokenId(), valid.secret(), valid.expiresAt(), valid.label(), valid.serverName()));
-        PairingCode loopback = new PairingCode(java.util.Optional.of("http://localhost:9797"), java.util.Optional.empty(),
+        PairingCode loopback = new PairingCode(EditorLink.PRODUCT, java.util.Optional.of("http://localhost:9797"), java.util.Optional.empty(),
                 valid.fingerprint(), valid.serverKey(), valid.tokenId(), valid.secret(), valid.expiresAt(), valid.label(), valid.serverName());
-        assertEquals(loopback, PairingCode.decode(loopback.encode()));
+        assertEquals(loopback, PairingCode.decode(EditorLink.PRODUCT, loopback.encode()));
     }
 
     private static String firstValidCode() {

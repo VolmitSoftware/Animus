@@ -1,11 +1,12 @@
 package art.arcane.animus.core.editor;
 
 import art.arcane.animus.core.config.EditorSettings;
-import art.arcane.animus.core.editor.transport.EditorEventSink;
-import art.arcane.animus.core.editor.transport.EditorEventStream;
-import art.arcane.animus.core.editor.transport.EditorRequest;
-import art.arcane.animus.core.editor.transport.EditorResponse;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.volmlib.util.editor.EditorTokens;
+import art.arcane.volmlib.util.editor.transport.EditorEventSink;
+import art.arcane.volmlib.util.editor.transport.EditorEventStream;
+import art.arcane.volmlib.util.editor.transport.EditorRequest;
+import art.arcane.volmlib.util.editor.transport.EditorResponse;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -19,11 +20,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -143,7 +146,7 @@ class EditorProtocolTest {
 
     @Test
     void documentsRead_folderLimitedToken_reportsGroupDenied() throws Exception {
-        String token = harness.token(new EditorTokens.Grant("", Optional.of(EditorHarness.ADMIN), EditorScope.DEFAULT_PAIRING, List.of("town"), Duration.ofDays(1)));
+        String token = harness.token(new EditorTokens.Grant<>("", Optional.of(EditorHarness.ADMIN), EditorScope.DEFAULT_PAIRING, List.of("town"), Duration.ofDays(1)));
         JsonObject answer = valid("documents-read-response", harness.send("POST", "/v1/documents/read", token, refs("npc", "examples/greeter", "shop", "shop:bakery"), false));
         assertEquals("group-denied", answer.getAsJsonArray("errors").get(0).getAsJsonObject().get("code").getAsString());
         assertEquals("shop:bakery", answer.getAsJsonArray("documents").get(0).getAsJsonObject().get("id").getAsString());
@@ -229,7 +232,7 @@ class EditorProtocolTest {
         assertEquals("Town", valid("hello-response", harness.send("GET", "/v1/hello", null, null)).get("serverName").getAsString());
         try (EditorHarness named = new EditorHarness(directory.resolve("named"), settings(20, "&6Brick &lworks"))) {
             assertEquals("Brick works", valid("hello-response", named.send("GET", "/v1/hello", null, null)).get("serverName").getAsString());
-            EditorTokens.Pairing pairing = named.api.parts().tokens().pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
+            EditorTokens.Pairing<EditorScope> pairing = named.api.parts().tokens().pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
             JsonObject body = new JsonObject();
             body.addProperty("tokenId", pairing.tokenId());
             body.addProperty("secret", pairing.secret());
@@ -245,7 +248,7 @@ class EditorProtocolTest {
             assertEquals(200, harness.send("GET", "/v1/capabilities", token, null).status(), "used within its 7 days, week " + week);
         }
         String id = token.substring(4, token.indexOf('.'));
-        EditorTokens reloaded = new EditorTokens(harness.store, harness.clock);
+        EditorTokens<EditorScope> reloaded = EditorLink.tokens(harness.store, harness.clock, (String line) -> {});
         assertEquals(harness.clock.instant().plus(Duration.ofDays(7)), reloaded.find(id).orElseThrow().expires(), "the slid expiry survives a restart");
         assertEquals(Duration.ofDays(7), reloaded.find(id).orElseThrow().lifetime());
         harness.clock.advance(Duration.ofDays(8));
@@ -253,8 +256,29 @@ class EditorProtocolTest {
     }
 
     @Test
+    void tokenStore_damaged_isSetAsideAndTheEditorOpensWithoutTokens() throws Exception {
+        String damagedText = "{\"schemaVersion\":1,\"tokens\":[";
+        Path editor = directory.resolve("damaged/data/state/editor");
+        Files.createDirectories(editor);
+        Files.writeString(editor.resolve("tokens.json"), damagedText);
+        EditorHarness damaged = assertDoesNotThrow(() -> new EditorHarness(directory.resolve("damaged")), "a damaged token store does not stop the editor");
+        try (damaged) {
+            List<Path> setAside;
+            try (Stream<Path> files = Files.list(editor)) {
+                setAside = files.filter((Path file) -> file.getFileName().toString().matches("tokens\\.damaged-\\d{8}-\\d{6}(-\\d+)?\\.json")).toList();
+            }
+            assertEquals(1, setAside.size(), "the damaged file moves to a dated sibling");
+            assertEquals(damagedText, Files.readString(setAside.get(0)), "kept as it was");
+            Path tokens = editor.resolve("tokens.json");
+            assertTrue(Files.notExists(tokens) || !Files.readString(tokens).equals(damagedText), "tokens.json is gone or rewritten");
+            String token = damaged.token();
+            assertEquals(200, damaged.send("GET", "/v1/capabilities", token, null).status(), "a new pairing works on the fresh store");
+        }
+    }
+
+    @Test
     void revoke_cancelsALinkNotOpenedYet() throws Exception {
-        EditorTokens.Pairing pairing = harness.api.parts().tokens().pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
+        EditorTokens.Pairing<EditorScope> pairing = harness.api.parts().tokens().pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
         assertEquals(1, harness.api.parts().tokens().pendingPairings());
         assertEquals(List.of(pairing.tokenId()), harness.api.revoke(pairing.tokenId(), "token-revoked"));
         assertEquals(0, harness.api.parts().tokens().pendingPairings());
@@ -269,7 +293,7 @@ class EditorProtocolTest {
 
     @Test
     void pairingFailures_areLoggedOnce_andToldToThePlayerWhoMadeTheLink() throws Exception {
-        EditorTokens.Pairing pairing = harness.api.parts().tokens().pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
+        EditorTokens.Pairing<EditorScope> pairing = harness.api.parts().tokens().pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
         Map<String, String> foreign = Map.of("Origin", "https://evil.example", EditorReplies.PEER_HEADER, "127.0.0.1");
         for (int attempt = 0; attempt < 2; attempt++)
             error("origin-not-allowed", 403, harness.request(new EditorRequest(EditorRequest.Transport.DIRECT, "GET", "/v1/hello", foreign, Optional.empty())));
@@ -302,7 +326,7 @@ class EditorProtocolTest {
         String token = harness.token();
         assertEquals(200, harness.send("GET", "/v1/imports", token, null).status());
         List<String> scopes = new ArrayList<>();
-        for (EditorTokens.Token held : harness.api.parts().tokens().list()) held.scopes().forEach((EditorScope scope) -> scopes.add(scope.wireName()));
+        for (EditorTokens.Token<EditorScope> held : harness.api.parts().tokens().list()) held.scopes().forEach((EditorScope scope) -> scopes.add(scope.wireName()));
         assertTrue(scopes.containsAll(List.of("spawn", "import", "terrain")) && !scopes.contains("apply:commands"), scopes::toString);
     }
 }

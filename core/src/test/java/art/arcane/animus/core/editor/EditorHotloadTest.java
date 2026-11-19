@@ -4,8 +4,10 @@ import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.Platform;
 import art.arcane.animus.core.RuntimeEnvironment;
 import art.arcane.animus.core.config.PluginSettings;
-import art.arcane.animus.core.editor.transport.EditorRequest;
-import art.arcane.animus.core.editor.transport.EditorResponse;
+import art.arcane.volmlib.util.editor.EditorListener;
+import art.arcane.volmlib.util.editor.EditorTokens;
+import art.arcane.volmlib.util.editor.transport.EditorRequest;
+import art.arcane.volmlib.util.editor.transport.EditorResponse;
 import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.io.InputStream;
@@ -120,7 +122,7 @@ class EditorHotloadTest {
 
     private String token() throws Exception {
         EditorApi api = service.api().orElseThrow();
-        EditorTokens.Pairing pairing = api.parts().tokens().pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
+        EditorTokens.Pairing<EditorScope> pairing = api.parts().tokens().pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
         JsonObject body = new JsonObject();
         body.addProperty("tokenId", pairing.tokenId());
         body.addProperty("secret", pairing.secret());

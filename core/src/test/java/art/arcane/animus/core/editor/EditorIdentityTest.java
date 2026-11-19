@@ -1,5 +1,7 @@
 package art.arcane.animus.core.editor;
 
+import art.arcane.volmlib.util.editor.EditorIdentity;
+import art.arcane.volmlib.util.editor.PairingCode;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -37,12 +39,12 @@ class EditorIdentityTest {
     @Test
     void shouldCreateTheIdentityOnceAndReloadIt() throws IOException {
         try (DocumentStore store = new DocumentStore(root)) {
-            EditorIdentity created = EditorIdentity.loadOrCreate(store);
-            Path file = root.resolve(EditorIdentity.RELATIVE_PATH);
+            EditorIdentity created = EditorLink.identity(store);
+            Path file = root.resolve(EditorLink.IDENTITY_PATH);
             assertTrue(Files.isRegularFile(file));
             if (FileSystems.getDefault().supportedFileAttributeViews().contains("posix"))
                 assertEquals(EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE), Files.getPosixFilePermissions(file));
-            EditorIdentity loaded = EditorIdentity.loadOrCreate(store);
+            EditorIdentity loaded = EditorLink.identity(store);
             assertEquals(created.serverKey(), loaded.serverKey());
             assertEquals(created.fingerprint(), loaded.fingerprint());
             assertEquals(PairingCode.fingerprint(java.util.Base64.getUrlDecoder().decode(created.serverKey())), created.fingerprint());
@@ -52,24 +54,24 @@ class EditorIdentityTest {
     @Test
     void shouldRefuseAFileWhoseKeyDoesNotMatchItsSeed() throws IOException {
         try (DocumentStore store = new DocumentStore(root)) {
-            EditorIdentity.loadOrCreate(store);
-            Path file = root.resolve(EditorIdentity.RELATIVE_PATH);
+            EditorLink.identity(store);
+            Path file = root.resolve(EditorLink.IDENTITY_PATH);
             String other = EditorIdentity.generate().serverKey();
             String text = Files.readString(file);
             String tampered = text.replaceAll("\"serverKey\": \"[^\"]+\"", "\"serverKey\": \"" + other + "\"");
             assertNotEquals(text, tampered);
             Files.writeString(file, tampered);
-            assertTrue(assertThrows(IOException.class, () -> EditorIdentity.loadOrCreate(store)).getMessage().contains("does not match"));
+            assertTrue(assertThrows(IOException.class, () -> EditorLink.identity(store)).getMessage().contains("does not match"));
         }
     }
 
     @Test
     void aDamagedIdentityFileIsOneLineThatNamesTheFileAndTheFix() throws IOException {
         try (DocumentStore store = new DocumentStore(root)) {
-            EditorIdentity.loadOrCreate(store);
-            Files.writeString(root.resolve(EditorIdentity.RELATIVE_PATH), "{\"v\": 1, \"seed\": ");
-            String message = assertThrows(IOException.class, () -> EditorIdentity.loadOrCreate(store)).getMessage();
-            assertTrue(message.startsWith(EditorIdentity.RELATIVE_PATH + " is damaged ("), message);
+            EditorLink.identity(store);
+            Files.writeString(root.resolve(EditorLink.IDENTITY_PATH), "{\"v\": 1, \"seed\": ");
+            String message = assertThrows(IOException.class, () -> EditorLink.identity(store)).getMessage();
+            assertTrue(message.startsWith(EditorLink.IDENTITY_PATH + " is damaged ("), message);
             assertTrue(message.endsWith("delete it and restart to create a new editor identity, then pair the editor again"), message);
             assertFalse(message.contains("\n"), message);
         }

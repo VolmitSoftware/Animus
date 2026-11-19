@@ -4,6 +4,7 @@ import art.arcane.animus.core.command.CommandActor;
 import art.arcane.animus.core.storage.NpcPaths;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.Palette;
+import art.arcane.volmlib.util.editor.EditorTokens;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -44,7 +45,7 @@ public final class EditorCommands {
     public void pair(CommandActor actor, String label, String scopes, String groups, String expires) {
         EditorService editor = running(actor);
         if (editor == null) return;
-        EditorTokens.Grant grant;
+        EditorTokens.Grant<EditorScope> grant;
         try { grant = grant(actor, label, scopes, groups, expires, editor.settings().tokenDays()); }
         catch (IllegalArgumentException invalid) { actor.tell(Palette.error(invalid.getMessage())); return; }
         work(actor, () -> reply(actor, editor.pair(grant), grant));
@@ -54,13 +55,13 @@ public final class EditorCommands {
      * One line for a player: the link to open or copy, and [Revoke], which also cancels a link not opened yet. The console
      * gets the link and a second line with the scopes, folders and lifetime.
      */
-    static List<ChatLine> reply(CommandActor actor, EditorService.PairingLink link, EditorTokens.Grant grant) {
+    static List<ChatLine> reply(CommandActor actor, EditorService.PairingLink link, EditorTokens.Grant<EditorScope> grant) {
         String token = link.pairing().tokenId();
         ChatLine ready = ChatLine.success("Link ready. Open it within " + EditorTokens.PAIRING_LIFETIME.toMinutes() + " minutes")
                 .open("Open editor", link.link(), "Open in your browser").copy("[Copy]", link.link(), "Copy the link");
         if (actor.player().isPresent()) return List.of(ready.suggest("Revoke", "/animus editor revoke " + token, "Cancel this link, or end the editor it paired"));
         return List.of(ready, ChatLine.reply("Scopes " + String.join(" ", grant.scopes().stream().map(EditorScope::wireName).toList())
-                + (grant.groups().isEmpty() ? "" : " for folders " + String.join(",", grant.groups()))
+                + (grant.folders().isEmpty() ? "" : " for folders " + String.join(",", grant.folders()))
                 + "; ends after " + describe(grant.lifetime()) + " unused; token " + token));
     }
 
@@ -70,10 +71,10 @@ public final class EditorCommands {
         if (editor == null) return Optional.empty();
         Optional<EditorApi> api = editor.api();
         if (api.isEmpty()) { actor.tell(Palette.error("Editor disabled; set [editor] enabled = true in config.toml")); return Optional.empty(); }
-        return Optional.of(api.get().parts().tokens().list().stream().map((EditorTokens.Token token) -> token.id()
+        return Optional.of(api.get().parts().tokens().list().stream().map((EditorTokens.Token<EditorScope> token) -> token.id()
                 + (token.label().isEmpty() ? "" : " \"" + token.label() + "\"")
                 + " | " + String.join(" ", token.scopes().stream().map(EditorScope::wireName).toList())
-                + (token.groups().isEmpty() ? "" : " | folders " + String.join(",", token.groups()))
+                + (token.folders().isEmpty() ? "" : " | folders " + String.join(",", token.folders()))
                 + " | expires " + EditorMessages.instant(token.expires())
                 + " | last used " + token.lastUsed().map(EditorMessages::instant).orElse("never")
                 + token.client().map((String client) -> " | " + client).orElse("")
@@ -101,7 +102,7 @@ public final class EditorCommands {
     public List<String> revocable() {
         EditorService editor = service.get();
         List<String> options = new ArrayList<>(List.of("all"));
-        if (editor != null && editor.api().isPresent()) editor.api().get().parts().tokens().list().forEach((EditorTokens.Token token) -> options.add(token.id()));
+        if (editor != null && editor.api().isPresent()) editor.api().get().parts().tokens().list().forEach((EditorTokens.Token<EditorScope> token) -> options.add(token.id()));
         return options;
     }
 
@@ -152,7 +153,7 @@ public final class EditorCommands {
     }
 
     /** Reads the pairing options; a blank option keeps its default. */
-    static EditorTokens.Grant grant(CommandActor actor, String label, String scopes, String groups, String expires, int tokenDays) {
+    static EditorTokens.Grant<EditorScope> grant(CommandActor actor, String label, String scopes, String groups, String expires, int tokenDays) {
         List<EditorScope> granted = EditorScope.DEFAULT_PAIRING;
         if (!scopes.isBlank()) {
             List<EditorScope> parsed = new ArrayList<>();
@@ -167,7 +168,7 @@ public final class EditorCommands {
             if (!NpcPaths.folder(group)) throw new IllegalArgumentException("folders take lowercase folder names under npcs/, such as town or town/market; " + group + " is not one");
         Duration lifetime = expires.isBlank() ? Duration.ofDays(tokenDays) : duration(expires);
         Optional<UUID> admin = actor.player();
-        return new EditorTokens.Grant(label.strip(), admin, granted, grouped, lifetime);
+        return new EditorTokens.Grant<>(label.strip(), admin, granted, grouped, lifetime);
     }
 
     static Duration duration(String text) {

@@ -1,5 +1,6 @@
 package art.arcane.animus.core.config;
 
+import art.arcane.volmlib.util.editor.EditorAddresses;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -19,13 +20,13 @@ import java.util.Set;
  * takes the server's MOTD, else its folder name.
  */
 public record EditorSettings(boolean enabled, String serverName, String editorUrl, boolean listenerEnabled, String listenAddress, int port, String advertisedUrl,
-                             String tlsCertificate, String tlsPrivateKey, List<String> allowedOrigins,
+                             List<String> trustedProxies, String tlsCertificate, String tlsPrivateKey, List<String> allowedOrigins,
                              int tokenDays, int auditDays, int requestBodyBytes, int importBodyBytes, int changeSetDocuments,
                              int concurrentRequestsPerToken, int requestsPerSecond, int pairAttemptsPerMinute, int openConnections,
                              int eventFramesPerSecond, int previewsPerServer, int npcsPerPreview, int previewMinutes, int idempotencyHours, int terrainRadius,
                              EditorNotifySettings notices) {
     private static final Set<String> LOOPBACK = Set.of("127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1");
-    public static final EditorSettings DEFAULT = new EditorSettings(true, "", "https://animus.volmitsoftware.com", true, "127.0.0.1", 9797, "", "", "",
+    public static final EditorSettings DEFAULT = new EditorSettings(true, "", "https://animus.volmitsoftware.com", true, "127.0.0.1", 9797, "", List.of(), "", "",
             List.of("https://animus.volmitsoftware.com", "https://animus-editor.web.app", "https://animus-editor.firebaseapp.com"),
             7, 30, 4 * 1024 * 1024, 16 * 1024 * 1024, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24, 160, EditorNotifySettings.DEFAULT);
 
@@ -36,6 +37,10 @@ public record EditorSettings(boolean enabled, String serverName, String editorUr
         // 0 binds any free port; the listener reports and pairing links carry the port it bound.
         require("port", port, 0, 65535);
         if (!advertisedUrl.isEmpty()) url("advertisedUrl", advertisedUrl, Set.of("https", "http"));
+        if (trustedProxies.size() > 32) throw new IllegalArgumentException("trustedProxies allows at most 32 addresses");
+        for (String proxy : trustedProxies)
+            if (EditorAddresses.literal(proxy).isEmpty()) throw new IllegalArgumentException("trustedProxies takes IP addresses such as 127.0.0.1, not " + proxy);
+        trustedProxies = List.copyOf(trustedProxies);
         if (tlsCertificate.isEmpty() != tlsPrivateKey.isEmpty()) throw new IllegalArgumentException("tlsCertificate and tlsPrivateKey must be set together");
         if (listenerEnabled && tlsCertificate.isEmpty() && !loopback(listenAddress))
             throw new IllegalArgumentException("listenAddress " + listenAddress + " is not loopback; plain HTTP is served only on 127.0.0.1, so set tlsCertificate and tlsPrivateKey or use a TLS proxy in front of a loopback listener");
@@ -68,7 +73,7 @@ public record EditorSettings(boolean enabled, String serverName, String editorUr
     public static EditorSettings parse(JsonObject table) {
         EditorSettings d = DEFAULT;
         return new EditorSettings(bool(table, "enabled", d.enabled), text(table, "serverName", d.serverName), text(table, "editorUrl", d.editorUrl), bool(table, "listenerEnabled", d.listenerEnabled),
-                text(table, "listenAddress", d.listenAddress), integer(table, "port", d.port), text(table, "advertisedUrl", d.advertisedUrl),
+                text(table, "listenAddress", d.listenAddress), integer(table, "port", d.port), text(table, "advertisedUrl", d.advertisedUrl), strings(table, "trustedProxies", d.trustedProxies),
                 text(table, "tlsCertificate", d.tlsCertificate), text(table, "tlsPrivateKey", d.tlsPrivateKey), strings(table, "allowedOrigins", d.allowedOrigins), integer(table, "tokenDays", d.tokenDays),
                 integer(table, "auditDays", d.auditDays), integer(table, "requestBodyBytes", d.requestBodyBytes), integer(table, "importBodyBytes", d.importBodyBytes),
                 integer(table, "changeSetDocuments", d.changeSetDocuments), integer(table, "concurrentRequestsPerToken", d.concurrentRequestsPerToken),
@@ -89,6 +94,9 @@ public record EditorSettings(boolean enabled, String serverName, String editorUr
         table.addProperty("listenAddress", listenAddress);
         table.addProperty("port", port);
         table.addProperty("advertisedUrl", advertisedUrl);
+        JsonArray proxies = new JsonArray();
+        trustedProxies.forEach(proxies::add);
+        table.add("trustedProxies", proxies);
         table.addProperty("tlsCertificate", tlsCertificate);
         table.addProperty("tlsPrivateKey", tlsPrivateKey);
         JsonArray origins = new JsonArray();

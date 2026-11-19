@@ -121,6 +121,8 @@ final class FakeRelay implements AutoCloseable {
         private final OutputStream output;
         private final BlockingQueue<String> received = new LinkedBlockingQueue<>();
         private volatile boolean closed;
+        /** Set by {@link #silence}: pings from the client go unanswered. */
+        private volatile boolean silent;
 
         private Session(Socket socket) throws IOException {
             this.socket = socket;
@@ -147,7 +149,10 @@ final class FakeRelay implements AutoCloseable {
                         writeFrame(0x8, new byte[0]);
                         break;
                     }
-                    if (opcode == 0x9) { writeFrame(0xA, payload); continue; }
+                    if (opcode == 0x9) {
+                        if (!silent) writeFrame(0xA, payload);
+                        continue;
+                    }
                     if (opcode == 0xA) continue;
                     message.write(payload);
                     if (fin) {
@@ -184,6 +189,9 @@ final class FakeRelay implements AutoCloseable {
         void send(JsonObject frame) throws IOException { sendText(GSON.toJson(frame)); }
 
         void ping() throws IOException { writeFrame(0x9, new byte[0]); }
+
+        /** Stops answering the client's pings, as a relay that hangs without closing would. */
+        void silence() { silent = true; }
 
         JsonObject next(Duration timeout) throws InterruptedException, IOException {
             String text = received.poll(timeout.toMillis(), TimeUnit.MILLISECONDS);

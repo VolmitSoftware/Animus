@@ -2,9 +2,10 @@ package art.arcane.animus.core.editor;
 
 import art.arcane.animus.core.config.EditorNotifySettings;
 import art.arcane.animus.core.config.EditorNotifySettings.Kind;
-import art.arcane.animus.core.editor.transport.EditorResponse;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.text.RichText;
+import art.arcane.volmlib.util.editor.EditorTokens;
+import art.arcane.volmlib.util.editor.transport.EditorResponse;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.time.Duration;
@@ -35,7 +36,7 @@ public final class EditorNotices {
     public record Who(String tokenId, String label, Optional<UUID> owner) {
         public Who { Objects.requireNonNull(tokenId); Objects.requireNonNull(label); Objects.requireNonNull(owner); }
 
-        public static Who of(EditorTokens.Token token) { return new Who(token.id(), token.label(), token.admin()); }
+        public static Who of(EditorTokens.Token<EditorScope> token) { return new Who(token.id(), token.label(), token.admin()); }
     }
 
     /**

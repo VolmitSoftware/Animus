@@ -2,12 +2,13 @@ package art.arcane.animus.core.editor;
 
 import art.arcane.animus.api.Capabilities;
 import art.arcane.animus.core.config.EditorSettings;
-import art.arcane.animus.core.editor.transport.EditorRequest;
-import art.arcane.animus.core.editor.transport.EditorResponse;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.volmlib.util.editor.EditorTokens;
+import art.arcane.volmlib.util.editor.transport.EditorRequest;
+import art.arcane.volmlib.util.editor.transport.EditorResponse;
 import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -216,14 +217,14 @@ final class EditorHarness implements AutoCloseable {
         catalog = new EditorCatalog(documents, events);
         writes = art.arcane.animus.core.storage.WriteNotices.listen(catalog);
         catalog.prime();
-        api = new EditorApi(new EditorApi.Parts(settings, art.arcane.animus.core.config.EditorRelaySettings.DEFAULT, host, EditorIdentity.loadOrCreate(store),
-                new EditorTokens(store, clock), new EditorAudit(store, clock), documents, catalog, new EditorChanges(documents, clock, Duration.ofHours(settings.idempotencyHours()), art.arcane.animus.core.npc.NpcRepository.ModuleRules.NONE),
+        api = new EditorApi(new EditorApi.Parts(settings, art.arcane.animus.core.config.EditorRelaySettings.DEFAULT, host, EditorLink.identity(store),
+                EditorLink.tokens(store, clock, (String line) -> {}), new EditorAudit(store, clock), documents, catalog, new EditorChanges(documents, clock, Duration.ofHours(settings.idempotencyHours()), art.arcane.animus.core.npc.NpcRepository.ModuleRules.NONE),
                 previews, events, notices, new EditorWarnings(warnings::add, clock), () -> npcs, () -> importHost, timers, clock, "26.1.2"));
     }
 
     /** Pairs and returns the bearer token. */
-    String token(EditorTokens.Grant grant) throws Exception {
-        EditorTokens.Pairing pairing = api.parts().tokens().pair(grant);
+    String token(EditorTokens.Grant<EditorScope> grant) throws Exception {
+        EditorTokens.Pairing<EditorScope> pairing = api.parts().tokens().pair(grant);
         JsonObject body = new JsonObject();
         body.addProperty("tokenId", pairing.tokenId());
         body.addProperty("secret", pairing.secret());
@@ -234,7 +235,7 @@ final class EditorHarness implements AutoCloseable {
 
     String token() throws Exception { return token(grant(EditorScope.DEFAULT_PAIRING)); }
 
-    static EditorTokens.Grant grant(List<EditorScope> scopes) { return new EditorTokens.Grant("laptop", Optional.of(ADMIN), scopes, List.of(), Duration.ofDays(7)); }
+    static EditorTokens.Grant<EditorScope> grant(List<EditorScope> scopes) { return new EditorTokens.Grant<>("laptop", Optional.of(ADMIN), scopes, List.of(), Duration.ofDays(7)); }
 
     EditorResponse send(String method, String target, String token, JsonObject body) throws Exception { return send(method, target, token, body, true); }
 

@@ -1,7 +1,7 @@
 package art.arcane.animus.core.editor;
 
-import art.arcane.animus.core.editor.transport.EditorRequest;
-import art.arcane.animus.core.editor.transport.EditorResponse;
+import art.arcane.volmlib.util.editor.transport.EditorRequest;
+import art.arcane.volmlib.util.editor.transport.EditorResponse;
 import com.google.gson.JsonObject;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -12,7 +12,7 @@ import java.util.Optional;
 /** Error bodies with diagnostics and retry hints, header merging, the query string and the caller's address. */
 public final class EditorReplies {
     /** Set by the direct listener from the socket; any copy sent by a client is dropped first. */
-    public static final String PEER_HEADER = "X-Animus-Peer";
+    public static final String PEER_HEADER = EditorLink.PRODUCT.peerHeader();
 
     private EditorReplies() {}
 

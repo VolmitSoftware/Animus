@@ -1,13 +1,14 @@
 package art.arcane.animus.core.editor;
 
-import art.arcane.animus.core.editor.transport.EditorRequest;
-import art.arcane.animus.core.editor.transport.EditorResponse;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.skin.MineSkin;
 import art.arcane.animus.core.skin.SkinPng;
 import art.arcane.animus.core.skin.SkinSigner;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.toolkit.SkinLookup;
+import art.arcane.volmlib.util.editor.EditorTokens;
+import art.arcane.volmlib.util.editor.transport.EditorRequest;
+import art.arcane.volmlib.util.editor.transport.EditorResponse;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.time.Duration;
@@ -41,7 +42,7 @@ final class EditorSkinRoutes {
 
     EditorSkinRoutes(Supplier<EditorApi.Parts> parts) { this.parts = parts; }
 
-    CompletionStage<EditorResponse> sign(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
+    CompletionStage<EditorResponse> sign(EditorRequest request, EditorTokens.Token<EditorScope> token, String[] segments) throws EditorError {
         JsonObject body = EditorMessages.body(request);
         EditorMessages.fields(body, "$", Set.of("image", "url", "player", "mineskin", "slim", "label"));
         if (SOURCES.stream().filter(body::has).count() != 1) throw EditorMessages.invalid("$: send exactly one of image, url, player or mineskin");
@@ -100,7 +101,7 @@ final class EditorSkinRoutes {
         return text;
     }
 
-    CompletionStage<EditorResponse> status(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
+    CompletionStage<EditorResponse> status(EditorRequest request, EditorTokens.Token<EditorScope> token, String[] segments) throws EditorError {
         String id = segments[2];
         Job job = id.matches(JOB) ? jobs.get(id) : null;
         if (job == null || !job.token().equals(token.id())) throw new EditorError(EditorError.Code.NOT_FOUND, "No skin signing job " + (id.length() > 40 ? id.substring(0, 40) : id) + ".");

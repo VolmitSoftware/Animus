@@ -1,12 +1,13 @@
 package art.arcane.animus.core.editor;
 
 import art.arcane.animus.core.config.EditorSettings;
-import art.arcane.animus.core.editor.transport.EditorEventSink;
-import art.arcane.animus.core.editor.transport.EditorEventStream;
-import art.arcane.animus.core.editor.transport.EditorRequest;
-import art.arcane.animus.core.editor.transport.EditorResponse;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.volmlib.util.editor.EditorTokens;
+import art.arcane.volmlib.util.editor.transport.EditorEventSink;
+import art.arcane.volmlib.util.editor.transport.EditorEventStream;
+import art.arcane.volmlib.util.editor.transport.EditorRequest;
+import art.arcane.volmlib.util.editor.transport.EditorResponse;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -98,7 +99,7 @@ class EditorApiTest {
 
     @Test
     void pair_secretUsedOnce_issuesTokenThenRefuses() throws Exception {
-        EditorTokens.Pairing pairing = harness.api.parts().tokens().pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
+        EditorTokens.Pairing<EditorScope> pairing = harness.api.parts().tokens().pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
         JsonObject body = new JsonObject();
         body.addProperty("tokenId", pairing.tokenId());
         body.addProperty("secret", pairing.secret());
@@ -110,13 +111,13 @@ class EditorApiTest {
         body.addProperty("secret", "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM");
         // A wrong secret learns nothing about the link.
         error("pairing-invalid", 401, harness.send("POST", "/v1/pair", null, body, false));
-        String tokens = harness.read(EditorTokens.PATH);
+        String tokens = harness.read(EditorLink.TOKENS_PATH);
         assertFalse(tokens.contains(paired.get("token").getAsString().substring(20)), "the token secret is never stored");
     }
 
     @Test
     void pair_afterTenMinutes_isExpired() throws Exception {
-        EditorTokens.Pairing pairing = harness.api.parts().tokens().pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
+        EditorTokens.Pairing<EditorScope> pairing = harness.api.parts().tokens().pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
         harness.clock.advance(Duration.ofMinutes(11));
         JsonObject body = new JsonObject();
         body.addProperty("tokenId", pairing.tokenId());
@@ -147,6 +148,26 @@ class EditorApiTest {
         error("pairing-invalid", 401, harness.request(pairFrom("10.0.0.1", body)));
     }
 
+    @Test
+    void pair_ipv6AddressesInOneSlash64_shareOneWindow() throws Exception {
+        JsonObject table = EditorSettings.DEFAULT.toJson();
+        table.addProperty("pairAttemptsPerMinute", 3);
+        try (EditorHarness strict = new EditorHarness(directory.resolve("strict"), EditorSettings.parse(table))) {
+            JsonObject body = new JsonObject();
+            body.addProperty("tokenId", "tok_unknown1");
+            body.addProperty("secret", "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM");
+            for (int host = 1; host <= 3; host++)
+                error("pairing-invalid", 401, strict.request(relayedPairFrom("2001:db8:1:2::" + host, body)));
+            error("rate-limited", 429, strict.request(relayedPairFrom("2001:db8:1:2::4", body)));
+            error("rate-limited", 429, strict.request(pairFrom("2001:db8:1:2:0:0:0:5", body)));
+            error("pairing-invalid", 401, strict.request(relayedPairFrom("2001:db8:1:3::1", body)));
+        }
+    }
+
+    private static EditorRequest relayedPairFrom(String address, JsonObject body) {
+        return new EditorRequest(EditorRequest.Transport.RELAY, "POST", "/v1/pair", Map.of("X-Forwarded-For", address), Optional.of(body));
+    }
+
     private static EditorRequest pairFrom(String address, JsonObject body) {
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("Origin", EditorHarness.ORIGIN);
@@ -169,6 +190,14 @@ class EditorApiTest {
         String other = harness.token();
         harness.clock.advance(Duration.ofDays(8));
         error("token-expired", 401, harness.send("GET", "/v1/catalog", other, null));
+    }
+
+    @Test
+    void request_tokenPrunedAfterExpiry_stillSaysExpired() throws Exception {
+        String token = harness.token();
+        harness.clock.advance(Duration.ofDays(8));
+        harness.api.housekeeping();
+        error("token-expired", 401, harness.send("GET", "/v1/catalog", token, null));
     }
 
     @Test
@@ -315,7 +344,7 @@ class EditorApiTest {
 
     @Test
     void request_overRate_isLimited() throws Exception {
-        EditorSettings slow = new EditorSettings(true, "", EditorSettings.DEFAULT.editorUrl(), false, "127.0.0.1", 9797, "", "", "", EditorSettings.DEFAULT.allowedOrigins(),
+        EditorSettings slow = new EditorSettings(true, "", EditorSettings.DEFAULT.editorUrl(), false, "127.0.0.1", 9797, "", List.of(), "", "", EditorSettings.DEFAULT.allowedOrigins(),
                 7, 30, 4096, 16384, 512, 8, 1, 10, 64, 20, 4, 64, 15, 24, 160, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT);
         try (EditorHarness limited = new EditorHarness(directory.resolve("slow"), slow)) {
             String token = limited.token();
@@ -327,7 +356,7 @@ class EditorApiTest {
 
     @Test
     void forget_revokesTheBearerWithoutScopeCounterOrRateLimit() throws Exception {
-        EditorSettings slow = new EditorSettings(true, "", EditorSettings.DEFAULT.editorUrl(), false, "127.0.0.1", 9797, "", "", "", EditorSettings.DEFAULT.allowedOrigins(),
+        EditorSettings slow = new EditorSettings(true, "", EditorSettings.DEFAULT.editorUrl(), false, "127.0.0.1", 9797, "", List.of(), "", "", EditorSettings.DEFAULT.allowedOrigins(),
                 7, 30, 4096, 16384, 512, 8, 1, 10, 64, 20, 4, 64, 15, 24, 160, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT);
         try (EditorHarness limited = new EditorHarness(directory.resolve("slow"), slow)) {
             String token = limited.token(EditorHarness.grant(List.of(EditorScope.PREVIEW)));
@@ -414,7 +443,7 @@ class EditorApiTest {
     @Test
     void adminPosition_isOfflineForAConsolePairingOrAPlayerTheServerCannotRead() throws Exception {
         harness.host.standing = Optional.of(new EditorHost.Standing("world", 0.5, 64, 0.5, 0f, 0f));
-        String console = harness.token(new EditorTokens.Grant("console", Optional.empty(), EditorScope.DEFAULT_PAIRING, List.of(), Duration.ofDays(7)));
+        String console = harness.token(new EditorTokens.Grant<>("console", Optional.empty(), EditorScope.DEFAULT_PAIRING, List.of(), Duration.ofDays(7)));
         assertEquals("{\"online\":false}", valid("admin-position-response", harness.send("GET", "/v1/admin/position", console, null)).toString());
         assertTrue(harness.host.stood.isEmpty(), "a console pairing has no player to ask about");
         harness.host.standing = Optional.empty();
@@ -441,7 +470,7 @@ class EditorApiTest {
 
     @Test
     void catalog_groupLimitedToken_hidesOtherGroups() throws Exception {
-        String token = harness.token(new EditorTokens.Grant("", Optional.of(EditorHarness.ADMIN), EditorScope.DEFAULT_PAIRING, List.of("town"), Duration.ofDays(1)));
+        String token = harness.token(new EditorTokens.Grant<>("", Optional.of(EditorHarness.ADMIN), EditorScope.DEFAULT_PAIRING, List.of("town"), Duration.ofDays(1)));
         JsonObject body = valid("catalog-response", harness.send("GET", "/v1/catalog?kind=npc", token, null));
         assertEquals(0, body.getAsJsonArray("documents").size());
         error("group-denied", 403, harness.send("GET", "/v1/documents/npc/examples/greeter", token, null));
@@ -768,7 +797,7 @@ class EditorApiTest {
         request.add("documents", documents);
         error("preview-refused", 422, harness.send("POST", "/v1/previews", token, request));
 
-        String console = harness.token(new EditorTokens.Grant("", Optional.empty(), EditorScope.DEFAULT_PAIRING, List.of(), Duration.ofDays(1)));
+        String console = harness.token(new EditorTokens.Grant<>("", Optional.empty(), EditorScope.DEFAULT_PAIRING, List.of(), Duration.ofDays(1)));
         JsonObject current = greeter();
         JsonObject npcPreview = new JsonObject();
         JsonArray npcs = new JsonArray();

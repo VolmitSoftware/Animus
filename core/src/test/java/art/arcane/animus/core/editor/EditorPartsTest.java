@@ -3,10 +3,13 @@ package art.arcane.animus.core.editor;
 import art.arcane.animus.core.command.CommandActor;
 import art.arcane.animus.core.config.EditorSettings;
 import art.arcane.animus.core.config.PluginSettings;
-import art.arcane.animus.core.editor.transport.EditorEventSink;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.RichText;
+import art.arcane.volmlib.util.editor.EditorRefusal;
+import art.arcane.volmlib.util.editor.EditorTokens;
+import art.arcane.volmlib.util.editor.PairingCode;
+import art.arcane.volmlib.util.editor.transport.EditorEventSink;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.nio.file.Files;
@@ -35,22 +38,22 @@ class EditorPartsTest {
         String bearer;
         String id;
         try (DocumentStore store = new DocumentStore(directory)) {
-            EditorTokens tokens = new EditorTokens(store, clock);
-            EditorTokens.Pairing pairing = tokens.pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
+            EditorTokens<EditorScope> tokens = EditorLink.tokens(store, clock, (String line) -> {});
+            EditorTokens.Pairing<EditorScope> pairing = tokens.pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
             bearer = tokens.exchange(pairing.tokenId(), pairing.secret(), Optional.of("Firefox")).getKey();
             id = pairing.tokenId();
             tokens.advance(id, 7);
         }
         try (DocumentStore store = new DocumentStore(directory)) {
-            EditorTokens tokens = new EditorTokens(store, clock);
+            EditorTokens<EditorScope> tokens = EditorLink.tokens(store, clock, (String line) -> {});
             assertEquals(id, tokens.authenticate(bearer).id());
-            EditorError replay = assertThrows(EditorError.class, () -> tokens.advance(id, 7));
-            assertEquals(EditorError.Code.COUNTER_REPLAYED, replay.code());
+            EditorRefusal replay = assertThrows(EditorRefusal.class, () -> tokens.advance(id, 7));
+            assertEquals(EditorRefusal.Code.COUNTER_REPLAYED, replay.code());
             assertEquals(List.of(id), tokens.revoke("all"));
         }
         try (DocumentStore store = new DocumentStore(directory)) {
-            EditorError revoked = assertThrows(EditorError.class, () -> new EditorTokens(store, clock).authenticate(bearer));
-            assertEquals(EditorError.Code.TOKEN_REVOKED, revoked.code());
+            EditorRefusal revoked = assertThrows(EditorRefusal.class, () -> EditorLink.tokens(store, clock, (String line) -> {}).authenticate(bearer));
+            assertEquals(EditorRefusal.Code.TOKEN_REVOKED, revoked.code());
         }
     }
 
@@ -121,14 +124,14 @@ class EditorPartsTest {
                 service.start();
                 EditorService.PairingLink link = service.pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
                 assertTrue(link.link().startsWith("https://animus.volmitsoftware.com/#/pair/ANM1."));
-                PairingCode code = PairingCode.decode(link.link().substring(link.link().indexOf("ANM1.")));
+                PairingCode code = PairingCode.decode(EditorLink.PRODUCT, link.link().substring(link.link().indexOf("ANM1.")));
                 // Port 0 binds a free port, and the link carries the one actually bound.
                 String direct = code.directUrl().orElseThrow();
                 assertTrue(direct.startsWith("http://127.0.0.1:"), direct);
                 int port = Integer.parseInt(direct.substring("http://127.0.0.1:".length()));
                 assertTrue(port > 0, direct);
                 assertEquals(Optional.empty(), code.relayUrl(), "the relay is off in this config");
-                assertEquals(EditorIdentity.loadOrCreate(runtime.documents()).fingerprint(), code.fingerprint());
+                assertEquals(EditorLink.identity(runtime.documents()).fingerprint(), code.fingerprint());
                 assertEquals(Optional.of("Town"), code.serverName(), "the platform's name while [editor] serverName is empty");
                 assertTrue(service.status().stream().anyMatch((String line) -> line.startsWith("Editor ready | listener 127.0.0.1:" + port + " (http) ")));
                 assertTrue(service.handler().isPresent());
@@ -189,13 +192,13 @@ class EditorPartsTest {
 
     @Test
     void pairOptions_keyedValues() {
-        EditorTokens.Grant grant = EditorCommands.grant(actor(EditorHarness.ADMIN), "laptop", "read,validate", "town,harbor", "12h", 7);
+        EditorTokens.Grant<EditorScope> grant = EditorCommands.grant(actor(EditorHarness.ADMIN), "laptop", "read,validate", "town,harbor", "12h", 7);
         assertEquals("laptop", grant.label());
         assertEquals(List.of(EditorScope.READ, EditorScope.VALIDATE), grant.scopes());
-        assertEquals(List.of("town", "harbor"), grant.groups());
+        assertEquals(List.of("town", "harbor"), grant.folders());
         assertEquals(Duration.ofHours(12), grant.lifetime());
         assertEquals(Optional.of(EditorHarness.ADMIN), grant.admin());
-        EditorTokens.Grant defaults = EditorCommands.grant(actor(null), "", "", "", "", 7);
+        EditorTokens.Grant<EditorScope> defaults = EditorCommands.grant(actor(null), "", "", "", "", 7);
         assertEquals(EditorScope.DEFAULT_PAIRING, defaults.scopes());
         assertEquals(Duration.ofDays(7), defaults.lifetime());
         assertThrows(IllegalArgumentException.class, () -> EditorCommands.grant(actor(null), "", "root", "", "", 7));
@@ -208,12 +211,12 @@ class EditorPartsTest {
             IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> EditorCommands.grant(actor(null), "", "", folder, "", 7), folder);
             assertEquals("folders take lowercase folder names under npcs/, such as town or town/market; " + folder + " is not one", refused.getMessage());
         }
-        assertEquals(List.of("town/market", "harbor"), EditorCommands.grant(actor(null), "", "", " town/market , harbor ", "", 7).groups());
+        assertEquals(List.of("town/market", "harbor"), EditorCommands.grant(actor(null), "", "", " town/market , harbor ", "", 7).folders());
         try (DocumentStore store = new DocumentStore(directory)) {
-            EditorTokens tokens = new EditorTokens(store, new EditorHarness.TestClock());
-            EditorTokens.Pairing pairing = tokens.pair(EditorCommands.grant(actor(null), "", "", "town", "", 7));
+            EditorTokens<EditorScope> tokens = EditorLink.tokens(store, new EditorHarness.TestClock(), (String line) -> {});
+            EditorTokens.Pairing<EditorScope> pairing = tokens.pair(EditorCommands.grant(actor(null), "", "", "town", "", 7));
             String bearer = tokens.exchange(pairing.tokenId(), pairing.secret(), Optional.empty()).getKey();
-            EditorTokens.Token token = tokens.authenticate(bearer);
+            EditorTokens.Token<EditorScope> token = tokens.authenticate(bearer);
             assertTrue(EditorApi.visible(token, DocumentKind.NPC, "town/guard"));
             assertTrue(EditorApi.visible(token, DocumentKind.NPC, "town/market/baker"), "town covers the folders inside it");
             assertFalse(EditorApi.visible(token, DocumentKind.NPC, "townhall/clerk"), "whole folder names only, not a text prefix");

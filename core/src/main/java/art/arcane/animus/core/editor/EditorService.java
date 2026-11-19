@@ -1,12 +1,18 @@
 package art.arcane.animus.core.editor;
 
+import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.config.EditorRelaySettings;
 import art.arcane.animus.core.config.EditorSettings;
 import art.arcane.animus.core.config.PluginSettings;
-import art.arcane.animus.core.editor.relay.EditorRelayClient;
-import art.arcane.animus.core.editor.transport.EditorRequestHandler;
 import art.arcane.animus.core.text.DocsLink;
+import art.arcane.volmlib.util.editor.EditorIdentity;
+import art.arcane.volmlib.util.editor.EditorListener;
+import art.arcane.volmlib.util.editor.EditorLog;
+import art.arcane.volmlib.util.editor.EditorTokens;
+import art.arcane.volmlib.util.editor.PairingCode;
+import art.arcane.volmlib.util.editor.relay.EditorRelayClient;
+import art.arcane.volmlib.util.editor.transport.EditorRequestHandler;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
@@ -82,8 +88,8 @@ public final class EditorService implements AutoCloseable {
         settings = editor;
         relaySettings = relayNow;
         if (!settings.enabled()) { state = "disabled; set [editor] enabled = true in config.toml"; return; }
-        EditorIdentity identity = EditorIdentity.loadOrCreate(runtime.documents());
-        EditorTokens tokens = new EditorTokens(runtime.documents(), clock);
+        EditorIdentity identity = EditorLink.identity(runtime.documents());
+        EditorTokens<EditorScope> tokens = EditorLink.tokens(runtime.documents(), clock, warn);
         EditorAudit audit = new EditorAudit(runtime.documents(), clock);
         int pruned = audit.prune(settings.auditDays());
         EditorDocuments documents = new EditorDocuments(runtime.documents(), () -> runtime.recordingSettings().maximumFileBytes());
@@ -100,7 +106,7 @@ public final class EditorService implements AutoCloseable {
             events.publish(event);
         });
         timers = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("Animus-editor-timers").factory());
-        EditorNotices notices = new EditorNotices(() -> settings.notices(), host.notices(), log, System::nanoTime, art.arcane.animus.core.AnimusLog.shared()::debug);
+        EditorNotices notices = new EditorNotices(() -> settings.notices(), host.notices(), log, System::nanoTime, AnimusLog.shared()::debug);
         EditorWarnings warnings = new EditorWarnings(warn, clock);
         api = new EditorApi(new EditorApi.Parts(settings, relaySettings, host, identity, tokens, audit, documents, catalog, changes, previews, events, notices, warnings,
                 runtime::npcs, runtime::importHost, timers, clock, runtime.environment().minecraftVersion()));
@@ -163,7 +169,7 @@ public final class EditorService implements AutoCloseable {
         java.time.Instant now = clock.instant();
         if (relayDown == null) { relayDown = now; return; }
         if (now.isBefore(relayDown.plus(RELAY_GRACE))) return;
-        for (EditorTokens.Open open : opened.parts().tokens().openPairings())
+        for (EditorTokens.Open<EditorScope> open : opened.parts().tokens().openPairings())
             if (opened.parts().warnings().due("relay notice " + open.tokenId(), Duration.ofHours(1))) opened.pairingRefused(open, "the relay " + relaySettings.url() + " is unreachable");
     }
 
@@ -179,7 +185,7 @@ public final class EditorService implements AutoCloseable {
     private void openRelay() {
         if (!relaySettings.enabled() || relay != null) return;
         if (api.parts().tokens().list().isEmpty() && api.parts().tokens().pendingPairings() == 0) return;
-        relay = new EditorRelayClient(relaySettings, api.parts().identity(), api);
+        relay = new EditorRelayClient(EditorLink.PRODUCT, EditorLink.relay(relaySettings), api.parts().identity(), api, new EditorLog((String line) -> { if (AnimusLog.shared().debug()) log.accept(line); }, log, warn));
         relay.start();
         log.accept("Editor relay connecting to " + relaySettings.url() + " as " + api.parts().identity().fingerprint());
     }
@@ -195,7 +201,7 @@ public final class EditorService implements AutoCloseable {
     private void openListener() {
         listenerProblem = "";
         if (!settings.listenerEnabled()) return;
-        EditorListener started = new EditorListener(settings, runtime.environment().dataDirectory(), api, log);
+        EditorListener started = new EditorListener(EditorLink.PRODUCT, EditorLink.listener(settings), runtime.environment().dataDirectory(), api, log);
         try {
             started.start();
             listener = started;
@@ -278,11 +284,11 @@ public final class EditorService implements AutoCloseable {
             openRelay();
             if (!relayNow.enabled() && wasConnected) log.accept("Editor relay stopped by config.toml");
         }
-        if (EditorListener.rebind(current, editor) || listener == null && editor.listenerEnabled()) {
+        if (EditorLink.rebind(current, editor) || listener == null && editor.listenerEnabled()) {
             closeListener();
             openListener();
             if (!editor.listenerEnabled()) { state = "ready"; log.accept("Editor listener stopped by config.toml"); }
-        } else if (listener != null) listener.settings(editor);
+        } else if (listener != null) listener.settings(EditorLink.listener(editor));
     }
 
     private Runnable guard(Runnable task) {
@@ -302,20 +308,20 @@ public final class EditorService implements AutoCloseable {
     public synchronized Optional<EditorListener> listener() { return Optional.ofNullable(listener); }
 
     /** A pairing link for /animus editor pair. Call on the file lane. */
-    public PairingLink pair(EditorTokens.Grant grant) throws IOException {
+    public PairingLink pair(EditorTokens.Grant<EditorScope> grant) throws IOException {
         EditorApi active;
         synchronized (this) { active = api; }
         if (active == null) throw new IOException("The editor is " + state);
         Optional<String> direct = directUrl(), relay = relaySettings.enabled() ? Optional.of(relaySettings.url()) : Optional.empty();
         if (direct.isEmpty() && relay.isEmpty())
             throw new IOException("Nothing can reach this server: enable [editor] listenerEnabled (with TLS or a proxy and advertisedUrl) or relayEnabled");
-        EditorTokens.Pairing pairing;
+        EditorTokens.Pairing<EditorScope> pairing;
         try { pairing = active.parts().tokens().pair(grant); }
         catch (IllegalStateException full) { throw new IOException(full.getMessage()); }
         synchronized (this) { if (running && api == active) openRelay(); }
         PairingCode code;
         try {
-            code = new PairingCode(direct, relay, active.parts().identity().fingerprint(), active.parts().identity().serverKey(), pairing.tokenId(), pairing.secret(),
+            code = new PairingCode(EditorLink.PRODUCT, direct, relay, active.parts().identity().fingerprint(), active.parts().identity().serverKey(), pairing.tokenId(), pairing.secret(),
                     pairing.expires(), grant.label().isEmpty() ? Optional.empty() : Optional.of(grant.label()), Optional.of(active.serverName()));
         } catch (IllegalArgumentException refused) {
             throw new IOException("Cannot build a pairing code: " + refused.getMessage());
@@ -325,7 +331,7 @@ public final class EditorService implements AutoCloseable {
         return new PairingLink(base + "/#/pair/" + code.encode(), pairing);
     }
 
-    public record PairingLink(String link, EditorTokens.Pairing pairing) {}
+    public record PairingLink(String link, EditorTokens.Pairing<EditorScope> pairing) {}
 
     /** The address a browser uses on the direct path: advertisedUrl, or the listener itself when TLS or loopback make it reachable. */
     private Optional<String> directUrl() {

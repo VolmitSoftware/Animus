@@ -1,11 +1,12 @@
 package art.arcane.animus.core.editor;
 
+import art.arcane.volmlib.util.editor.EditorTokens;
+import art.arcane.volmlib.util.editor.transport.EditorResponse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import art.arcane.animus.core.config.EditorNotifySettings;
-import art.arcane.animus.core.editor.transport.EditorResponse;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.nio.file.Files;
@@ -161,7 +162,7 @@ class EditorNoticesApiTest {
         recheck();
         assertTrue(harness.api.parts().tokens().find(id).isEmpty(), "seven days without a confirmation revokes");
         assertEquals(List.of("[Animus]: Brian's editor was revoked after 7 days without confirming animus.editor.pair"), harness.flushNotices());
-        EditorTokens reloaded = new EditorTokens(harness.store, harness.clock);
+        EditorTokens<EditorScope> reloaded = EditorLink.tokens(harness.store, harness.clock, (String line) -> {});
         assertTrue(reloaded.find(id).isEmpty());
     }
 
@@ -171,7 +172,7 @@ class EditorNoticesApiTest {
         String id = token.substring(4, token.indexOf('.'));
         harness.clock.advance(java.time.Duration.ofDays(5));
         recheck();
-        assertEquals(harness.clock.instant(), new EditorTokens(harness.store, harness.clock).find(id).orElseThrow().adminChecked());
+        assertEquals(harness.clock.instant(), EditorLink.tokens(harness.store, harness.clock, (String line) -> {}).find(id).orElseThrow().adminChecked());
     }
 
     @Test
@@ -182,10 +183,10 @@ class EditorNoticesApiTest {
         String id = token.substring(4, token.indexOf('.'));
         harness.host.commands = EditorHost.Admin.NOT_ADMIN;
         recheck();
-        EditorTokens.Token kept = harness.api.parts().tokens().find(id).orElseThrow();
+        EditorTokens.Token<EditorScope> kept = harness.api.parts().tokens().find(id).orElseThrow();
         assertFalse(kept.has(EditorScope.APPLY_COMMANDS), "the commands scope goes with the permission");
         assertTrue(kept.has(EditorScope.APPLY_BEHAVIORS), "the rest of the token keeps working");
-        assertFalse(new EditorTokens(harness.store, harness.clock).find(id).orElseThrow().has(EditorScope.APPLY_COMMANDS), "the drop is saved");
+        assertFalse(EditorLink.tokens(harness.store, harness.clock, (String line) -> {}).find(id).orElseThrow().has(EditorScope.APPLY_COMMANDS), "the drop is saved");
     }
 
     @Test
@@ -200,7 +201,7 @@ class EditorNoticesApiTest {
         assertTrue(harness.api.parts().tokens().find(id).orElseThrow().has(EditorScope.APPLY_COMMANDS));
         harness.clock.advance(java.time.Duration.ofDays(2));
         recheck();
-        EditorTokens.Token kept = harness.api.parts().tokens().find(id).orElseThrow();
+        EditorTokens.Token<EditorScope> kept = harness.api.parts().tokens().find(id).orElseThrow();
         assertFalse(kept.has(EditorScope.APPLY_COMMANDS), "seven days without confirming the commands permission drops the scope");
         assertTrue(kept.has(EditorScope.READ));
     }
@@ -220,7 +221,7 @@ class EditorNoticesApiTest {
         headers.put("X-Animus-Counter", Long.toString(harness.nextCounter()));
         headers.put(EditorReplies.PEER_HEADER, "127.0.0.1");
         byte[] save = Files.readAllBytes(SharedFixtures.fixture("citizens/runtime.yml"));
-        harness.request(new art.arcane.animus.core.editor.transport.EditorRequest(art.arcane.animus.core.editor.transport.EditorRequest.Transport.DIRECT, "POST",
+        harness.request(new art.arcane.volmlib.util.editor.transport.EditorRequest(art.arcane.volmlib.util.editor.transport.EditorRequest.Transport.DIRECT, "POST",
                 "/v1/imports?file=citizens", headers, Optional.of(new com.google.gson.JsonPrimitive(java.util.Base64.getEncoder().encodeToString(save)))));
         String importId = EditorHarness.json(harness.send("POST", "/v1/imports/stage", token, new JsonObject())).getAsJsonObject("citizens").get("importId").getAsString();
         harness.flushNotices();

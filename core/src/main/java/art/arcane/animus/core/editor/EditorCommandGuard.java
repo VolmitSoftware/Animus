@@ -7,6 +7,7 @@ import art.arcane.animus.core.npc.GroupDocument;
 import art.arcane.animus.core.npc.GroupMerge;
 import art.arcane.animus.core.schedule.ScheduleSettings;
 import art.arcane.animus.core.shop.ShopDocument;
+import art.arcane.volmlib.util.editor.EditorTokens;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -123,7 +124,7 @@ final class EditorCommandGuard {
     }
 
     /** Refuses a write of {@code kind} that runs commands or creates value unless the token holds the scope. */
-    static void require(EditorTokens.Token token, DocumentKind kind, String id, JsonElement source, Rules rules) throws EditorError, IOException {
+    static void require(EditorTokens.Token<EditorScope> token, DocumentKind kind, String id, JsonElement source, Rules rules) throws EditorError, IOException {
         if (token.has(EditorScope.APPLY_COMMANDS)) return;
         Optional<String> why = needsCommands(kind, id, source, rules);
         if (why.isEmpty()) return;
@@ -132,7 +133,7 @@ final class EditorCommandGuard {
     }
 
     /** {@link #require} for every document an apply or undo writes; deletions write nothing and need no more than their apply scope. */
-    static EditorChanges.WriteCheck writes(EditorTokens.Token token, Rules rules) {
+    static EditorChanges.WriteCheck writes(EditorTokens.Token<EditorScope> token, Rules rules) {
         return (DocumentKind kind, String id, String content) -> {
             JsonElement source;
             // Text that is not JSON never loads, so it cannot run a command either.
@@ -146,7 +147,7 @@ final class EditorCommandGuard {
      * Import apply through the editor. Apply adds the namespaces of the import's command behaviors ({@code grants}) to the
      * allow-list, and while the allow-list names anything an imported document may land under it, so both need the scope.
      */
-    static void requireForImport(EditorTokens.Token token, String step, List<String> grants, boolean commandGrants) throws EditorError {
+    static void requireForImport(EditorTokens.Token<EditorScope> token, String step, List<String> grants, boolean commandGrants) throws EditorError {
         if (token.has(EditorScope.APPLY_COMMANDS) || step.equals("rollback")) return;
         if (!grants.isEmpty()) throw EditorError.scopeMissing(EditorScope.APPLY_COMMANDS, "This import runs console commands as it did before, so applying it adds "
                 + String.join(", ", grants) + " to [behaviors.actions] commandNamespaces, which needs apply:commands.");
@@ -158,7 +159,7 @@ final class EditorCommandGuard {
      * Every document an import apply would write, by data folder path, checked as {@code /v1/changes} checks them before
      * anything is written. An import's documents read each other first, so an imported NPC sees its imported groups.
      */
-    static void requireForImport(EditorTokens.Token token, Map<String, String> staged, Rules rules) throws EditorError, IOException {
+    static void requireForImport(EditorTokens.Token<EditorScope> token, Map<String, String> staged, Rules rules) throws EditorError, IOException {
         if (token.has(EditorScope.APPLY_COMMANDS)) return;
         EditorChanges.WriteCheck check = writes(token, rules.staged(staged));
         for (Map.Entry<String, String> document : staged.entrySet()) {

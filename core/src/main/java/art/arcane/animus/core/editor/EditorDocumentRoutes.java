@@ -1,8 +1,9 @@
 package art.arcane.animus.core.editor;
 
-import art.arcane.animus.core.editor.transport.EditorRequest;
-import art.arcane.animus.core.editor.transport.EditorResponse;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.volmlib.util.editor.EditorTokens;
+import art.arcane.volmlib.util.editor.transport.EditorRequest;
+import art.arcane.volmlib.util.editor.transport.EditorResponse;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
@@ -45,7 +46,7 @@ final class EditorDocumentRoutes {
         return Math.max(RELAY_MARGIN, Math.min(ANSWER_BYTES, api.parts().relay().frameBytes() - RELAY_MARGIN));
     }
 
-    CompletionStage<EditorResponse> catalog(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
+    CompletionStage<EditorResponse> catalog(EditorRequest request, EditorTokens.Token<EditorScope> token, String[] segments) throws EditorError {
         Map<String, String> query = EditorReplies.query(request);
         EditorMessages.fields(EditorMessages.queryObject(query), "$query", Set.of("kind", "after"));
         Set<DocumentKind> kinds = EnumSet.allOf(DocumentKind.class);
@@ -80,7 +81,7 @@ final class EditorDocumentRoutes {
         });
     }
 
-    CompletionStage<EditorResponse> document(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
+    CompletionStage<EditorResponse> document(EditorRequest request, EditorTokens.Token<EditorScope> token, String[] segments) throws EditorError {
         DocumentKind kind = DocumentKind.parse(segments[1]).orElseThrow(() -> new EditorError(EditorError.Code.NOT_FOUND, "Unknown kind " + segments[1] + "."));
         List<String> pieces = new ArrayList<>();
         for (int index = 2; index < segments.length; index++) pieces.add(EditorApi.decode(segments[index]));
@@ -95,7 +96,7 @@ final class EditorDocumentRoutes {
      * reported in {@code errors}; refs past the budget come back in {@code remaining}. A single document larger than the
      * budget comes alone, unless it is larger than the relay frame.
      */
-    CompletionStage<EditorResponse> read(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
+    CompletionStage<EditorResponse> read(EditorRequest request, EditorTokens.Token<EditorScope> token, String[] segments) throws EditorError {
         JsonObject body = EditorMessages.body(request);
         EditorMessages.fields(body, "$", Set.of("refs"));
         List<Ref> refs = refs(body);

@@ -1,9 +1,10 @@
 package art.arcane.animus.core.editor;
 
 import art.arcane.animus.core.config.EditorNotifySettings;
-import art.arcane.animus.core.editor.transport.EditorRequest;
-import art.arcane.animus.core.editor.transport.EditorResponse;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.volmlib.util.editor.EditorTokens;
+import art.arcane.volmlib.util.editor.transport.EditorRequest;
+import art.arcane.volmlib.util.editor.transport.EditorResponse;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -34,17 +35,17 @@ final class EditorImportRoutes {
     private EditorImports imports() { return new EditorImports(api.parts().documents().store(), api.parts().npcs(), api.parts().importHost()); }
 
     /** Imports reach every NPC group, so a group-limited token cannot stage or change one. */
-    private static void ungrouped(EditorTokens.Token token) throws EditorError {
-        if (!token.groups().isEmpty()) throw new EditorError(EditorError.Code.GROUP_DENIED, "Imports can reach every NPC group; use a token without groups.");
+    private static void ungrouped(EditorTokens.Token<EditorScope> token) throws EditorError {
+        if (!token.folders().isEmpty()) throw new EditorError(EditorError.Code.GROUP_DENIED, "Imports can reach every NPC group; use a token without groups.");
     }
 
     /** {@code GET /v1/imports}: where the import stands. */
-    CompletionStage<EditorResponse> status(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
+    CompletionStage<EditorResponse> status(EditorRequest request, EditorTokens.Token<EditorScope> token, String[] segments) throws EditorError {
         return api.files(token, () -> EditorResponse.json(200, imports().status()));
     }
 
     /** {@code POST /v1/imports?file=...&name=...}: the file's bytes, or over the relay a base64 JSON string. */
-    CompletionStage<EditorResponse> upload(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
+    CompletionStage<EditorResponse> upload(EditorRequest request, EditorTokens.Token<EditorScope> token, String[] segments) throws EditorError {
         ungrouped(token);
         Map<String, String> query = EditorReplies.query(request);
         for (String key : query.keySet()) if (!key.equals("file") && !key.equals("name")) throw EditorMessages.invalid("Unknown query parameter " + key + ".");
@@ -74,7 +75,7 @@ final class EditorImportRoutes {
     }
 
     /** {@code POST /v1/imports/stage}: converts the uploaded saves and stages one reviewed plan. Nothing is installed. */
-    CompletionStage<EditorResponse> stage(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
+    CompletionStage<EditorResponse> stage(EditorRequest request, EditorTokens.Token<EditorScope> token, String[] segments) throws EditorError {
         ungrouped(token);
         JsonObject body = request.body().isPresent() ? EditorMessages.body(request) : new JsonObject();
         EditorMessages.fields(body, "$", Set.of("mode", "label", "worlds"));
@@ -104,7 +105,7 @@ final class EditorImportRoutes {
     }
 
     /** {@code POST /v1/imports/{importId}/apply|rollback}: the drop-in steps, with a catalog event for what changed. */
-    CompletionStage<EditorResponse> step(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
+    CompletionStage<EditorResponse> step(EditorRequest request, EditorTokens.Token<EditorScope> token, String[] segments) throws EditorError {
         String id = segments[1], step = segments[2];
         if (!id.matches("[a-f0-9]{64}")) throw new EditorError(EditorError.Code.NOT_FOUND, "No staged import " + id + ".");
         ungrouped(token);
@@ -139,7 +140,7 @@ final class EditorImportRoutes {
     }
 
     /** Reloads what an import step changed and sends its catalog event; returns the changed documents as {@code kind:id}. */
-    private List<String> importPublished(Map<String, String> before, Map<String, String> after, boolean rollback, EditorTokens.Token token,
+    private List<String> importPublished(Map<String, String> before, Map<String, String> after, boolean rollback, EditorTokens.Token<EditorScope> token,
                                          EditorNotifySettings.Kind notice, String verb) throws IOException {
         JsonArray deleted = new JsonArray();
         List<String> touched = new ArrayList<>();

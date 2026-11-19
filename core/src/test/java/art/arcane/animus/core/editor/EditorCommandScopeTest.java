@@ -1,7 +1,7 @@
 package art.arcane.animus.core.editor;
 
-import art.arcane.animus.core.editor.transport.EditorResponse;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.volmlib.util.editor.transport.EditorResponse;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.nio.file.Path;

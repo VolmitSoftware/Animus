@@ -1,8 +1,9 @@
 package art.arcane.animus.core.editor;
 
 import art.arcane.animus.core.config.EditorSettings;
-import art.arcane.animus.core.editor.transport.EditorRequest;
-import art.arcane.animus.core.editor.transport.EditorResponse;
+import art.arcane.volmlib.util.editor.EditorTokens;
+import art.arcane.volmlib.util.editor.transport.EditorRequest;
+import art.arcane.volmlib.util.editor.transport.EditorResponse;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -229,7 +230,7 @@ class EditorTerrainTest {
 
     @Test
     void surface_tokenLimitedToAnotherFolder_seesNothing() throws Exception {
-        String token = harness.token(new EditorTokens.Grant("", Optional.of(EditorHarness.ADMIN), EditorScope.DEFAULT_PAIRING, List.of("town"), Duration.ofDays(1)));
+        String token = harness.token(new EditorTokens.Grant<>("", Optional.of(EditorHarness.ADMIN), EditorScope.DEFAULT_PAIRING, List.of("town"), Duration.ofDays(1)));
         JsonObject body = valid("terrain-surface-response", get("/v1/terrain/surface?world=world&tx=0&tz=0", token));
         assertTrue(strings(body.getAsJsonArray("chunks")).stream().allMatch("forbidden"::equals));
         assertTrue(terrain.reads.isEmpty());
@@ -494,7 +495,7 @@ class EditorTerrainTest {
     @Test
     void routeOfAnotherFolder_staysForbidden() throws Exception {
         walker(navigation(route(points(2, 2, 1000, 0))));
-        String token = harness.token(new EditorTokens.Grant("", Optional.of(EditorHarness.ADMIN), EditorScope.DEFAULT_PAIRING, List.of("examples"), Duration.ofDays(1)));
+        String token = harness.token(new EditorTokens.Grant<>("", Optional.of(EditorHarness.ADMIN), EditorScope.DEFAULT_PAIRING, List.of("examples"), Duration.ofDays(1)));
         assertEquals("forbidden", chunk("world", 62, 0, token));
         assertEquals("ok", chunk("world", 0, 0, token), "examples NPCs stand near the origin");
     }
@@ -509,7 +510,7 @@ class EditorTerrainTest {
         harness.clock.advance(Duration.ofMillis(1100));
         assertEquals("unloaded", chunk("world", 562, 0, token));
         assertEquals("forbidden", chunk("world", 375, 0, token), "where it was is closed again");
-        String town = harness.token(new EditorTokens.Grant("", Optional.of(EditorHarness.ADMIN), EditorScope.DEFAULT_PAIRING, List.of("town"), Duration.ofDays(1)));
+        String town = harness.token(new EditorTokens.Grant<>("", Optional.of(EditorHarness.ADMIN), EditorScope.DEFAULT_PAIRING, List.of("town"), Duration.ofDays(1)));
         assertEquals("forbidden", chunk("world", 562, 0, town));
     }
 
@@ -537,7 +538,7 @@ class EditorTerrainTest {
         harness.host.live.put(java.util.UUID.fromString("4d3c2b1a-0f9e-4d8c-8b7a-6a5b4c3d2e1f"),
                 new art.arcane.animus.core.virtual.WorldPosition("w-2", new art.arcane.animus.core.virtual.Vec3(5001, 64, 2)));
         assertEquals("harbor", valid("terrain-position-response", get("/v1/terrain/position?npc=town/walker", token)).get("world").getAsString());
-        String town = harness.token(new EditorTokens.Grant("", Optional.of(EditorHarness.ADMIN), EditorScope.DEFAULT_PAIRING, List.of("town"), Duration.ofDays(1)));
+        String town = harness.token(new EditorTokens.Grant<>("", Optional.of(EditorHarness.ADMIN), EditorScope.DEFAULT_PAIRING, List.of("town"), Duration.ofDays(1)));
         refused("group-denied", 403, get("/v1/terrain/position?npc=examples/greeter", town));
         refused("not-found", 404, get("/v1/terrain/position?npc=examples/nobody", token));
         refused("invalid-request", 400, get("/v1/terrain/position?npc=..%2Fx", token));

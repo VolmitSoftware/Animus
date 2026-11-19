@@ -4,8 +4,9 @@ import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.storage.NpcPaths;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.virtual.WorldPosition;
-import art.arcane.animus.core.editor.transport.EditorRequest;
-import art.arcane.animus.core.editor.transport.EditorResponse;
+import art.arcane.volmlib.util.editor.EditorTokens;
+import art.arcane.volmlib.util.editor.transport.EditorRequest;
+import art.arcane.volmlib.util.editor.transport.EditorResponse;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
@@ -71,7 +72,7 @@ final class EditorTerrainReads {
         return EditorHost.Feature.yes();
     }
 
-    CompletionStage<EditorResponse> surface(EditorRequest request, EditorTokens.Token token) throws EditorError {
+    CompletionStage<EditorResponse> surface(EditorRequest request, EditorTokens.Token<EditorScope> token) throws EditorError {
         Map<String, String> query = query(request, Set.of("world", "tx", "tz"));
         int tx = integer(query, "tx", -MAX_TILE, MAX_TILE), tz = integer(query, "tz", -MAX_TILE, MAX_TILE);
         EditorTerrain source = source();
@@ -92,7 +93,7 @@ final class EditorTerrainReads {
         });
     }
 
-    CompletionStage<EditorResponse> blocks(EditorRequest request, EditorTokens.Token token) throws EditorError {
+    CompletionStage<EditorResponse> blocks(EditorRequest request, EditorTokens.Token<EditorScope> token) throws EditorError {
         Map<String, String> query = query(request, Set.of("world", "cx", "cz", "y", "height"));
         int cx = integer(query, "cx", -MAX_CHUNK, MAX_CHUNK), cz = integer(query, "cz", -MAX_CHUNK, MAX_CHUNK);
         int y = integer(query, "y", -30_000_000, 30_000_000), height = integer(query, "height", 1, MAX_HEIGHT);
@@ -148,13 +149,13 @@ final class EditorTerrainReads {
     }
 
     /** Which chunks the token may read in one world. */
-    private record Permission(double radius, EditorTokens.Token token, Map<String, Boolean> sameWorld, Function<String, Boolean> matches, List<ReachIndex> indexes) {
+    private record Permission(double radius, EditorTokens.Token<EditorScope> token, Map<String, Boolean> sameWorld, Function<String, Boolean> matches, List<ReachIndex> indexes) {
         boolean allows(int chunkX, int chunkZ) {
             if (radius == 0) return false;
             double minX = chunkX * 16.0, minZ = chunkZ * 16.0, maxX = minX + 16, maxZ = minZ + 16, limit = radius * radius;
             for (ReachIndex index : indexes) {
                 for (TerrainReaches.Reach reach : index.near(chunkX, chunkZ)) {
-                    if (!token.group(reach.group()) || !sameWorld.computeIfAbsent(reach.world(), matches)) continue;
+                    if (!token.reaches(reach.group()) || !sameWorld.computeIfAbsent(reach.world(), matches)) continue;
                     if (reach.distanceSquared(minX, minZ, maxX, maxZ) <= limit) return true;
                 }
             }
@@ -162,7 +163,7 @@ final class EditorTerrainReads {
         }
     }
 
-    private Permission permission(EditorTerrain source, EditorTerrain.World world, EditorTokens.Token token) {
+    private Permission permission(EditorTerrain source, EditorTerrain.World world, EditorTokens.Token<EditorScope> token) {
         int radius = parts.get().settings().terrainRadius();
         Function<String, Boolean> matches = (String reference) -> source.world(reference).map((EditorTerrain.World found) -> found.key().equals(world.key())).orElse(false);
         if (radius == 0) return new Permission(0, token, new HashMap<>(), matches, List.of());
@@ -261,12 +262,12 @@ final class EditorTerrainReads {
     private record Live(long read, Map<String, NpcDefinition> from, int radius, ReachIndex index, Map<UUID, WorldPosition> positions) {}
 
     /** {@code GET /v1/terrain/position?npc=}: where a spawned NPC the token may see stands now, by the last live read. */
-    CompletionStage<EditorResponse> position(EditorRequest request, EditorTokens.Token token) throws EditorError {
+    CompletionStage<EditorResponse> position(EditorRequest request, EditorTokens.Token<EditorScope> token) throws EditorError {
         Map<String, String> query = query(request, Set.of("npc"));
         String id = query.get("npc");
         if (id == null || !NpcPaths.file("npcs/" + id + ".json")) throw EditorMessages.invalid("npc: an NPC id such as town/guard is required.");
         String folder = id.contains("/") ? id.substring(0, id.lastIndexOf('/')) : "";
-        if (!token.group(folder)) throw new EditorError(EditorError.Code.GROUP_DENIED, "This token cannot reach NPC folder npcs/" + folder + ".");
+        if (!token.reaches(folder)) throw new EditorError(EditorError.Code.GROUP_DENIED, "This token cannot reach NPC folder npcs/" + folder + ".");
         NpcRepository repository = parts.get().npcs().get();
         NpcDefinition definition = repository == null ? null : repository.find(id.substring(id.lastIndexOf('/') + 1)).filter((NpcDefinition found) -> found.qualifiedId().equals(id)).orElse(null);
         if (definition == null) throw new EditorError(EditorError.Code.NOT_FOUND, "No NPC " + id + ".");

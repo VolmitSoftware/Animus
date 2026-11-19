@@ -1,18 +1,21 @@
 package art.arcane.animus.core.editor.relay;
 
+import art.arcane.animus.core.editor.EditorLink;
+import art.arcane.volmlib.util.editor.EditorIdentity;
+import art.arcane.volmlib.util.editor.EditorLog;
+import art.arcane.volmlib.util.editor.relay.EditorRelayClient;
+import art.arcane.volmlib.util.editor.transport.EditorEventSink;
+import art.arcane.volmlib.util.editor.transport.EditorEventStream;
+import art.arcane.volmlib.util.editor.transport.EditorRequest;
+import art.arcane.volmlib.util.editor.transport.EditorRequestHandler;
+import art.arcane.volmlib.util.editor.transport.EditorResponse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import art.arcane.animus.core.config.EditorRelaySettings;
 import art.arcane.animus.core.editor.EditorEvents;
-import art.arcane.animus.core.editor.EditorIdentity;
 import art.arcane.animus.core.editor.SharedFixtures;
-import art.arcane.animus.core.editor.transport.EditorEventSink;
-import art.arcane.animus.core.editor.transport.EditorEventStream;
-import art.arcane.animus.core.editor.transport.EditorRequest;
-import art.arcane.animus.core.editor.transport.EditorRequestHandler;
-import art.arcane.animus.core.editor.transport.EditorResponse;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.nio.charset.StandardCharsets;
@@ -35,6 +38,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class EditorRelayClientTest {
+    private static final EditorLog LOG = EditorLog.of((String line) -> {}, (String line) -> {});
     private static final Duration WAIT = Duration.ofSeconds(5);
     private static final String NONCE = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
 
@@ -56,8 +60,10 @@ class EditorRelayClientTest {
         return new EditorRelaySettings(true, relay.url(), 1, 2, frameBytes, concurrent);
     }
 
-    private FakeRelay.Session connect(EditorRelaySettings settings, Duration idle) throws Exception {
-        client = new EditorRelayClient(settings, identity, handler, Duration.ofSeconds(2), idle);
+    private FakeRelay.Session connect(EditorRelaySettings settings, Duration idle) throws Exception { return connect(handler, settings, idle); }
+
+    private FakeRelay.Session connect(EditorRequestHandler requests, EditorRelaySettings settings, Duration idle) throws Exception {
+        client = new EditorRelayClient(EditorLink.PRODUCT, EditorLink.relay(settings), identity, requests, LOG, Duration.ofSeconds(2), idle);
         client.start();
         FakeRelay.Session session = relay.accept(WAIT);
         session.register(NONCE);
@@ -89,7 +95,7 @@ class EditorRelayClientTest {
 
     @Test
     void shouldRegisterWithTheSignedChallengeUnderItsFingerprint() throws Exception {
-        client = new EditorRelayClient(settings(1024 * 1024, 64), identity, handler, Duration.ofSeconds(2), Duration.ofSeconds(90));
+        client = new EditorRelayClient(EditorLink.PRODUCT, EditorLink.relay(settings(1024 * 1024, 64)), identity, handler, LOG, Duration.ofSeconds(2), Duration.ofSeconds(90));
         client.start();
         FakeRelay.Session session = relay.accept(WAIT);
         JsonObject register = session.register(NONCE);
@@ -131,9 +137,10 @@ class EditorRelayClientTest {
         FakeRelay.Session session = connect();
         session.send(request(1, "GET", "/v1/catalog?kind=npc"));
         session.send(request(2, "GET", "/v1/capabilities"));
-        FakeHandler.Call first = handler.calls.poll(5, TimeUnit.SECONDS);
-        FakeHandler.Call second = handler.calls.poll(5, TimeUnit.SECONDS);
-        assertEquals("/v1/catalog", first.request().route());
+        // Each relayed request runs on its own thread, so the handler may see them in either order.
+        FakeHandler.Call one = handler.calls.poll(5, TimeUnit.SECONDS), other = handler.calls.poll(5, TimeUnit.SECONDS);
+        FakeHandler.Call first = one.request().route().equals("/v1/catalog") ? one : other, second = first == one ? other : one;
+        assertEquals("/v1/capabilities", second.request().route());
         second.response().complete(EditorResponse.json(200, new JsonObject()));
         assertEquals(2, session.next(WAIT).get("id").getAsLong());
         first.response().complete(EditorResponse.error(404, "not-found", "no such kind"));
@@ -155,7 +162,7 @@ class EditorRelayClientTest {
         assertEquals(identity.serverKey(), headers.get("X-Animus-Server-Key").getAsString());
         byte[] signature = Base64.getUrlDecoder().decode(headers.get("X-Animus-Proof").getAsString());
         assertTrue(verifies(identity.serverKey(), "animus-editor-proof/1 " + challenge, signature));
-        assertFalse(verifies(identity.serverKey(), EditorRelayClient.CHALLENGE_PREFIX + challenge, signature));
+        assertFalse(verifies(identity.serverKey(), EditorLink.PRODUCT.relayChallengePrefix() + challenge, signature));
     }
 
     @Test
@@ -363,14 +370,52 @@ class EditorRelayClientTest {
     @Test
     void shouldReconnectWhenTheRelayGoesSilent() throws Exception {
         FakeRelay.Session session = connect(settings(1024 * 1024, 64), Duration.ofMillis(600));
+        session.silence();
         session.ping();
         assertTrue(session.awaitClosed(WAIT));
         relay.accept(WAIT);
     }
 
     @Test
+    void idle_relayThatNeverPings_staysRegisteredThroughClientPings() throws Exception {
+        FakeRelay.Session session = connect(settings(1024 * 1024, 64), Duration.ofMillis(900));
+        assertFalse(session.awaitClosed(Duration.ofSeconds(3)), "the client's own pings keep a quiet relay connection alive past its idle timeout");
+        assertTrue(client.isRegistered());
+        assertTrue(relay.noConnection(Duration.ZERO), "no reconnect");
+        session.send(request(1, "GET", "/v1/capabilities"));
+        handler.calls.poll(5, TimeUnit.SECONDS).response().complete(EditorResponse.json(200, new JsonObject()));
+        assertEquals(1, session.next(WAIT).get("id").getAsLong());
+    }
+
+    @Test
+    void request_slowHandler_doesNotHoldUpTheNextRequest() throws Exception {
+        CountDownLatch release = new CountDownLatch(1);
+        EditorRequestHandler blocking = new EditorRequestHandler() {
+            @Override
+            public CompletionStage<EditorResponse> handle(EditorRequest request) {
+                if (request.route().equals("/v1/catalog")) {
+                    try { release.await(20, TimeUnit.SECONDS); }
+                    catch (InterruptedException stopped) { Thread.currentThread().interrupt(); }
+                }
+                return CompletableFuture.completedFuture(EditorResponse.json(200, new JsonObject()));
+            }
+
+            @Override
+            public CompletionStage<EditorEventStream> openEvents(EditorRequest request, EditorEventSink sink) { return handler.openEvents(request, sink); }
+        };
+        try {
+            FakeRelay.Session session = connect(blocking, settings(1024 * 1024, 64), Duration.ofSeconds(90));
+            session.send(request(1, "GET", "/v1/catalog"));
+            session.send(request(2, "GET", "/v1/capabilities"));
+            assertEquals(2, session.next(WAIT).get("id").getAsLong(), "answered while the first request still blocks");
+            release.countDown();
+            assertEquals(1, session.next(WAIT).get("id").getAsLong());
+        } finally { release.countDown(); }
+    }
+
+    @Test
     void shouldReconnectWhenRegistrationNeverCompletes() throws Exception {
-        client = new EditorRelayClient(settings(1024 * 1024, 64), identity, handler, Duration.ofMillis(500), Duration.ofSeconds(90));
+        client = new EditorRelayClient(EditorLink.PRODUCT, EditorLink.relay(settings(1024 * 1024, 64)), identity, handler, LOG, Duration.ofMillis(500), Duration.ofSeconds(90));
         client.start();
         FakeRelay.Session silent = relay.accept(WAIT);
         assertTrue(silent.awaitClosed(WAIT));
@@ -380,7 +425,7 @@ class EditorRelayClientTest {
 
     @Test
     void shouldReconnectWhenTheRelayRefusesTheSignature() throws Exception {
-        client = new EditorRelayClient(settings(1024 * 1024, 64), identity, handler, Duration.ofSeconds(2), Duration.ofSeconds(90));
+        client = new EditorRelayClient(EditorLink.PRODUCT, EditorLink.relay(settings(1024 * 1024, 64)), identity, handler, LOG, Duration.ofSeconds(2), Duration.ofSeconds(90));
         client.start();
         FakeRelay.Session session = relay.accept(WAIT);
         JsonObject challenge = new JsonObject();
@@ -394,7 +439,7 @@ class EditorRelayClientTest {
 
     @Test
     void shouldNotConnectWhenDisabled() throws Exception {
-        client = new EditorRelayClient(new EditorRelaySettings(false, relay.url(), 1, 2, 1024 * 1024, 64), identity, handler);
+        client = new EditorRelayClient(EditorLink.PRODUCT, EditorLink.relay(new EditorRelaySettings(false, relay.url(), 1, 2, 1024 * 1024, 64)), identity, handler, LOG);
         client.start();
         assertTrue(relay.noConnection(Duration.ofMillis(500)));
     }

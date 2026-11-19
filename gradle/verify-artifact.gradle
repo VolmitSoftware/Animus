@@ -66,7 +66,8 @@ TaskProvider verification = tasks.register('verifyArtifact') {
                 namespace + 'core/AnimusRuntime.class', namespace + 'core/BuildIdentity.class',
                 'art/arcane/animus/api/AnimusApi.class', 'art/arcane/animus/api/TrustedModule.class',
                 internal + 'volmlib/util/config/ConfigJson.class', internal + 'volmlib/util/director/runtime/DirectorRuntimeEngine.class',
-                internal + 'volmlib/util/director/help/DirectorMiniMenu.class']
+                internal + 'volmlib/util/director/help/DirectorMiniMenu.class',
+                internal + 'volmlib/util/editor/EditorListener.class', internal + 'volmlib/util/editor/relay/EditorRelayClient.class']
             if (platform != 'bukkit') {
                 required.add(internal + 'gson/Gson.class')
                 // The Bukkit shrink drops AtomicFileIO: only VolmLib's language file editors use it and Animus calls neither.

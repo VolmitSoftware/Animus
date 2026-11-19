@@ -1,5 +1,6 @@
 package art.arcane.animus.core.editor;
 
+import art.arcane.volmlib.util.editor.EditorRefusal;
 import com.google.gson.JsonArray;
 import java.util.Objects;
 import java.util.Optional;
@@ -45,6 +46,12 @@ public final class EditorError extends Exception {
 
     /** A {@code scope-missing} refusal that names the scope the token lacks. */
     public static EditorError scopeMissing(EditorScope scope, String message) { return new EditorError(Code.SCOPE_MISSING, message, -1, null, Objects.requireNonNull(scope)); }
+
+    /** The same refusal from the shared editor link, whose codes are a subset of these. Its extra fields are not part of Animus's protocol. */
+    public static EditorError of(EditorRefusal refusal) {
+        for (Code code : Code.values()) if (code.wireName().equals(refusal.code().wireName())) return new EditorError(code, refusal.getMessage(), refusal.retryAfterMillis(), null);
+        throw new IllegalArgumentException("no Animus error code " + refusal.code().wireName());
+    }
 
     public Code code() { return code; }
 

@@ -1,6 +1,6 @@
 package art.arcane.animus.core.editor;
 
-import art.arcane.animus.core.editor.transport.EditorRequest;
+import art.arcane.volmlib.util.editor.transport.EditorRequest;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.nio.charset.StandardCharsets;

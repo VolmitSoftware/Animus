@@ -1,11 +1,12 @@
 package art.arcane.animus.core.editor;
 
+import art.arcane.volmlib.util.editor.EditorTokens;
+import art.arcane.volmlib.util.editor.transport.EditorRequest;
+import art.arcane.volmlib.util.editor.transport.EditorResponse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import art.arcane.animus.core.editor.transport.EditorRequest;
-import art.arcane.animus.core.editor.transport.EditorResponse;
 import art.arcane.animus.core.storage.HeardWrites;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -156,7 +157,7 @@ class EditorImportsTest {
 
         String reader = harness.token(EditorHarness.grant(List.of(EditorScope.READ)));
         assertEquals("scope-missing", error(harness.send("GET", "/v1/imports", reader, null)));
-        String grouped = harness.token(new EditorTokens.Grant("", Optional.of(EditorHarness.ADMIN), IMPORTER, List.of("town"), Duration.ofDays(1)));
+        String grouped = harness.token(new EditorTokens.Grant<>("", Optional.of(EditorHarness.ADMIN), IMPORTER, List.of("town"), Duration.ofDays(1)));
         assertEquals("group-denied", error(harness.send("POST", "/v1/imports/stage", grouped, new JsonObject())));
     }
 

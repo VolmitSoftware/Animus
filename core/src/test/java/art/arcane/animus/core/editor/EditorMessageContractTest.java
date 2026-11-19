@@ -111,7 +111,7 @@ class EditorMessageContractTest {
         for (EditorError.Code code : EditorError.Code.values()) assertEquals(statuses.get(code.wireName()).getAsInt(), code.status(), code.wireName());
         SchemaValidator validator = validator();
         for (EditorError.Code code : EditorError.Code.values()) {
-            art.arcane.animus.core.editor.transport.EditorResponse response = EditorReplies.error(new EditorError(code, "message", 100, null));
+            art.arcane.volmlib.util.editor.transport.EditorResponse response = EditorReplies.error(new EditorError(code, "message", 100, null));
             assertTrue(validator.check("error-response", response.body().orElseThrow()).isEmpty(), code.wireName());
         }
     }
