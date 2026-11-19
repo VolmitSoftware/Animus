@@ -63,6 +63,9 @@ class ModeledTransportTest {
         @Override public CompletionStage<Void> equipment(Viewer viewer, BodyTransport.Body body, Map<EquipmentSlot, String> items) { return call("equipment " + name(viewer)); }
         @Override public CompletionStage<Void> look(Viewer viewer, BodyTransport.Body body, BodyLook look) { return call("look " + name(viewer)); }
         @Override public CompletionStage<Void> hurt(Viewer viewer, BodyTransport.Body body) { return call("hurt " + name(viewer)); }
+        @Override public CompletionStage<Void> swing(Viewer viewer, BodyTransport.Body body) { return call("swing " + name(viewer)); }
+        @Override public CompletionStage<Void> attack(Viewer viewer, BodyTransport.Body body) { return call("attack " + name(viewer)); }
+        @Override public CompletionStage<Void> gesture(Viewer viewer, BodyTransport.Body body, int action) { return call("gesture " + action + " " + name(viewer)); }
         @Override public CompletionStage<Void> despawn(Viewer viewer, BodyTransport.Body body) { return call("despawn " + name(viewer)); }
         @Override public void forget(Viewer viewer) { calls.add("forget " + name(viewer)); }
         @Override public ControlSubscription subscribeControl(Viewer viewer) { throw new UnsupportedOperationException(); }
@@ -159,6 +162,22 @@ class ModeledTransportTest {
         transport.tick();
         transport.hurt(ALEX, drake);
         assertEquals("play hurt", models.calls.getLast());
+    }
+
+    @Test void attacksAndGesturesReachThePacketLayerAsSent() {
+        shapes.put(DRAKE, new ModeledTransport.Shape(new ModelEngineModule("drake", 1, true, true, Optional.empty(), Map.of()), "Drake"));
+        FakeBody drake = new FakeBody(DRAKE), guard = new FakeBody(GUARD);
+        transport.spawn(ALEX, drake, at(0));
+        transport.spawn(ALEX, guard, at(0));
+        models.calls.clear(); packets.calls.clear();
+        transport.attack(ALEX, guard);
+        transport.gesture(ALEX, guard, 4);
+        transport.gesture(ALEX, guard, 0);
+        assertEquals(List.of("attack alex", "gesture 4 alex", "swing alex"), packets.calls, "an unmodelled NPC's attack, critical hit and swing pass through as sent");
+        packets.calls.clear();
+        transport.attack(ALEX, drake);
+        assertEquals(List.of("play attack"), models.calls, "a modelled NPC's attack plays the model's attack");
+        assertEquals(List.of("attack alex"), packets.calls, "and still reaches a body that is shown");
     }
 
     @Test void clickingTheModelIsAClickOnTheBody() {

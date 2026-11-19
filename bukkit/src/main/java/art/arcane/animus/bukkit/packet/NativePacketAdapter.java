@@ -405,17 +405,27 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
     /** The main-arm swing a player shows when placing a block. */
     @Override public CompletionStage<Void> swing(Player viewer, BodyTransport.Body presented) { return gesture(viewer, presented, 0); }
 
-    /** One vanilla animate action: an arm swing, waking up or a critical hit. */
-    @Override public CompletionStage<Void> gesture(Player viewer, BodyTransport.Body presented, int action) {
-        Body body = checkBody(presented);
+    /** One melee attack: the main-arm swing, or the body type's own attack animation. */
+    @Override public CompletionStage<Void> attack(Player viewer, BodyTransport.Body presented) { return animate(viewer, checkBody(presented), 0, true); }
+
+    /** One vanilla gesture: an arm swing, waking up or a critical hit. */
+    @Override public CompletionStage<Void> gesture(Player viewer, BodyTransport.Body presented, int action) { return animate(viewer, checkBody(presented), action, false); }
+    /** Sends a gesture, or an attack, for a visible body; nothing when this server has no packet for it. */
+    private CompletionStage<Void> animate(Player viewer, Body body, int code, boolean attack) {
         Session session = sessions.get(viewer.getUniqueId());
         if (session == null || session.viewer != viewer || !current(session)) return unwatched("Viewer is not watched");
         Presentation presentation = session.visible.get(body.entityId);
         if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
+        Object packet;
+        try {
+            packet = attack && BodyRules.attacksWithEvent(body.typeKey) && nativeApi.entityEvent != null ? nativeApi.entityEvent(body.entityId, BodyRules.ATTACK_EVENT)
+                    : nativeApi.gesture(body.entityId, code, presentation.mainHand, attack);
+        } catch (ReflectiveOperationException | RuntimeException failure) { return CompletableFuture.failedFuture(failure); }
+        if (packet == null) return CompletableFuture.completedFuture(null);
         CompletableFuture<Void> result = new CompletableFuture<>();
         submit(session, result, false, () -> {
             if (session.visible.get(body.entityId) != presentation) throw new CancellationException("Body was despawned");
-            write(session, body, PacketKind.METADATA, List.of(nativeApi.swing(body.entityId, action))).whenComplete((nothing, failure) -> complete(result, failure));
+            write(session, body, PacketKind.METADATA, List.of(packet)).whenComplete((nothing, failure) -> complete(result, failure));
         });
         return result;
     }
@@ -519,7 +529,11 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         Map<EquipmentSlot, ItemStack> shown = BodyRules.shownEquipment(body.typeKey(), items);
         if (shown.isEmpty()) return CompletableFuture.completedFuture(null);
         Object packet;
-        try { packet = nativeApi.equipment.packet(body.entityId, shown); }
+        ItemStack held = shown.get(EquipmentSlot.MAIN_HAND);
+        try {
+            packet = nativeApi.equipment.packet(body.entityId, shown);
+            if (held != null) presentation.mainHand = nativeApi.equipment.nativeItem(held);
+        }
         catch (ReflectiveOperationException | RuntimeException failure) { return CompletableFuture.failedFuture(failure); }
         CompletableFuture<Void> result = new CompletableFuture<>();
         submit(session, result, false, () -> {
@@ -901,6 +915,8 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
     }
     private static final class Presentation {
         private final Body body;
+        /** The native main-hand item last shown to this viewer, whose animation the body's swings use; null before any. */
+        private volatile Object mainHand;
         private Presentation(Body body) { this.body = body; }
     }
     private static final class Session {
@@ -950,9 +966,13 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                 entries.add(pair.invoke(null, Enum.valueOf((Class) slots, BodyRules.nativeSlot(item.getKey())), nativeStack.invoke(null, item.getValue())));
             return packet.newInstance(entity, entries);
         }
+
+        private Object nativeItem(ItemStack item) throws ReflectiveOperationException { return nativeStack.invoke(null, item); }
     }
 
     private static final class NativeBindings {
+        /** The animate packet's constant for each gesture code, by name; 26.3 drops the swings and renumbers the rest. */
+        private static final String[] GESTURES = {"SWING_MAIN_HAND", null, "WAKE_UP", "SWING_OFF_HAND", "CRITICAL_HIT", "MAGIC_CRITICAL_HIT"};
         private final EquipmentBindings equipment;
         private final NativePresentation presentation;
         private final NativeBones bones;
@@ -967,6 +987,15 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private final Constructor<?> addEntity, removeEntities, removePlayerInfo, vector, movement, positionValues;
         private final Method positionPath;
         private final Constructor<?> friendlyBuffer, rotateHead, setPassengers, animate, entityEvent, damageEvent;
+        /** This server's animate action for each gesture code (the animate actions before 26.3); -1 for one it sends otherwise or not at all. */
+        private final int[] animateActions;
+        /**
+         * From 26.3 an arm swing has its own packet, carrying the hand and the held item's swing animation as vanilla sends
+         * it; null where the animate packet swings, or where this server's swing packet could not be bound.
+         */
+        private final Constructor<?> swingPacket;
+        private final Object mainHand, offHand, defaultSwing;
+        private final Method attackAnimation, interactAnimation;
         /** The generic damage type a hurt event names, or null when this server's registries could not be read. */
         private final Object damageType, healthAccessor;
         private final Method writeVarInt, writeVarIntArray;
@@ -1015,6 +1044,27 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPCs on real entities unavailable: " + missing.getClass().getSimpleName()); }
             carried = boundCarried;
             animate = decodedPacketConstructor("net.minecraft.network.protocol.game.ClientboundAnimatePacket", friendly);
+            Class<?> animatePacket = type("net.minecraft.network.protocol.game.ClientboundAnimatePacket");
+            animateActions = new int[GESTURES.length];
+            for (int code = 0; code < GESTURES.length; code++) animateActions[code] = constant(animatePacket, GESTURES[code]);
+            Constructor<?> boundSwing = null;
+            Object boundMain = null, boundOff = null, boundDefault = null;
+            Method boundAttack = null, boundInteract = null;
+            if (animateActions[0] < 0) {
+                try {
+                    Class<?> hand = type("net.minecraft.world.InteractionHand"), animation = type("net.minecraft.world.item.component.SwingAnimation");
+                    Class<?> stack = type("net.minecraft.world.item.ItemStack");
+                    boundMain = Enum.valueOf((Class<Enum>) hand, "MAIN_HAND"); boundOff = Enum.valueOf((Class<Enum>) hand, "OFF_HAND");
+                    boundDefault = animation.getField("DEFAULT").get(null);
+                    boundAttack = stack.getMethod("getAttackAnimation"); boundInteract = stack.getMethod("getInteractAnimation");
+                    boundSwing = type("net.minecraft.network.protocol.game.ClientboundSwingAnimationPacket").getConstructor(int.class, hand, animation);
+                } catch (ReflectiveOperationException | RuntimeException | LinkageError missing) {
+                    boundSwing = null;
+                    plugin.getLogger().warning("NPC arm swings unavailable: " + missing.getClass().getSimpleName());
+                }
+            }
+            swingPacket = boundSwing; mainHand = boundMain; offHand = boundOff; defaultSwing = boundDefault;
+            attackAnimation = boundAttack; interactAnimation = boundInteract;
             Constructor<?> boundEvent = null, boundDamageEvent = null;
             Object boundDamage = null, boundHealth = null;
             try {
@@ -1274,19 +1324,30 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         }
         /** Entity event 3 plays the death sound and, for every body but a player's, the fall; zero health makes a player fall too. */
         private List<Object> die(int id, boolean living) throws ReflectiveOperationException {
-            ByteBuf bytes = Unpooled.buffer(8);
-            Object event;
-            try {
-                Object buffer = friendlyBuffer.newInstance(bytes);
-                bytes.writeInt(id);
-                bytes.writeByte(3);
-                event = entityEvent.newInstance(buffer);
-            } finally { bytes.release(); }
+            Object event = entityEvent(id, (byte) 3);
             // A body that is not a living entity has no health for the client to set.
             return living ? List.of(event, metadataPacket.newInstance(id, List.of(dataValueCreate.invoke(null, healthAccessor, 0f)))) : List.of(event);
         }
-        /** Animation 0 swings the main arm. */
-        private Object swing(int id, int action) throws ReflectiveOperationException {
+        private Object entityEvent(int id, byte event) throws ReflectiveOperationException {
+            ByteBuf bytes = Unpooled.buffer(8);
+            try {
+                Object buffer = friendlyBuffer.newInstance(bytes);
+                bytes.writeInt(id);
+                bytes.writeByte(event);
+                return entityEvent.newInstance(buffer);
+            } finally { bytes.release(); }
+        }
+        /**
+         * The packet that shows a gesture code on this server, or null where it has none. A swing carries the attack or
+         * interact animation of {@code held}, the body's native main-hand item, as vanilla does; the default without one.
+         */
+        private Object gesture(int id, int code, Object held, boolean attack) throws ReflectiveOperationException {
+            if (swingPacket != null && (code == 0 || code == 3)) {
+                Object animation = code == 3 || held == null ? defaultSwing : (attack ? attackAnimation : interactAnimation).invoke(held);
+                return swingPacket.newInstance(id, code == 0 ? mainHand : offHand, animation);
+            }
+            int action = code >= 0 && code < animateActions.length ? animateActions[code] : -1;
+            if (action < 0) return null;
             ByteBuf bytes = Unpooled.buffer(8);
             try {
                 Object buffer = friendlyBuffer.newInstance(bytes);
@@ -1294,6 +1355,12 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                 bytes.writeByte(action);
                 return animate.newInstance(buffer);
             } finally { bytes.release(); }
+        }
+        /** The int constant of this name on the packet class, or -1 where this version has none. */
+        private static int constant(Class<?> packet, String name) throws ReflectiveOperationException {
+            if (name == null) return -1;
+            try { return packet.getField(name).getInt(null); }
+            catch (NoSuchFieldException absent) { return -1; }
         }
         private Object passengers(int vehicle, int[] passengers) throws ReflectiveOperationException {
             ByteBuf bytes = Unpooled.buffer(128);

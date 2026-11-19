@@ -14,6 +14,11 @@ import net.minecraft.world.phys.Vec3;
 final class ProtocolRevision {
     /** 26.3 sends the main-arm swing as a punch with no hand. */
     static Packet<?> swing() { return ServerboundPunchPacket.INSTANCE; }
+    /** 26.3 sends an arm swing in its own packet, with the hand and the swing animation; null for any other packet. */
+    static Object[] armSwing(Packet<?> packet) {
+        return packet instanceof ClientboundSwingAnimationPacket p
+                ? new Object[]{"id", p.entityId(), "hand", p.hand().name(), "animation", p.animation().type().getSerializedName()} : null;
+    }
     static List<Packet<?>> acknowledgments(int id, PositionMoveRotation position) {
         Vec3 v = position.position();
         // Verified against 26.3 ClientPacketListener.handleMovePlayer: the

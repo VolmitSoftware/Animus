@@ -77,7 +77,7 @@ public final class NativeProtocolClient {
         "add_entity", "player_info_update", "player_info_remove", "remove_entities",
         "entity_position_sync", "teleport_entity", "player_position", "system_chat", "respawn",
         "keep_alive", "ping", "disconnect", "chunk_batch_finished", "set_entity_data",
-        "set_entity_motion", "set_equipment", "set_passengers", "animate", "rotate_head", "set_health",
+        "set_entity_motion", "set_equipment", "set_passengers", "animate", "swing_animation", "rotate_head", "set_health",
         "login", "sound", "level_particles", "boss_event", "move_entity_rot", "move_entity_pos_rot",
         "command_suggestions", "open_screen", "container_set_content", "container_set_slot", "container_close", "merchant_offers", "block_update", "section_blocks_update",
         "damage_event", "hurt_animation", "entity_event", "set_action_bar_text");
@@ -326,6 +326,8 @@ public final class NativeProtocolClient {
             event("blocks", "cells", cells);
         }
         else if (packet instanceof ClientboundRotateHeadPacket p) event("head", "id", reflectedId(p), "yaw", p.getYHeadRot());
+        // An arm swing as this version sends it: its own packet on 26.3, an animate action before.
+        else if (ProtocolRevision.armSwing(packet) instanceof Object[] swing) event("arm_swing", swing);
         else if (packet instanceof ClientboundAnimatePacket p) event("animate", "id", p.getId(), "action", p.getAction());
         else if (packet instanceof ClientboundDamageEventPacket p) event("damage_event", "id", p.entityId(), "type", p.sourceType().unwrapKey().map(key -> key.identifier().toString()).orElse(""));
         else if (packet instanceof ClientboundHurtAnimationPacket p) event("hurt_animation", "id", p.id(), "yaw", p.yaw());

@@ -50,6 +50,13 @@ public final class BodyRules {
 
     private BodyRules() {}
 
+    /** The entity event that plays an attack on the bodies {@link #attacksWithEvent} names. */
+    public static final byte ATTACK_EVENT = 4;
+    private static final Set<String> ATTACK_EVENT_BODIES = Set.of("minecraft:iron_golem", "minecraft:ravager", "minecraft:hoglin", "minecraft:zoglin",
+            "minecraft:warden", "minecraft:creaking");
+    /** Bodies whose model never draws an arm swing: vanilla plays their attack from {@link #ATTACK_EVENT} instead. */
+    public static boolean attacksWithEvent(String typeKey) { return ATTACK_EVENT_BODIES.contains(typeKey); }
+
     public static int reservedIds(String typeKey) { return typeKey.equals(DragonBody.TYPE) ? DragonBody.RESERVED_IDS : 1; }
     public static float wireYaw(String typeKey, float yaw) { return typeKey.equals(DragonBody.TYPE) ? DragonBody.wireYaw(yaw) : yaw; }
 

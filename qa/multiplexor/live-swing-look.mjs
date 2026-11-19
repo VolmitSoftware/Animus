@@ -34,7 +34,7 @@ export async function swingLook(t) {
       if (now < last) hits++;
       last = now;
     }
-    const swings = owner.events.slice(from).filter(e => e.event === 'animate' && e.id === body.id && e.action === 0).length;
+    const swings = owner.events.slice(from).filter(e => e.event === 'arm_swing' && e.id === body.id && e.hand === 'MAIN_HAND').length;
     await server.cmd('animus delete sfighter', /Deleted/);
     await server.cmd('kill @e[type=minecraft:husk]', /Killed|No entity/);
     assert(hits >= 3, `only ${hits} hits while sampling`);

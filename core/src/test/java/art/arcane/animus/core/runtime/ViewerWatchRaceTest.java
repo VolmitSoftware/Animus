@@ -208,7 +208,7 @@ class ViewerWatchRaceTest {
         /** The runtime's click handler from the last watch, and the last body spawned. */
         volatile Consumer<Interaction> interactions;
         volatile Body lastSpawned;
-        final AtomicInteger swings = new AtomicInteger(), equipped = new AtomicInteger();
+        final AtomicInteger swings = new AtomicInteger(), attacks = new AtomicInteger(), equipped = new AtomicInteger();
         /** While set, moves stay unfinished in {@link #held}, as on a slow connection. */
         volatile boolean holdMoves;
         /** While set, spawns stay unfinished in {@link #held} too. */
@@ -278,6 +278,7 @@ class ViewerWatchRaceTest {
         @Override public CompletionStage<Void> dragonPhase(Player viewer, Body dragon, int phase) { return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> equipment(Player viewer, Body body, Map<EquipmentSlot, Object> items) { equipped.incrementAndGet(); return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> swing(Player viewer, Body body) { swings.incrementAndGet(); return CompletableFuture.completedFuture(null); }
+        @Override public CompletionStage<Void> attack(Player viewer, Body body) { attacks.incrementAndGet(); return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> look(Player viewer, Body body, art.arcane.animus.core.presentation.BodyLook look) { looks.add(look); return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> despawn(Player viewer, Body body) { sent.add("despawn " + body.uuid()); return CompletableFuture.completedFuture(null); }
         @Override public void forget(Player viewer) { forgotten.incrementAndGet(); }

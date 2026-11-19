@@ -189,6 +189,15 @@ public final class ModeledTransport<P, I> implements BodyTransport<P, I> {
         once(body.uuid(), ModelEngineModule.State.ATTACK);
         return hidden(body.uuid()) ? done() : inner.swing(viewer, body);
     }
+    @Override public CompletionStage<Void> attack(P viewer, BodyTransport.Body body) {
+        if (!modelled(body.uuid())) return inner.attack(viewer, body);
+        once(body.uuid(), ModelEngineModule.State.ATTACK);
+        return hidden(body.uuid()) ? done() : inner.attack(viewer, body);
+    }
+    /** A main-arm swing plays the model's attack as {@link #swing} does; critical hits and other gestures pass through. */
+    @Override public CompletionStage<Void> gesture(P viewer, BodyTransport.Body body, int action) {
+        return action == 0 ? swing(viewer, body) : inner.gesture(viewer, body, action);
+    }
     @Override public CompletionStage<Void> look(P viewer, BodyTransport.Body body, BodyLook look) {
         if (!hidden(body.uuid())) return inner.look(viewer, body, look);
         driver.glowing(body.uuid(), look.traits().glowing());

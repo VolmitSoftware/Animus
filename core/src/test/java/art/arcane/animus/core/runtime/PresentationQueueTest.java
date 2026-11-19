@@ -81,12 +81,13 @@ class PresentationQueueTest {
         turnAll(harness, 3, 40);
         harness.tick(1);
         assertTrue(harness.service.status().contains("presentation=strained"), harness.service.status());
-        int before = harness.transport.swings.get();
+        int before = harness.transport.attacks.get(), swings = harness.transport.swings.get();
         harness.service.attackSwing("crowd-0");
         harness.tick(1);
-        assertEquals(before + 1, harness.transport.swings.get(), "an attack is shown on the next turn, not after the cosmetic pause");
+        assertEquals(before + 1, harness.transport.attacks.get(), "an attack is shown on the next turn, not after the cosmetic pause");
         harness.tick(PresentationPressure.RECOVERY_TICKS + 2);
-        assertEquals(before + 1, harness.transport.swings.get(), "one attack, one swing");
+        assertEquals(before + 1, harness.transport.attacks.get(), "one attack, one attack animation");
+        assertEquals(swings, harness.transport.swings.get(), "an attack is not sent as the swing of placing a block");
     }
 
     @Test
@@ -99,14 +100,14 @@ class PresentationQueueTest {
         harness.transport.holdMoves = true;
         turnAll(harness, 12, 40);
         harness.tick(1);
-        int before = harness.transport.swings.get();
+        int before = harness.transport.attacks.get();
         harness.service.attackSwing("crowd-11");
         harness.tick(15);
-        assertEquals(before, harness.transport.swings.get(), "the queue is full");
+        assertEquals(before, harness.transport.attacks.get(), "the queue is full");
         harness.transport.holdMoves = false;
         for (CompletableFuture<Void> waiting : harness.transport.held) waiting.complete(null);
         harness.tick(3);
-        assertEquals(before + 1, harness.transport.swings.get(), "a held attack is not dropped as stale");
+        assertEquals(before + 1, harness.transport.attacks.get(), "a held attack is not dropped as stale");
     }
 
     @Test

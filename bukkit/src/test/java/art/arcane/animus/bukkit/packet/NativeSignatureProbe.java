@@ -51,6 +51,20 @@ public final class NativeSignatureProbe {
             method(packets + "ClientboundEntityPositionSyncPacket", "<init>", "(ILnet/minecraft/world/entity/PositionMoveRotation;Z)V");
             method(entity + "PositionMoveRotation", "<init>", "(" + vec3 + vec3 + "FF)V");
         }
+        // Gestures: 26.3 gives arm swings their own packet and renumbers the animate actions that remain.
+        method(packets + "ClientboundAnimatePacket", "<init>", "(" + friendly + ")V");
+        method(packets + "ClientboundEntityEventPacket", "<init>", "(" + friendly + ")V");
+        for (String action : List.of("WAKE_UP", "CRITICAL_HIT", "MAGIC_CRITICAL_HIT")) field(packets + "ClientboundAnimatePacket", action, "I");
+        if (version.equals("26.3")) {
+            String swing = "Lnet/minecraft/world/item/component/SwingAnimation;";
+            method(packets + "ClientboundSwingAnimationPacket", "<init>", "(ILnet/minecraft/world/InteractionHand;" + swing + ")V");
+            field("net/minecraft/world/item/component/SwingAnimation", "DEFAULT", swing);
+            method("net/minecraft/world/item/ItemStack", "getAttackAnimation", "()" + swing);
+            method("net/minecraft/world/item/ItemStack", "getInteractAnimation", "()" + swing);
+            for (String hand : List.of("MAIN_HAND", "OFF_HAND")) field("net/minecraft/world/InteractionHand", hand, "Lnet/minecraft/world/InteractionHand;");
+        } else {
+            for (String action : List.of("SWING_MAIN_HAND", "SWING_OFF_HAND")) field(packets + "ClientboundAnimatePacket", action, "I");
+        }
         method(packets + "ClientboundRotateHeadPacket", "<init>", "(" + friendly + ")V");
         method(packets + "ClientboundSetPassengersPacket", "<init>", "(" + friendly + ")V");
         method(packets + "ClientboundSetPassengersPacket", "getVehicle", "()I");

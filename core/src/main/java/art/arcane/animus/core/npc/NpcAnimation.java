@@ -5,7 +5,8 @@ import java.util.Optional;
 
 /**
  * A vanilla animation an NPC shows: a one-off gesture every viewer sees once, or a pose or held-item change that lasts
- * until another changes it. {@code gesture} is the client's animate action, or {@link #HURT_FLASH} for the hurt flash.
+ * until another changes it. {@code gesture} is the animate action before 26.3, which each packet transport sends as its
+ * own Minecraft version's packet, or {@link #HURT_FLASH} for the hurt flash.
  */
 public enum NpcAnimation {
     SWING(0, null), SWING_OFFHAND(3, null), HURT(NpcAnimation.HURT_FLASH, null), CRIT(4, null), MAGIC_CRIT(5, null),
@@ -19,7 +20,7 @@ public enum NpcAnimation {
 
     NpcAnimation(int gesture, NpcPose pose) { this.gesture = gesture; this.pose = pose; }
 
-    /** The animate action or {@link #HURT_FLASH}; -1 when the animation is not a gesture. */
+    /** The animate action before 26.3 or {@link #HURT_FLASH}; -1 when the animation is not a gesture. */
     public int gesture() { return gesture; }
     /** The pose the animation leaves the NPC in, or empty when it keeps its pose. */
     public Optional<NpcPose> pose() { return Optional.ofNullable(pose); }

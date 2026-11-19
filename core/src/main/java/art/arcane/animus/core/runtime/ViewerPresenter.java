@@ -401,10 +401,6 @@ final class ViewerPresenter<P, I> {
         } catch (RuntimeException failure) { fail(viewer, "attributes", body.value, failure); }
         return true;
     }
-    /**
-     * One swing for every attack since this viewer's last, admitted like a move: an attack is feedback for a hit the
-     * viewer may feel, so it neither waits for cosmetic budget nor goes stale. A failed send is recorded and not retried.
-     */
     /** The critical hit and enchanted sparkle of the latest hit, admitted like an attack swing for the same reason. */
     private boolean critical(Viewer viewer, Presented body) {
         if (!admit(viewer, PresentationPressure.Tier.AUTHORITATIVE)) return false;
@@ -414,10 +410,14 @@ final class ViewerPresenter<P, I> {
         if ((kind & PersistedNpcService.MAGIC) != 0) sendCosmetic(viewer, body, "enchanted hit", () -> service.packets.gesture(viewer.player, body.body, 5));
         return true;
     }
+    /**
+     * One attack animation for every attack since this viewer's last, admitted like a move: an attack is feedback for a
+     * hit the viewer may feel, so it neither waits for cosmetic budget nor goes stale. A failed send is recorded and not retried.
+     */
     private boolean attackSwing(Viewer viewer, Presented body) {
         if (!admit(viewer, PresentationPressure.Tier.AUTHORITATIVE)) return false;
         body.deliveredAttackSwings = body.value.attackSwings;
-        sendCosmetic(viewer, body, "attack swing", () -> service.packets.swing(viewer.player, body.body));
+        sendCosmetic(viewer, body, "attack swing", () -> service.packets.attack(viewer.player, body.body));
         return true;
     }
     /**

@@ -15,6 +15,13 @@ import net.minecraft.world.phys.Vec3;
  */
 final class ProtocolRevision {
     static Packet<?> swing() { return new ServerboundSwingPacket(net.minecraft.world.InteractionHand.MAIN_HAND); }
+    /** Before 26.3 an arm swing is an animate action; null for any other packet. */
+    static Object[] armSwing(Packet<?> packet) {
+        if (!(packet instanceof ClientboundAnimatePacket p)) return null;
+        if (p.getAction() == ClientboundAnimatePacket.SWING_MAIN_HAND) return new Object[]{"id", p.getId(), "hand", "MAIN_HAND", "animation", "item"};
+        if (p.getAction() == ClientboundAnimatePacket.SWING_OFF_HAND) return new Object[]{"id", p.getId(), "hand", "OFF_HAND", "animation", "item"};
+        return null;
+    }
     static List<Packet<?>> acknowledgments(int id, PositionMoveRotation position) {
         // Both exact client jars send the ID acknowledgment then PosRot.
         return List.of(new ServerboundAcceptTeleportationPacket(id),

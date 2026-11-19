@@ -168,10 +168,10 @@ export async function motion(t) {
     const body = await owner.body(uuid);
     const from = owner.events.length;
     await server.runConsole('sleeper', 'live:gestures');
-    const swing = await owner.wait(e => e.event === 'animate' && e.id === body.id && e.action === 3, from, 8000);
+    const swing = await owner.wait(e => e.event === 'arm_swing' && e.id === body.id && e.hand === 'OFF_HAND', from, 8000);
     const pose = await owner.wait(e => e.event === 'metadata' && e.id === body.id && e.fields.some(f => f.value === 'SLEEPING'), from, 8000);
     await server.cmd('animus delete sleeper', /Deleted/);
-    return `off-hand swing (animate action ${swing.action}) and pose SLEEPING at event ${pose.sequence}`;
+    return `off-hand swing at event ${swing.sequence} and pose SLEEPING at event ${pose.sequence}`;
   });
 
   await check('anchors: saved by command, walked to and teleported to in another world', async () => {

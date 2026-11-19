@@ -66,7 +66,6 @@ import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
 import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
-import net.minecraft.network.protocol.game.ClientboundAnimatePacket;
 import net.minecraft.network.protocol.game.ClientboundRotateHeadPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket;
@@ -112,6 +111,8 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         private final List<Packet<ClientGamePacketListener>> nameTeam;
         /** Bound on the first write so probe bodies never register. Server thread only. */
         private Load traffic;
+        /** The main-hand item last shown on the body, whose animation its swings use; null before any. Server thread only. */
+        private ItemStack mainHand;
 
         private Body(VanillaBodyTransport owner, int entityId, int baseIds, UUID uuid, String typeKey, EntityType<?> type, SeatGeometry seat,
                      ClientboundPlayerInfoUpdatePacket playerInfo, BodyLook look, List<Packet<ClientGamePacketListener>> nameTeam) {
@@ -362,18 +363,23 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
     /** The main-arm swing a player shows when placing a block. */
     @Override public CompletionStage<Void> swing(ServerPlayer viewer, BodyTransport.Body presented) { return gesture(viewer, presented, 0); }
 
-    /** One vanilla animate action: an arm swing, waking up or a critical hit. */
+    /** One melee attack: the main-arm swing, or the body type's own attack animation. */
+    @Override public CompletionStage<Void> attack(ServerPlayer viewer, BodyTransport.Body presented) {
+        Body body = checkBody(presented);
+        Session session = existing(viewer);
+        if (session == null) return unwatched("Viewer is not watched");
+        if (session.visible.get(body.entityId) != body) return failed("Body is not visible to this viewer");
+        return send(session, body, PacketKind.METADATA, List.of(BodyGestures.attack(body.entityId, body.typeKey, body.mainHand)));
+    }
+
+    /** One vanilla gesture: an arm swing, waking up or a critical hit. */
     @Override public CompletionStage<Void> gesture(ServerPlayer viewer, BodyTransport.Body presented, int action) {
         Body body = checkBody(presented);
         Session session = existing(viewer);
         if (session == null) return unwatched("Viewer is not watched");
         if (session.visible.get(body.entityId) != body) return failed("Body is not visible to this viewer");
-        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer(8));
-        try {
-            buffer.writeVarInt(body.entityId);
-            buffer.writeByte(action);
-            return send(session, body, PacketKind.METADATA, List.of(ClientboundAnimatePacket.STREAM_CODEC.decode(buffer)));
-        } finally { buffer.release(); }
+        Packet<ClientGamePacketListener> packet = BodyGestures.gesture(body.entityId, action, body.mainHand);
+        return packet == null ? CompletableFuture.completedFuture(null) : send(session, body, PacketKind.METADATA, List.of(packet));
     }
 
     /** A damage event from no entity: the client flashes the body red and plays its own type's hurt sound. */
@@ -476,8 +482,11 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (session == null) return unwatched("Viewer is not watched");
         if (session.visible.get(body.entityId) != body) return failed("Body is not visible to this viewer");
         List<Pair<net.minecraft.world.entity.EquipmentSlot, ItemStack>> entries = new ArrayList<>(items.size());
-        for (Map.Entry<EquipmentSlot, ItemStack> item : BodyRules.shownEquipment(body.typeKey(), items).entrySet())
-            entries.add(Pair.of(net.minecraft.world.entity.EquipmentSlot.valueOf(BodyRules.nativeSlot(item.getKey())), item.getValue().copy()));
+        for (Map.Entry<EquipmentSlot, ItemStack> item : BodyRules.shownEquipment(body.typeKey(), items).entrySet()) {
+            ItemStack shown = item.getValue().copy();
+            if (item.getKey() == EquipmentSlot.MAIN_HAND) body.mainHand = shown;
+            entries.add(Pair.of(net.minecraft.world.entity.EquipmentSlot.valueOf(BodyRules.nativeSlot(item.getKey())), shown));
+        }
         if (entries.isEmpty()) return CompletableFuture.completedFuture(null);
         return send(session, body, PacketKind.EQUIPMENT, List.of(new ClientboundSetEquipmentPacket(body.entityId, entries)));
     }

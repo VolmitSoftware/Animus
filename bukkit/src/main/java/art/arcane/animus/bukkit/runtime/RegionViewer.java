@@ -357,13 +357,13 @@ final class RegionViewer {
         return true;
     }
     /**
-     * One swing for every attack the owner published since the last, admitted like a move: an attack is feedback for a
-     * hit the viewer may feel, so it neither waits for cosmetic budget nor goes stale. A failed send is not retried.
+     * One attack animation for every attack the owner published since the last, admitted like a move: an attack is
+     * feedback for a hit the viewer may feel, so it neither waits for cosmetic budget nor goes stale. A failed send is not retried.
      */
     private void attackSwing(Presented body, long attackSwings) {
         body.attackSwings = attackSwings;
         try {
-            handOver(() -> host.packets.swing(player, body.body)).whenComplete((nothing, failure) -> {
+            handOver(() -> host.packets.attack(player, body.body)).whenComplete((nothing, failure) -> {
                 if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) host.cosmeticFailed(this, "attack swing", body.actor, failure); });
             });
         } catch (RuntimeException failure) { host.cosmeticFailed(this, "attack swing", body.actor, failure); }

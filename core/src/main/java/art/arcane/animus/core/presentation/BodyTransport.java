@@ -88,7 +88,15 @@ public interface BodyTransport<P, I> extends AutoCloseable {
     default CompletionStage<Void> die(P viewer, Body body) { return java.util.concurrent.CompletableFuture.completedFuture(null); }
     /** Swings the body's main arm once, as a player placing or breaking a block does. */
     default CompletionStage<Void> swing(P viewer, Body body) { return java.util.concurrent.CompletableFuture.completedFuture(null); }
-    /** A vanilla animate action: 0 swings the main arm, 2 wakes up, 3 swings the off hand, 4 and 5 show critical hits. */
+    /**
+     * Shows one melee attack as vanilla shows it on a body of this type: the main-arm swing, or the type's own attack
+     * animation where it has one ({@link BodyRules#attacksWithEvent}).
+     */
+    default CompletionStage<Void> attack(P viewer, Body body) { return swing(viewer, body); }
+    /**
+     * A gesture by its animate action before 26.3: 0 swings the main arm, 2 wakes up, 3 swings the off hand, 4 and 5 show
+     * critical hits. Each transport sends it as its own Minecraft version's packet.
+     */
     default CompletionStage<Void> gesture(P viewer, Body body, int action) { return action == 0 ? swing(viewer, body) : java.util.concurrent.CompletableFuture.completedFuture(null); }
     /**
      * Makes a visible body invisible to one viewer, or visible again, as a model drawn in its place needs. Its passengers,
