@@ -25,8 +25,8 @@ TaskProvider verification = tasks.register('verifyArtifact') {
             }
             null
         }
-        // The strings of a class file's constant pool: what ldc loads, such as a class name passed to Class.forName.
-        Closure<List<String>> stringConstants = { byte[] bytecode ->
+        // A class file's constant pool: every text in it, and the strings ldc loads, such as a class name passed to Class.forName.
+        Closure<Map<String, Object>> constantPool = { byte[] bytecode ->
             DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytecode))
             input.skipBytes(8)
             int count = input.readUnsignedShort()
@@ -44,7 +44,7 @@ TaskProvider verification = tasks.register('verifyArtifact') {
                     default: throw new GradleException("${artifact.name}: unknown constant pool tag ${tag}")
                 }
             }
-            strings.collect { Integer index -> texts[index] }
+            [texts: texts.values(), strings: strings.collect { Integer index -> texts[index] }]
         }
         String metadataPath = metadataPaths[platform]
         String entrypoint = entrypoints[platform]
@@ -91,8 +91,16 @@ TaskProvider verification = tasks.register('verifyArtifact') {
                 // A class name in a string is meant for the server's own copy of a library it shares with this jar; Shadow
                 // relocates it like the bundled copy, and the lookup then finds the bundled class instead of the server's.
                 archive.getInputStream(entry).withCloseable { InputStream stream ->
-                    String relocated = stringConstants(stream.readAllBytes()).find { String text -> relocatedServerNames.any { String name -> text.contains(name) } }
+                    Map<String, Object> pool = constantPool(stream.readAllBytes())
+                    String relocated = pool.strings.find { String text -> relocatedServerNames.any { String name -> text.contains(name) } }
                     require(relocated == null, "${entry.name} names ${relocated}, a relocated class the server provides; resolve the server's class from a type it returns")
+                    // Attribute names sit in the pool only while an attribute uses them.
+                    Collection<String> texts = pool.texts
+                    require(!texts.contains('LocalVariableTable') && !texts.contains('LocalVariableTypeTable'), "${entry.name} keeps local variable tables")
+                    require(platform != 'bukkit' || !texts.contains('MethodParameters'), "${entry.name} keeps parameter names")
+                    boolean own = classPath.startsWith(namespace) && !classPath.startsWith(internal)
+                    require(!own || !texts.contains('Code') || texts.contains('LineNumberTable') && texts.contains('SourceFile'),
+                        "${entry.name} lost the line numbers or source file its stack traces need")
                 }
                 if (classPath.startsWith(namespace) && !classPath.startsWith(internal)) {
                     archive.getInputStream(entry).withCloseable { InputStream stream ->

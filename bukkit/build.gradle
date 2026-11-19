@@ -107,6 +107,8 @@ pluginPackaging {
             packedPayloadOnlyPrefixes = ['animus/schema/']
             stripDirectories = true
             stripLocalVariables = true
+            // Every Director @Param names itself, so nothing reads compiled parameter names.
+            stripParameterNames = true
             requiredEntries = ['plugin.yml', "${namespace}/bukkit/AnimusPlugin.class".toString()]
             forbiddenPrefixes = ['org/bukkit/', 'io/papermc/', 'net/minecraft/', 'art/arcane/volmit/packaging/', 'org/gradle/']
             // Only the bundled libraries are tree-shaken. Animus's own classes are read by Gson and the config codecs, and
