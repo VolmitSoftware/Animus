@@ -208,11 +208,29 @@ class BodyLookTest {
                 "a villager's name is a text row, not its name tag");
     }
 
-    @Test void aSkeletonOrDrownedAimsAsAnAggressiveMobAndAPillagerChargesItsCrossbow() {
-        for (String type : List.of("minecraft:skeleton", "minecraft:stray", "minecraft:wither_skeleton", "minecraft:bogged", "minecraft:parched", "minecraft:drowned"))
-            assertEquals(BodyRules.Aim.AGGRESSIVE, BodyRules.aim(type), type);
-        assertEquals(BodyRules.Aim.CHARGING, BodyRules.aim("minecraft:pillager"));
-        for (String type : List.of("minecraft:player", "minecraft:armor_stand", "minecraft:zombie", "minecraft:villager"))
-            assertEquals(BodyRules.Aim.NONE, BodyRules.aim(type), type + " shows its raised item alone");
+    @Test void mobsRaiseTheirArmsInAFightAsVanillaMobsDo() {
+        for (String type : List.of("minecraft:vindicator", "minecraft:pillager", "minecraft:piglin", "minecraft:piglin_brute", "minecraft:zombie", "minecraft:husk",
+                "minecraft:drowned", "minecraft:zombie_villager", "minecraft:zombified_piglin", "minecraft:skeleton", "minecraft:stray", "minecraft:wither_skeleton",
+                "minecraft:bogged", "minecraft:parched")) {
+            assertTrue(BodyRules.mobFlags(type), type);
+            assertTrue(BodyRules.aggressive(type, true, false), type + " fights in melee with its arms up");
+            assertFalse(BodyRules.aggressive(type, false, false), type + " is calm out of a fight");
+        }
+        for (String type : List.of("minecraft:skeleton", "minecraft:stray", "minecraft:wither_skeleton", "minecraft:bogged", "minecraft:parched", "minecraft:drowned",
+                "minecraft:illusioner"))
+            assertTrue(BodyRules.aggressive(type, false, true), type + " aims its bow or trident as an aggressive mob");
+        assertFalse(BodyRules.aggressive("minecraft:illusioner", true, false), "an illusioner's fight pose is its bow, so it keeps its arms crossed in melee");
+        assertFalse(BodyRules.aggressive("minecraft:vindicator", false, true), "a vindicator shows its weapon only in a melee fight");
+        for (String type : List.of("minecraft:player", "minecraft:armor_stand", "minecraft:villager", "minecraft:evoker", "minecraft:giant"))
+            assertFalse(BodyRules.mobFlags(type), type + " sends no mob flags");
+        assertTrue(BodyRules.chargingFlag("minecraft:pillager"));
+        assertFalse(BodyRules.chargingFlag("minecraft:piglin"));
+    }
+
+    @Test void aFightingBodyKeepsItsSharedFlags() {
+        BodyLook look = BodyLook.of(ID, "minecraft:vindicator", "Guard", NpcAppearance.PLAIN).moving(NpcPose.STANDING, BodyLook.FIGHTING);
+        assertTrue(look.fighting());
+        assertFalse(look.usingItem());
+        assertEquals(0, look.sharedFlags(false));
     }
 }

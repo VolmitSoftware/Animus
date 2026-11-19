@@ -22,7 +22,7 @@ final class NativePresentation {
     private final Object sharedFlags, pose, standFlags, translation, billboard, text, background, lineWidth, styleFlags, viewRange, interpolationStart,
             interpolationDuration, livingFlags;
     private final Map<BodyRules.BabyFlag, Object> babies = new EnumMap<>(BodyRules.BabyFlag.class);
-    /** The mob flags and a pillager's charging flag, which a skeleton, drowned or pillager aims with; null where this server keeps them elsewhere. */
+    /** The mob flags, whose aggressive bit mobs show in a fight, and a pillager's charging flag; null where this server keeps them elsewhere. */
     private final Object mobFlags, charging;
     /** The team colour setter, and the enum its argument names: ChatFormatting on 26.1, TeamColor inside an Optional later. */
     private final Method setColor;
@@ -124,7 +124,7 @@ final class NativePresentation {
         byte flags = look.sharedFlags(invisible);
         if (flags != 0) values.add(dataValue.invoke(null, sharedFlags, flags));
         if (look.livingFlags() != 0 && VariantWire.living(typeKey)) values.add(dataValue.invoke(null, livingFlags, look.livingFlags()));
-        if (look.usingItem()) aim(values, typeKey, true);
+        aim(values, typeKey, look, false);
         Optional<BodyRules.BabyFlag> baby = look.traits().baby() ? BodyRules.babyFlag(typeKey) : Optional.empty();
         if (baby.isPresent() && babies.containsKey(baby.get())) values.add(dataValue.invoke(null, babies.get(baby.get()), Boolean.TRUE));
         if ((look.pose() != NpcPose.STANDING && look.pose() != NpcPose.SITTING) || (look.motion() & BodyLook.GLIDING) != 0)
@@ -168,17 +168,18 @@ final class NativePresentation {
         List<Object> values = new ArrayList<>(List.of(dataValue.invoke(null, sharedFlags, look.sharedFlags(invisible)),
                 dataValue.invoke(null, pose, Enum.valueOf((Class) poses, look.lookPose(typeKey)))));
         if (VariantWire.living(typeKey)) values.add(dataValue.invoke(null, livingFlags, look.livingFlags()));
-        aim(values, typeKey, look.usingItem());
+        aim(values, typeKey, look, true);
         return values;
     }
 
-    /** A skeleton or drowned aims as an aggressive mob and a pillager charges its crossbow while its item is in use. */
-    private void aim(List<Object> values, String typeKey, boolean using) throws ReflectiveOperationException {
-        switch (BodyRules.aim(typeKey)) {
-            case AGGRESSIVE -> { if (mobFlags != null) values.add(dataValue.invoke(null, mobFlags, (byte) (using ? BodyLook.AGGRESSIVE : 0))); }
-            case CHARGING -> { if (charging != null) values.add(dataValue.invoke(null, charging, using)); }
-            case NONE -> { }
-        }
+    /**
+     * The aggressive bit of a mob that fights in melee or draws, and a pillager's charging flag while it charges. A spawn
+     * sends only what is set; a look change sends both, so a calm body lowers its arms again.
+     */
+    private void aim(List<Object> values, String typeKey, BodyLook look, boolean always) throws ReflectiveOperationException {
+        boolean aggressive = BodyRules.aggressive(typeKey, look.fighting(), look.usingItem());
+        if (mobFlags != null && BodyRules.mobFlags(typeKey) && (always || aggressive)) values.add(dataValue.invoke(null, mobFlags, (byte) (aggressive ? BodyLook.AGGRESSIVE : 0)));
+        if (charging != null && BodyRules.chargingFlag(typeKey) && (always || look.usingItem())) values.add(dataValue.invoke(null, charging, look.usingItem()));
     }
 
     /** Formatted text as a styled vanilla component, so hex colours render; a plain literal would show them as codes. */

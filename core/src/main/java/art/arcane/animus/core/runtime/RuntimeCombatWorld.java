@@ -140,6 +140,7 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
     @Override public double yaw(UUID npc) { return living.yaw(npc); }
     @Override public void swing(UUID npc) { living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> living.attackSwing(active.id())); }
     @Override public void drawing(UUID npc, boolean drawing) { living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> living.drawing(active.id(), drawing)); }
+    @Override public void fighting(UUID npc, boolean fighting) { living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> living.fighting(active.id(), fighting)); }
     @Override public void hold(UUID npc, Optional<art.arcane.animus.core.npc.NpcItem> item) {
         living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> living.holdItem(active.id(), item));
     }

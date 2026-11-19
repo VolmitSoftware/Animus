@@ -168,6 +168,9 @@ class MockCombatWorld implements CombatWorld {
     @Override public void face(UUID npc, Vec3 point) {}
     @Override public void swing(UUID npc) { swings.merge(npc, 1, Integer::sum); }
     @Override public void drawing(UUID npc, boolean drawing) { drawn.put(npc, drawing); drawChanges++; shown.add(drawing ? "draw" : "lower"); }
+    /** Whether each NPC shows itself fighting in melee now. */
+    final Map<UUID, Boolean> fighting = new HashMap<>();
+    @Override public void fighting(UUID npc, boolean fighting) { this.fighting.put(npc, fighting); shown.add(fighting ? "fight" : "calm"); }
     @Override public double yaw(UUID npc) { return yaw; }
     @Override public DamageOutcome damageReal(UUID attacker, CombatTarget target, double amount, DamageKind kind, double reach, double knockback, boolean victimDrops) {
         if (realStatus != DamageStatus.APPLIED) return new DamageOutcome(realStatus, 0, false);

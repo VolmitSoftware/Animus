@@ -70,6 +70,11 @@ public interface CombatWorld {
      * using it. {@code category} is the sound category, {@code players} or {@code hostile}.
      */
     default void sound(UUID npc, String sound, String category, float volume, float pitch) {}
+    /**
+     * Shows the NPC fighting in melee while true, from the chase to the end of the fight, as a vanilla mob's melee attack
+     * does: a vindicator uncrosses its arms and shows its weapon, and other mobs whose arms follow a fight raise them.
+     */
+    default void fighting(UUID npc, boolean fighting) {}
     /** Shows this item in the NPC's main hand, or its definition's own item again when empty. The definition is not changed. */
     default void hold(UUID npc, Optional<art.arcane.animus.core.npc.NpcItem> item) {}
     /** Shows a critical hit on the NPC, the enchanted hit sparkle, or both, as vanilla shows them on a struck body. */

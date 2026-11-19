@@ -29,6 +29,8 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
     public static final int ON_FIRE = 0x01;
     /** A {@link #motion} bit outside the shared flags: the body holds its main-hand item in use, as a drawn bow. */
     public static final int USING_ITEM = 0x100;
+    /** A {@link #motion} bit outside the shared flags: the body fights in melee, which mobs whose arms follow a fight show. */
+    public static final int FIGHTING = 0x200;
     /** The living-entity flag of a trident's riptide spin, which a spinning body shows. */
     public static final int SPIN_ATTACK = 0x04;
     /** The mob flag of an aggressive mob, with which a skeleton draws its bow and a drowned raises its trident. */
@@ -60,7 +62,7 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
     public BodyLook {
         rows = List.copyOf(rows);
         Objects.requireNonNull(style); Objects.requireNonNull(pose); Objects.requireNonNull(armorStand); Objects.requireNonNull(traits);
-        if ((motion & ~(ON_FIRE | SNEAKING | SPRINTING | GLIDING | USING_ITEM)) != 0) throw new IllegalArgumentException("motion holds only the burning, sneaking, sprinting, gliding and using-item bits");
+        if ((motion & ~(ON_FIRE | SNEAKING | SPRINTING | GLIDING | USING_ITEM | FIGHTING)) != 0) throw new IllegalArgumentException("motion holds only the burning, sneaking, sprinting, gliding, using-item and fighting bits");
     }
 
     /** This look in another pose and motion, as a recording playback shows it. */
@@ -79,6 +81,8 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
 
     /** Whether the body holds its main-hand item in use: the definition's {@code usingItem}, or a bow drawn in a fight. */
     public boolean usingItem() { return traits.usingItem() || (motion & USING_ITEM) != 0; }
+    /** Whether the body fights in melee now. */
+    public boolean fighting() { return (motion & FIGHTING) != 0; }
 
     /** The living-entity flags this look sends: the raised item and the riptide spin a spinning body shows. */
     public byte livingFlags() { return (byte) (livingFlags(usingItem()) | (pose == NpcPose.SPINNING ? SPIN_ATTACK : 0)); }

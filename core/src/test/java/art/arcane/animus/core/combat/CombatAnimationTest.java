@@ -152,4 +152,43 @@ class CombatAnimationTest {
         assertEquals(1, world.swings.getOrDefault(npc, 0));
         assertFalse(world.drawn.getOrDefault(npc, false));
     }
+
+    @Test void aMeleeFighterShowsItIsFightingFromTheChaseUntilTheFightEnds() {
+        UUID npc = combatant(MELEE);
+        UUID zombie = world.monster("minecraft:zombie", 8, 0);
+        run(1);
+        assertTrue(world.fighting.getOrDefault(npc, false), "fighting while it closes in, as a vanilla mob's melee attack is");
+        world.moveReal(zombie, 2, 0);
+        run(2);
+        assertTrue(world.fighting.get(npc), "and while it hits");
+        world.real.remove(zombie);
+        run(5);
+        assertFalse(world.fighting.get(npc), "calm again once the fight ends");
+    }
+
+    @Test void aFighterThatShootsShowsNoMeleeFightUntilItClosesIn() {
+        String both = "{\"targets\":{\"categories\":[\"monsters\"]},\"targeting\":{\"scanIntervalTicks\":1,\"scanRange\":30},\"pursuit\":{\"giveUpRange\":40,\"closeChase\":false},"
+                + "\"melee\":{\"damage\":4,\"reach\":3,\"cooldownTicks\":20},\"ranged\":{\"enabled\":true,\"range\":30,\"cooldownTicks\":20}}";
+        UUID npc = combatant(both, holding("minecraft:bow"));
+        UUID zombie = world.monster("minecraft:zombie", 10, 0);
+        run(5);
+        assertFalse(world.fighting.getOrDefault(npc, false), "shooting is not a melee fight");
+        assertTrue(world.drawn.get(npc));
+        world.moveReal(zombie, 2, 0);
+        run(2);
+        assertTrue(world.fighting.get(npc), "fighting once the target is in reach");
+        world.moveReal(zombie, 10, 0);
+        run(2);
+        assertFalse(world.fighting.get(npc), "switching back to the bow ends the melee pose");
+    }
+
+    @Test void deathEndsTheFightPose() {
+        UUID npc = combatant(MELEE);
+        world.monster("minecraft:zombie", 2, 0);
+        run(2);
+        assertTrue(world.fighting.get(npc));
+        CombatTesting.hit(engine(), npc, new TargetRef(TargetKind.PLAYER, UUID.randomUUID()), MockCombatWorld.at(1, 64, 0), 100);
+        run(1);
+        assertFalse(world.fighting.get(npc), "a dead NPC is not fighting");
+    }
 }

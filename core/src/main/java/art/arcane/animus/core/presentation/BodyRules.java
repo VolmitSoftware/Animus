@@ -114,16 +114,25 @@ public final class BodyRules {
     public static boolean canBeBaby(String type) { return babyFlag(type).isPresent(); }
 
     /**
-     * What a body with its main-hand item in use shows besides the raised item: a skeleton draws its bow and a drowned
-     * raises its trident only as an aggressive mob, and a pillager charges its crossbow with its own charging flag.
+     * Mobs whose arms follow the aggressive bit of the mob flags in a melee fight, as a vanilla mob's melee attack sets it:
+     * a vindicator uncrosses its arms and shows its weapon, a pillager, piglin or piglin brute takes its attack pose,
+     * zombies raise their arms, and a skeleton holds out a sword.
      */
-    public enum Aim { NONE, AGGRESSIVE, CHARGING }
-    private static final Set<String> AGGRESSIVE_AIM = Set.of("minecraft:skeleton", "minecraft:stray", "minecraft:wither_skeleton", "minecraft:bogged",
-            "minecraft:parched", "minecraft:drowned");
-    public static Aim aim(String type) {
-        if (AGGRESSIVE_AIM.contains(type)) return Aim.AGGRESSIVE;
-        return type.equals("minecraft:pillager") ? Aim.CHARGING : Aim.NONE;
+    private static final Set<String> MELEE_AGGRESSIVE = Set.of("minecraft:vindicator", "minecraft:pillager", "minecraft:piglin", "minecraft:piglin_brute",
+            "minecraft:zombie", "minecraft:husk", "minecraft:drowned", "minecraft:zombie_villager", "minecraft:zombified_piglin", "minecraft:skeleton",
+            "minecraft:stray", "minecraft:wither_skeleton", "minecraft:bogged", "minecraft:parched");
+    /** Mobs that aim only as aggressive mobs: a skeleton or illusioner draws its bow, a drowned raises its trident. */
+    private static final Set<String> DRAW_AGGRESSIVE = Set.of("minecraft:skeleton", "minecraft:stray", "minecraft:wither_skeleton", "minecraft:bogged",
+            "minecraft:parched", "minecraft:drowned", "minecraft:illusioner");
+
+    /** Whether a body of this type sends the mob flags, whose aggressive bit it shows in a fight. */
+    public static boolean mobFlags(String type) { return MELEE_AGGRESSIVE.contains(type) || DRAW_AGGRESSIVE.contains(type); }
+    /** Whether the body shows the aggressive bit: while it fights in melee, or while it draws, for the mobs whose look needs it. */
+    public static boolean aggressive(String type, boolean fighting, boolean drawing) {
+        return fighting && MELEE_AGGRESSIVE.contains(type) || drawing && DRAW_AGGRESSIVE.contains(type);
     }
+    /** Whether a body charges its crossbow with its own charging flag, as a pillager does. */
+    public static boolean chargingFlag(String type) { return type.equals("minecraft:pillager"); }
 
     private static final Set<EquipmentSlot> WORN = Collections.unmodifiableSet(EnumSet.of(EquipmentSlot.MAIN_HAND, EquipmentSlot.OFF_HAND,
             EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET));

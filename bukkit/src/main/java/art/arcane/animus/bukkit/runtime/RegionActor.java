@@ -214,7 +214,7 @@ final class RegionActor implements RegionOwner.Body {
     private long lookRevision;
     private BodyLook look;
     /** A fight holds the bow drawn, and fire or lava sets the body burning, both shown through {@link #look}. */
-    private boolean drawing, burning;
+    private boolean drawing, fighting, burning;
     /** How far an idle fall has carried the body, for fall damage. */
     private final FallTracker fall = new FallTracker();
     private String displayName;
@@ -286,7 +286,7 @@ final class RegionActor implements RegionOwner.Body {
         waypoints = WaypointSettings.parse(spec.definition()).map((WaypointSettings declared) -> progress(declared, WaypointProgress.INLINE)).orElse(null);
         recordingSource = RecordingSource.parse(spec.definition().json()).orElse(null);
         performance.run = null; performance.held = null; performance.playing = false; stepLeg = null; stepProgress = null;
-        lookPose = spec.appearance().pose(); lookMotion = 0; look = null; lookRevision++; drawing = false; burning = false;
+        lookPose = spec.appearance().pose(); lookMotion = 0; look = null; lookRevision++; drawing = false; fighting = false; burning = false;
         routeReadWanted = waypoints == null ? routeSource != null || recordingSource != null : !routeReady();
         rigId = RigReference.parse(spec.definition().json()).orElse(null);
         rig = null; rigProblem = null; rigGeneration = -1;
@@ -1856,7 +1856,7 @@ final class RegionActor implements RegionOwner.Body {
     private static boolean placed(NpcPose shown) { return shown == NpcPose.SITTING || shown == NpcPose.SLEEPING || shown == NpcPose.BELLYFLOP || shown == NpcPose.SPINNING; }
     /** The playback's pose and motion; a bow drawn in a fight stays drawn across them. */
     private void changeLook(NpcPose nextPose, int motion) {
-        int shown = motion | (drawing ? BodyLook.USING_ITEM : 0) | (burning ? BodyLook.ON_FIRE : 0);
+        int shown = motion | (drawing ? BodyLook.USING_ITEM : 0) | (fighting ? BodyLook.FIGHTING : 0) | (burning ? BodyLook.ON_FIRE : 0);
         if (lookPose == nextPose && lookMotion == shown) return;
         // A seat, a bellyflop and a spin draw the body somewhere else, so viewers are sent its pose again.
         if (placed(lookPose) || placed(nextPose)) pose++;
@@ -1868,6 +1868,13 @@ final class RegionActor implements RegionOwner.Body {
         if (drawing == drawn) return;
         drawing = drawn;
         changeLook(lookPose, lookMotion & ~BodyLook.USING_ITEM);
+        publish(true);
+    }
+    /** Shows the body fighting in melee, or calm again, for every viewer. */
+    void fighting(boolean shown) {
+        if (fighting == shown) return;
+        fighting = shown;
+        changeLook(lookPose, lookMotion & ~BodyLook.FIGHTING);
         publish(true);
     }
     /** Shows or hides the body burning for every viewer. */

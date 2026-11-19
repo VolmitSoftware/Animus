@@ -702,6 +702,14 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         value.drawing = drawing;
         changeLook(value, value.lookPose, value.lookMotion & ~BodyLook.USING_ITEM);
     }
+    /** Shows the NPC fighting in melee, or calm again, for everyone who sees it. */
+    public void fighting(String id, boolean fighting) {
+        if (!available()) return;
+        owner(); Value value = value(id);
+        if (value == null || value.fighting == fighting) return;
+        value.fighting = fighting;
+        changeLook(value, value.lookPose, value.lookMotion & ~BodyLook.FIGHTING);
+    }
     /** Shows or hides the NPC burning for everyone who sees it. */
     public void burning(String id, boolean burning) {
         if (!available()) return;
@@ -714,7 +722,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     void styleLook(Value value, StyledLeg.Look look) { changeLook(value, look.pose(), look.motion()); }
     /** The playback's pose and motion; a bow drawn in a fight stays drawn across them. */
     void changeLook(Value value, NpcPose pose, int motion) {
-        int shown = motion | (value.drawing ? BodyLook.USING_ITEM : 0) | (value.burning ? BodyLook.ON_FIRE : 0);
+        int shown = motion | (value.drawing ? BodyLook.USING_ITEM : 0) | (value.fighting ? BodyLook.FIGHTING : 0) | (value.burning ? BodyLook.ON_FIRE : 0);
         if (value.lookPose == pose && value.lookMotion == shown) return;
         // A seat, a bellyflop and a spin draw the body somewhere else, so viewers are sent its pose again.
         if (placed(value.lookPose) || placed(pose)) value.poseRevision++;
@@ -1127,7 +1135,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         /** The pose and motion a playback shows; {@link #look} is the body look with them, sent when {@link #lookRevision} moves. */
         NpcPose lookPose; int lookMotion; long lookRevision; BodyLook look;
         /** Attacks so far, sent with moves; and whether a fight holds the bow drawn, shown through {@link #look}. */
-        long attackSwings; boolean drawing, burning;
+        long attackSwings; boolean drawing, fighting, burning;
         /** Critical hits shown so far and what the last one showed: {@link #CRITICAL}, {@link #MAGIC} or both. */
         long crits; int critKind;
         /** How far an idle fall has carried the body, for fall damage. */

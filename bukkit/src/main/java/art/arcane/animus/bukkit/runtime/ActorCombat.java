@@ -287,6 +287,7 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
     @Override public double yaw(UUID npc) { return npc.equals(actor.uuid) ? actor.yaw : 0; }
     @Override public void swing(UUID npc) { if (npc.equals(actor.uuid)) actor.attackSwing(); }
     @Override public void drawing(UUID npc, boolean drawing) { if (npc.equals(actor.uuid)) actor.drawing(drawing); }
+    @Override public void fighting(UUID npc, boolean fighting) { if (npc.equals(actor.uuid)) actor.fighting(fighting); }
     @Override public void sound(UUID npc, String sound, String category, float volume, float pitch) {
         if (npc.equals(actor.uuid)) combat.sound(actor, sound, category, volume, pitch);
     }

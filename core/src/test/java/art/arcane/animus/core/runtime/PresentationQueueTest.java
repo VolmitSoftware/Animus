@@ -127,6 +127,27 @@ class PresentationQueueTest {
         assertFalse(harness.transport.looks.getLast().usingItem(), "lowered");
     }
 
+    @Test
+    void aMeleeFightShowsInTheLookAndEndsWithIt() throws IOException {
+        ViewerWatchRaceTest.Harness harness = harness(new PersistedNpcService.Settings(true, 48, 64, 256, 16, 64, 8, 32, 512, 24, 4));
+        harness.transport.presentation = true;
+        write(harness, "guard", 2.5);
+        reload(harness);
+        tickUntilSpawned(harness, 1);
+
+        harness.service.fighting("guard", true);
+        harness.tick(2);
+        assertTrue(harness.transport.looks.getLast().fighting(), "fighting");
+        harness.service.drawing("guard", true);
+        harness.tick(2);
+        assertTrue(harness.transport.looks.getLast().fighting(), "a draw keeps the fight");
+        harness.service.drawing("guard", false);
+        harness.service.fighting("guard", false);
+        harness.tick(2);
+        assertFalse(harness.transport.looks.getLast().fighting(), "calm");
+        assertEquals(0, harness.transport.looks.getLast().sharedFlags(false), "fighting sets no shared flag");
+    }
+
     private ViewerWatchRaceTest.Harness harness(PersistedNpcService.Settings settings) throws IOException {
         Path npcs = directory.resolve("npcs/test");
         Files.createDirectories(npcs);

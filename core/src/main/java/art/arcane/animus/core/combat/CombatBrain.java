@@ -84,6 +84,8 @@ final class CombatBrain {
     private final DrawCycle draw;
     /** Whether viewers see the weapon drawn, and whether this turn aimed it. */
     private boolean drawn, aimed;
+    /** Whether viewers see the NPC fighting in melee, and whether this turn fought in melee. */
+    private boolean fighting, brawled;
     /** Where this fight's leash runs from and where it returns: the post, or where a patrolling NPC left its route. */
     private WorldPosition anchor;
     /** Where the returning NPC last moved and when, to tell a walk that ended from one still under way. */
@@ -188,8 +190,9 @@ final class CombatBrain {
         if (self.active() && self.health() > 0 && visited > 0) engine.count(npc, CombatStatistics.Counter.TICKS_SPAWNED, now - visited);
         visited = now;
         aimed = false;
-        if (self.health() == 0) { showDraw(now); engine.vacate(this); return updateDead(now, self); }
-        if (!self.active()) { showDraw(now); engine.vacate(this); return idle; }
+        brawled = false;
+        if (self.health() == 0) { showStance(now); engine.vacate(this); return updateDead(now, self); }
+        if (!self.active()) { showStance(now); engine.vacate(this); return idle; }
         heal(now, self);
         boolean engaged = engaged();
         if (!engaged && (disengaged || settings.passive() || !engine.playersNear(self.position(), searchRadius() + WAKE_MARGIN))) {
@@ -199,17 +202,25 @@ final class CombatBrain {
             if (!disengaged) return idle;
         } else if (!engine.claim(this)) return idle;
         long next = turn(now, self);
-        showDraw(now);
+        showStance(now);
         if (!engaged()) engine.yieldTurn(this);
         return next;
     }
 
-    /** Shows the weapon drawn or lowered when this turn changed it; a turn that did not aim lowers it. */
-    private void showDraw(long now) {
+    /**
+     * Shows the weapon drawn or lowered, and the NPC fighting in melee or calm, when this turn changed them; a turn that
+     * did not aim lowers the weapon, and one that did not fight in melee ends the melee pose.
+     */
+    private void showStance(long now) {
         if (!aimed) draw.lower(now);
-        if (drawn == draw.drawing()) return;
-        drawn = draw.drawing();
-        world.drawing(npc, drawn);
+        if (drawn != draw.drawing()) {
+            drawn = draw.drawing();
+            world.drawing(npc, drawn);
+        }
+        if (fighting != brawled) {
+            fighting = brawled;
+            world.fighting(npc, fighting);
+        }
     }
 
     private boolean engaged() { return target != null || threat != null || state == CombatState.RETURNING; }
@@ -444,6 +455,8 @@ final class CombatBrain {
         boolean meleeAllowed = melee.enabled() && !(rangedEnabled && hand.effect().map(CombatSettings.Effect::helpful).orElse(false)) && !(switching && hand.holdsRanged());
         boolean inMelee = meleeAllowed && reach <= melee.reach();
         boolean rangedUsable = !inMelee && rangedEnabled && hand.ammunition() != 0 && visible && distance <= ranged.range() && distance >= ranged.minimumRange();
+        // A fight it means to win in melee, from the chase on, as a vanilla mob's melee attack; shooting is not one.
+        brawled = meleeAllowed && !rangedUsable;
         if (inMelee && visible) {
             if (ready && meleeWindow.reserve(now, melee.cooldownTicks())) {
                 CombatWorld.DamageOutcome outcome;
