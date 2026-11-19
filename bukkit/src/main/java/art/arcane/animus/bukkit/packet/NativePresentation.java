@@ -8,9 +8,10 @@ import art.arcane.animus.core.presentation.BodyLook;
 import art.arcane.animus.core.presentation.VariantWire;
 import art.arcane.animus.core.presentation.BodyRules;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
+
+import static art.arcane.animus.bukkit.packet.NativeBindings.accessor;
 
 /**
  * Packet-only presentation details: pose metadata, armor stand parts, a text display for names and hologram lines,
@@ -108,12 +109,6 @@ final class NativePresentation {
         Class<?> packet = Class.forName("net.minecraft.network.protocol.game.ClientboundSetPlayerTeamPacket");
         addTeam = packet.getMethod("createAddOrModifyPacket", playerTeam, boolean.class);
         removeTeam = packet.getMethod("createRemovePacket", playerTeam);
-    }
-
-    private static Object accessor(Class<?> owner, String name) throws ReflectiveOperationException {
-        Field field = owner.getDeclaredField(name);
-        if (!field.trySetAccessible()) throw new NoSuchFieldException("Cannot access " + owner.getName() + "." + name);
-        return field.get(null);
     }
 
     /** Metadata the body itself needs beyond the defaults; empty when it shows its plain standing look. */

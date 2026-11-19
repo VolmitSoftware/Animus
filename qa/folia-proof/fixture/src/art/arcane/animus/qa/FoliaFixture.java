@@ -60,7 +60,7 @@ public final class FoliaFixture extends JavaPlugin implements Listener {
         try {
             Channel channel=channel(p);
             channel.eventLoop().execute(()->{
-                long handlers=channel.pipeline().names().stream().filter(n->n.startsWith("animus_virtual_")).count();
+                long handlers=channel.pipeline().names().stream().filter(n->n.startsWith("animus_")).count();
                 later(p,()->p.sendMessage("Folia QA transport handlers="+handlers+" event-loop-barrier=true"));
             });
         }catch(ReflectiveOperationException e){throw new IllegalStateException(e);}

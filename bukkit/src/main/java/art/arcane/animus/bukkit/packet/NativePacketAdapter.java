@@ -1,6 +1,5 @@
 package art.arcane.animus.bukkit.packet;
 
-import art.arcane.animus.core.presentation.NativeEntityIds;
 import art.arcane.animus.core.presentation.PassengerGraph;
 
 import art.arcane.animus.core.npc.EquipmentSlot;
@@ -35,6 +34,9 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.function.Consumer;
+
+import static art.arcane.animus.bukkit.packet.NativeBindings.field;
+import static art.arcane.animus.bukkit.packet.NativeBindings.type;
 
 /**
  * Experimental exact-version transport. No method constructs an NMS Entity or registers a body in a world.
@@ -107,28 +109,36 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         @Override public int[] entityIds() { return ids.clone(); }
     }
     private final Plugin plugin;
-    private final NativeBindings nativeApi;
+    private final NativeBindings shared;
+    private final BodyBindings nativeApi;
     private final Capabilities capabilities;
     private final ConcurrentMap<UUID, Session> sessions = new ConcurrentHashMap<>();
     /** Bones a viewer may see at once across every body; the runtime's {@code [rigs] maximumBones} is lower by default. */
     static final int MAX_BONES_PER_VIEWER = 4096;
-    private final String handlerName = "animus_virtual_" + UUID.randomUUID().toString().replace("-", "");
     private final String riderUnavailable;
     private final Scheduler owner;
     private final AnimusMetrics metrics = AnimusMetrics.current();
     private volatile boolean closed;
+    /** Every adapter on this server shares one set of body bindings. */
+    private static BodyBindings boundBodies;
 
     private NativePacketAdapter(Plugin plugin, String version, Scheduler owner) throws ReflectiveOperationException {
         this.plugin = Objects.requireNonNull(plugin);
         this.owner = owner;
-        nativeApi = new NativeBindings(plugin, version);
+        shared = NativeBindings.bind(plugin, version);
+        nativeApi = bodies(plugin, shared);
         riderUnavailable = nativeApi.riderUnavailable;
         Set<String> operations = new HashSet<>(Set.of("spawn", "despawn", "move", "signed-player-textures", "attack-interception", "use-interception", "head-rotation", "passengers", "control-input", "dragon-presentation"));
         if (riderUnavailable == null) operations.add("real-rider");
         if (nativeApi.equipment != null) operations.add("equipment");
         if (nativeApi.presentation != null) operations.add("presentation");
         if (nativeApi.bones != null) operations.add("rig-bones");
-        capabilities = new Capabilities(version, bodyTypes(nativeApi), operations, "explicit-packets/no-native-entity-bodies; signature binding is not gameplay certification");
+        capabilities = new Capabilities(version, bodyTypes(shared), operations, "explicit-packets/no-native-entity-bodies; signature binding is not gameplay certification");
+    }
+
+    private static synchronized BodyBindings bodies(Plugin plugin, NativeBindings shared) throws ReflectiveOperationException {
+        if (boundBodies == null || boundBodies.shared != shared) boundBodies = new BodyBindings(plugin, shared);
+        return boundBodies;
     }
 
     /** The shared body types this server registers. */
@@ -207,10 +217,10 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         if (!capabilities.entityTypes().contains(typeKey)) throw new IllegalArgumentException("Body type is not enabled by the proof adapter: " + typeKey);
         if (typeKey.equals("minecraft:player")) BodyRules.validateProfileName(look.profileName());
         if (!typeKey.equals("minecraft:player") && skin != null) throw new IllegalArgumentException("Skin textures apply only to player bodies");
-        Object type = nativeApi.entityType(typeKey);
+        Object type = shared.entityType(typeKey);
         int reserved = BodyRules.reservedIds(typeKey);
         Object playerInfo = typeKey.equals("minecraft:player") ? nativeApi.playerInfo(uuid, look.profileName(), skin, look.traits().listed(), look.traits().variant().choices().getOrDefault("gameMode", "survival")) : null;
-        int entityId = nativeApi.ids.reserve(reserved + look.extraIds());
+        int entityId = shared.ids.reserve(reserved + look.extraIds());
         Object[] team = look.team() && nativeApi.presentation != null
                 ? nativeApi.presentation.bodyTeam(entityId, typeKey.equals("minecraft:player") ? look.profileName() : uuid.toString(), look) : null;
         return new Body(this, entityId, reserved, uuid, typeKey, ((Number) nativeApi.typeWidth.invoke(type)).doubleValue(),
@@ -227,7 +237,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
     public CompletionStage<Void> watch(Player viewer, Scheduler scheduler, Consumer<Interaction> interaction) throws ReflectiveOperationException {
         ensureOpen();
         Objects.requireNonNull(scheduler); Objects.requireNonNull(interaction);
-        Channel channel = nativeApi.channel(viewer);
+        Channel channel = shared.channel(viewer);
         Session session = new Session(viewer, channel, scheduler, interaction, metrics.viewer(viewer.getUniqueId(), viewer.getName()));
         Session previous = sessions.put(viewer.getUniqueId(), session);
         if (previous != null) retire(previous);
@@ -235,9 +245,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             channel.eventLoop().execute(() -> {
                 if (!current(session) || !channel.isActive()) { session.ready.completeExceptionally(new BodyTransport.ViewerUnwatched("Viewer session retired")); return; }
                 try {
-                    if (channel.pipeline().get(handlerName) != null) channel.pipeline().remove(handlerName);
-                    if (channel.pipeline().get("packet_handler") == null) throw new IllegalStateException("Vanilla packet_handler is unavailable");
-                    channel.pipeline().addBefore("packet_handler", handlerName, new InputHandler(session));
+                    ViewerPipeline.attach(channel, this, new InputHandler(session));
                     session.ready.complete(null);
                 } catch (RuntimeException e) { sessions.remove(session.viewerId, session); retire(session); session.ready.completeExceptionally(e); }
             });
@@ -468,7 +476,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         Presentation presentation = session.visible.get(body.entityId);
         if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
         Object packet;
-        try { packet = nativeApi.metadataPacket.newInstance(body.entityId, nativeApi.presentation.lookValues(look, body.typeKey)); }
+        try { packet = shared.metadataPacket.newInstance(body.entityId, nativeApi.presentation.lookValues(look, body.typeKey)); }
         catch (ReflectiveOperationException | RuntimeException failure) { return failed("Body look update failed: " + failure.getClass().getSimpleName()); }
         CompletableFuture<Void> result = new CompletableFuture<>();
         submit(session, result, false, () -> {
@@ -487,7 +495,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         Presentation presentation = session.visible.get(body.entityId);
         if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
         Object packet;
-        try { packet = nativeApi.metadataPacket.newInstance(body.entityId, List.of(nativeApi.presentation.visibility(body.look, hidden))); }
+        try { packet = shared.metadataPacket.newInstance(body.entityId, List.of(nativeApi.presentation.visibility(body.look, hidden))); }
         catch (ReflectiveOperationException | RuntimeException failure) { return failed("Body visibility update failed: " + failure.getClass().getSimpleName()); }
         CompletableFuture<Void> result = new CompletableFuture<>();
         submit(session, result, true, () -> {
@@ -506,7 +514,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         Presentation presentation = session.visible.get(body.entityId);
         if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
         List<Object> packets = new ArrayList<>(rows.size());
-        try { for (int row = 0; row < rows.size(); row++) packets.add(nativeApi.metadataPacket.newInstance(body.displayIds[row], nativeApi.presentation.textValue(rows.get(row)))); }
+        try { for (int row = 0; row < rows.size(); row++) packets.add(shared.metadataPacket.newInstance(body.displayIds[row], nativeApi.presentation.textValue(rows.get(row)))); }
         catch (ReflectiveOperationException | RuntimeException failure) { return failed("Body relabel failed: " + failure.getClass().getSimpleName()); }
         CompletableFuture<Void> result = new CompletableFuture<>();
         submit(session, result, false, () -> {
@@ -575,7 +583,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Cannot build rig bones: " + failure.getClass().getSimpleName(), failure); }
         int[] ids = new int[displays.size()];
         for (int start = 0; start < ids.length; start += 16) {
-            int count = Math.min(16, ids.length - start), first = nativeApi.ids.reserve(count);
+            int count = Math.min(16, ids.length - start), first = shared.ids.reserve(count);
             for (int i = 0; i < count; i++) ids[start + i] = first + i;
         }
         return new Bones(this, body, ids, types, content);
@@ -598,14 +606,14 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             if (session.visible.get(body.entityId) != presentation || session.bones.get(body.entityId) != bones) throw new CancellationException("Body was despawned before its bones");
             List<Object> packets = new ArrayList<>(bones.ids.length * 2 + 2);
             for (int i = 0; i < bones.ids.length; i++) {
-                packets.add(nativeApi.addEntity.newInstance(bones.ids[i], bones.uuids[i], pose.x(), pose.y(), pose.z(), 0f, 0f, bones.types[i], 0, nativeApi.zeroVelocity, 0d));
+                packets.add(shared.addEntity.newInstance(bones.ids[i], bones.uuids[i], pose.x(), pose.y(), pose.z(), 0f, 0f, bones.types[i], 0, shared.zeroVelocity, 0d));
                 List<Object> values = new ArrayList<>(bones.content.get(i));
                 values.addAll(nativeApi.bones.transform(transforms.get(i), 0));
-                packets.add(nativeApi.metadataPacket.newInstance(bones.ids[i], values));
+                packets.add(shared.metadataPacket.newInstance(bones.ids[i], values));
             }
             int[] base = session.rosters.getOrDefault(body.entityId, body.displayIds.clone());
             packets.add(nativeApi.passengers(body.entityId, withBones(base, bones)));
-            if (hideBody && nativeApi.presentation != null) packets.add(nativeApi.metadataPacket.newInstance(body.entityId, List.of(nativeApi.presentation.visibility(body.look, true))));
+            if (hideBody && nativeApi.presentation != null) packets.add(shared.metadataPacket.newInstance(body.entityId, List.of(nativeApi.presentation.visibility(body.look, true))));
             write(session, body, PacketKind.RIG_BONES, packets).whenComplete((nothing, failure) -> complete(result, failure));
         });
         result.whenComplete((nothing, failure) -> { if (failure != null) session.bones.remove(body.entityId, bones); });
@@ -624,7 +632,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             List<Object> packets = new ArrayList<>(indices.length);
             for (int i = 0; i < indices.length; i++) {
                 if (indices[i] < 0 || indices[i] >= bones.ids.length) throw new IllegalArgumentException("Unknown bone index " + indices[i]);
-                packets.add(nativeApi.metadataPacket.newInstance(bones.ids[indices[i]], nativeApi.bones.transform(transforms[i], Math.max(0, durations[i]))));
+                packets.add(shared.metadataPacket.newInstance(bones.ids[indices[i]], nativeApi.bones.transform(transforms[i], Math.max(0, durations[i]))));
             }
             write(session, bones.body, PacketKind.RIG_BONES, packets).whenComplete((nothing, failure) -> complete(result, failure));
         });
@@ -642,7 +650,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             for (int i = 0; i < indices.length; i++) {
                 if (indices[i] < 0 || indices[i] >= bones.ids.length) return failed("Unknown bone index " + indices[i]);
                 if (nativeApi.bones.type(displays.get(i)) != bones.types[indices[i]]) return failed("A restyled bone keeps its kind");
-                packets.add(nativeApi.metadataPacket.newInstance(bones.ids[indices[i]], nativeApi.bones.content(displays.get(i))));
+                packets.add(shared.metadataPacket.newInstance(bones.ids[indices[i]], nativeApi.bones.content(displays.get(i))));
             }
         } catch (ReflectiveOperationException failure) { return failed("Cannot build rig bones: " + failure.getClass().getSimpleName()); }
         CompletableFuture<Void> result = new CompletableFuture<>();
@@ -660,12 +668,12 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         CompletableFuture<Void> result = new CompletableFuture<>();
         submit(session, result, true, () -> {
             List<Object> packets = new ArrayList<>(3);
-            packets.add(nativeApi.removeEntities.newInstance((Object) bones.ids.clone()));
+            packets.add(shared.removeEntities.newInstance((Object) bones.ids.clone()));
             Presentation presentation = session.visible.get(bones.body.entityId);
             if (presentation != null && presentation.body == bones.body) {
                 int[] base = session.rosters.getOrDefault(bones.body.entityId, bones.body.displayIds.clone());
                 packets.add(nativeApi.passengers(bones.body.entityId, base));
-                if (nativeApi.presentation != null) packets.add(nativeApi.metadataPacket.newInstance(bones.body.entityId, List.of(nativeApi.presentation.visibility(bones.body.look, false))));
+                if (nativeApi.presentation != null) packets.add(shared.metadataPacket.newInstance(bones.body.entityId, List.of(nativeApi.presentation.visibility(bones.body.look, false))));
             }
             write(session, bones.body, PacketKind.RIG_BONES, packets).whenComplete((nothing, failure) -> complete(result, failure));
         });
@@ -812,7 +820,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                 System.arraycopy(bones.ids, 0, all, ids.length, bones.ids.length);
                 ids = all;
             }
-            packets.add(nativeApi.removeEntities.newInstance((Object) ids));
+            packets.add(shared.removeEntities.newInstance((Object) ids));
             if (body.playerInfo != null) packets.add(nativeApi.removePlayerInfo.newInstance(List.of(body.uuid)));
             if (body.nameTeam != null) packets.add(body.nameTeam[1]);
             return write(session, body, PacketKind.DESPAWN, packets);
@@ -848,28 +856,26 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                     Bones attached = retiredBones.get(body.entityId);
                     removePackets(session, body, attached != null && attached.body == body ? attached : null);
                 }
-                ChannelHandler handler = session.channel.pipeline().get(handlerName);
-                if (handler instanceof InputHandler input && input.session == session) session.channel.pipeline().remove(handler);
+                ViewerPipeline.detach(session.channel, (ViewerPipeline.Tap tap) -> tap instanceof InputHandler input && input.session == session);
             });
         } catch (RejectedExecutionException ignored) { /* Closed channels have already discarded their client presentation. */ }
     }
 
-    private final class InputHandler extends ChannelDuplexHandler {
+    /** This adapter's tap on the viewer's connection: clicks on its bodies, control input, and carried passengers. */
+    private final class InputHandler implements ViewerPipeline.Tap {
         private final Session session;
         private InputHandler(Session session) { this.session = session; }
         /** Passenger lists the server sends for an entity that carries NPCs or seated players for this viewer keep them. */
-        @Override public void write(ChannelHandlerContext context, Object message, ChannelPromise promise) throws Exception {
+        @Override public Object write(Object message) {
             CarriedPackets carried = nativeApi.carried;
-            if (carried == null || session.carried.isEmpty() || !current(session)) { context.write(message, promise); return; }
-            Object rewritten;
-            try { rewritten = carried.rewrite(message, session.carried::get); }
+            if (carried == null || session.carried.isEmpty() || !current(session)) return message;
+            try { return carried.rewrite(message, session.carried::get); }
             catch (ReflectiveOperationException | RuntimeException failure) {
                 reportInputFailure(session, new IllegalStateException("Cannot keep carried passengers", failure));
-                rewritten = message;
+                return message;
             }
-            context.write(rewritten, promise);
         }
-        @Override public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
+        @Override public boolean read(Object message) throws Exception {
             ControlSubscription control = session.control.get();
             if (control != null && current(session) && control.inbox.active()) {
                 if (nativeApi.controlPacket.isInstance(message)) {
@@ -880,19 +886,19 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                     }
                 } else if (nativeApi.clientTickEndPacket.isInstance(message)) control.inbox.heartbeat(System.nanoTime());
             }
-            boolean attack = nativeApi.attackPacket.isInstance(message);
-            if (!attack && !nativeApi.interactPacket.isInstance(message)) { context.fireChannelRead(message); return; }
-            int entityId = ((Number) (attack ? nativeApi.attackId : nativeApi.interactId).invoke(message)).intValue();
+            boolean attack = shared.attackPacket.isInstance(message);
+            if (!attack && !shared.interactPacket.isInstance(message)) return false;
+            int entityId = ((Number) (attack ? shared.attackId : shared.interactId).invoke(message)).intValue();
             Presentation presentation = session.visible.get(entityId);
-            if (presentation == null || !current(session)) { context.fireChannelRead(message); return; }
+            if (presentation == null || !current(session)) return false;
             Body body = presentation.body;
             try {
                 long now = System.nanoTime();
-                if (now - session.lastInputNanos < BodyRules.MIN_INPUT_INTERVAL_NANOS || !session.inputScheduled.compareAndSet(false, true)) { metrics.inbound(session.traffic, false); return; }
+                if (now - session.lastInputNanos < BodyRules.MIN_INPUT_INTERVAL_NANOS || !session.inputScheduled.compareAndSet(false, true)) { metrics.inbound(session.traffic, false); return true; }
                 session.lastInputNanos = now;
                 metrics.inbound(session.traffic, true);
-                String hand = attack ? "none" : String.valueOf(nativeApi.interactHand.invoke(message));
-                boolean secondary = !attack && (boolean) nativeApi.interactSecondary.invoke(message);
+                String hand = attack ? "none" : String.valueOf(shared.interactHand.invoke(message));
+                boolean secondary = !attack && (boolean) shared.interactSecondary.invoke(message);
                 Interaction event = new Interaction(body, attack ? BodyTransport.Action.ATTACK : BodyTransport.Action.INTERACT, hand, secondary, now);
                 try {
                     boolean accepted = session.scheduler.execute(session.viewer, () -> {
@@ -904,10 +910,10 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                     if (!accepted) session.inputScheduled.set(false);
                 } catch (RuntimeException e) { session.inputScheduled.set(false); reportInputFailure(session, e); }
             } finally { ReferenceCountUtil.release(message); }
+            return true;
         }
-        @Override public void channelInactive(ChannelHandlerContext context) throws Exception {
+        @Override public void closed() {
             if (sessions.remove(session.viewerId, session)) retire(session, ControlInbox.CONNECTION_CLOSED);
-            context.fireChannelInactive();
         }
     }
     private void reportInputFailure(Session session, RuntimeException e) {
@@ -951,10 +957,10 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private final Class<? extends Enum> slots;
 
         @SuppressWarnings("unchecked")
-        private EquipmentBindings(String craftPackage) throws ReflectiveOperationException {
+        private EquipmentBindings(NativeBindings shared) throws ReflectiveOperationException {
             packet = Class.forName("net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket").getConstructor(int.class, List.class);
             pair = Class.forName("com.mojang.datafixers.util.Pair").getMethod("of", Object.class, Object.class);
-            nativeStack = Class.forName(craftPackage + ".inventory.CraftItemStack").getMethod("asNMSCopy", ItemStack.class);
+            nativeStack = shared.nativeStack();
             slots = (Class<? extends Enum>) Class.forName("net.minecraft.world.entity.EquipmentSlot");
             for (EquipmentSlot slot : EquipmentSlot.values()) Enum.valueOf((Class) slots, BodyRules.nativeSlot(slot));
         }
@@ -970,7 +976,8 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private Object nativeItem(ItemStack item) throws ReflectiveOperationException { return nativeStack.invoke(null, item); }
     }
 
-    private static final class NativeBindings {
+    /** What only bodies bind, on top of the shared handles; one set serves every adapter on the server. */
+    private static final class BodyBindings {
         /** The animate packet's constant for each gesture code, by name; 26.3 drops the swings and renumbers the rest. */
         private static final String[] GESTURES = {"SWING_MAIN_HAND", null, "WAKE_UP", "SWING_OFF_HAND", "CRITICAL_HIT", "MAGIC_CRITICAL_HIT"};
         private final EquipmentBindings equipment;
@@ -980,13 +987,11 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private final art.arcane.animus.core.presentation.BodyVariantValues variants;
         /** Keeps carried passengers on the server's own passenger packets; null when this server's packets cannot be read. */
         private final CarriedPackets carried;
+        private final NativeBindings shared;
         private final Object textDisplayType, seatType;
-        private final NativeEntityIds ids;
-        private final Object entityRegistry, zeroVelocity, survival, playerSkinAccessor;
-        private final Method identifierParse, registryContains, registryValue, typeWidth, typeHeight;
-        private final Constructor<?> addEntity, removeEntities, removePlayerInfo, vector, movement, positionValues;
-        private final Method positionPath;
-        private final Constructor<?> friendlyBuffer, rotateHead, setPassengers, animate, entityEvent, damageEvent;
+        private final Object survival, playerSkinAccessor;
+        private final Method typeWidth, typeHeight;
+        private final Constructor<?> removePlayerInfo, friendlyBuffer, rotateHead, setPassengers, animate, entityEvent, damageEvent;
         /** This server's animate action for each gesture code (the animate actions before 26.3); -1 for one it sends otherwise or not at all. */
         private final int[] animateActions;
         /**
@@ -999,39 +1004,24 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         /** The generic damage type a hurt event names, or null when this server's registries could not be read. */
         private final Object damageType, healthAccessor;
         private final Method writeVarInt, writeVarIntArray;
-        private final Constructor<?> profile, property, propertyMap, playerInfoEntry, playerInfoPacket, metadataPacket;
-        private final Method multimapCreate, multimapPut, dataValueCreate;
+        private final Constructor<?> profile, property, propertyMap, playerInfoEntry, playerInfoPacket;
+        private final Method multimapCreate, multimapPut;
         private final Field playerInfoEntries;
         private final Class<? extends Enum> playerInfoAction;
-        private final Method craftPlayerHandle, craftEntityHandle, entityDimensions, entityPose, entitySetPosition;
-        private final Field playerConnection, networkConnection, channel;
-        private final Class<?> attackPacket, interactPacket, controlPacket, clientTickEndPacket;
-        private final Method attackId, interactId, interactHand, interactSecondary;
+        private final Method craftEntityHandle, entityDimensions, entityPose, entitySetPosition;
+        private final Class<?> controlPacket, clientTickEndPacket;
         private final Method controlValue;
         private final Method[] controlFlags;
-        private final boolean steppedMovement;
         private final Method typeDimensions, dimensionAttachments, attachmentPoint, vectorX, vectorY, vectorZ;
         private final Object passengerAttachment, vehicleAttachment, dragonPhaseAccessor;
         private final String riderUnavailable;
-        private Method riderSetPosition, riderLevel, riderChunkSource, riderChunkMove, riderResetPosition;
+        private Method riderLevel, riderChunkSource, riderChunkMove, riderResetPosition;
 
         @SuppressWarnings("unchecked")
-        private NativeBindings(Plugin plugin, String version) throws ReflectiveOperationException {
+        private BodyBindings(Plugin plugin, NativeBindings shared) throws ReflectiveOperationException {
+            this.shared = shared;
             Class<?> entityType = type("net.minecraft.world.entity.EntityType");
-            Class<?> identifier = type("net.minecraft.resources.Identifier");
-            Class<?> registry = type("net.minecraft.core.Registry");
-            entityRegistry = type("net.minecraft.core.registries.BuiltInRegistries").getField("ENTITY_TYPE").get(null);
-            identifierParse = identifier.getMethod("parse", String.class);
-            registryContains = registry.getMethod("containsKey", identifier);
-            registryValue = registry.getMethod("getValue", identifier);
             typeWidth = entityType.getMethod("getWidth"); typeHeight = entityType.getMethod("getHeight");
-            Class<?> allocatorOwner = type(version.equals("26.1.2") ? "net.minecraft.world.entity.Entity" : "net.minecraft.server.level.ServerLevel");
-            Field counter = field(allocatorOwner, "ENTITY_COUNTER");
-            ids = new NativeEntityIds((AtomicInteger) counter.get(null));
-            Class<?> vec3 = type("net.minecraft.world.phys.Vec3");
-            vector = vec3.getConstructor(double.class, double.class, double.class); zeroVelocity = vec3.getField("ZERO").get(null);
-            addEntity = type("net.minecraft.network.protocol.game.ClientboundAddEntityPacket").getConstructor(int.class, UUID.class, double.class, double.class, double.class, float.class, float.class, entityType, int.class, vec3, double.class);
-            removeEntities = type("net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket").getConstructor(int[].class);
             removePlayerInfo = type("net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket").getConstructor(List.class);
             Class<?> friendly = type("net.minecraft.network.FriendlyByteBuf");
             friendlyBuffer = friendly.getConstructor(ByteBuf.class);
@@ -1083,17 +1073,6 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                 plugin.getLogger().warning("NPC hurt and death animations unavailable: " + missing.getClass().getSimpleName());
             }
             entityEvent = boundEvent; damageEvent = boundDamageEvent; damageType = boundDamage; healthAccessor = boundHealth;
-            Class<?> positionSync = type("net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket");
-            steppedMovement = version.equals("26.3");
-            if (steppedMovement) {
-                Class<?> path = type("net.minecraft.world.entity.PositionPath");
-                positionPath = path.getMethod("of", vec3); positionValues = null;
-                movement = positionSync.getConstructor(int.class, path, float.class, float.class, boolean.class);
-            } else {
-                Class<?> values = type("net.minecraft.world.entity.PositionMoveRotation");
-                positionValues = values.getConstructor(vec3, vec3, float.class, float.class); positionPath = null;
-                movement = positionSync.getConstructor(int.class, values, boolean.class);
-            }
             Class<?> gameProfile = type("com.mojang.authlib.GameProfile");
             Class<?> properties = type("com.mojang.authlib.properties.PropertyMap");
             Class<?> multimap = type("com.google.common.collect.Multimap");
@@ -1119,40 +1098,36 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                 if (entriesField.getType() != List.class || Modifier.isStatic(entriesField.getModifiers())) throw new NoSuchFieldException("Unexpected player-info entries field");
             }
             playerInfoPacket = packetConstructor; playerInfoEntries = entriesField;
-            Class<?> dataAccessor = type("net.minecraft.network.syncher.EntityDataAccessor");
-            dataValueCreate = type("net.minecraft.network.syncher.SynchedEntityData$DataValue").getMethod("create", dataAccessor, Object.class);
             playerSkinAccessor = field(type("net.minecraft.world.entity.Avatar"), "DATA_PLAYER_MODE_CUSTOMISATION").get(null);
-            metadataPacket = type("net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket").getConstructor(int.class, List.class);
-            String craftPackage = plugin.getServer().getClass().getPackageName();
-            if (!craftPackage.startsWith("org.bukkit.craftbukkit")) throw new ClassNotFoundException("CraftBukkit implementation unavailable");
-            craftPlayerHandle = type(craftPackage + ".entity.CraftPlayer").getMethod("getHandle");
+            String craftPackage = shared.craftPackage;
             craftEntityHandle = type(craftPackage + ".entity.CraftEntity").getMethod("getHandle");
-            entityPose = type("net.minecraft.world.entity.Entity").getMethod("getPose");
-            entitySetPosition = type("net.minecraft.world.entity.Entity").getMethod("setPos", double.class, double.class, double.class);
-            entityDimensions = type("net.minecraft.world.entity.Entity").getMethod("getDimensions", type("net.minecraft.world.entity.Pose"));
+            Class<?> entity = type("net.minecraft.world.entity.Entity");
+            entityPose = entity.getMethod("getPose");
+            entitySetPosition = entity.getMethod("setPos", double.class, double.class, double.class);
+            entityDimensions = entity.getMethod("getDimensions", type("net.minecraft.world.entity.Pose"));
             EquipmentBindings boundEquipment = null;
-            try { boundEquipment = new EquipmentBindings(craftPackage); }
+            try { boundEquipment = new EquipmentBindings(shared); }
             catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC equipment unavailable: " + missing.getClass().getSimpleName()); }
             equipment = boundEquipment;
             NativePresentation boundPresentation = null;
-            try { boundPresentation = new NativePresentation(dataValueCreate); }
+            try { boundPresentation = new NativePresentation(shared.dataValue); }
             catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC poses, text and long names unavailable: " + missing.getClass().getSimpleName()); }
             presentation = boundPresentation;
-            textDisplayType = entityType("minecraft:text_display"); seatType = entityType("minecraft:armor_stand");
+            textDisplayType = shared.entityType("minecraft:text_display"); seatType = shared.entityType("minecraft:armor_stand");
             NativeBones boundBones = null;
-            try { boundBones = new NativeBones(dataValueCreate, craftPackage, entityType("minecraft:item_display"), entityType("minecraft:block_display"), textDisplayType, presentation); }
+            try { boundBones = new NativeBones(shared, shared.entityType("minecraft:item_display"), shared.entityType("minecraft:block_display"), textDisplayType, presentation); }
             catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC rig bones unavailable: " + missing.getClass().getSimpleName()); }
             bones = boundBones;
             NativeAttributes boundAttributes = null;
-            try { boundAttributes = new NativeAttributes(identifierParse); }
+            try { boundAttributes = new NativeAttributes(shared.identifierParse); }
             catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC attributes unavailable: " + missing.getClass().getSimpleName()); }
             attributes = boundAttributes;
             art.arcane.animus.core.presentation.BodyVariantValues boundVariants = null;
             try {
                 NativePresentation texts = presentation;
-                Method nativeStack = Class.forName(craftPackage + ".inventory.CraftItemStack").getMethod("asNMSCopy", ItemStack.class);
+                Method nativeStack = shared.nativeStack();
                 Method blockState = Class.forName(craftPackage + ".block.data.CraftBlockData").getMethod("getState");
-                Method create = dataValueCreate;
+                Method create = shared.dataValue;
                 Object server = plugin.getServer().getClass().getMethod("getServer").invoke(plugin.getServer());
                 boundVariants = new art.arcane.animus.core.presentation.BodyVariantValues(new art.arcane.animus.core.presentation.BodyVariantValues.Natives() {
                     @Override public Object value(Object accessor, Object value) throws ReflectiveOperationException { return create.invoke(null, accessor, value); }
@@ -1171,13 +1146,6 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             }
             catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC body settings unavailable: " + missing.getClass().getSimpleName()); }
             variants = boundVariants;
-            playerConnection = type("net.minecraft.server.level.ServerPlayer").getField("connection");
-            networkConnection = field(type("net.minecraft.server.network.ServerCommonPacketListenerImpl"), "connection");
-            channel = field(type("net.minecraft.network.Connection"), "channel");
-            attackPacket = type("net.minecraft.network.protocol.game.ServerboundAttackPacket");
-            interactPacket = type("net.minecraft.network.protocol.game.ServerboundInteractPacket");
-            attackId = attackPacket.getMethod("entityId"); interactId = interactPacket.getMethod("entityId");
-            interactHand = interactPacket.getMethod("hand"); interactSecondary = interactPacket.getMethod("usingSecondaryAction");
             controlPacket = type("net.minecraft.network.protocol.game.ServerboundPlayerInputPacket");
             clientTickEndPacket = type("net.minecraft.network.protocol.game.ServerboundClientTickEndPacket");
             controlValue = controlPacket.getMethod("input");
@@ -1192,12 +1160,12 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             dimensionAttachments = dimensions.getMethod("attachments");
             attachmentPoint = attachments.getMethod("getClamped", attachment, int.class, float.class);
             passengerAttachment = Enum.valueOf(attachment, "PASSENGER"); vehicleAttachment = Enum.valueOf(attachment, "VEHICLE");
+            Class<?> vec3 = type("net.minecraft.world.phys.Vec3");
             vectorX = vec3.getMethod("x"); vectorY = vec3.getMethod("y"); vectorZ = vec3.getMethod("z");
             dragonPhaseAccessor = type("net.minecraft.world.entity.boss.enderdragon.EnderDragon").getField("DATA_PHASE").get(null);
             String missingRider = null;
             try {
                 Class<?> serverPlayer = type("net.minecraft.server.level.ServerPlayer");
-                riderSetPosition = type("net.minecraft.world.entity.Entity").getMethod("setPos", double.class, double.class, double.class);
                 riderLevel = serverPlayer.getMethod("level");
                 riderChunkSource = riderLevel.getReturnType().getMethod("getChunkSource");
                 riderChunkMove = riderChunkSource.getReturnType().getMethod("move", serverPlayer);
@@ -1219,12 +1187,12 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             return new SeatGeometry((double) vectorX.invoke(seat), (double) vectorY.invoke(seat), (double) vectorZ.invoke(seat), (double) vectorY.invoke(attached));
         }
         private Object dragonPhase(int id, int phase) throws ReflectiveOperationException {
-            return metadataPacket.newInstance(id, List.of(dataValueCreate.invoke(null, dragonPhaseAccessor, Integer.valueOf(phase))));
+            return shared.metadataPacket.newInstance(id, List.of(shared.dataValue.invoke(null, dragonPhaseAccessor, Integer.valueOf(phase))));
         }
         private void placeRider(Player rider, double x, double y, double z) throws ReflectiveOperationException {
-            Object handle = craftPlayerHandle.invoke(rider);
-            riderSetPosition.invoke(handle, x, y, z);
-            riderResetPosition.invoke(playerConnection.get(handle));
+            Object handle = shared.craftPlayerHandle.invoke(rider);
+            entitySetPosition.invoke(handle, x, y, z);
+            riderResetPosition.invoke(shared.playerConnection.get(handle));
             riderChunkMove.invoke(riderChunkSource.invoke(riderLevel.invoke(handle)), handle);
         }
         private ControlInput controlInput(Object packet) throws ReflectiveOperationException {
@@ -1232,18 +1200,6 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             return new ControlInput((boolean) controlFlags[0].invoke(value), (boolean) controlFlags[1].invoke(value),
                     (boolean) controlFlags[2].invoke(value), (boolean) controlFlags[3].invoke(value),
                     (boolean) controlFlags[4].invoke(value), (boolean) controlFlags[5].invoke(value), (boolean) controlFlags[6].invoke(value));
-        }
-        private Object entityType(String key) throws ReflectiveOperationException {
-            Object identifier = identifierParse.invoke(null, key);
-            if (!(boolean) registryContains.invoke(entityRegistry, identifier)) throw new IllegalArgumentException("Native entity type is unavailable: " + key);
-            return registryValue.invoke(entityRegistry, identifier);
-        }
-        private Channel channel(Player viewer) throws ReflectiveOperationException {
-            Object handle = craftPlayerHandle.invoke(viewer);
-            Object connection = networkConnection.get(playerConnection.get(handle));
-            Channel result = (Channel) channel.get(connection);
-            if (result == null || !result.isActive()) throw new BodyTransport.ViewerUnwatched("Viewer is not connected");
-            return result;
         }
         @SuppressWarnings({"unchecked", "rawtypes"})
         private Object playerInfo(UUID uuid, String name, BodySkin skin, boolean listed, String gameMode) throws ReflectiveOperationException {
@@ -1262,7 +1218,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private Object spawn(Body body, BodyPose pose) throws ReflectiveOperationException {
             float yaw = BodyRules.wireYaw(body.typeKey, pose.yaw());
             int data = variants == null ? 0 : variants.spawnData(body.typeKey, body.look.traits().variant());
-            return addEntity.newInstance(body.entityId, body.uuid, pose.x(), pose.y(), pose.z(), pose.pitch(), yaw, body.nativeType, data, zeroVelocity,
+            return shared.addEntity.newInstance(body.entityId, body.uuid, pose.x(), pose.y(), pose.z(), pose.pitch(), yaw, body.nativeType, data, shared.zeroVelocity,
                     (double) BodyRules.wireYaw(body.typeKey, pose.headYaw()));
         }
         /** Every packet that presents a body, in the order the client must receive them. */
@@ -1273,24 +1229,24 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             if (body.nameTeam != null) packets.add(body.nameTeam[0]);
             float yaw = BodyRules.wireYaw(body.typeKey, pose.yaw());
             if (body.seatId >= 0) {
-                packets.add(addEntity.newInstance(body.seatId, body.seatUuid, pose.x(), pose.y(), pose.z(), 0f, yaw, seatType, 0, zeroVelocity, (double) yaw));
-                packets.add(metadataPacket.newInstance(body.seatId, presentation.seatValues()));
+                packets.add(shared.addEntity.newInstance(body.seatId, body.seatUuid, pose.x(), pose.y(), pose.z(), 0f, yaw, seatType, 0, shared.zeroVelocity, (double) yaw));
+                packets.add(shared.metadataPacket.newInstance(body.seatId, presentation.seatValues()));
             }
             packets.add(spawn(body, pose));
             packets.add(rotateHead(body.entityId, BodyRules.wireYaw(body.typeKey, pose.headYaw())));
             List<Object> values = new ArrayList<>();
-            if (body.playerInfo != null) values.add(dataValueCreate.invoke(null, playerSkinAccessor, VariantWire.skinParts(look.traits().variant())));
+            if (body.playerInfo != null) values.add(shared.dataValue.invoke(null, playerSkinAccessor, VariantWire.skinParts(look.traits().variant())));
             if (presentation != null) values.addAll(presentation.bodyValues(look, body.typeKey));
             if (variants != null) values.addAll(variants.values(body.typeKey, look.traits().variant()));
-            if (!values.isEmpty()) packets.add(metadataPacket.newInstance(body.entityId, values));
+            if (!values.isEmpty()) packets.add(shared.metadataPacket.newInstance(body.entityId, values));
             Object attributed = attributes == null ? null : attributes.packet(body.entityId, body.nativeType, look.traits().attributes());
             if (attributed != null) packets.add(attributed);
             if (body.displayIds.length > 0) {
                 double lift = BodyLook.lift(body.typeKey, body.height, body.seat.seatY(), look.aboveNativeNameplate(), look.traits().attributes().scale());
                 for (int row = 0; row < body.displayIds.length; row++) {
                     BodyLook.TextRow text = look.rows().get(row);
-                    packets.add(addEntity.newInstance(body.displayIds[row], body.displayUuids[row], pose.x(), pose.y() + body.height, pose.z(), 0f, 0f, textDisplayType, 0, zeroVelocity, 0d));
-                    packets.add(metadataPacket.newInstance(body.displayIds[row], presentation.textValues(text.text(), lift + text.offset(), look.style())));
+                    packets.add(shared.addEntity.newInstance(body.displayIds[row], body.displayUuids[row], pose.x(), pose.y() + body.height, pose.z(), 0f, 0f, textDisplayType, 0, shared.zeroVelocity, 0d));
+                    packets.add(shared.metadataPacket.newInstance(body.displayIds[row], presentation.textValues(text.text(), lift + text.offset(), look.style())));
                 }
                 packets.add(passengers(body.entityId, body.displayIds.clone()));
             }
@@ -1298,16 +1254,10 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             return packets;
         }
         private Object seatMove(Body body, BodyPose pose) throws ReflectiveOperationException {
-            Object position = vector.newInstance(pose.x(), pose.y(), pose.z());
-            float yaw = BodyRules.wireYaw(body.typeKey, pose.yaw());
-            if (steppedMovement) return movement.newInstance(body.seatId, positionPath.invoke(null, position), yaw, 0f, pose.onGround());
-            return movement.newInstance(body.seatId, positionValues.newInstance(position, zeroVelocity, yaw, 0f), pose.onGround());
+            return shared.move(body.seatId, pose.x(), pose.y(), pose.z(), BodyRules.wireYaw(body.typeKey, pose.yaw()), 0f, pose.onGround());
         }
         private Object move(Body body, BodyPose pose) throws ReflectiveOperationException {
-            Object position = vector.newInstance(pose.x(), pose.y(), pose.z());
-            float yaw = BodyRules.wireYaw(body.typeKey, pose.yaw());
-            if (steppedMovement) return movement.newInstance(body.entityId, positionPath.invoke(null, position), yaw, pose.pitch(), pose.onGround());
-            return movement.newInstance(body.entityId, positionValues.newInstance(position, zeroVelocity, yaw, pose.pitch()), pose.onGround());
+            return shared.move(body.entityId, pose.x(), pose.y(), pose.z(), BodyRules.wireYaw(body.typeKey, pose.yaw()), pose.pitch(), pose.onGround());
         }
         private Object rotateHead(int id, float yaw) throws ReflectiveOperationException {
             ByteBuf bytes = Unpooled.buffer(8);
@@ -1326,7 +1276,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private List<Object> die(int id, boolean living) throws ReflectiveOperationException {
             Object event = entityEvent(id, (byte) 3);
             // A body that is not a living entity has no health for the client to set.
-            return living ? List.of(event, metadataPacket.newInstance(id, List.of(dataValueCreate.invoke(null, healthAccessor, 0f)))) : List.of(event);
+            return living ? List.of(event, shared.metadataPacket.newInstance(id, List.of(shared.dataValue.invoke(null, healthAccessor, 0f)))) : List.of(event);
         }
         private Object entityEvent(int id, byte event) throws ReflectiveOperationException {
             ByteBuf bytes = Unpooled.buffer(8);
@@ -1375,12 +1325,6 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             Constructor<?> constructor = type(className).getDeclaredConstructor(buffer);
             if (!constructor.trySetAccessible()) throw new NoSuchMethodException("Cannot access explicit packet decoder " + className);
             return constructor;
-        }
-        private static Class<?> type(String name) throws ClassNotFoundException { return Class.forName(name); }
-        private static Field field(Class<?> owner, String name) throws NoSuchFieldException {
-            Field result = owner.getDeclaredField(name);
-            if (!result.trySetAccessible()) throw new NoSuchFieldException("Cannot access " + owner.getName() + "." + name);
-            return result;
         }
     }
 }

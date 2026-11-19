@@ -7,18 +7,12 @@ import art.arcane.animus.core.metrics.Load;
 import art.arcane.animus.core.metrics.PacketKind;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.bukkit.gui.BukkitScreens;
-import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.presentation.DisplayEntity;
 import art.arcane.animus.core.presentation.DisplayTransport;
-import art.arcane.animus.core.presentation.NativeEntityIds;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandler;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.util.ReferenceCountUtil;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,6 +29,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 
+import static art.arcane.animus.bukkit.packet.NativeBindings.accessor;
+import static art.arcane.animus.bukkit.packet.NativeBindings.type;
+
 /**
  * Hologram and menu displays as exact-version packets. No server entity is constructed or registered. Packets are
  * built on the viewer's owner and written on the viewer's channel event loop. Clicks on an ID the viewer sees are
@@ -44,10 +41,10 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
     /** Updates beyond this many unwritten batches are dropped; spawns and removals always queue. */
     private static final int MAXIMUM_PENDING = 256;
     private final Plugin plugin;
+    private final NativeBindings shared;
     private final Bindings api;
     private final BiPredicate<Player, Runnable> owner;
     private final ConcurrentMap<UUID, Session> sessions = new ConcurrentHashMap<>();
-    private final String handlerName = "animus_display_" + UUID.randomUUID().toString().replace("-", "");
     private final AtomicBoolean reportedFailure = new AtomicBoolean();
     private final AnimusMetrics metrics = AnimusMetrics.current();
     private volatile boolean closed;
@@ -55,7 +52,8 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
     private NativeDisplayAdapter(Plugin plugin, String version, BiPredicate<Player, Runnable> owner) throws ReflectiveOperationException {
         this.plugin = plugin;
         this.owner = owner;
-        this.api = new Bindings(plugin, version);
+        shared = NativeBindings.bind(plugin, version);
+        api = new Bindings(shared);
     }
 
     /**
@@ -74,12 +72,12 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
     }
 
     @Override public String unavailable() { return closed ? "display transport is closed" : null; }
-    @Override public int reserve() { return api.ids.reserve(1); }
+    @Override public int reserve() { return shared.ids.reserve(1); }
 
     @Override public void watch(Player viewer, Consumer<Click> clicks) {
         if (closed) return;
         Channel channel;
-        try { channel = api.channel(viewer); }
+        try { channel = shared.channel(viewer); }
         catch (ReflectiveOperationException | RuntimeException failure) { report(failure); return; }
         Session session = new Session(viewer, channel, clicks, metrics.viewer(viewer.getUniqueId(), viewer.getName()));
         Session previous = sessions.put(viewer.getUniqueId(), session);
@@ -87,11 +85,8 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
         try {
             channel.eventLoop().execute(() -> {
                 if (!current(session) || !channel.isActive()) return;
-                try {
-                    if (channel.pipeline().get(handlerName) != null) channel.pipeline().remove(handlerName);
-                    if (channel.pipeline().get("packet_handler") == null) throw new IllegalStateException("Vanilla packet_handler is unavailable");
-                    channel.pipeline().addBefore("packet_handler", handlerName, new ClickHandler(session));
-                } catch (RuntimeException failure) { sessions.remove(session.viewerId, session); report(failure); }
+                try { ViewerPipeline.attach(channel, this, new ClickHandler(session)); }
+                catch (RuntimeException failure) { sessions.remove(session.viewerId, session); report(failure); }
             });
         } catch (RejectedExecutionException ignored) { sessions.remove(session.viewerId, session); }
     }
@@ -103,11 +98,11 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
         List<Object> packets = new ArrayList<>(entities.size() * 2);
         for (DisplayEntity entity : entities) {
             try {
-                Object type = api.type(entity.content());
+                Object type = api.nativeType(entity.content());
                 if (type == null) continue;
-                packets.add(api.addEntity.newInstance(entity.id(), entity.uuid(), entity.x(), entity.y(), entity.z(), entity.pitch(), entity.yaw(), type, 0, api.zeroVelocity, (double) entity.yaw()));
+                packets.add(shared.addEntity.newInstance(entity.id(), entity.uuid(), entity.x(), entity.y(), entity.z(), entity.pitch(), entity.yaw(), type, 0, shared.zeroVelocity, (double) entity.yaw()));
                 List<Object> values = api.values(viewer, entity);
-                if (!values.isEmpty()) packets.add(api.metadataPacket.newInstance(entity.id(), values));
+                if (!values.isEmpty()) packets.add(shared.metadataPacket.newInstance(entity.id(), values));
                 session.visible.add(entity.id());
             } catch (ReflectiveOperationException | RuntimeException failure) { report(failure); }
         }
@@ -122,8 +117,8 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
             if (!session.visible.contains(entity.id())) continue;
             try {
                 List<Object> values = api.values(viewer, entity);
-                if (!values.isEmpty()) packets.add(api.metadataPacket.newInstance(entity.id(), values));
-                packets.add(api.move(entity));
+                if (!values.isEmpty()) packets.add(shared.metadataPacket.newInstance(entity.id(), values));
+                packets.add(shared.move(entity.id(), entity.x(), entity.y(), entity.z(), entity.yaw(), entity.pitch(), false));
             } catch (ReflectiveOperationException | RuntimeException failure) { report(failure); }
         }
         write(session, packets, false);
@@ -133,7 +128,7 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
         Session session = session(viewer);
         if (session == null || ids.length == 0) return;
         for (int id : ids) session.visible.remove(id);
-        try { write(session, List.of(api.removeEntities.newInstance((Object) ids.clone())), true); }
+        try { write(session, List.of(shared.removeEntities.newInstance((Object) ids.clone())), true); }
         catch (ReflectiveOperationException | RuntimeException failure) { report(failure); }
     }
 
@@ -171,7 +166,7 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
         } catch (RejectedExecutionException ignored) { session.pending.decrementAndGet(); }
     }
 
-    /** Removes this viewer's handler and, when the client can still see them, every display it was shown. */
+    /** Removes this viewer's tap and, when the client can still see them, every display it was shown. */
     private void retire(Session session, boolean despawn) {
         if (!session.active.compareAndSet(true, false)) return;
         int[] ids = session.visible.stream().mapToInt(Integer::intValue).toArray();
@@ -179,11 +174,10 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
         try {
             session.channel.eventLoop().execute(() -> {
                 if (despawn && ids.length > 0 && session.channel.isActive()) {
-                    try { session.channel.writeAndFlush(api.removeEntities.newInstance((Object) ids)); metrics.sent(session.traffic, null, PacketKind.HOLOGRAM, 1); }
+                    try { session.channel.writeAndFlush(shared.removeEntities.newInstance((Object) ids)); metrics.sent(session.traffic, null, PacketKind.HOLOGRAM, 1); }
                     catch (ReflectiveOperationException | RuntimeException failure) { report(failure); }
                 }
-                ChannelHandler handler = session.channel.pipeline().get(handlerName);
-                if (handler instanceof ClickHandler clicks && clicks.session == session) session.channel.pipeline().remove(handler);
+                ViewerPipeline.detach(session.channel, (ViewerPipeline.Tap tap) -> tap instanceof ClickHandler clicks && clicks.session == session);
             });
         } catch (RejectedExecutionException ignored) { /* A closed channel has already discarded its client presentation. */ }
     }
@@ -209,22 +203,23 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
         }
     }
 
-    private final class ClickHandler extends ChannelInboundHandlerAdapter {
+    /** This adapter's tap on the viewer's connection: clicks on its displays. */
+    private final class ClickHandler implements ViewerPipeline.Tap {
         private final Session session;
         private ClickHandler(Session session) { this.session = session; }
 
-        @Override public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
-            boolean attack = api.attackPacket.isInstance(message);
-            if (!attack && !api.interactPacket.isInstance(message)) { context.fireChannelRead(message); return; }
-            int entityId = ((Number) (attack ? api.attackId : api.interactId).invoke(message)).intValue();
-            if (!current(session) || !session.visible.contains(entityId)) { context.fireChannelRead(message); return; }
+        @Override public boolean read(Object message) throws Exception {
+            boolean attack = shared.attackPacket.isInstance(message);
+            if (!attack && !shared.interactPacket.isInstance(message)) return false;
+            int entityId = ((Number) (attack ? shared.attackId : shared.interactId).invoke(message)).intValue();
+            if (!current(session) || !session.visible.contains(entityId)) return false;
             try {
-                if (!attack && String.valueOf(api.interactHand.invoke(message)).equals("OFF_HAND")) return;
+                if (!attack && String.valueOf(shared.interactHand.invoke(message)).equals("OFF_HAND")) return true;
                 long now = System.nanoTime();
-                if (now - session.lastClickNanos < BodyRules.MIN_INPUT_INTERVAL_NANOS || !session.clickScheduled.compareAndSet(false, true)) { metrics.inbound(session.traffic, false); return; }
+                if (now - session.lastClickNanos < BodyRules.MIN_INPUT_INTERVAL_NANOS || !session.clickScheduled.compareAndSet(false, true)) { metrics.inbound(session.traffic, false); return true; }
                 session.lastClickNanos = now;
                 metrics.inbound(session.traffic, true);
-                Click click = new Click(entityId, attack, !attack && (boolean) api.interactSecondary.invoke(message), now);
+                Click click = new Click(entityId, attack, !attack && (boolean) shared.interactSecondary.invoke(message), now);
                 try {
                     boolean accepted = owner.test(session.viewer, () -> {
                         try { if (current(session) && session.visible.contains(entityId)) session.clicks.accept(click); }
@@ -234,64 +229,28 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
                     if (!accepted) session.clickScheduled.set(false);
                 } catch (RuntimeException failure) { session.clickScheduled.set(false); report(failure); }
             } finally { ReferenceCountUtil.release(message); }
+            return true;
         }
 
-        @Override public void channelInactive(ChannelHandlerContext context) throws Exception {
-            if (sessions.remove(session.viewerId, session)) retire(session, false);
-            context.fireChannelInactive();
-        }
+        @Override public void closed() { if (sessions.remove(session.viewerId, session)) retire(session, false); }
     }
 
+    /** What only displays bind, on top of the shared handles. */
     private static final class Bindings {
-        private final NativeEntityIds ids;
-        private final Object entityRegistry, blockRegistry, zeroVelocity, textType, itemType, blockType, interactionType, barrier;
-        private final Method identifierParse, registryContains, registryValue, defaultState, dataValue, literal, empty, append, setStyle;
+        private final NativeBindings shared;
+        private final Object blockRegistry, textType, itemType, blockType, interactionType, barrier;
+        private final Method defaultState, literal, empty, append, setStyle;
         private final Method withColor, withBold, withItalic, withUnderlined, withStrikethrough, withObfuscated, nativeStack;
         private final Object emptyStyle;
-        private final Constructor<?> addEntity, removeEntities, metadataPacket, vector, movement, positionValues, vector3f;
-        private final Method positionPath;
-        private final boolean steppedMovement;
-        private final Method craftPlayerHandle;
-        private final Field playerConnection, networkConnection, channel;
-        private final Class<?> attackPacket, interactPacket;
-        private final Method attackId, interactId, interactHand, interactSecondary;
+        private final Constructor<?> vector3f;
         private final Object sharedFlags, posInterpolation, transformInterpolation, translation, scale, billboard, brightness, viewRange,
                 shadowRadius, shadowStrength, glowColor, text, lineWidth, background, opacity, styleFlags, itemStack, itemContext, blockState,
                 width, height, response;
 
-        private Bindings(Plugin plugin, String version) throws ReflectiveOperationException {
-            Class<?> entityTypeClass = type("net.minecraft.world.entity.EntityType");
-            Class<?> identifier = type("net.minecraft.resources.Identifier");
-            Class<?> registry = type("net.minecraft.core.Registry");
-            Class<?> registries = type("net.minecraft.core.registries.BuiltInRegistries");
-            entityRegistry = registries.getField("ENTITY_TYPE").get(null);
-            blockRegistry = registries.getField("BLOCK").get(null);
-            identifierParse = identifier.getMethod("parse", String.class);
-            registryContains = registry.getMethod("containsKey", identifier);
-            registryValue = registry.getMethod("getValue", identifier);
+        private Bindings(NativeBindings shared) throws ReflectiveOperationException {
+            this.shared = shared;
+            blockRegistry = type("net.minecraft.core.registries.BuiltInRegistries").getField("BLOCK").get(null);
             defaultState = type("net.minecraft.world.level.block.Block").getMethod("defaultBlockState");
-            Class<?> allocatorOwner = type(version.equals("26.1.2") ? "net.minecraft.world.entity.Entity" : "net.minecraft.server.level.ServerLevel");
-            ids = new NativeEntityIds((AtomicInteger) field(allocatorOwner, "ENTITY_COUNTER").get(null));
-            Class<?> vec3 = type("net.minecraft.world.phys.Vec3");
-            vector = vec3.getConstructor(double.class, double.class, double.class);
-            zeroVelocity = vec3.getField("ZERO").get(null);
-            addEntity = type("net.minecraft.network.protocol.game.ClientboundAddEntityPacket").getConstructor(int.class, UUID.class, double.class, double.class,
-                    double.class, float.class, float.class, entityTypeClass, int.class, vec3, double.class);
-            removeEntities = type("net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket").getConstructor(int[].class);
-            metadataPacket = type("net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket").getConstructor(int.class, List.class);
-            Class<?> positionSync = type("net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket");
-            steppedMovement = version.equals("26.3");
-            if (steppedMovement) {
-                Class<?> path = type("net.minecraft.world.entity.PositionPath");
-                positionPath = path.getMethod("of", vec3); positionValues = null;
-                movement = positionSync.getConstructor(int.class, path, float.class, float.class, boolean.class);
-            } else {
-                Class<?> values = type("net.minecraft.world.entity.PositionMoveRotation");
-                positionValues = values.getConstructor(vec3, vec3, float.class, float.class); positionPath = null;
-                movement = positionSync.getConstructor(int.class, values, boolean.class);
-            }
-            Class<?> accessor = type("net.minecraft.network.syncher.EntityDataAccessor");
-            dataValue = type("net.minecraft.network.syncher.SynchedEntityData$DataValue").getMethod("create", accessor, Object.class);
             Class<?> component = type("net.minecraft.network.chat.Component");
             Class<?> mutable = type("net.minecraft.network.chat.MutableComponent");
             Class<?> style = type("net.minecraft.network.chat.Style");
@@ -326,32 +285,22 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
             itemStack = accessor(itemDisplay, "DATA_ITEM_STACK_ID"); itemContext = accessor(itemDisplay, "DATA_ITEM_DISPLAY_ID");
             blockState = accessor(blockDisplay, "DATA_BLOCK_STATE_ID");
             width = accessor(interaction, "DATA_WIDTH_ID"); height = accessor(interaction, "DATA_HEIGHT_ID"); response = accessor(interaction, "DATA_RESPONSE_ID");
-            textType = entityType("minecraft:text_display"); itemType = entityType("minecraft:item_display");
-            blockType = entityType("minecraft:block_display"); interactionType = entityType("minecraft:interaction");
-            barrier = defaultState.invoke(registryValue.invoke(blockRegistry, identifierParse.invoke(null, "minecraft:barrier")));
-            String craftPackage = plugin.getServer().getClass().getPackageName();
-            if (!craftPackage.startsWith("org.bukkit.craftbukkit")) throw new ClassNotFoundException("CraftBukkit implementation unavailable");
-            craftPlayerHandle = type(craftPackage + ".entity.CraftPlayer").getMethod("getHandle");
-            nativeStack = type(craftPackage + ".inventory.CraftItemStack").getMethod("asNMSCopy", ItemStack.class);
-            playerConnection = type("net.minecraft.server.level.ServerPlayer").getField("connection");
-            networkConnection = field(type("net.minecraft.server.network.ServerCommonPacketListenerImpl"), "connection");
-            channel = field(type("net.minecraft.network.Connection"), "channel");
-            attackPacket = type("net.minecraft.network.protocol.game.ServerboundAttackPacket");
-            interactPacket = type("net.minecraft.network.protocol.game.ServerboundInteractPacket");
-            attackId = attackPacket.getMethod("entityId"); interactId = interactPacket.getMethod("entityId");
-            interactHand = interactPacket.getMethod("hand"); interactSecondary = interactPacket.getMethod("usingSecondaryAction");
+            textType = shared.entityType("minecraft:text_display"); itemType = shared.entityType("minecraft:item_display");
+            blockType = shared.entityType("minecraft:block_display"); interactionType = shared.entityType("minecraft:interaction");
+            barrier = defaultState.invoke(shared.registryValue.invoke(blockRegistry, shared.identifierParse.invoke(null, "minecraft:barrier")));
+            nativeStack = shared.nativeStack();
         }
 
         /** The native type, or null when a mob type is unknown here and nothing is sent. */
-        private Object type(DisplayEntity.Content content) throws ReflectiveOperationException {
+        private Object nativeType(DisplayEntity.Content content) throws ReflectiveOperationException {
             return switch (content) {
                 case DisplayEntity.Text ignored -> textType;
                 case DisplayEntity.Item ignored -> itemType;
                 case DisplayEntity.Block ignored -> blockType;
                 case DisplayEntity.Hitbox ignored -> interactionType;
                 case DisplayEntity.Mob mob -> {
-                    Object key = identifierParse.invoke(null, mob.type());
-                    yield (boolean) registryContains.invoke(entityRegistry, key) ? registryValue.invoke(entityRegistry, key) : null;
+                    try { yield shared.entityType(mob.type()); }
+                    catch (IllegalArgumentException unknown) { yield null; }
                 }
             };
         }
@@ -361,37 +310,37 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
             DisplayEntity.Content content = entity.content();
             if (content instanceof DisplayEntity.Mob) return values;
             if (content instanceof DisplayEntity.Hitbox box) {
-                values.add(dataValue.invoke(null, width, box.width()));
-                values.add(dataValue.invoke(null, height, box.height()));
-                values.add(dataValue.invoke(null, response, Boolean.TRUE));
+                values.add(shared.dataValue.invoke(null, width, box.width()));
+                values.add(shared.dataValue.invoke(null, height, box.height()));
+                values.add(shared.dataValue.invoke(null, response, Boolean.TRUE));
                 return values;
             }
             DisplayEntity.Style style = entity.style();
-            values.add(dataValue.invoke(null, sharedFlags, style.glow() == -1 ? (byte) 0 : (byte) 0x40));
-            values.add(dataValue.invoke(null, glowColor, style.glow()));
-            values.add(dataValue.invoke(null, posInterpolation, style.moveTicks()));
-            values.add(dataValue.invoke(null, transformInterpolation, style.moveTicks()));
-            values.add(dataValue.invoke(null, translation, vector3f.newInstance(style.translateX(), style.translateY(), style.translateZ())));
-            values.add(dataValue.invoke(null, scale, vector3f.newInstance(style.scaleX(), style.scaleY(), style.scaleZ())));
-            values.add(dataValue.invoke(null, billboard, style.billboard().wire()));
-            values.add(dataValue.invoke(null, brightness, style.brightness()));
-            values.add(dataValue.invoke(null, viewRange, style.viewRange()));
-            values.add(dataValue.invoke(null, shadowRadius, style.shadowRadius()));
-            values.add(dataValue.invoke(null, shadowStrength, style.shadowStrength()));
+            values.add(shared.dataValue.invoke(null, sharedFlags, style.glow() == -1 ? (byte) 0 : (byte) 0x40));
+            values.add(shared.dataValue.invoke(null, glowColor, style.glow()));
+            values.add(shared.dataValue.invoke(null, posInterpolation, style.moveTicks()));
+            values.add(shared.dataValue.invoke(null, transformInterpolation, style.moveTicks()));
+            values.add(shared.dataValue.invoke(null, translation, vector3f.newInstance(style.translateX(), style.translateY(), style.translateZ())));
+            values.add(shared.dataValue.invoke(null, scale, vector3f.newInstance(style.scaleX(), style.scaleY(), style.scaleZ())));
+            values.add(shared.dataValue.invoke(null, billboard, style.billboard().wire()));
+            values.add(shared.dataValue.invoke(null, brightness, style.brightness()));
+            values.add(shared.dataValue.invoke(null, viewRange, style.viewRange()));
+            values.add(shared.dataValue.invoke(null, shadowRadius, style.shadowRadius()));
+            values.add(shared.dataValue.invoke(null, shadowStrength, style.shadowStrength()));
             switch (content) {
                 case DisplayEntity.Text line -> {
-                    values.add(dataValue.invoke(null, text, component(line.text())));
-                    values.add(dataValue.invoke(null, lineWidth, line.lineWidth()));
-                    values.add(dataValue.invoke(null, background, line.background()));
-                    values.add(dataValue.invoke(null, opacity, (byte) line.opacity()));
-                    values.add(dataValue.invoke(null, styleFlags, line.flags()));
+                    values.add(shared.dataValue.invoke(null, text, component(line.text())));
+                    values.add(shared.dataValue.invoke(null, lineWidth, line.lineWidth()));
+                    values.add(shared.dataValue.invoke(null, background, line.background()));
+                    values.add(shared.dataValue.invoke(null, opacity, (byte) line.opacity()));
+                    values.add(shared.dataValue.invoke(null, styleFlags, line.flags()));
                 }
                 case DisplayEntity.Item item -> {
                     ItemStack stack = BukkitScreens.displayStack(viewer.getServer(), item.item());
-                    values.add(dataValue.invoke(null, itemStack, nativeStack.invoke(null, stack)));
-                    values.add(dataValue.invoke(null, itemContext, (byte) item.context()));
+                    values.add(shared.dataValue.invoke(null, itemStack, nativeStack.invoke(null, stack)));
+                    values.add(shared.dataValue.invoke(null, itemContext, (byte) item.context()));
                 }
-                case DisplayEntity.Block block -> values.add(dataValue.invoke(null, blockState, state(block.block())));
+                case DisplayEntity.Block block -> values.add(shared.dataValue.invoke(null, blockState, state(block.block())));
                 default -> {}
             }
             return values;
@@ -399,10 +348,10 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
 
         private Object state(String key) throws ReflectiveOperationException {
             Object id;
-            try { id = identifierParse.invoke(null, MinecraftIds.normalize(key)); }
+            try { id = shared.identifierParse.invoke(null, MinecraftIds.normalize(key)); }
             catch (java.lang.reflect.InvocationTargetException invalid) { return barrier; }
-            if (!(boolean) registryContains.invoke(blockRegistry, id)) return barrier;
-            return defaultState.invoke(registryValue.invoke(blockRegistry, id));
+            if (!(boolean) shared.registryContains.invoke(blockRegistry, id)) return barrier;
+            return defaultState.invoke(shared.registryValue.invoke(blockRegistry, id));
         }
 
         /** A chat component of the styled runs, so hex colours render on every client. */
@@ -419,33 +368,6 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
                 append.invoke(root, setStyle.invoke(literal.invoke(null, span.text()), style));
             }
             return root;
-        }
-
-        private Object move(DisplayEntity entity) throws ReflectiveOperationException {
-            Object position = vector.newInstance(entity.x(), entity.y(), entity.z());
-            if (steppedMovement) return movement.newInstance(entity.id(), positionPath.invoke(null, position), entity.yaw(), entity.pitch(), false);
-            return movement.newInstance(entity.id(), positionValues.newInstance(position, zeroVelocity, entity.yaw(), entity.pitch()), false);
-        }
-
-        private Object entityType(String key) throws ReflectiveOperationException {
-            Object id = identifierParse.invoke(null, key);
-            if (!(boolean) registryContains.invoke(entityRegistry, id)) throw new IllegalArgumentException("Native entity type is unavailable: " + key);
-            return registryValue.invoke(entityRegistry, id);
-        }
-
-        private Channel channel(Player viewer) throws ReflectiveOperationException {
-            Object handle = craftPlayerHandle.invoke(viewer);
-            Channel result = (Channel) channel.get(networkConnection.get(playerConnection.get(handle)));
-            if (result == null || !result.isActive()) throw new IllegalStateException("Viewer is not connected");
-            return result;
-        }
-
-        private static Object accessor(Class<?> owner, String name) throws ReflectiveOperationException { return field(owner, name).get(null); }
-        private static Class<?> type(String name) throws ClassNotFoundException { return Class.forName(name); }
-        private static Field field(Class<?> owner, String name) throws NoSuchFieldException {
-            Field result = owner.getDeclaredField(name);
-            if (!result.trySetAccessible()) throw new NoSuchFieldException("Cannot access " + owner.getName() + "." + name);
-            return result;
         }
     }
 }

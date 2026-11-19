@@ -3,13 +3,14 @@ package art.arcane.animus.bukkit.packet;
 import art.arcane.animus.core.presentation.BoneDisplay;
 import art.arcane.animus.core.rig.DisplayTransform;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import org.bukkit.Bukkit;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.inventory.ItemStack;
+
+import static art.arcane.animus.bukkit.packet.NativeBindings.accessor;
 
 /**
  * Metadata for packet-only rig bones: item, block and text displays with their transforms and interpolation. Bound
@@ -24,8 +25,8 @@ final class NativeBones {
     /** Styles text the way holograms are styled; null leaves plain text. */
     private final NativePresentation presentation;
 
-    NativeBones(Method dataValue, String craftPackage, Object itemDisplayType, Object blockDisplayType, Object textDisplayType, NativePresentation presentation) throws ReflectiveOperationException {
-        this.dataValue = dataValue;
+    NativeBones(NativeBindings shared, Object itemDisplayType, Object blockDisplayType, Object textDisplayType, NativePresentation presentation) throws ReflectiveOperationException {
+        this.dataValue = shared.dataValue;
         this.presentation = presentation;
         this.itemDisplayType = itemDisplayType; this.blockDisplayType = blockDisplayType; this.textDisplayType = textDisplayType;
         Class<?> display = Class.forName("net.minecraft.world.entity.Display");
@@ -44,13 +45,7 @@ final class NativeBones {
         vector = Class.forName("org.joml.Vector3f").getConstructor(float.class, float.class, float.class);
         quaternion = Class.forName("org.joml.Quaternionf").getConstructor(float.class, float.class, float.class, float.class);
         literal = Class.forName("net.minecraft.network.chat.Component").getMethod("literal", String.class);
-        nativeStack = Class.forName(craftPackage + ".inventory.CraftItemStack").getMethod("asNMSCopy", ItemStack.class);
-    }
-
-    private static Object accessor(Class<?> owner, String name) throws ReflectiveOperationException {
-        Field field = owner.getDeclaredField(name);
-        if (!field.trySetAccessible()) throw new NoSuchFieldException("Cannot access " + owner.getName() + "." + name);
-        return field.get(null);
+        nativeStack = shared.nativeStack();
     }
 
     Object type(BoneDisplay<ItemStack> bone) {
