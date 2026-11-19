@@ -6,7 +6,6 @@ import art.arcane.animus.core.behavior.trigger.ServerCommandSync;
 import art.arcane.animus.core.behavior.trigger.ServerEvent;
 import art.arcane.animus.core.behavior.trigger.ServerTriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerKind;
-import art.arcane.animus.core.platform.ModWorlds;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;

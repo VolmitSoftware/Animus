@@ -2,8 +2,7 @@ package art.arcane.animus.bukkit;
 
 import art.arcane.animus.core.behavior.trigger.ServerCommandSync;
 import art.arcane.animus.core.behavior.trigger.ServerTriggerDispatcher;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
+import art.arcane.volmlib.util.bukkit.BukkitCommandMaps;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -15,12 +14,11 @@ import org.bukkit.Server;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandMap;
 import org.bukkit.command.CommandSender;
-import org.bukkit.command.SimpleCommandMap;
 import org.bukkit.entity.Player;
 
 /**
  * Server-behavior commands in the server's command map, under the fallback prefix {@code animus}. Global owner only.
- * Spigot exposes neither the map nor its known commands, so both are bound once by reflection.
+ * Spigot exposes neither the map nor its known commands, so {@link BukkitCommandMaps} binds both once by reflection.
  */
 final class BukkitServerCommands implements ServerCommandSync.Host {
     static final String PREFIX = "animus";
@@ -35,22 +33,9 @@ final class BukkitServerCommands implements ServerCommandSync.Host {
         this.map = map; this.known = known; this.dispatcher = dispatcher; this.changed = changed;
     }
 
-    /** Paper's {@code Server#getCommandMap} and {@code getKnownCommands}, or CraftBukkit's method and Spigot's protected field. */
-    static BukkitServerCommands bind(Server server, ServerTriggerDispatcher dispatcher, Runnable changed) throws ReflectiveOperationException {
-        CommandMap map = (CommandMap) server.getClass().getMethod("getCommandMap").invoke(server);
-        return new BukkitServerCommands(map, knownCommands(map), dispatcher, changed);
-    }
-
-    @SuppressWarnings("unchecked")
-    static Map<String, Command> knownCommands(CommandMap map) throws ReflectiveOperationException {
-        try {
-            Method paper = map.getClass().getMethod("getKnownCommands");
-            return (Map<String, Command>) paper.invoke(map);
-        } catch (NoSuchMethodException spigot) {
-            Field field = SimpleCommandMap.class.getDeclaredField("knownCommands");
-            field.setAccessible(true);
-            return (Map<String, Command>) field.get(map);
-        }
+    static BukkitServerCommands bind(Server server, ServerTriggerDispatcher dispatcher, Runnable changed) {
+        CommandMap map = BukkitCommandMaps.commandMap(server);
+        return new BukkitServerCommands(map, BukkitCommandMaps.knownCommands(map), dispatcher, changed);
     }
 
     /** Taken by the server or another plugin; this sync's own commands, from this load, never count. */

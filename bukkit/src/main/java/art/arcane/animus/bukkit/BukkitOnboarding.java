@@ -5,7 +5,6 @@ import art.arcane.animus.core.command.AnimusDirector;
 import art.arcane.animus.core.onboarding.Onboarding;
 import art.arcane.animus.core.text.ChatLine;
 import java.io.IOException;
-import java.lang.reflect.Method;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
@@ -15,7 +14,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
@@ -30,23 +28,18 @@ final class BukkitOnboarding implements Listener {
     private final Onboarding onboarding;
     private final Executor files;
     private final BooleanSupplier stopping;
-    private final Method entityScheduler, entityExecute;
 
-    private BukkitOnboarding(JavaPlugin plugin, ReplyScheduler replies, AnimusRuntime runtime, Executor files, BooleanSupplier stopping) throws ReflectiveOperationException {
+    private BukkitOnboarding(JavaPlugin plugin, ReplyScheduler replies, AnimusRuntime runtime, Executor files, BooleanSupplier stopping) {
         this.plugin = plugin;
         this.replies = replies;
         this.runtime = runtime;
         this.files = files;
         this.stopping = stopping;
         onboarding = Onboarding.of(runtime);
-        if (replies.isFolia()) {
-            entityScheduler = Class.forName("org.bukkit.entity.Entity").getMethod("getScheduler");
-            entityExecute = Class.forName("io.papermc.paper.threadedregions.scheduler.EntityScheduler").getMethod("execute", Plugin.class, Runnable.class, Runnable.class, long.class);
-        } else { entityScheduler = null; entityExecute = null; }
     }
 
     /** Listens for joins and sends the startup notice. Call once every plugin has enabled, so a Citizens loaded after Animus is seen. */
-    static void start(JavaPlugin plugin, ReplyScheduler replies, AnimusRuntime runtime, Executor files, BooleanSupplier stopping) throws ReflectiveOperationException {
+    static void start(JavaPlugin plugin, ReplyScheduler replies, AnimusRuntime runtime, Executor files, BooleanSupplier stopping) {
         BukkitOnboarding onboarding = new BukkitOnboarding(plugin, replies, runtime, files, stopping);
         plugin.getServer().getPluginManager().registerEvents(onboarding, plugin);
         onboarding.announce();
@@ -91,13 +84,5 @@ final class BukkitOnboarding implements Listener {
     private void send(Player player, ChatLine line) { new BukkitActor(player, replies).rich(line); }
 
     /** On the player's owner after the join delay; a player who leaves first gets nothing. */
-    private void later(Player player, Runnable task) {
-        if (!plugin.isEnabled()) return;
-        try {
-            if (entityExecute == null) plugin.getServer().getScheduler().runTaskLater(plugin, task, Onboarding.JOIN_DELAY_TICKS);
-            else entityExecute.invoke(entityScheduler.invoke(player), plugin, task, (Runnable) () -> {}, Onboarding.JOIN_DELAY_TICKS);
-        } catch (ReflectiveOperationException | RuntimeException failure) {
-            plugin.getLogger().warning("Join hint not scheduled: " + failure.getClass().getSimpleName());
-        }
-    }
+    private void later(Player player, Runnable task) { replies.later(player, task, Onboarding.JOIN_DELAY_TICKS); }
 }

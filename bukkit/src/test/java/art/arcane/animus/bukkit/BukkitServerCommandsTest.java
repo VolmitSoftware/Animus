@@ -5,6 +5,7 @@ import art.arcane.animus.core.behavior.catalog.ServerBehaviorList;
 import art.arcane.animus.core.behavior.trigger.ServerCommandSync;
 import art.arcane.animus.core.behavior.trigger.ServerTriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.ServerTriggerSettings;
+import art.arcane.volmlib.util.bukkit.BukkitCommandMaps;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
@@ -40,7 +41,7 @@ class BukkitServerCommandsTest {
             default -> null;
         });
         map = new SimpleCommandMap(server);
-        known = BukkitServerCommands.knownCommands(map);
+        known = BukkitCommandMaps.knownCommands(map);
         map.register("other", new Taken("spawn"));
         map.register("other", new Taken("hub"));
         sync = new ServerCommandSync(new BukkitServerCommands(map, known, dispatcher, resent::incrementAndGet), logged::add);

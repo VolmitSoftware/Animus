@@ -565,8 +565,6 @@ final class DenizenConverter {
 
     // ---- Outcomes ----
 
-    void issue(String text) { issues.add(text); }
-
     void outcome(Scope scope, Item item, String kind, String name, boolean converted, String reason) {
         if (!scope.record) return;
         record(scope.container, item.line(), kind, name, item.text(), converted, reason);

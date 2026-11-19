@@ -26,9 +26,9 @@ public final class BukkitWorlds {
         for (Loaded world : loaded) if (world.key().equals(key) || world.uid().toString().equalsIgnoreCase(reference)) return Optional.of(world.name());
         String main = loaded.getFirst().name();
         String folder = switch (key) {
-            case ModWorlds.OVERWORLD -> main;
-            case ModWorlds.NETHER -> main + "_nether";
-            case ModWorlds.END -> main + "_the_end";
+            case MinecraftIds.OVERWORLD -> main;
+            case MinecraftIds.NETHER -> main + "_nether";
+            case MinecraftIds.END -> main + "_the_end";
             default -> null;
         };
         if (folder == null) return Optional.empty();
@@ -46,8 +46,8 @@ public final class BukkitWorlds {
         String main = loaded.isEmpty() ? "" : loaded.getFirst().name();
         for (Loaded world : loaded) {
             List<String> candidates = new ArrayList<>(List.of(world.name(), world.key()));
-            String vanilla = world.name().equals(main) ? ModWorlds.OVERWORLD : world.name().equals(main + "_nether") ? ModWorlds.NETHER
-                    : world.name().equals(main + "_the_end") ? ModWorlds.END : null;
+            String vanilla = world.name().equals(main) ? MinecraftIds.OVERWORLD : world.name().equals(main + "_nether") ? MinecraftIds.NETHER
+                    : world.name().equals(main + "_the_end") ? MinecraftIds.END : null;
             if (vanilla != null) candidates.add(vanilla);
             for (String key : List.copyOf(candidates))
                 if (key.startsWith("minecraft:")) candidates.add(key.substring("minecraft:".length()));

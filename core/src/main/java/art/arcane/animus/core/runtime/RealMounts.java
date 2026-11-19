@@ -47,8 +47,6 @@ final class RealMounts<P, I> {
     int problemCount() { int count = 0; for (Binding binding : bindings.values()) if (binding.problem != null) count++; return count; }
     /** The vehicle this NPC sits on now, or null. */
     RuntimeHost.RealEntity vehicle(PersistedNpcService<P, I>.Value value) { Binding binding = bindings.get(value); return binding == null ? null : binding.vehicle; }
-    /** Whether the definition names a real vehicle, ridden or not. */
-    boolean declares(PersistedNpcService<P, I>.Value value) { return bindings.containsKey(value); }
     List<Binding> attached() {
         List<Binding> riding = new ArrayList<>();
         for (Binding binding : bindings.values()) if (binding.vehicle != null) riding.add(binding);

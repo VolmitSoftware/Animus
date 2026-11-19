@@ -1,17 +1,14 @@
 package art.arcane.animus.core.gui.exchange;
 
 import art.arcane.animus.core.gui.GuiKind;
+import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
-import art.arcane.animus.core.storage.WriteNotices;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -41,8 +38,8 @@ public final class GlossFolders {
             if (!file.startsWith(glossData.normalize())) { report.refused(label + ": id leaves the Gloss folder"); continue; }
             switch (compare(file, document.json())) {
                 case SAME -> report.unchanged(label);
-                case DIFFERENT -> { if (replace) { write(file, document.json()); report.written(label); } else report.refused(label + ": Gloss has a different file; add replace=true to overwrite it"); }
-                case MISSING -> { write(file, document.json()); report.written(label); }
+                case DIFFERENT -> { if (replace) { DocumentStore.atomic(file, document.json()); report.written(label); } else report.refused(label + ": Gloss has a different file; add replace=true to overwrite it"); }
+                case MISSING -> { DocumentStore.atomic(file, document.json()); report.written(label); }
             }
         }
         return report.build();
@@ -56,7 +53,7 @@ public final class GlossFolders {
             String path = document.kind().glossFolder() + "/" + document.glossId() + ".json";
             Path file = root.resolve(path).normalize();
             if (!file.startsWith(root.normalize())) { report.refused(document.animusId() + ": id leaves the export folder"); continue; }
-            write(file, document.json());
+            DocumentStore.atomic(file, document.json());
             JsonObject entry = new JsonObject();
             entry.addProperty("kind", document.kind().glossFolder());
             entry.addProperty("id", document.glossId());
@@ -69,7 +66,7 @@ public final class GlossFolders {
         workspace.addProperty("version", GlossSources.EXPORT_VERSION);
         workspace.addProperty("exportedAt", Instant.now().toString());
         workspace.add("documents", listed);
-        write(root.resolve("workspace.json"), JsonDocuments.write(workspace));
+        DocumentStore.atomic(root.resolve("workspace.json"), JsonDocuments.write(workspace));
         return report.build();
     }
 
@@ -80,20 +77,5 @@ public final class GlossFolders {
         if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) throw new IOException(file.getFileName() + " is not a regular file");
         try { return JsonDocuments.object(JsonDocuments.read(file)).equals(JsonDocuments.object(json)) ? Comparison.SAME : Comparison.DIFFERENT; }
         catch (IOException unreadable) { return Comparison.DIFFERENT; }
-    }
-
-    /** Writes beside the target and moves it into place, so a reader never sees half a file. */
-    static void write(Path file, String text) throws IOException {
-        Path parent = file.toAbsolutePath().getParent();
-        Files.createDirectories(parent);
-        Path temporary = Files.createTempFile(parent, ".animus-", ".tmp");
-        try {
-            Files.writeString(temporary, text, StandardCharsets.UTF_8);
-            WriteNotices.written(file, text);
-            try { Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }
-            catch (AtomicMoveNotSupportedException unsupported) { Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING); }
-            catch (IOException | RuntimeException failure) { WriteNotices.touched(file); throw failure; }
-            WriteNotices.written(file, text);
-        } finally { Files.deleteIfExists(temporary); }
     }
 }

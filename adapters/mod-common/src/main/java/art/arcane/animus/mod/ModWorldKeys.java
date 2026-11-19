@@ -1,6 +1,5 @@
 package art.arcane.animus.mod;
 
-import art.arcane.animus.core.platform.ModWorlds;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;

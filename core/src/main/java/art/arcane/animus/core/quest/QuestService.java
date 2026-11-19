@@ -80,8 +80,6 @@ public final class QuestService<P, S> implements QuestControl, AutoCloseable {
     QuestStore store() { return store; }
     public QuestCatalog catalog() { return catalog; }
     public boolean enabled() { return !closed; }
-    /** Why some saved records were set aside at start, for the startup banner; empty when all loaded. */
-    public List<String> stateProblems() { return store.problems(); }
 
     /** The NPC's UUID by id, from the current definitions. */
     Optional<UUID> npc(String id) { refreshNpcs(); return Optional.ofNullable(npcIds.get(id)); }

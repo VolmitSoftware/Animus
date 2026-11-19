@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import art.arcane.animus.core.editor.transport.EditorRequest;
 import art.arcane.animus.core.editor.transport.EditorResponse;
+import art.arcane.animus.core.storage.HeardWrites;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -61,6 +62,14 @@ class EditorImportsTest {
     private static String error(EditorResponse response) { return EditorHarness.json(response).getAsJsonObject("error").get("code").getAsString(); }
 
     private byte[] save() throws Exception { return Files.readAllBytes(SharedFixtures.fixture("citizens/runtime.yml")); }
+
+    @Test
+    void anUploadIsAnnouncedAsAnimusOwnWrite() throws Exception {
+        try (HeardWrites heard = new HeardWrites()) {
+            ok(upload("?file=citizens", save(), EditorRequest.Transport.DIRECT));
+            assertEquals(List.of("touched"), heard.of(harness.root.toRealPath().resolve("imports/saves.yml")));
+        }
+    }
 
     @Test
     void import_stagedByAnOlderConverter_isRefusedWithTheStepThatStagesItAgain() throws Exception {

@@ -226,7 +226,8 @@ final class AnimusBukkit {
             runtime.playerNames((UUID player) -> Optional.ofNullable(host.getServer().getOfflinePlayer(player).getName()));
             runtime.knownPlayers(() -> recentPlayers(host.getServer()));
             CitizensGuard.install(citizens);
-            replies = new ReplyScheduler(host);
+            FoliaRegions regions = FoliaRegions.present() ? new FoliaRegions(host) : null;
+            replies = new ReplyScheduler(host, regions);
             LibsDisguisesIntegration.serverThread((Runnable task) -> {
                 if (!replies.reply(host.getServer().getConsoleSender(), task)) throw new RejectedExecutionException("the server refused console work");
             });
@@ -241,7 +242,6 @@ final class AnimusBukkit {
             }
             NpcRuntimeSettings npcSettings = runtime.npcSettings();
             PersistedNpcService.Settings settings = PersistedNpcService.Settings.from(npcSettings);
-            FoliaRegions regions = replies.isFolia() ? new FoliaRegions(host) : null;
             PersistedNpcService<Player, ItemStack> mainThread = regions == null ? BukkitRuntimeHost.start(host, runtime, environment.minecraftVersion(), commands, settings, (Player player, Runnable task) -> replies.reply(player, task)) : null;
             living = regions == null ? mainThread : new RegionNpcRuntime(host, runtime, environment.minecraftVersion(), commands, settings, regions);
             if (!living.available()) host.getLogger().warning(living.status());
@@ -250,7 +250,7 @@ final class AnimusBukkit {
             Platform modulePlatform = modulePlatform();
             Function<Runnable, AutoCloseable> ownerTicks = regions != null ? regions::globalTicks : tick -> host.getServer().getScheduler().runTaskTimer(host, tick, 1, 1)::cancel;
             Economy vault = runtime.moduleHooks().economy(BukkitScreens.vault(host.getServer()));
-            screens = new BukkitScreens(host, (Player player, Runnable task) -> replies.reply(player == null ? host.getServer().getConsoleSender() : player, task),
+            screens = new BukkitScreens(host, regions, (Player player, Runnable task) -> replies.reply(player == null ? host.getServer().getConsoleSender() : player, task),
                     () -> ShopService.economy(runtime.shopSettings(), vault), hints::refresh);
             shops = new ShopService<>(runtime, screens, living, commands,
                     (String name) -> Optional.ofNullable(host.getServer().getPlayerExact(name)).map(Player::getUniqueId), message -> host.getLogger().info(message));

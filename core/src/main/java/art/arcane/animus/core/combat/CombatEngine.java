@@ -159,8 +159,6 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     public int slotLimit() { return budgets.maximumNpcs(); }
     /** NPCs that want a slot and wait their turn. */
     public int waitingCount() { return waiting.size(); }
-    /** The most NPCs that waited at once since the engine started. */
-    public int peakWaiting() { return peakWaiting; }
     /** Slot use for status lines: active of the limit, waiting, sleeping without a slot, and the peak wait. */
     public String capacity() {
         return "fighting-or-scanning=" + active + "/" + budgets.maximumNpcs() + " | waiting=" + waiting.size()

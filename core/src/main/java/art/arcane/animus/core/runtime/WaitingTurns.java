@@ -29,6 +29,4 @@ public final class WaitingTurns {
     }
     /** Callers refused in the previous tick. */
     public int lastRefused() { return lastRefused; }
-    /** Callers refused so far in this tick. */
-    public int refusedNow() { return refused; }
 }

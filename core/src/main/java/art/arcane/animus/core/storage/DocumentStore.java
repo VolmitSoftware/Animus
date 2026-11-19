@@ -580,19 +580,24 @@ public final class DocumentStore implements AutoCloseable {
     }
 
     /** Announced to {@link WriteNotices} before and after the move, so the hotload watcher never mistakes it for a hand edit. */
-    public static void atomic(Path path, String value) throws IOException {
+    public static void atomic(Path path, String value) throws IOException { replace(path, StandardCharsets.UTF_8.encode(value), value); }
+
+    /** Bytes no text describes, announced as touched once they are in place. */
+    public static void atomic(Path path, byte[] bytes) throws IOException { replace(path, ByteBuffer.wrap(bytes), null); }
+
+    private static void replace(Path path, ByteBuffer bytes, String text) throws IOException {
         createDirectoriesDurably(path.toAbsolutePath().getParent());
         Path temporary = Files.createTempFile(path.getParent(), ".animus-", ".tmp");
         try {
             try (FileChannel output = FileChannel.open(temporary, WRITE)) {
-                ByteBuffer bytes = StandardCharsets.UTF_8.encode(value);
                 while (bytes.hasRemaining()) output.write(bytes);
                 output.force(true);
             }
-            WriteNotices.written(path, value);
+            if (text != null) WriteNotices.written(path, text);
             try { Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }
             catch (IOException | RuntimeException failure) { WriteNotices.touched(path); throw failure; }
-            WriteNotices.written(path, value);
+            if (text != null) WriteNotices.written(path, text);
+            else WriteNotices.touched(path);
             syncDirectory(path.getParent());
         } finally { Files.deleteIfExists(temporary); }
     }

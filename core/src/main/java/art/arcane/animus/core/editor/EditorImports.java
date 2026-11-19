@@ -13,7 +13,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -83,13 +82,7 @@ public final class EditorImports {
         JsonObject before = dropIn().status();
         if (before.get("state").getAsString().equals("applied"))
             throw new EditorError(EditorError.Code.CONFLICT, "An import is applied. Roll it back before uploading another save.");
-        Path file = store.resolve(relative);
-        Files.createDirectories(file.getParent());
-        Path temporary = Files.createTempFile(file.getParent(), ".animus-upload-", ".tmp");
-        try {
-            Files.write(temporary, bytes);
-            Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } finally { Files.deleteIfExists(temporary); }
+        DocumentStore.atomic(store.resolve(relative), bytes);
         List<String> lines = List.of("Uploaded " + bytes.length + " bytes to " + relative + ". Stage the import to convert it; nothing is installed.");
         return review(lines);
     }

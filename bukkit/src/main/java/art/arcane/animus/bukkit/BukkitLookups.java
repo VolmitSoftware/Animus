@@ -2,6 +2,7 @@ package art.arcane.animus.bukkit;
 
 import art.arcane.animus.core.editor.EditorHost;
 import art.arcane.animus.core.platform.BukkitWorlds;
+import art.arcane.volmlib.util.bukkit.BukkitCommandMaps;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -11,7 +12,6 @@ import org.bukkit.Keyed;
 import org.bukkit.Material;
 import org.bukkit.Registry;
 import org.bukkit.Server;
-import org.bukkit.command.CommandMap;
 
 /**
  * The lists {@code GET /v1/lookups} returns on Bukkit: registry ids (read once, they are fixed after startup), the worlds,
@@ -64,11 +64,10 @@ final class BukkitLookups {
 
     private List<String> commands() {
         try {
-            CommandMap map = (CommandMap) server.getClass().getMethod("getCommandMap").invoke(server);
             List<String> labels = new ArrayList<>();
-            for (String label : List.copyOf(BukkitServerCommands.knownCommands(map).keySet())) if (label.indexOf(':') < 0) labels.add(label);
+            for (String label : List.copyOf(BukkitCommandMaps.knownCommands(BukkitCommandMaps.commandMap(server)).keySet())) if (label.indexOf(':') < 0) labels.add(label);
             return labels;
-        } catch (ReflectiveOperationException | RuntimeException unreadable) {
+        } catch (RuntimeException unreadable) {
             return List.of();
         }
     }

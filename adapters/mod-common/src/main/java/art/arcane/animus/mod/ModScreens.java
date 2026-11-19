@@ -13,7 +13,6 @@ import art.arcane.animus.core.inventory.MatchRule;
 import art.arcane.animus.core.inventory.TradeInventory;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcItem;
-import art.arcane.animus.core.platform.ModWorlds;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.toolkit.SkinLookup;
 import art.arcane.animus.core.toolkit.Toolkit;

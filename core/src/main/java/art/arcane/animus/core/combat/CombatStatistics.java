@@ -1,5 +1,6 @@
 package art.arcane.animus.core.combat;
 
+import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -8,7 +9,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -136,12 +136,8 @@ public final class CombatStatistics {
         return JsonDocuments.write(root);
     }
     private void write(String document) {
-        try {
-            Files.createDirectories(file.getParent());
-            Path next = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(next, document, StandardCharsets.UTF_8);
-            Files.move(next, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (IOException failure) { warn.accept("Combat statistics could not be saved to " + file + ": " + failure.getMessage()); }
+        try { DocumentStore.atomic(file, document); }
+        catch (IOException failure) { warn.accept("Combat statistics could not be saved to " + file + ": " + failure.getMessage()); }
     }
     private void load() {
         if (!Files.isRegularFile(file)) return;

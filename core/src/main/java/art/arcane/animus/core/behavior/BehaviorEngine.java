@@ -273,7 +273,6 @@ public final class BehaviorEngine implements AutoCloseable {
         try{JsonDocuments.object(json);return true;}catch(java.io.IOException invalid){return false;}
     }
     public boolean cancel(UUID execution,String reason){owner();Execution found=executions.get(execution);if(found==null)return false;terminate(found,State.CANCELLED,bounded(reason));return true;}
-    public int cancelNpc(NpcHandle npc){owner();int cancelled=0;for(Execution execution:List.copyOf(executions.values()))if(execution.context.npc().equals(npc)){terminate(execution,State.CANCELLED,"npc-cancelled");cancelled++;}return cancelled;}
     @Override public void close(){owner();if(closed)return;closed=true;for(Execution execution:List.copyOf(executions.values()))terminate(execution,State.CANCELLED,"engine-closed");}
     public Optional<Report> inspect(UUID execution){owner();Execution found=executions.get(execution);return found==null?Optional.ofNullable(history.get(execution)):Optional.of(report(found,State.RUNNING,"running"));}
     public Status status(){owner();int retired=0,unobserved=0;for(Pending call:calls){if(call.cancelled||call.outcomeHandled)retired++;if(call.observationFailed&&call.resolved.get()==null||call.quiescenceFailed)unobserved++;}return new Status(tick,executions.size(),fibers.size(),calls.size(),retired,unobserved,history.size(),cancellationFailures,quiescenceFailures,terminalObserverFailures,closed);}

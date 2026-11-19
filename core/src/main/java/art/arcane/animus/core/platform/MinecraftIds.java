@@ -10,6 +10,8 @@ import java.util.regex.Pattern;
  */
 public final class MinecraftIds {
     public static final int MAX_LENGTH = 128;
+    /** The vanilla dimension keys. */
+    public static final String OVERWORLD = "minecraft:overworld", NETHER = "minecraft:the_nether", END = "minecraft:the_end";
     /** A registry id with an optional namespace, for schemas and plain regex checks. */
     public static final String PATTERN = "([a-z0-9_.-]+:)?[a-z0-9_./-]+";
     private static final Pattern FORM = Pattern.compile(PATTERN);

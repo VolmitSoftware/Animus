@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import art.arcane.animus.core.rig.AnimationDocument;
 import art.arcane.animus.core.rig.RigDocument;
+import art.arcane.animus.core.storage.HeardWrites;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonObject;
 import java.io.IOException;
@@ -45,6 +46,16 @@ final class RigPackBuilderTest {
         Files.write(file, content);
     }
     private RigPackBuilder.Result build() throws IOException { return RigPackBuilder.build(data, data.resolve("pack/out"), RigPackBuilder.Limits.DEFAULT); }
+
+    @Test
+    void theZipAndItsHashAreAnnouncedAsAnimusOwnWrites() throws Exception {
+        write("models/town/golem.bbmodel", MODEL.getBytes());
+        try (HeardWrites heard = new HeardWrites()) {
+            RigPackBuilder.Result result = build();
+            assertEquals(List.of("touched"), heard.of(result.zip()));
+            assertEquals(List.of("written", "written"), heard.of(result.zip().resolveSibling(RigPackBuilder.ZIP + ".sha1")));
+        }
+    }
 
     @Test
     void modelsBecomeItemModelsNamedAfterTheirRigAndBone() throws IOException {

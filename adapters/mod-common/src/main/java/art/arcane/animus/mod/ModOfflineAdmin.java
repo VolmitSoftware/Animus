@@ -2,7 +2,6 @@ package art.arcane.animus.mod;
 
 import art.arcane.animus.core.editor.EditorHost;
 import art.arcane.animus.core.editor.OfflinePermission;
-import art.arcane.animus.core.platform.ModPermissions;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;

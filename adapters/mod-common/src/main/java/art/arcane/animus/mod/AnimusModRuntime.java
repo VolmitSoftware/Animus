@@ -25,7 +25,6 @@ import art.arcane.animus.core.building.BuildService;
 import art.arcane.animus.core.command.AnimusCommandTree;
 import art.arcane.animus.core.command.AnimusDirector;
 import art.arcane.animus.core.command.CommandServices;
-import art.arcane.animus.core.command.ProofControl;
 import art.arcane.animus.core.command.BehaviorCommands;
 import art.arcane.animus.core.editor.EditorCommands;
 import art.arcane.animus.core.editor.EditorHost;
@@ -74,8 +73,6 @@ import org.slf4j.LoggerFactory;
  */
 public final class AnimusModRuntime {
     private static final Logger LOGGER = LoggerFactory.getLogger(BuildIdentity.ID);
-    /** Packet previews read Bukkit's server internals and are not part of the mod runtime. */
-    private static final ProofControl BUKKIT_ONLY = ProofControl.unavailable(ProofControl.MOD_SERVER);
     /** A server correction moves a player less than this far; a real teleport moves it farther. */
     private static final double CORRECTION_SQUARED = 1.0;
     private final Platform platform;
@@ -261,7 +258,7 @@ public final class AnimusModRuntime {
                     () -> { EditorService active = owner.editor; return active == null ? List.of("Editor: off") : active.status(); });
             next.commands = new AnimusCommandTree(new CommandServices(next.runtime, files, next.living, () -> owner.behaviors, next.extensions, next.builtins,
                     next.combat.control(), next.shops, next.guis, next.quests, new BuildCommands(() -> owner.builds, owner.builds::unavailable), new EditorCommands(() -> owner.editor, files),
-                    debugCommands, BUKKIT_ONLY, next.recordings.sessions(), () -> List.of(server.getPlayerNames()), () -> owner.stopping,
+                    debugCommands, new ModProof(), next.recordings.sessions(), () -> List.of(server.getPlayerNames()), () -> owner.stopping,
                     (String plugin) -> false)).director();
             measured.extra("combat.waiting", next.combat::waiting);
             measured.extra("combat.load", next.combat::load);

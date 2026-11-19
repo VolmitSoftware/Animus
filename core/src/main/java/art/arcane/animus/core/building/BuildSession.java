@@ -139,7 +139,6 @@ public final class BuildSession {
     public long unobtainable() { return unobtainable; }
     public long reverted() { return reverted; }
     public long undoSkipped() { return undoSkipped; }
-    public int undoRemaining() { return undoRemaining; }
     public MaterialLedger ledger() { return ledger; }
     public UndoJournal journal() { return journal; }
     public Optional<UUID> startedBy() { return startedBy; }

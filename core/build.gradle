@@ -12,7 +12,14 @@ if (rootProject.projectDir != animusRoot) {
     layout.buildDirectory.set(rootProject.layout.buildDirectory.dir('core'))
 }
 
+// Offline validation and import digests for the converter and the tests; the plugin and mod jars bundle only main.
+sourceSets.create('offline')
+java { registerFeature('offline') { usingSourceSet(sourceSets.offline) } }
+configurations.offlineImplementation.extendsFrom(configurations.implementation)
+
 dependencies {
+    offlineImplementation(project(path))
+    testImplementation(project(path)) { capabilities { requireFeature('offline') } }
     api(project(':animus-api'))
     implementation('org.yaml:snakeyaml:2.5')
     implementation("com.github.VolmitSoftware.VolmLib:volmlib-localization:${animus.volmLibVersion}")
@@ -83,11 +90,11 @@ public final class BuildIdentity {
 }
 sourceSets.main.java.srcDir(identityDirectory)
 
-// The hand-written shared schemas ship inside the jar for GET /v1/schemas.
+// The hand-written shared schemas GET /v1/schemas serves from the jar, as EditorSchemas.BUNDLED lists them.
 tasks.named('processResources', ProcessResources).configure {
     from(new File(animusRoot, 'schema')) {
-        include '*.schema.json', 'gloss/*.schema.json'
-        exclude 'editor-v1.schema.json'
+        include 'shop-v1.schema.json', 'quest-v1.schema.json', 'gui-inventory-v1.schema.json', 'rig-v1.schema.json', 'animation-v1.schema.json',
+            'server-behaviors-v1.schema.json', 'gloss/gloss.schema.json', 'gloss/gloss-holograms.schema.json', 'gloss/gloss-presets.schema.json'
         into 'animus/schema'
     }
 }

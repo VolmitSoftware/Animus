@@ -176,6 +176,17 @@ class DocumentStoreTest {
     private static void age(DocumentStore store, String transaction, Instant now, int days) throws IOException {
         Files.setLastModifiedTime(store.resolve("backups/" + transaction + ".json"), FileTime.from(now.minus(Duration.ofDays(days))));
     }
+    @Test void atomicBytesReplaceAFileWholeAndAnnounceItOnceInPlace() throws Exception {
+        Path file = root.resolve("imports/uploads/data.dat");
+        try (HeardWrites heard = new HeardWrites()) {
+            DocumentStore.atomic(file, new byte[]{1, 2, 3});
+            DocumentStore.atomic(file, new byte[]{4});
+            assertEquals(List.of("touched", "touched"), heard.of(file));
+        }
+        assertArrayEquals(new byte[]{4}, Files.readAllBytes(file));
+        try (var left = Files.list(file.getParent())) { assertEquals(List.of(file.getFileName()), left.map(Path::getFileName).toList(), "no scratch file is left"); }
+    }
+
     @Test void strictJsonRejectsAmbiguousDocuments() {
         for (String invalid : List.of("{\"a\":1,\"a\":2}", "{} {}", "{\"n\":NaN}", "{x:1}", "{\"x\":01}", "{\"a\":'b'}", "{\"a\":" + "[".repeat(70) + "0" + "]".repeat(70) + "}"))
             assertThrows(IOException.class, () -> JsonDocuments.object(invalid), invalid);

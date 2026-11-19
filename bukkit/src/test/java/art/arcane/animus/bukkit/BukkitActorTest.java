@@ -17,9 +17,9 @@ import static org.junit.jupiter.api.Assertions.*;
 class BukkitActorTest {
     private static final String DOTTED = "Missing animus.tools; see config.toml for int3:greet";
 
-    @Test void plainReplyReachesAPlayerAsTextWithoutLinks() throws ReflectiveOperationException {
+    @Test void plainReplyReachesAPlayerAsTextWithoutLinks() {
         Heard heard = new Heard();
-        new BukkitActor(heard.player(), new ReplyScheduler(null)).plain(Palette.error(DOTTED));
+        new BukkitActor(heard.player(), new ReplyScheduler(null, null)).plain(Palette.error(DOTTED));
         assertEquals(List.of(), heard.strings, "the server turns dotted words in a String into web links");
         assertEquals(1, heard.lines.size());
         BaseComponent[] line = heard.lines.getFirst();
@@ -28,17 +28,17 @@ class BukkitActorTest {
         assertEquals(ChatColor.RED, line[line.length - 1].getColorRaw(), "colour codes still render");
     }
 
-    @Test void replyWithoutChipsIsPlainTextToo() throws ReflectiveOperationException {
+    @Test void replyWithoutChipsIsPlainTextToo() {
         Heard heard = new Heard();
-        BukkitActor actor = new BukkitActor(heard.player(), new ReplyScheduler(null));
+        BukkitActor actor = new BukkitActor(heard.player(), new ReplyScheduler(null, null));
         actor.tell(DOTTED);
         assertEquals(List.of(), heard.strings);
         assertEquals(List.of(), clicks(heard.lines.getFirst()));
     }
 
-    @Test void docsChipStillOpensItsPage() throws ReflectiveOperationException {
+    @Test void docsChipStillOpensItsPage() {
         Heard heard = new Heard();
-        new BukkitActor(heard.player(), new ReplyScheduler(null)).rich(ChatLine.reply(DOTTED).docs(DocsLink.PERMISSIONS));
+        new BukkitActor(heard.player(), new ReplyScheduler(null, null)).rich(ChatLine.reply(DOTTED).docs(DocsLink.PERMISSIONS));
         assertEquals(List.of(), heard.strings);
         assertEquals(List.of(ClickEvent.Action.OPEN_URL + " " + DocsLink.PERMISSIONS.url()), clicks(heard.lines.getFirst()));
     }

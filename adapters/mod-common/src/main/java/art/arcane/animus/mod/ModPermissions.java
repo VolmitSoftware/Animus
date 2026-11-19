@@ -1,4 +1,4 @@
-package art.arcane.animus.core.platform;
+package art.arcane.animus.mod;
 
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
  * operators, or by a permission mod through the vanilla permission atom whose identifier is the node with its first
  * dot as the namespace separator: {@code animus.ride.town} is {@code animus:ride.town}.
  */
-public final class ModPermissions {
+final class ModPermissions {
     public static final String STATUS = "animus.status";
     public static final String BUILD_DONATE = "animus.build.donate";
     public static final String QUESTS_USE = "animus.quests.use";

@@ -1,6 +1,7 @@
 package art.arcane.animus.core.combat;
 
 import art.arcane.animus.core.config.CombatBudgets;
+import art.arcane.animus.core.storage.HeardWrites;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.nio.file.Path;
@@ -33,6 +34,16 @@ class CombatStatisticsTest {
         assertEquals(7.5, totals.get(CombatStatistics.Counter.DAMAGE_GIVEN));
         assertEquals("time spawned 60m, arrows 13, punches 4, damage given 7.5", CombatStatistics.describe(totals));
         assertEquals("no fights yet", CombatStatistics.describe(reopened.totals(UUID.randomUUID(), new JsonObject())));
+    }
+
+    @Test void aSaveIsAnnouncedAsAnimusOwnWrite() throws Exception {
+        Path file = directory.resolve("state/combat/statistics.json");
+        CombatStatistics statistics = new CombatStatistics(file, (String warning) -> fail(warning));
+        statistics.add(UUID.randomUUID(), CombatStatistics.Counter.ARROWS_FIRED, 1);
+        try (HeardWrites heard = new HeardWrites()) {
+            statistics.flushNow();
+            assertEquals(List.of("written", "written"), heard.of(file));
+        }
     }
 
     @Test void anUnreadableFileStartsFromZeroWithAWarning() throws Exception {

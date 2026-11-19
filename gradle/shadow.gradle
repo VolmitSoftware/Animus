@@ -43,6 +43,7 @@ tasks.named('shadowJar').configure {
         'art/arcane/volmlib/util/io/AtomicFileIO', 'art/arcane/volmlib/util/plugin/ComponentMessenger', 'art/arcane/volmlib/util/plugin/ComponentLog',
         'art/arcane/volmlib/util/plugin/SplashScreenSupport', 'art/arcane/volmlib/util/plugin/LegacyLoreLayout'] +
         (project.findProperty('platformVolmLibKept') ?: [])
+    if (project.name == 'bukkit') volmLibKept.add('art/arcane/volmlib/util/bukkit/BukkitCommandMaps')
     exclude { FileTreeElement entry ->
         String path = entry.relativePath.pathString
         path.startsWith('art/arcane/volmlib/') && !entry.directory && !volmLibKept.any { String kept -> path.startsWith(kept) }

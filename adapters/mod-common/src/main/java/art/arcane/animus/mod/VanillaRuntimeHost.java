@@ -2,7 +2,6 @@ package art.arcane.animus.mod;
 
 import art.arcane.animus.core.navigation.MotionValidator;
 import art.arcane.animus.core.npc.NpcItem;
-import art.arcane.animus.core.platform.ModPermissions;
 import art.arcane.animus.core.presentation.BodyTransport;
 import art.arcane.animus.core.runtime.RuntimeHost;
 import art.arcane.animus.core.virtual.Vec3;

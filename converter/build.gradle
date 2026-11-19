@@ -4,6 +4,7 @@ apply from: '../gradle/identity.gradle'
 apply from: '../gradle/java.gradle'
 dependencies {
     implementation project(':core')
+    implementation(project(':core')) { capabilities { requireFeature('offline') } }
     testImplementation('org.junit.jupiter:junit-jupiter:5.10.2')
     testRuntimeOnly('org.junit.platform:junit-platform-launcher:1.10.2')
 }

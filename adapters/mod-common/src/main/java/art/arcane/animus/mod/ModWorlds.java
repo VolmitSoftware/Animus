@@ -1,5 +1,6 @@
-package art.arcane.animus.core.platform;
+package art.arcane.animus.mod;
 
+import art.arcane.animus.core.platform.MinecraftIds;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -9,20 +10,19 @@ import java.util.regex.Pattern;
  * Definitions written for Bukkit name worlds by folder, so the level name and its {@code _nether} and
  * {@code _the_end} folders also resolve to the three vanilla dimensions.
  */
-public final class ModWorlds {
-    public static final String OVERWORLD = "minecraft:overworld", NETHER = "minecraft:the_nether", END = "minecraft:the_end";
+final class ModWorlds {
     private static final Pattern KEY = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
     private static final Pattern PATH = Pattern.compile("[a-z0-9_./-]+");
 
     private ModWorlds() {}
 
     /** The loaded world key the reference names, or empty. */
-    public static Optional<String> resolve(String reference, String levelName, Set<String> loaded) {
+    static Optional<String> resolve(String reference, String levelName, Set<String> loaded) {
         if (reference == null || reference.isBlank()) return Optional.empty();
         String key;
-        if (reference.equals(levelName)) key = OVERWORLD;
-        else if (reference.equals(levelName + "_nether")) key = NETHER;
-        else if (reference.equals(levelName + "_the_end")) key = END;
+        if (reference.equals(levelName)) key = MinecraftIds.OVERWORLD;
+        else if (reference.equals(levelName + "_nether")) key = MinecraftIds.NETHER;
+        else if (reference.equals(levelName + "_the_end")) key = MinecraftIds.END;
         else if (KEY.matcher(reference).matches()) key = reference;
         else if (PATH.matcher(reference).matches()) key = "minecraft:" + reference;
         else return Optional.empty();
@@ -30,14 +30,14 @@ public final class ModWorlds {
     }
 
     /** Every reference {@link #resolve} maps to this loaded world key: the key, its bare vanilla path and its Bukkit folder name. */
-    public static Set<String> aliases(String key, String levelName) {
+    static Set<String> aliases(String key, String levelName) {
         Set<String> aliases = new java.util.HashSet<>();
         aliases.add(key);
         if (key.startsWith("minecraft:")) aliases.add(key.substring("minecraft:".length()));
         switch (key) {
-            case OVERWORLD -> aliases.add(levelName);
-            case NETHER -> aliases.add(levelName + "_nether");
-            case END -> aliases.add(levelName + "_the_end");
+            case MinecraftIds.OVERWORLD -> aliases.add(levelName);
+            case MinecraftIds.NETHER -> aliases.add(levelName + "_nether");
+            case MinecraftIds.END -> aliases.add(levelName + "_the_end");
             default -> {}
         }
         return Set.copyOf(aliases);

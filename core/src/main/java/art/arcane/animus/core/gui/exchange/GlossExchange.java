@@ -7,6 +7,7 @@ import art.arcane.animus.core.gui.GuiKind;
 import art.arcane.animus.core.gui.GuiValidator;
 import art.arcane.animus.core.shop.ShopDocument;
 import art.arcane.animus.core.storage.JsonDocumentTree;
+import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -137,7 +138,7 @@ public final class GlossExchange {
                 case MISSING -> { accepted.put(file, text); labels.put(file, label); }
             }
         }
-        for (Map.Entry<Path, String> write : accepted.entrySet()) { GlossFolders.write(write.getKey(), write.getValue()); report.written(labels.get(write.getKey())); }
+        for (Map.Entry<Path, String> write : accepted.entrySet()) { DocumentStore.atomic(write.getKey(), write.getValue()); report.written(labels.get(write.getKey())); }
         return report.build();
     }
 

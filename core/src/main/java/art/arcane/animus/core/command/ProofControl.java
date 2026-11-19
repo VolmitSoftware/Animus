@@ -1,12 +1,11 @@
 package art.arcane.animus.core.command;
 
-import art.arcane.animus.core.text.Palette;
 import java.util.List;
 import java.util.Optional;
 
 /**
  * The packet preview tools behind {@code /animus proof} and {@code /animus proof folia}. They read Bukkit's server
- * internals, so every other platform answers with {@link #unavailable}. Called on the actor's owner.
+ * internals, so every other platform refuses them with {@link #MOD_SERVER}. Called on the actor's owner.
  */
 public interface ProofControl {
     String NOT_ON_FOLIA = "Not on Folia; use /animus proof folia";
@@ -32,25 +31,4 @@ public interface ProofControl {
     void foliaClear(CommandActor actor);
     /** The actor's preview body ids, for completing {@code entity}, {@code vehicle} and {@code riders}. */
     default List<Integer> bodies(CommandActor actor) { return List.of(); }
-
-    /** Every preview command refuses with {@code reason}, and help leaves them out. */
-    static ProofControl unavailable(String reason) {
-        String refusal = Palette.error(reason);
-        return new ProofControl() {
-            @Override public Optional<String> packetsMissing() { return Optional.of(reason); }
-            @Override public Optional<String> foliaMissing() { return Optional.of(reason); }
-            @Override public void status(CommandActor actor) { actor.tell(refusal); }
-            @Override public void spawn(CommandActor actor, String type, Optional<String> skin) { actor.tell(refusal); }
-            @Override public void move(CommandActor actor, int entity, double dx, double dy, double dz) { actor.tell(refusal); }
-            @Override public void path(CommandActor actor, int entity, int dx, int dy, int dz) { actor.tell(refusal); }
-            @Override public void control(CommandActor actor, int entity) { actor.tell(refusal); }
-            @Override public void stopControl(CommandActor actor) { actor.tell(refusal); }
-            @Override public void controlStatus(CommandActor actor) { actor.tell(refusal); }
-            @Override public void mount(CommandActor actor, int vehicle, List<Integer> riders) { actor.tell(refusal); }
-            @Override public void clear(CommandActor actor) { actor.tell(refusal); }
-            @Override public void foliaStatus(CommandActor actor) { actor.tell(refusal); }
-            @Override public void foliaSpawn(CommandActor actor, Optional<String> skin) { actor.tell(refusal); }
-            @Override public void foliaClear(CommandActor actor) { actor.tell(refusal); }
-        };
-    }
 }

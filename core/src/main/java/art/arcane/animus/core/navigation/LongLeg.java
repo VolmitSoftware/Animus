@@ -189,9 +189,6 @@ public final class LongLeg {
      * turn in degrees. Straight up or down only a turn moves it off centre. Climbing legs get most of their height above
      * the feet, descending legs below, level legs both. A path range shorter than the box narrows it to that reach.
      */
-    static CaptureBounds toward(Vec3 at, Vec3 goal, double hullWidth, double hullHeight, double turn, double range) {
-        return toward(at, goal, hullWidth, hullHeight, turn, range, VOXELS);
-    }
     static CaptureBounds toward(Vec3 at, Vec3 goal, double hullWidth, double hullHeight, double turn, double range, int voxels) {
         BlockPos feet = BlockPos.containing(at);
         int margin = margin(hullWidth), body = (int) Math.ceil(hullHeight);

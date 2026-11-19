@@ -96,7 +96,8 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     private final java.util.function.Consumer<Player> buttonsShown;
     private volatile ScreenManager<Player, ItemStack> manager;
     private final Map<UUID, Map<String, Lane>> bars = new ConcurrentHashMap<>();
-    private final Method teleportAsync, entityScheduler, entityExecute;
+    private final Method teleportAsync;
+    private final FoliaRegions folia;
     private final BukkitShopStock stocks;
     private final BukkitMerchants merchants;
     private final BukkitPrompts prompts;
@@ -105,24 +106,19 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
      * @param later runs work on the player's owner on a later tick; false when it cannot be scheduled
      * @param economy the money provider after the plugin settings
      */
-    /** {@code buttonsShown} runs on the player's thread after chat buttons went to them. */
-    public BukkitScreens(JavaPlugin plugin, BiPredicate<Player, Runnable> later, Supplier<Economy> economy, java.util.function.Consumer<Player> buttonsShown) {
+    /** {@code buttonsShown} runs on the player's thread after chat buttons went to them; {@code folia} is null off Folia. */
+    public BukkitScreens(JavaPlugin plugin, FoliaRegions folia, BiPredicate<Player, Runnable> later, Supplier<Economy> economy, java.util.function.Consumer<Player> buttonsShown) {
         this.plugin = Objects.requireNonNull(plugin);
+        this.folia = folia;
         this.buttonsShown = Objects.requireNonNull(buttonsShown);
         this.server = plugin.getServer();
         this.logger = plugin.getLogger();
         this.later = Objects.requireNonNull(later);
         this.economy = Objects.requireNonNull(economy);
-        Method async = null, scheduler = null, execute = null;
+        Method async = null;
         try { async = org.bukkit.entity.Entity.class.getMethod("teleportAsync", Location.class); }
         catch (NoSuchMethodException spigot) { /* Spigot teleports on the calling thread. */ }
-        if (FoliaRegions.present()) {
-            try {
-                scheduler = org.bukkit.entity.Entity.class.getMethod("getScheduler");
-                execute = Class.forName("io.papermc.paper.threadedregions.scheduler.EntityScheduler").getMethod("execute", org.bukkit.plugin.Plugin.class, Runnable.class, Runnable.class, long.class);
-            } catch (ReflectiveOperationException unbound) { scheduler = null; execute = null; }
-        }
-        teleportAsync = async; entityScheduler = scheduler; entityExecute = execute;
+        teleportAsync = async;
         RegionFlags.Binding regions = RegionFlags.bind(server);
         if (regions != null && regions.failure().isPresent()) logger.warning(regions.describe("chest shops stay closed"));
         merchants = new BukkitMerchants(server, later, () -> manager);
@@ -307,10 +303,9 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     /** Runs on the player's owner after the delay; a Folia entity task is dropped with the player. */
     private void delayed(Player player, int ticks, Runnable work) {
         if (!plugin.isEnabled()) return;
-        try {
-            if (entityExecute != null) entityExecute.invoke(entityScheduler.invoke(player), plugin, work, (Runnable) () -> {}, (long) Math.max(1, ticks));
-            else server.getScheduler().runTaskLater(plugin, work, Math.max(1, ticks));
-        } catch (ReflectiveOperationException | RuntimeException failure) { logger.warning("Could not schedule a boss bar expiry: " + failure.getClass().getSimpleName()); }
+        if (folia != null) { folia.later(player, work, () -> {}, Math.max(1, ticks)); return; }
+        try { server.getScheduler().runTaskLater(plugin, work, Math.max(1, ticks)); }
+        catch (RuntimeException failure) { logger.warning("Could not schedule a boss bar expiry: " + failure.getClass().getSimpleName()); }
     }
 
     @Override public boolean effect(Player player, String effect, int ticks, int amplifier) {

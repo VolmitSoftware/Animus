@@ -1,18 +1,17 @@
 package art.arcane.animus.core.rig.pack;
 
+import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonObject;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
@@ -98,10 +97,12 @@ public final class RigPackBuilder {
         Path folder = out.resolve(FOLDER), documentFolder = out.resolve(DOCUMENTS), zip = out.resolve(ZIP);
         replaceTree(folder, files);
         replaceTree(documentFolder, documents);
-        Path partial = out.resolve(ZIP + ".partial");
-        String sha1 = writeZip(partial, files);
-        Files.move(partial, zip, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        Files.writeString(out.resolve(ZIP + ".sha1"), sha1 + "\n");
+        byte[] zipped = archive(files);
+        String sha1;
+        try { sha1 = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(zipped)); }
+        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException("SHA-1 is unavailable", impossible); }
+        DocumentStore.atomic(zip, zipped);
+        DocumentStore.atomic(out.resolve(ZIP + ".sha1"), sha1 + "\n");
         return new Result(zip, folder, documentFolder, sha1, converted, files.size(), problems);
     }
 
@@ -149,13 +150,9 @@ public final class RigPackBuilder {
         return found;
     }
 
-    private static String writeZip(Path destination, Map<String, byte[]> files) throws IOException {
-        MessageDigest digest;
-        try { digest = MessageDigest.getInstance("SHA-1"); }
-        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException("SHA-1 is unavailable", impossible); }
-        try (OutputStream output = Files.newOutputStream(destination);
-             DigestOutputStream hashed = new DigestOutputStream(output, digest);
-             ZipOutputStream zip = new ZipOutputStream(hashed, StandardCharsets.UTF_8)) {
+    private static byte[] archive(Map<String, byte[]> files) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(output, StandardCharsets.UTF_8)) {
             zip.setMethod(ZipOutputStream.STORED);
             for (Map.Entry<String, byte[]> file : files.entrySet()) {
                 CRC32 crc = new CRC32();
@@ -171,7 +168,7 @@ public final class RigPackBuilder {
                 zip.closeEntry();
             }
         }
-        return HexFormat.of().formatHex(digest.digest());
+        return output.toByteArray();
     }
 
     /** Deletes the folder without following links, then writes the files under it. */

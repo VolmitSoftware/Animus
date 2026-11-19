@@ -198,7 +198,6 @@ public final class BukkitCombatBridge implements Listener, AutoCloseable {
             this.npc = npc; this.mob = mob; this.profile = profile; this.nativeLease = nativeLease;
             expiresAt = tick > Long.MAX_VALUE - profile.lifetimeTicks() ? Long.MAX_VALUE : tick + profile.lifetimeTicks();
         }
-        public UUID mobId() { return mob.getUniqueId(); }
         public UUID npcId() { return npc.npcId(); }
         public boolean active() { return !retired && !closed && npc.active() && controlled.get(mob.getUniqueId()) == this; }
         public Status lastStatus() { return lastStatus; }

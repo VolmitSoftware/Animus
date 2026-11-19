@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui.exchange;
 
+import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
@@ -42,7 +43,7 @@ public final class GlossBundle {
         root.addProperty("version", GlossSources.BUNDLE_VERSION);
         root.add("workspace", workspace);
         root.add("images", new JsonArray());
-        GlossFolders.write(file, JsonDocuments.write(root));
+        DocumentStore.atomic(file, JsonDocuments.write(root));
     }
 
     private static UUID uuid(String name) { return UUID.nameUUIDFromBytes(name.getBytes(StandardCharsets.UTF_8)); }

@@ -94,7 +94,7 @@ final class BukkitServerBehaviors implements Listener, AutoCloseable {
             servers.worlds(this::world);
             try {
                 bound = new ServerCommandSync(BukkitServerCommands.bind(server, servers, this::resendCommands), log);
-            } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
+            } catch (RuntimeException | LinkageError failure) {
                 log.accept("Server behavior commands are unavailable: the server's command map cannot be reached (" + failure.getClass().getSimpleName() + ")");
             }
         }

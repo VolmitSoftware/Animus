@@ -1,4 +1,4 @@
-package art.arcane.animus.core.platform;
+package art.arcane.animus.mod;
 
 import java.util.Optional;
 import org.junit.jupiter.api.Test;

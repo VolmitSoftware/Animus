@@ -348,8 +348,6 @@ public final class EditorService implements AutoCloseable {
 
     /** Open editor event streams, for diagnostics. */
     public synchronized int eventStreams() { return api == null ? 0 : api.parts().events().open(); }
-    /** The relay connection is registered, for diagnostics. */
-    public synchronized boolean relayRegistered() { return relay != null && relay.isRegistered(); }
 
     /**
      * At most two lines: the state with listener, relay and counts, then the fingerprint the pairing page shows and the

@@ -11,7 +11,7 @@ import art.arcane.animus.core.behavior.builtin.MemoryBehaviorState;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.behavior.catalog.ServerBehaviorList;
 import art.arcane.animus.core.platform.BukkitWorlds;
-import art.arcane.animus.core.platform.ModWorlds;
+import art.arcane.animus.core.platform.MinecraftIds;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -119,8 +119,10 @@ class ServerWorldEventTest {
         assertEquals(1, dispatcher.snapshot().bindings());
     }
 
-    private static final Set<String> DIMENSIONS = Set.of("minecraft:overworld", "minecraft:the_nether", "minecraft:the_end");
-    private void modWorlds() { dispatcher.worlds((String reference) -> ModWorlds.resolve(reference, "world", DIMENSIONS)); pump(); }
+    /** As a mod server on level {@code world} resolves world references: a folder name or a key to the dimension key. */
+    private static final Map<String, String> MOD_WORLDS = Map.of("world", MinecraftIds.OVERWORLD, "world_nether", MinecraftIds.NETHER, "world_the_end", MinecraftIds.END,
+            MinecraftIds.OVERWORLD, MinecraftIds.OVERWORLD, MinecraftIds.NETHER, MinecraftIds.NETHER, MinecraftIds.END, MinecraftIds.END);
+    private void modWorlds() { dispatcher.worlds((String reference) -> Optional.ofNullable(MOD_WORLDS.get(reference))); pump(); }
 
     @Test void bukkitWorldNamesOfAreasMatchModDimensionKeys() {
         setup(ServerTriggerSettings.DEFAULT, "[{\"id\":\"in\",\"event\":\"player_area\",\"phase\":\"enter\",\"area\":\"camp\",\"world\":\"world\",\"cuboid\":[0,0,0,9,9,9]},"
